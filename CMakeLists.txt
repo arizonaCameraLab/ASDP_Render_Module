@@ -1,0 +1,92 @@
+﻿cmake_minimum_required(VERSION 3.16.0)
+project(ASDP_Render_Module LANGUAGES CXX CUDA)
+
+set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+#-----------------------------------------------------------------------------
+if(WIN32)
+    add_definitions(-DNOMINMAX)
+endif(WIN32)
+
+#-----------------------------------------------------------------------------
+# Local CMake Modules
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
+
+#-----------------------------------------------------------------------------
+# Enable sorting projects within the solution on Visual Studio, to group
+# Test and Example files together.
+set_property(GLOBAL PROPERTY USE_FOLDERS ON)
+
+#-----------------------------------------------------------------------------
+# Checking for optional and required packages
+
+find_package(ASDP_Core_API REQUIRED)
+find_package(Doxygen)
+find_package(OpenMP)
+if(OPENMP_FOUND)
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${OpenMP_EXE_LINKER_FLAGS}")
+endif()
+
+#-----------------------------------------------------------------------------
+# Build options.
+option(BUILD_TESTS "Build test programs" ON)
+option(BUILD_UTILITIES "Build utility programs" ON)
+
+if (DOXYGEN_FOUND)
+    option(BUILD_DOXYGEN "Build DOxygen documentation" ON)
+endif (DOXYGEN_FOUND)
+
+if (BUILD_DOXYGEN)
+    # set input and output files
+    set(DOXYGEN_IN ${CMAKE_CURRENT_SOURCE_DIR}/docs/Doxyfile.in)
+    set(DOXYGEN_OUT ${CMAKE_CURRENT_BINARY_DIR}/Doxyfile)
+
+    # request to configure the file
+    configure_file(${DOXYGEN_IN} ${DOXYGEN_OUT} @ONLY)
+
+    # note the option ALL which allows to build the docs together with the application
+    add_custom_target( doc_doxygen ALL
+        COMMAND ${DOXYGEN_EXECUTABLE} ${DOXYGEN_OUT}
+        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+        COMMENT "Generating API documentation with Doxygen"
+        VERBATIM )
+endif (BUILD_DOXYGEN)
+
+#-----------------------------------------------------------------------------
+# Build utilities if we've been asked to.
+
+if(BUILD_UTILITIES)
+
+  set (CPP_UTILS
+  )
+  foreach (BASE ${CPP_UTILS})
+    set (APP ${BASE})
+    add_executable (${APP} util/${BASE}.cpp)
+    set_target_properties(${APP} PROPERTIES FOLDER util/C++)
+    install(TARGETS ${APP} EXPORT ${PROJECT_NAME}
+      RUNTIME DESTINATION bin
+    )
+  endforeach (BASE)
+
+  set (CUDA_UTILS
+	  Time_CUDA_Writes
+  )
+  foreach (BASE ${CUDA_UTILS})
+    set (APP ${BASE})
+    add_executable (${APP} util/${BASE}.cu)
+    set_target_properties(${APP} PROPERTIES FOLDER util/C++)
+    # We need to explicitly state that we need all CUDA files in the 
+    # project folder to be built with -dc as the option to nvcc so 
+    # CUDA separable compilation is enabled.
+    set_property(TARGET ${APP} 
+                 PROPERTY CUDA_SEPARABLE_COMPILATION ON)
+    set_property(TARGET ${APP} PROPERTY CUDA_ARCHITECTURES 75 80)
+    install(TARGETS ${APP} EXPORT ${PROJECT_NAME}
+      RUNTIME DESTINATION bin
+    )
+  endforeach (BASE)
+
+endif(BUILD_UTILITIES)
