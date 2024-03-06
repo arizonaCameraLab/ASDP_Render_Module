@@ -66,6 +66,9 @@ if(BUILD_UTILITIES)
     set (APP ${BASE})
     add_executable (${APP} util/${BASE}.cpp)
     set_target_properties(${APP} PROPERTIES FOLDER util/C++)
+    target_link_libraries(${APP} PRIVATE
+	    ASDP_Core_API::ASDP_Core_API
+    )
     install(TARGETS ${APP} EXPORT ${PROJECT_NAME}
       RUNTIME DESTINATION bin
     )
@@ -73,6 +76,7 @@ if(BUILD_UTILITIES)
 
   set (CUDA_UTILS
 	  Time_CUDA_Writes
+    Speed_Test_Receiver_CUDA
   )
   foreach (BASE ${CUDA_UTILS})
     set (APP ${BASE})
@@ -83,6 +87,9 @@ if(BUILD_UTILITIES)
     # CUDA separable compilation is enabled.
     set_property(TARGET ${APP} 
                  PROPERTY CUDA_SEPARABLE_COMPILATION ON)
+    target_link_libraries(${APP} PRIVATE
+	    ASDP_Core_API::ASDP_Core_API
+    )
     set_property(TARGET ${APP} PROPERTY CUDA_ARCHITECTURES 75 80)
     install(TARGETS ${APP} EXPORT ${PROJECT_NAME}
       RUNTIME DESTINATION bin
