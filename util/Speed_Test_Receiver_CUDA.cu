@@ -165,7 +165,9 @@ static void receiveDataThread(ReceiverUDP& receiveSocket, SpinFreeQueue<DataToSe
 
   // Loop through and receive packets until we've gotten them all or an error occurs
   while (packetsReceived < packetsPerFrame * totalFrames) {
-    Status status = receiveSocket.ReceiveBuffer(buffer);
+    size_t size = buffer.size();
+    Status status = receiveSocket.ReceiveBuffer(buffer.data(), size);
+    buffer.resize(size);
     if (status != OKAY) {
       std::cerr << "Error receiving data: " << ErrorMessage(status) << std::endl;
       return;
@@ -267,7 +269,7 @@ int main(int argc, char* argv[])
   std::cout << "ASDP Speed Test Receiver" << std::endl;
   std::cout << "Listens for data from the Speed_Test_Sender and checks for dropped packets" << std::endl;
   std::cout << "Run this before running the sender." << std::endl;
-  std::cout << "Usage: Speed_Test_Receiver [--cameras <number>] [--fps <number>] [--secondsWorth <number>] [--IP <string>] [--port <number>]" << std::endl;
+  std::cout << "Usage: Speed_Test_Receiver [--cameras <number>] [--fps <number>] [--secondsWorth <number>] [--packetsPerGPUSend <number>] [--IP <string>] [--port <number>]" << std::endl;
   std::cout << "       It listens on the port specified and a number above it for each camera." << std::endl;
   std::cout << "The parameters here must match those used by the sender." << std::endl;
   std::cout << std::endl;
