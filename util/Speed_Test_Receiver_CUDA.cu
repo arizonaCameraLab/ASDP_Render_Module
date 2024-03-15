@@ -21,7 +21,7 @@ template <typename T> class SpinFreeQueue {
 private:
   struct Node {
     T data;
-    Node* next;
+    Node* next = nullptr;
   };
 
   Node* head;
