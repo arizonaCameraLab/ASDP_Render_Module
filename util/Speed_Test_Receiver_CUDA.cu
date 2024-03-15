@@ -13,88 +13,10 @@
 #include <condition_variable>
 #include <string.h>
 #include <ASDP_Core_API.h>
+#include <ASDP_SpinFreeQueue.hpp>
 #include <cuda.h>
 #include <cuda_runtime.h>
 using namespace asdp;
-
-template <typename T> class SpinFreeQueue {
-private:
-  struct Node {
-    T data;
-    Node* next = nullptr;
-  };
-
-  Node* head;
-  Node* tail;
-  size_t nodes;
-  std::condition_variable cv;
-  std::mutex cv_m;
-  std::mutex mut;
-
-public:
-  SpinFreeQueue() {
-    head = nullptr;
-    tail = nullptr;
-    nodes = 0;
-  }
-
-  ~SpinFreeQueue() {
-    std::lock_guard<std::mutex> lk(mut);
-    while (head) {
-      Node* old_head = head;
-      head = old_head->next;
-      delete old_head;
-      nodes--;
-    }
-  }
-
-  void enqueue(T data) {
-    {
-      std::lock_guard<std::mutex> lk(mut);
-      Node* new_node = new Node;
-      new_node->data = data;
-      new_node->next = nullptr;
-
-      if (nodes == 0) {
-        head = new_node;
-        tail = new_node;
-      } else {
-        tail->next = new_node;
-        tail = new_node;
-      }
-
-      nodes++;
-    }
-    cv.notify_one();
-  }
-
-  bool dequeue(T& value, const std::chrono::milliseconds& timeout) {
-    if (nodes == 0) {
-      std::unique_lock<std::mutex> cvlk(cv_m);
-      if (!cv.wait_for(cvlk, timeout, [&] { return nodes != 0; })) {
-        return false;
-      }
-    }
-
-    std::lock_guard<std::mutex> lk(mut);
-    if (nodes == 0) {
-      return false;
-    }
-    value = head->data;
-    Node* old_head = head;
-    head = old_head->next;
-    delete old_head;
-    nodes--;
-    if (head == nullptr) {
-      tail = head;
-    }
-    return true;
-  }
-
-  size_t size() const {
-    return nodes;
-  }
-};
 
 /// @brief Structure to hold the data needed to send data to the GPU.
 struct DataToSend {
