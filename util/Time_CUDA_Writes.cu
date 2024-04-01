@@ -5,11 +5,14 @@
 // The maximum number of cameras to be used is 25, each with 1280x1024 16-bit
 // pixels running at a maximum of 60Hz.
 
+#ifdef _WIN32
 #include <windows.h>
+#endif
 #include <iostream>
 #include <thread>
 #include <chrono>
 #include <vector>
+#include <atomic>
 #include <cuda.h>
 #include <cuda_runtime.h>
 
@@ -141,7 +144,7 @@ int main() {
       }
 
       // Sleep to enable send and receive threads to start
-      Sleep(2000);
+      std::this_thread::sleep_for(std::chrono::milliseconds(2000));
 
       // Measure the time taken for sending all iterations, starting the
       // clock just before starting the copies.
