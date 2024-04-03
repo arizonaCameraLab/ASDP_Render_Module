@@ -44,7 +44,8 @@ __global__ void squareAndDivideKernel(uint16_t* data, int size)
 static void handleDataThread(std::atomic<bool>& done, SpinFreeQueue<DataToSend>& queue)
 {
   DataToSend data;
-  while (!done) {
+  // Only quit when we've been asked to and we've completed all of our work.
+  while (!done || queue.size()) {
     if (queue.dequeue(data, std::chrono::milliseconds(1))) {
       cudaError_t ret = cudaMemcpyAsync(data.gpuBuffer, data.cpuBuffer, data.size,
         cudaMemcpyHostToDevice, data.stream);
@@ -191,7 +192,7 @@ int main(int argc, char* argv[])
   std::cout << "ASDP Speed Test Receiver" << std::endl;
   std::cout << "Listens for data from the Speed_Test_Sender and checks for dropped packets" << std::endl;
   std::cout << "Run this before running the sender." << std::endl;
-  std::cout << "Usage: Speed_Test_Receiver [--cameras <number>] [--fps <number>] [--secondsWorth <number>] [--packetsPerGPUSend <number>] [--IP <string>] [--port <number>]" << std::endl;
+  std::cout << "Usage: Speed_Test_Receiver_CUDA [--cameras <number>] [--fps <number>] [--secondsWorth <number>] [--packetsPerGPUSend <number>] [--IP <string>] [--port <number>]" << std::endl;
   std::cout << "       It listens on the port specified and a number above it for each camera." << std::endl;
   std::cout << "The parameters here must match those used by the sender." << std::endl;
   std::cout << std::endl;
