@@ -108,9 +108,6 @@ static void receiveDataThread(ReceiverUDP& receiveSocket, SpinFreeQueue<DataToSe
     // Wrap back around to the start when we're done with a frame.
     size_t mod = packetsReceived % packetsPerGPUSend;
     size_t offset = mod * bytesPerPacket;
-    {
-      std::lock_guard<std::mutex> lock(printMutex);
-    }
     memcpy(cpuBuffer + offset, buffer.data(), bytesPerPacket);
 
     // If we've reached the number of packets to send to the GPU, send them.
@@ -124,9 +121,6 @@ static void receiveDataThread(ReceiverUDP& receiveSocket, SpinFreeQueue<DataToSe
       data.gpuBuffer = gpuBuffer + baseOffset;
       data.size = packetsPerGPUSend * bytesPerPacket;
       data.stream = stream;
-      {
-        std::lock_guard<std::mutex> lock(printMutex);
-      }
       queue.enqueue(data);
     }
 

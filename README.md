@@ -5,10 +5,11 @@ for the Apache Strap-Down Pilotage program.
 
 ## Getting Started
 
-**Required:** The ASDP_Render_Module requires the ASDP_Core library to have been
+**Required:** The ASDP_Render_Module requires the ASDP_Core_API library to have been
 installed before it is built.  This installs by default in a known system location that can
 be found automatically.  The library source can be obtained using:
-`git clone https://github.com/arizonaCameraLab/ASDP_Core`
+`git clone https://github.com/arizonaCameraLab/ASDP_Core_API` and instructions in the
+repository tell how to install it.
 
 **Build:** ASDP_Render_Module uses CMake to configure the builds (though other build
 systems could be used).  On Ubuntu Linux, this can be done as follows
