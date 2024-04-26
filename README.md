@@ -8,8 +8,8 @@ for the Apache Strap-Down Pilotage program.
 **Required:** The ASDP_Render_Module requires the ASDP_Core_API library to have been
 installed before it is built.  This installs by default in a known system location that can
 be found automatically.  The library source can be obtained using:
-`git clone https://github.com/arizonaCameraLab/ASDP_Core_API` and instructions in the
-repository tell how to install it.
+`git clone --recursive https://github.com/arizonaCameraLab/ASDP_Core_API` and instructions in the
+repository tell how to install it.  The --recursive flag is important to get the submodules.
 
 It also requires GLEW to be installed.  Pre-built binaries are available for many systems
 at https://github.com/nigels-com/glew/releases/tag/glew-2.2.0

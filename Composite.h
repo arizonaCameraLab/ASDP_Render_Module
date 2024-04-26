@@ -2,6 +2,14 @@
  * Copyright (C) 2024: Arizona Board of Regents on Behalf of the University of Arizona
  */
 
+ /**
+  * @file Composite.h
+  * @brief Apache Strap-Down Pilotage Render/Composite submodule header file.
+  *
+ * @author ReliaSolve.
+ * @date April 26, 2024.
+ */
+
 #pragma once
 
 #include <string>
@@ -21,10 +29,16 @@ namespace asdp {
     struct CameraRenderInfo {
       uint16_t m_ID = 0;                              ///< ID of the camera.
       std::array<double, 3> m_positionMeters = {};    ///< Position of the camera in meters from the camera device origin.
-      std::array<double, 3> m_orientationRad = {};    ///< Orientation of the camera in radians, Euler rotation around Z, then Y, then X from X right, looking down -Z.
+      /// Orientation of the camera in degrees, Euler rotation around X, then Y, then Z.
+      /// The canonical orientation is a bit unusual, with the camera rotated to portrait mode
+      /// and looking along +Y: X down, Y to the right, Z towards -Y.  This makes it convenient because
+      /// the cameras are aligned this way in the system and this order of rotations specifies the
+      /// direction of the view and then rotation around the view direction.
+      std::array<double, 3> m_orientationRad = {};
       std::array<uint16_t, 2> m_resolutionPixels = {};///< Resolution of the camera in pixels.
       std::array<double, 2> m_fovDegrees = {};        ///< Field of view of the camera in degrees, horizontal then vertical.
-      std::vector<double> m_distortion;               ///< Distortion coefficients of the camera. @todo Describe the format.
+      /// Distortion coefficients of the camera. @todo Describe the format.
+      std::vector<double> m_distortion;
     };
 
     /// @brief Information about the rendering of a single viewpoint, enabling multiple views to be requested at the same time.

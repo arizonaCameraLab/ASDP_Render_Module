@@ -71,6 +71,9 @@ target_include_directories(Render_Module PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
   $<INSTALL_INTERFACE:include>
 )
+target_include_directories(Render_Module PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}/dependencies/glm
+)
 target_link_libraries(Render_Module ASDP_Core_API::ASDP_Core_API GLEW::glew OpenGL::GL)
 
 #-----------------------------------------------------------------------------
