@@ -22,6 +22,8 @@ set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 # Checking for optional and required packages
 
 find_package(ASDP_Core_API REQUIRED)
+find_package(OpenGL REQUIRED COMPONENTS OpenGL)
+find_package(GLEW REQUIRED)
 find_package(Doxygen)
 find_package(OpenMP)
 if(OPENMP_FOUND)
@@ -54,6 +56,22 @@ if (BUILD_DOXYGEN)
         COMMENT "Generating API documentation with Doxygen"
         VERBATIM )
 endif (BUILD_DOXYGEN)
+
+#-----------------------------------------------------------------------------
+# Build the libraries.
+
+set (Render_Module_HEADERS
+	Composite.h
+)
+set (Render_Module_SOURCES
+	Composite.cpp
+)
+add_library(Render_Module STATIC ${Render_Module_SOURCES} ${Render_Module_HEADERS})
+target_include_directories(Render_Module PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
+  $<INSTALL_INTERFACE:include>
+)
+target_link_libraries(Render_Module ASDP_Core_API::ASDP_Core_API GLEW::glew OpenGL::GL)
 
 #-----------------------------------------------------------------------------
 # Build utilities if we've been asked to.
