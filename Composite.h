@@ -16,6 +16,7 @@
 #include <array>
 #include <vector>
 #include <cstdint>
+#include <memory>
 #ifdef WIN32
 #include <windows.h>
 #endif
@@ -43,20 +44,23 @@ namespace asdp {
 
     /// @brief Information about the rendering of a single viewpoint, enabling multiple views to be requested at the same time.
     struct ViewRenderInfo {
-      float* modelViewProjection;   ///< 4x4 Model view projection matrix.
-      GLuint frameBuffer;           ///< Frame buffer to render into.
-      GLuint color;                 ///< Texture for color to be rendered into (will be bound to the frameBuffer).
-      GLuint depth;                 ///< Depth buffer to be rendered into, 0 for no depth buffer (will be bound to the frameBuffer).
-      GLint x;                      ///< X coordinate of the lower left corner of the viewport.
-      GLint y;                      ///< Y coordinate of the lower left corner of the viewport.
-      GLsizei width;                ///< Width of the viewport.
-      GLsizei height;               ///< Height of the viewport.
+      /// 4x4 Model view projection matrix.
+      std::array<float, 16> modelViewProjection = {1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1};
+      GLuint frameBuffer = 0;               ///< Frame buffer to render into.  Set to 0 for the default frame buffer.
+      GLuint color = 0;                     ///< Texture for color to be rendered into (will be bound to the frameBuffer). Ignored for frameBuffer 0.
+      GLuint depth = 0;                     ///< Depth buffer to be rendered into, 0 for no depth buffer (will be bound to the frameBuffer). Ignored for frameBuffer 0.
+      GLint x = 0;                          ///< X coordinate of the lower left corner of the viewport.
+      GLint y = 0;                          ///< Y coordinate of the lower left corner of the viewport.
+      GLsizei width = 0;                    ///< Width of the viewport.
+      GLsizei height = 0;                   ///< Height of the viewport.
     };
 
     /// @brief Composite base class that renders a composite image from multiple cameras.
     class Composite {
     public:
       /// @brief Constructor
+      /// @details The OpenGL context to be used by the Composite object must be current when this
+      /// constructor is called.
       /// @param cameraRenderInfo The configuration of the cameras needed to generate textured geometry.
       Composite(std::vector<CameraRenderInfo>& cameraRenderInfo);
 
@@ -85,7 +89,7 @@ namespace asdp {
       /// depth textures and binding the frame buffer.  RenderView() is responsible for setting
       /// the program and the matrix parameter for it.
       /// @param modelViewProjection The matrix specifying the entire viewing transformation to use.
-      virtual void RenderView(float* modelViewProjection) = 0;
+      virtual void RenderView(const float* modelViewProjection) = 0;
 
       /// @brief Set up state needed for rendering, perhaps including the shader program and geometry/textures.
       virtual void SetupRenderFrame(asdp::Time scanOutTime) = 0;
@@ -116,16 +120,10 @@ namespace asdp {
       void checkShaderError(GLuint shaderId, const std::string& exceptionMsg);
       void checkProgramError(GLuint programId, const std::string& exceptionMsg);
 
-      GLuint m_colorBuffer = 0;
-      GLuint m_vertexBuffer = 0;
-      GLuint m_vertexArrayId = 0;
-      std::vector<GLfloat> m_colorBufferData;
-      std::vector<GLfloat> m_vertexBufferData;
-
       class MeshCube;
-      MeshCube* m_roomCube = nullptr;
+      std::shared_ptr<MeshCube> m_roomCube;
 
-      void RenderView(float* modelViewProjection) override;
+      void RenderView(const float* modelViewProjection) override;
       void SetupRenderFrame(asdp::Time scanOutTime) override;
       void TearDownRenderFrame() override;
     };

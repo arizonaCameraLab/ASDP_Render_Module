@@ -12,7 +12,15 @@ using namespace asdp::render;
 Composite::Composite(std::vector<CameraRenderInfo>& cameraRenderInfo)
   : m_cameraRenderInfos(cameraRenderInfo)
 {
-  // Empty constructor.
+  // Initialize GLEW in our context. It is okay to initialize it more than once.
+  glewExperimental = true;
+  if (glewInit() != GLEW_OK) {
+    std::cerr << "Composite::Composite(): Failed to initialize GLEW\n" << std::endl;
+    return;
+  }
+  // Clear any GL error that Glew caused.  Apparently on Non-Windows
+  // platforms, this can cause a spurious error 1280.
+  glGetError();
 }
 
 Composite::~Composite()
@@ -29,29 +37,27 @@ void Composite::Render(asdp::Time scanOutTime, std::vector<ViewRenderInfo> views
   for (auto const& view : views) {
     // Set up the frame buffer and assign the appropriate textures.
     glBindFramebuffer(GL_FRAMEBUFFER, view.frameBuffer);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, view.color, 0);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, view.depth, 0);
+    if (view.frameBuffer != 0) {
+      glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, view.color, 0);
+      glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, view.depth, 0);
+    }
 
     // Set up the viewport and clear the buffers.
     glViewport(view.x, view.y, view.width, view.height);
     glClearColor(0, 0, 0, 1.0f);
     GLbitfield clearBits = 0;
-    if (view.color != 0) { clearBits |= GL_COLOR_BUFFER_BIT; }
-    if (view.depth != 0) { clearBits |= GL_DEPTH_BUFFER_BIT; }
+    if ( (view.frameBuffer == 0) || (view.color != 0) ) { clearBits |= GL_COLOR_BUFFER_BIT; }
+    if ( (view.frameBuffer == 0) || (view.depth != 0) ) { clearBits |= GL_DEPTH_BUFFER_BIT; }
     glClear(clearBits);
 
     // Turn on depth testing so we get proper rendering.
-    if (view.depth) {
+    if ((view.frameBuffer == 0) || (view.depth != 0)) {
       glEnable(GL_DEPTH_TEST);
       glDepthFunc(GL_LESS);
     }
 
-    // Compute the appropriate model-view-projection matrix for this view.
-    float modelViewProjection[16] = { 1, 0, 0, 0,  0, 1, 0, 0,  0, 0, 1, 0,  0, 0, 0, 1 };
-    /// @todo 
-
     // Call the derived-class method to render the geometry into this viewpoint.
-    RenderView(modelViewProjection);
+    RenderView(view.modelViewProjection.data());
 
     // Unset things
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -282,6 +288,7 @@ public:
   ~MeshCube() {
     if (initialized) {
       glDeleteBuffers(1, &vertexBuffer);
+      glDeleteBuffers(1, &colorBuffer);
       glDeleteVertexArrays(1, &vertexArrayId);
     }
   }
@@ -293,7 +300,7 @@ public:
       glBindBuffer(GL_ARRAY_BUFFER, vertexBuffer);
       glBufferData(GL_ARRAY_BUFFER,
         sizeof(vertexBufferData[0]) * vertexBufferData.size(),
-        &vertexBufferData[0], GL_STATIC_DRAW);
+        vertexBufferData.data(), GL_STATIC_DRAW);
       glBindBuffer(GL_ARRAY_BUFFER, 0);
 
       // Color buffer
@@ -301,20 +308,20 @@ public:
       glBindBuffer(GL_ARRAY_BUFFER, colorBuffer);
       glBufferData(GL_ARRAY_BUFFER,
         sizeof(colorBufferData[0]) * colorBufferData.size(),
-        &colorBufferData[0], GL_STATIC_DRAW);
+        colorBufferData.data(), GL_STATIC_DRAW);
       glBindBuffer(GL_ARRAY_BUFFER, 0);
 
       // Vertex array object
       glGenVertexArrays(1, &vertexArrayId);
       glBindVertexArray(vertexArrayId);
       {
-        // color
-        glBindBuffer(GL_ARRAY_BUFFER, colorBuffer);
-        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 0, (GLvoid*)0);
-
         // VBO
         glBindBuffer(GL_ARRAY_BUFFER, vertexBuffer);
         glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, (GLvoid*)0);
+
+        // color
+        glBindBuffer(GL_ARRAY_BUFFER, colorBuffer);
+        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 0, (GLvoid*)0);
 
         glEnableVertexAttribArray(0);
         glEnableVertexAttribArray(1);
@@ -408,15 +415,6 @@ static const GLchar* cubeFragmentShader = "#version 330 core\n"
   "    color = fragmentColor;\n"
   "}\n";
 
-// Cause GLEW to be initialized whenever this file is linked to.
-class GLEWInitializer {
-public:
-  GLEWInitializer() {
-    glewInit();
-  }
-};
-static GLEWInitializer glewInitializer;
-
 void CompositeCube::checkShaderError(GLuint shaderId, const std::string& exceptionMsg) {
   GLint result = GL_FALSE;
   int infoLength = 0;
@@ -474,50 +472,17 @@ CompositeCube::CompositeCube(double radius)
 
   m_modelViewProjectionUniformId = glGetUniformLocation(m_programId, "modelViewProjection");
 
-  // Vertex buffer
-  glGenBuffers(1, &m_vertexBuffer);
-  glBindBuffer(GL_ARRAY_BUFFER, m_vertexBuffer);
-  glBufferData(GL_ARRAY_BUFFER,
-    sizeof(m_vertexBufferData[0]) * m_vertexBufferData.size(),
-    &m_vertexBufferData[0], GL_STATIC_DRAW);
-  glBindBuffer(GL_ARRAY_BUFFER, 0);
-
-  // Color buffer
-  glGenBuffers(1, &m_colorBuffer);
-  glBindBuffer(GL_ARRAY_BUFFER, m_colorBuffer);
-  glBufferData(GL_ARRAY_BUFFER,
-    sizeof(m_colorBufferData[0]) * m_colorBufferData.size(),
-    &m_colorBufferData[0], GL_STATIC_DRAW);
-  glBindBuffer(GL_ARRAY_BUFFER, 0);
-
-  // Vertex array object
-  glGenVertexArrays(1, &m_vertexArrayId);
-  glBindVertexArray(m_vertexArrayId);
-  {
-    // color
-    glBindBuffer(GL_ARRAY_BUFFER, m_colorBuffer);
-    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 0, (GLvoid*)0);
-
-    // VBO
-    glBindBuffer(GL_ARRAY_BUFFER, m_vertexBuffer);
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, (GLvoid*)0);
-
-    glEnableVertexAttribArray(0);
-    glEnableVertexAttribArray(1);
-  }
-  glBindVertexArray(0);
-
+  // Make our geometry object, which will draw itself.
   size_t quadsPerEdge = 10;
   size_t trianglesPerSide = 2 * quadsPerEdge * quadsPerEdge;
   // 6 faces
-  size_t triangles = static_cast<size_t>(trianglesPerSide * 6);
-  m_roomCube = new MeshCube(m_radius, triangles);
+  size_t numTriangles = static_cast<size_t>(trianglesPerSide * 6);
+  m_roomCube = std::shared_ptr<MeshCube>(new MeshCube(m_radius, numTriangles));
 }
 
 CompositeCube::~CompositeCube()
 {
   glDeleteProgram(m_programId);
-  delete m_roomCube;
 }
 
 void CompositeCube::SetupRenderFrame(asdp::Time scanOutTime)
@@ -525,9 +490,9 @@ void CompositeCube::SetupRenderFrame(asdp::Time scanOutTime)
   glUseProgram(m_programId);
 }
 
-void CompositeCube::RenderView(float* modelViewProjection)
+void CompositeCube::RenderView(const float* modelViewProjection)
 {
-  // Set the modelview-projection matrix and draw the cube.
+  // Set the model-view-projection matrix and draw the cube.
   glUniformMatrix4fv(m_modelViewProjectionUniformId, 1, GL_FALSE, modelViewProjection);
   m_roomCube->draw();
 }

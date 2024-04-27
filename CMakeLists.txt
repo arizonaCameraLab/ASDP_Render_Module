@@ -3,6 +3,7 @@ project(ASDP_Render_Module LANGUAGES CXX CUDA)
 
 set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+list(APPEND CMAKE_PREFIX_PATH C:/Packages/GLEW/glew-2.2.0)
 
 #-----------------------------------------------------------------------------
 if(WIN32)
@@ -17,6 +18,17 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 # Enable sorting projects within the solution on Visual Studio, to group
 # Test and Example files together.
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
+
+#-----------------------------------------------------------------------------
+# Fetch and build packages
+
+include(FetchContent)
+FetchContent_Declare(
+  glfw3
+  GIT_REPOSITORY https://github.com/arizonaCameraLab/glfw.git
+  GIT_TAG        b35641f4a3c62aa86a0b3c983d163bc0fe36026d # Master as of 4/26/2024
+)
+FetchContent_MakeAvailable(glfw3)
 
 #-----------------------------------------------------------------------------
 # Checking for optional and required packages
@@ -70,11 +82,12 @@ add_library(Render_Module STATIC ${Render_Module_SOURCES} ${Render_Module_HEADER
 target_include_directories(Render_Module PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
   $<INSTALL_INTERFACE:include>
+  "${CMAKE_CURRENT_BINARY_DIR}/Install/include"
 )
 target_include_directories(Render_Module PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/dependencies/glm
 )
-target_link_libraries(Render_Module ASDP_Core_API::ASDP_Core_API GLEW::glew OpenGL::GL)
+target_link_libraries(Render_Module PUBLIC ASDP_Core_API::ASDP_Core_API GLEW::glew OpenGL::GL)
 
 #-----------------------------------------------------------------------------
 # Build utilities if we've been asked to.
@@ -118,3 +131,32 @@ if(BUILD_UTILITIES)
   endforeach (BASE)
 
 endif(BUILD_UTILITIES)
+
+#-----------------------------------------------------------------------------
+# Build tests if we've been asked to.
+
+if(BUILD_TESTS)
+
+  enable_testing()
+
+  set (CPP_TESTS
+    Composite_Test
+  )
+  foreach (BASE ${CPP_TESTS})
+    set (APP ${BASE})
+    add_executable (${APP} tests_cpp/${BASE}.cpp)
+    set_target_properties(${APP} PROPERTIES FOLDER tests/C++)
+    target_include_directories(${APP} PRIVATE
+      ${CMAKE_CURRENT_SOURCE_DIR}
+      ${CMAKE_CURRENT_SOURCE_DIR}/dependencies/glm
+    )
+    target_link_libraries(${APP}
+      Render_Module glfw
+    )
+    install(TARGETS ${APP} EXPORT ${PROJECT_NAME}
+      RUNTIME DESTINATION bin
+    )
+    add_test(${APP} ${APP})
+  endforeach (BASE)
+
+endif(BUILD_TESTS)
