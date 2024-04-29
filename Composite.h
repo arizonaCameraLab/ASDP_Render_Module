@@ -52,12 +52,20 @@ namespace asdp {
       /// The canonical orientation of the frustum has the viewpoint looking down the -Z axis,
       /// with +X to the right and +Y up.  This is the same as the OpenGL default orientation.
       std::array<float, 3> orientation = {};
-      float leftFrust = -0.1;               ///< Left edge of the view in meters from the principal ray on the near plane.
-      float rightFrust = 0.1;               ///< Right edge of the view in meters from the principal ray on the near plane.
-      float topFrust = 0.1;                 ///< Top edge of the view in meters from the principal ray on the near plane.
-      float bottomFrust = -0.1;             ///< Bottom edge of the view in meters from the principal ray on the near plane.
-      float nearFrust = 0.1;                ///< Near clipping plane in meters.
-      float farFrust = 1000;                ///< Far clipping plane in meters.
+      /// Left edge of the view in degrees from the principal ray (this will be half the horizontal FOV).
+      /// Left and right are different for off-center projection.
+      float leftHalfFOV = -45;
+      /// Right edge of the view in degrees from the principal ray (this will be half the horizontal FOV).
+      /// Left and right are different for off-center projection.
+      float rightHalfFOV = 45;
+      /// Top edge of the view in degrees from the principal ray (this will be half the vertical FOV).
+      /// Top and bottom are different for off-center projection.
+      float topHalfFOV = 45;
+      /// Bottom edge of the view in degrees from the principal ray (this will be half the vertical FOV).
+      /// Top and bottom are different for off-center projection.
+      float bottomHalfFOV = -45;
+      float nearClip = 0.1;                 ///< Near clipping plane in meters.
+      float farClip = 1000;                 ///< Far clipping plane in meters.
       GLuint frameBuffer = 0;               ///< Frame buffer to render into.  Set to 0 for the default frame buffer.
       GLuint colorBuffer = 0;               ///< Texture for color to be rendered into (will be bound to the frameBuffer). Ignored for frameBuffer 0.
       GLuint depthBuffer = 0;               ///< Depth buffer to be rendered into, 0 for no depth buffer (will be bound to the frameBuffer). Ignored for frameBuffer 0.

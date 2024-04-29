@@ -58,7 +58,7 @@ int main()
 
     // Offset the viewpoint center and rotate around the Y axis so we can verify correct behavior.
     views[0].viewpoint[0] = -5;
-    views[0].orientation[0] = angle/50;
+    views[0].orientation[0] = angle/100;
     views[0].orientation[1] = angle;
 
     // Render here

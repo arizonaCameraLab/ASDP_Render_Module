@@ -72,9 +72,12 @@ void Composite::Render(asdp::Time scanOutTime, std::vector<ViewRenderInfo> views
       glm::radians(-view.orientation[0]), glm::vec3(1.0f, 0.0f, 0.0f));
     glm::mat4 ViewTranslate = glm::translate(ViewRotateX,
       glm::vec3(-view.viewpoint[0], -view.viewpoint[1], -view.viewpoint[2]));
-    glm::mat4 Projection = glm::frustum<float>(view.leftFrust, view.rightFrust,
-      view.bottomFrust, view.topFrust,
-      view.nearFrust, view.farFrust);
+    double leftFrust = tan(glm::radians(view.leftHalfFOV)) * view.nearClip;
+    double rightFrust = tan(glm::radians(view.rightHalfFOV)) * view.nearClip;
+    double bottomFrust = tan(glm::radians(view.bottomHalfFOV)) * view.nearClip;
+    double topFrust = tan(glm::radians(view.topHalfFOV)) * view.nearClip;
+    glm::mat4 Projection = glm::frustum<float>(leftFrust, rightFrust, bottomFrust, topFrust,
+      view.nearClip, view.farClip);
     glm::mat4 VP = Projection * ViewTranslate;
 
     // Call the derived-class method to render the geometry into this viewpoint.
