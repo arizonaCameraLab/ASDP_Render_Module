@@ -47,7 +47,8 @@ namespace asdp {
       /// Position of the viewpoint in meters from the camera device origin.
       /// Specifies the center of the view frustum in the world coordinate system.
       std::array<float, 3> viewpoint = {};
-      /// Orientation of the viewpoint in degrees, Euler rotation around X, then Y, then Z.
+      /// Orientation of the viewpoint in degrees, Euler rotation around X, then Y around the
+      /// new Y, then around the new Z.
       /// The canonical orientation of the frustum has the viewpoint looking down the -Z axis,
       /// with +X to the right and +Y up.  This is the same as the OpenGL default orientation.
       std::array<float, 3> orientation = {};

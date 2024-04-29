@@ -62,13 +62,15 @@ void Composite::Render(asdp::Time scanOutTime, std::vector<ViewRenderInfo> views
     // Compute the view-projection matrix (no model described here) from the ViewRenderInfo.
     // NOTE: We translate and rotate in the opposite direction because we're moving the world rather
     // than the camera but the offset and orientation are specified for camera movement.
-    glm::mat4 ViewRotateX = glm::rotate(glm::mat4(1.0f),
-      glm::radians(-view.orientation[0]), glm::vec3(1.0f, 0.0f, 0.0f));
-    glm::mat4 ViewRotateY = glm::rotate(ViewRotateX,
-      glm::radians(-view.orientation[1]), glm::vec3(0.0f, 1.0f, 0.0f));
-    glm::mat4 ViewRotateZ = glm::rotate(ViewRotateY,
+    // NOTE: We also do the order of operations in reverse because we're moving the world rather
+    // than the camera.
+    glm::mat4 ViewRotateZ = glm::rotate(glm::mat4(1.0f),
       glm::radians(-view.orientation[2]), glm::vec3(0.0f, 0.0f, 1.0f));
-    glm::mat4 ViewTranslate = glm::translate(ViewRotateZ,
+    glm::mat4 ViewRotateY = glm::rotate(ViewRotateZ,
+      glm::radians(-view.orientation[1]), glm::vec3(0.0f, 1.0f, 0.0f));
+    glm::mat4 ViewRotateX = glm::rotate(ViewRotateY,
+      glm::radians(-view.orientation[0]), glm::vec3(1.0f, 0.0f, 0.0f));
+    glm::mat4 ViewTranslate = glm::translate(ViewRotateX,
       glm::vec3(-view.viewpoint[0], -view.viewpoint[1], -view.viewpoint[2]));
     glm::mat4 Projection = glm::frustum<float>(view.leftFrust, view.rightFrust,
       view.bottomFrust, view.topFrust,
