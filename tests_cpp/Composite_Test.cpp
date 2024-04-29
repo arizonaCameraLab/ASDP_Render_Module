@@ -4,6 +4,7 @@
 
 #include <iostream>
 #include <vector>
+#include <chrono>
 #include <Composite.h>
 #include <ASDP_Core_API.h>
 #include <GLFW/glfw3.h>
@@ -12,6 +13,7 @@ int main()
 {
   int width = 640;
   int height = 640;
+  double degreesPerSecond = 15.0;
 
   asdp::render::ViewRenderInfo viewRenderInfo;
   viewRenderInfo.width = width;
@@ -37,12 +39,25 @@ int main()
   glfwMakeContextCurrent(window);
 
   // Create a CompositeCube object to render once the window is open and the context is active.
-  asdp::render::CompositeCube composite(0.5);
+  asdp::render::CompositeCube composite(10);
 
-  // Loop until the user closes the window
+  // Loop until the user closes the window, rotating the view each frame around the +Y axis.
   std::cout << "You should see a square of varying-brightness squares in the window." << std::endl;
+  std::cout << "It should be rotating at 15 degrees per second around the Y axies." << std::endl;
+  std::cout << "This will make the far wall of the cube rotate towards the left." << std::endl;
+  std::cout << "The center of location is closer to the magenta wall than the red wall." << std::endl;
   std::cout << "Close the window to exit." << std::endl;
+  auto start = std::chrono::steady_clock::now();
   while (!glfwWindowShouldClose(window)) {
+    // Set the viewpoint here
+    auto now = std::chrono::steady_clock::now();
+    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - start).count();
+    double angle = degreesPerSecond * (elapsed / 1000.0);
+
+    // Offset the viewpoint center and rotate around the Y axis so we can verify correct behavior.
+    views[0].viewpoint[0] = -5;
+    views[0].orientation[1] = angle;
+
     // Render here
     composite.Render(asdp::Time(), views);
 

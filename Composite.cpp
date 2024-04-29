@@ -5,6 +5,9 @@
 #include <string>
 #include <iostream>
 #include <GL/glew.h>
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
 #include "Composite.h"
 
 using namespace asdp::render;
@@ -38,26 +41,42 @@ void Composite::Render(asdp::Time scanOutTime, std::vector<ViewRenderInfo> views
     // Set up the frame buffer and assign the appropriate textures.
     glBindFramebuffer(GL_FRAMEBUFFER, view.frameBuffer);
     if (view.frameBuffer != 0) {
-      glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, view.color, 0);
-      glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, view.depth, 0);
+      glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, view.colorBuffer, 0);
+      glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, view.depthBuffer, 0);
     }
 
     // Set up the viewport and clear the buffers.
     glViewport(view.x, view.y, view.width, view.height);
     glClearColor(0, 0, 0, 1.0f);
     GLbitfield clearBits = 0;
-    if ( (view.frameBuffer == 0) || (view.color != 0) ) { clearBits |= GL_COLOR_BUFFER_BIT; }
-    if ( (view.frameBuffer == 0) || (view.depth != 0) ) { clearBits |= GL_DEPTH_BUFFER_BIT; }
+    if ( (view.frameBuffer == 0) || (view.colorBuffer != 0) ) { clearBits |= GL_COLOR_BUFFER_BIT; }
+    if ( (view.frameBuffer == 0) || (view.depthBuffer != 0) ) { clearBits |= GL_DEPTH_BUFFER_BIT; }
     glClear(clearBits);
 
     // Turn on depth testing so we get proper rendering.
-    if ((view.frameBuffer == 0) || (view.depth != 0)) {
+    if ((view.frameBuffer == 0) || (view.depthBuffer != 0)) {
       glEnable(GL_DEPTH_TEST);
       glDepthFunc(GL_LESS);
     }
 
+    // Compute the view-projection matrix (no model described here) from the ViewRenderInfo.
+    // NOTE: We translate and rotate in the opposite direction because we're moving the world rather
+    // than the camera but the offset and orientation are specified for camera movement.
+    glm::mat4 ViewRotateX = glm::rotate(glm::mat4(1.0f),
+      glm::radians(-view.orientation[0]), glm::vec3(1.0f, 0.0f, 0.0f));
+    glm::mat4 ViewRotateY = glm::rotate(ViewRotateX,
+      glm::radians(-view.orientation[1]), glm::vec3(0.0f, 1.0f, 0.0f));
+    glm::mat4 ViewRotateZ = glm::rotate(ViewRotateY,
+      glm::radians(-view.orientation[2]), glm::vec3(0.0f, 0.0f, 1.0f));
+    glm::mat4 ViewTranslate = glm::translate(ViewRotateZ,
+      glm::vec3(-view.viewpoint[0], -view.viewpoint[1], -view.viewpoint[2]));
+    glm::mat4 Projection = glm::frustum<float>(view.leftFrust, view.rightFrust,
+      view.bottomFrust, view.topFrust,
+      view.nearFrust, view.farFrust);
+    glm::mat4 VP = Projection * ViewTranslate;
+
     // Call the derived-class method to render the geometry into this viewpoint.
-    RenderView(view.modelViewProjection.data());
+    RenderView(glm::value_ptr(VP));
 
     // Unset things
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -488,6 +507,7 @@ CompositeCube::~CompositeCube()
 void CompositeCube::SetupRenderFrame(asdp::Time scanOutTime)
 {
   glUseProgram(m_programId);
+  glDisable(GL_CULL_FACE);
 }
 
 void CompositeCube::RenderView(const float* modelViewProjection)

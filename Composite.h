@@ -44,11 +44,22 @@ namespace asdp {
 
     /// @brief Information about the rendering of a single viewpoint, enabling multiple views to be requested at the same time.
     struct ViewRenderInfo {
-      /// 4x4 Model view projection matrix.
-      std::array<float, 16> modelViewProjection = {1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1};
+      /// Position of the viewpoint in meters from the camera device origin.
+      /// Specifies the center of the view frustum in the world coordinate system.
+      std::array<float, 3> viewpoint = {};
+      /// Orientation of the viewpoint in degrees, Euler rotation around X, then Y, then Z.
+      /// The canonical orientation of the frustum has the viewpoint looking down the -Z axis,
+      /// with +X to the right and +Y up.  This is the same as the OpenGL default orientation.
+      std::array<float, 3> orientation = {};
+      float leftFrust = -0.1;               ///< Left edge of the view in meters from the principal ray on the near plane.
+      float rightFrust = 0.1;               ///< Right edge of the view in meters from the principal ray on the near plane.
+      float topFrust = 0.1;                 ///< Top edge of the view in meters from the principal ray on the near plane.
+      float bottomFrust = -0.1;             ///< Bottom edge of the view in meters from the principal ray on the near plane.
+      float nearFrust = 0.1;                ///< Near clipping plane in meters.
+      float farFrust = 1000;                ///< Far clipping plane in meters.
       GLuint frameBuffer = 0;               ///< Frame buffer to render into.  Set to 0 for the default frame buffer.
-      GLuint color = 0;                     ///< Texture for color to be rendered into (will be bound to the frameBuffer). Ignored for frameBuffer 0.
-      GLuint depth = 0;                     ///< Depth buffer to be rendered into, 0 for no depth buffer (will be bound to the frameBuffer). Ignored for frameBuffer 0.
+      GLuint colorBuffer = 0;               ///< Texture for color to be rendered into (will be bound to the frameBuffer). Ignored for frameBuffer 0.
+      GLuint depthBuffer = 0;               ///< Depth buffer to be rendered into, 0 for no depth buffer (will be bound to the frameBuffer). Ignored for frameBuffer 0.
       GLint x = 0;                          ///< X coordinate of the lower left corner of the viewport.
       GLint y = 0;                          ///< Y coordinate of the lower left corner of the viewport.
       GLsizei width = 0;                    ///< Width of the viewport.
