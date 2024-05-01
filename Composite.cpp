@@ -2,6 +2,10 @@
  * Copyright (C) 2024: Arizona Board of Regents on Behalf of the University of Arizona
  */
 
+#ifdef WIN32
+#define _USE_MATH_DEFINES
+#endif
+#include <cmath>
 #include <string>
 #include <iostream>
 #include <GL/glew.h>
@@ -93,6 +97,33 @@ void Composite::Render(asdp::Time scanOutTime, std::vector<ViewRenderInfo> views
   // Wait until the rendering has finished.
   glFinish();
 }
+
+void Composite::checkShaderError(GLuint shaderId, const std::string& exceptionMsg) {
+  GLint result = GL_FALSE;
+  int infoLength = 0;
+  glGetShaderiv(shaderId, GL_COMPILE_STATUS, &result);
+  glGetShaderiv(shaderId, GL_INFO_LOG_LENGTH, &infoLength);
+  if (result == GL_FALSE) {
+    std::vector<GLchar> errorMessage(infoLength + 1);
+    glGetShaderInfoLog(shaderId, infoLength, NULL, &errorMessage[0]);
+    std::cerr << &errorMessage[0] << std::endl;
+    throw std::runtime_error(exceptionMsg);
+  }
+}
+
+void Composite::checkProgramError(GLuint programId, const std::string& exceptionMsg) {
+  GLint result = GL_FALSE;
+  int infoLength = 0;
+  glGetProgramiv(programId, GL_LINK_STATUS, &result);
+  glGetProgramiv(programId, GL_INFO_LOG_LENGTH, &infoLength);
+  if (result == GL_FALSE) {
+    std::vector<GLchar> errorMessage(infoLength + 1);
+    glGetProgramInfoLog(programId, infoLength, NULL, &errorMessage[0]);
+    std::cerr << &errorMessage[0] << std::endl;
+    throw std::runtime_error(exceptionMsg);
+  }
+}
+
 
 //==================================================================================================
 // Objects needed by the CompositeCube class.
@@ -429,7 +460,7 @@ static const GLchar* cubeVertexShader =
   "{\n"
   "   gl_Position = modelViewProjection * vec4(position,1);\n"
   "   fragmentColor = vertexColor;\n"
-  "}\n";
+  "}\n\0";
 
 static const GLchar* cubeFragmentShader = "#version 330 core\n"
   "in vec3 fragmentColor;\n"
@@ -437,34 +468,7 @@ static const GLchar* cubeFragmentShader = "#version 330 core\n"
   "void main()\n"
   "{\n"
   "    color = fragmentColor;\n"
-  "}\n";
-
-void CompositeCube::checkShaderError(GLuint shaderId, const std::string& exceptionMsg) {
-  GLint result = GL_FALSE;
-  int infoLength = 0;
-  glGetShaderiv(shaderId, GL_COMPILE_STATUS, &result);
-  glGetShaderiv(shaderId, GL_INFO_LOG_LENGTH, &infoLength);
-  if (result == GL_FALSE) {
-    std::vector<GLchar> errorMessage(infoLength + 1);
-    glGetShaderInfoLog(shaderId, infoLength, NULL, &errorMessage[0]);
-    std::cerr << &errorMessage[0] << std::endl;
-    throw std::runtime_error(exceptionMsg);
-  }
-}
-
-void CompositeCube::checkProgramError(GLuint programId, const std::string& exceptionMsg) {
-  GLint result = GL_FALSE;
-  int infoLength = 0;
-  glGetProgramiv(programId, GL_LINK_STATUS, &result);
-  glGetProgramiv(programId, GL_INFO_LOG_LENGTH, &infoLength);
-  if (result == GL_FALSE) {
-    std::vector<GLchar> errorMessage(infoLength + 1);
-    glGetProgramInfoLog(programId, infoLength, NULL, &errorMessage[0]);
-    std::cerr << &errorMessage[0] << std::endl;
-    throw std::runtime_error(exceptionMsg);
-  }
-}
-
+  "}\n\0";
 
 CompositeCube::CompositeCube(double radius)
   : Composite(std::vector<CameraRenderInfo>())
@@ -523,6 +527,228 @@ void CompositeCube::RenderView(const float* modelViewProjection)
 }
 
 void CompositeCube::TearDownRenderFrame()
+{
+  glUseProgram(0);
+}
+
+//==================================================================================================
+// Objects needed by the CompositeCameras class.
+
+static const GLchar* camerasVertexShader =
+  "#version 330 core\n"
+  "layout (location = 0) in vec3 aPos;\n"
+  "layout (location = 1) in vec2 aTexCoord;\n"
+  "out vec2 TexCoord;\n"
+  "uniform mat4 modelViewProjection;\n"
+  "void main()\n"
+  "{\n"
+  "   gl_Position = modelViewProjection * vec4(aPos, 1.0);\n"
+  "   TexCoord = vec2(aTexCoord.x, aTexCoord.y);\n"
+  "}\0";
+
+static const GLchar* camerasFragmentShader =
+  "#version 330 core\n"
+  "out vec4 FragColor;\n"
+  "in vec2 TexCoord;\n"
+  "uniform sampler2D texture1;\n"
+  "void main()\n"
+  "{\n"
+  "   // This is a monochromatic image, so we spread the red channel to all three color channels.\n"
+  "   FragColor = vec4(vec3(texture(texture1, TexCoord).r), 1.0);\n"
+  "}\n\0";
+
+CompositeCameras::CompositeCameras(std::vector<CameraRenderInfo>& cameraRenderInfo)
+  : Composite(cameraRenderInfo)
+{
+  GLuint vertexShaderId = glCreateShader(GL_VERTEX_SHADER);
+  GLuint fragmentShaderId = glCreateShader(GL_FRAGMENT_SHADER);
+
+  // vertex shader
+  glShaderSource(vertexShaderId, 1, &camerasVertexShader, NULL);
+  glCompileShader(vertexShaderId);
+  checkShaderError(vertexShaderId, "Vertex shader compilation failed.");
+
+  // fragment shader
+  glShaderSource(fragmentShaderId, 1, &camerasFragmentShader, NULL);
+  glCompileShader(fragmentShaderId);
+  checkShaderError(fragmentShaderId, "Fragment shader compilation failed.");
+
+  // linking shader program
+  m_programId = glCreateProgram();
+  glAttachShader(m_programId, vertexShaderId);
+  glAttachShader(m_programId, fragmentShaderId);
+  glLinkProgram(m_programId);
+  checkProgramError(m_programId, "Shader program link failed.");
+
+  // once linked into a program, we no longer need the shaders.
+  glDeleteShader(vertexShaderId);
+  glDeleteShader(fragmentShaderId);
+
+  // Get the IDs for all of the uniform parameters we will want to change.
+  m_modelViewProjectionUniformId = glGetUniformLocation(m_programId, "modelViewProjection");
+
+  // Construct a Vertex Array Object for each camera that describes the positions and
+  // texture coordinates along with the indices.  We'll also keep two vertex buffer objects,
+  // one per camera, for the vertices and indices.
+  for (auto const& cameraRenderInfo : m_cameraRenderInfos) {
+    AddBufferObjects(cameraRenderInfo);
+  }
+}
+
+CompositeCameras::~CompositeCameras()
+{
+  for (size_t i = 0; i < m_cameraRenderInfos.size(); i++) {
+    glDeleteVertexArrays(1, &m_vertexArrayObjects[i]);
+    glDeleteBuffers(1, &m_vertexBufferObjects[i]);
+    glDeleteBuffers(1, &m_indexBufferObjects[i]);
+  }
+  glDeleteProgram(m_programId);
+}
+
+static double radians(double degrees) {
+  return degrees * M_PI / 180.0;
+}
+
+void CompositeCameras::AddBufferObjects(CameraRenderInfo const& cameraRenderInfo, size_t nx, size_t ny,
+  GLfloat depth)
+{
+  double fnx = static_cast<GLfloat>(nx);
+  double fny = static_cast<GLfloat>(ny);
+
+  // Create the vertices including the texture coordinates.  Each entry will have
+  // 5 floats: X, Y, Z, U, V.  We add entries that span the entire range, with one
+  // more vertex in each dimension than there are quads.  We start from the lower-
+  // left, move right, then move up at the end of each line.
+  std::vector<GLfloat> vertices;
+  for (size_t j = 0; j <= ny; j++) {
+    for (size_t i = 0; i <= nx; i++) {
+      // Compute the U and V normalized texture coordinates for the vertex in the range 0 to 1.
+      GLfloat u = i / fnx;
+      GLfloat v = j / fny;
+
+      // Compute the normalized X, Y, coordinates in the range -1 to 1.
+      double xn = -1.0f + 2.0f * i / fnx;
+      double yn = -1.0f + 2.0f * j / fny;
+
+      // Compute the scaled X, Y coordinates for the four corners of the quad that place them
+      // for a correctly-sized quad given the camera info to get them to scaled space.
+      double xHalfWidth = 0.5 * tan(radians(cameraRenderInfo.m_fovDegrees[0]) / 2.0) * depth;
+      double yHalfWidth = 0.5 * tan(radians(cameraRenderInfo.m_fovDegrees[1]) / 2.0) * depth;
+      double xs = xn * xHalfWidth;
+      double ys = yn * yHalfWidth;
+
+      // Perform distortion correction on the X, Y coordinates to get to canonical view
+      // space, which has a camera looking down -Z from the origin.
+      /// @todo
+      double xc = xs;
+      double yc = ys;
+
+      // Compute the canonical Z location.
+      double zc = -depth;
+
+      @todo Figure out how to handle the coordinate systems for world and camera cluster
+      // Translate and rotate the X, Y, Z coordinates to match the camera center of projection
+      // and viewing direction of this camera in the coordinate system of the camera cluster.
+      /// @todo
+
+      // Rotate from the coordinate system of the camera cluster, which has X to the right,
+      // Y forwards along the viewpoint, and Z up, into a world space that has the camera
+      // looking down -Z with its X and Y axis aligned with the image in a right-handed
+      // coordinate system.
+      /// @todo
+
+      // Add the vertex
+      vertices.push_back(x);
+      vertices.push_back(y);
+      vertices.push_back(z);
+      vertices.push_back(u);
+      vertices.push_back(v);
+    }
+  }
+
+  // Create the indices for the triangles, three per triangle.
+  std::vector<GLuint> indices;
+  for (size_t j = 0; j < ny; j++) {
+    for (size_t i = 0; i < nx; i++) {
+      // Add the indices for the two triangles in the quad.
+      size_t start = i + (nx+1) * j;
+      indices.push_back(start);
+      indices.push_back(start + 1);
+      indices.push_back(start + (nx+1) + 1);
+
+      indices.push_back(start);
+      indices.push_back(start + (nx + 1) + 1);
+      indices.push_back(start + (nx + 1));
+    }
+  }
+
+  // Create a vertex array object for this camera.
+  GLuint vertexArrayObject;
+  glGenVertexArrays(1, &vertexArrayObject);
+  glBindVertexArray(vertexArrayObject);
+
+  // Create a vertex buffer object for the vertices.
+  GLuint vertexBufferObject;
+  glGenBuffers(1, &vertexBufferObject);
+  glBindBuffer(GL_ARRAY_BUFFER, vertexBufferObject);
+  glBufferData(GL_ARRAY_BUFFER, sizeof(vertices[0]) * vertices.size(), vertices.data(), GL_STATIC_DRAW);
+
+  // Create a vertex buffer object for the indices.
+  GLuint indexBufferObject;
+  glGenBuffers(1, &indexBufferObject);
+  glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, indexBufferObject);
+  glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices[0]) * indices.size(), indices.data(), GL_STATIC_DRAW);
+
+  // Set up the vertex attributes for the vertex buffer object.
+  glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(GLfloat), (GLvoid*)0);
+  glEnableVertexAttribArray(0);
+  glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(GLfloat), (GLvoid*)(3 * sizeof(GLfloat)));
+  glEnableVertexAttribArray(1);
+
+  // Unbind the vertex array object.
+  glBindVertexArray(0);
+
+  // Save the vertex array object and the number of elements in the index buffer.
+  m_vertexArrayObjects.push_back(vertexArrayObject);
+  m_vertexBufferObjects.push_back(vertexBufferObject);
+  m_indexBufferObjects.push_back(indexBufferObject);
+  m_numIndices.push_back(indices.size());
+}
+
+void CompositeCameras::SetupRenderFrame(asdp::Time scanOutTime)
+{
+  glUseProgram(m_programId);
+  glDisable(GL_CULL_FACE);
+
+  // Grab shared pointers to the camera textures to be used for all views in this frame.
+  // There will be one entry per camera with the same vector index as the cameraRenderInfo.
+  m_images.clear();
+  for (auto const& cameraRenderInfo : m_cameraRenderInfos) {
+    m_images.push_back(cameraRenderInfo.m_imageQueue->GetNewestImagePointer());
+  }
+}
+
+void CompositeCameras::RenderView(const float* modelViewProjection)
+{
+  // Set the model-view-projection matrix
+  glUniformMatrix4fv(m_modelViewProjectionUniformId, 1, GL_FALSE, modelViewProjection);
+
+  // Draw each camera, using the appropriate texture.
+  for (size_t i = 0; i < m_cameraRenderInfos.size(); i++) {
+    // If there is no texture, bind the default texture.
+    GLuint texture = 0;
+    if (m_images[i] != nullptr) {
+      texture = m_images[i]->texture;
+    }
+    glBindTexture(GL_TEXTURE_2D, m_images[i]->texture);
+
+    // Draw the camera view using its vertex array object.
+    glBindVertexArray(m_vertexArrayObjects[i]);
+    glDrawElements(GL_TRIANGLES, m_numIndices[i], GL_UNSIGNED_INT, 0);
+  }
+}
+
+void CompositeCameras::TearDownRenderFrame()
 {
   glUseProgram(0);
 }

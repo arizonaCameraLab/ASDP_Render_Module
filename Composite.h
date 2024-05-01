@@ -22,6 +22,7 @@
 #endif
 #include <GL/gl.h>
 #include <ASDP_Core_API.h>
+#include <ImageQueue.h>
 
 namespace asdp {
   namespace render {
@@ -29,28 +30,37 @@ namespace asdp {
     /// @brief Information about a single camera needed to produce a renderable view from it.
     struct CameraRenderInfo {
       uint16_t m_ID = 0;                              ///< ID of the camera.
-      std::array<double, 3> m_positionMeters = {};    ///< Position of the camera in meters from the camera device origin.
+      /// Position of the cameras center of projection in meters from the camera device origin.
+      /// The canonical orientation is in the local helicopter coordinate system, with +X pointing
+      /// right, +Y pointing forwards, and +Z pointing up.  The camera is translated first and then
+      /// rotated around its new center.
+      std::array<double, 3> m_positionMeters = {};
       /// Orientation of the camera in degrees, Euler rotation around X, then Y, then Z.
-      /// The canonical orientation is a bit unusual, with the camera rotated to portrait mode
-      /// and looking along +Y: X down, Y to the right, Z towards -Y.  This makes it convenient because
-      /// the cameras are aligned this way in the system and this order of rotations specifies the
-      /// direction of the view and then rotation around the view direction.
-      std::array<double, 3> m_orientationRad = {};
+      /// The canonical orientation is in the local helicopter coordinate system, with +X pointing
+      /// right, +Y pointing forwards, and +Z pointing up.  The camera is translated first and then
+      /// rotated around its new center.
+      std::array<double, 3> m_orientationDegrees = {};
       std::array<uint16_t, 2> m_resolutionPixels = {};///< Resolution of the camera in pixels.
       std::array<double, 2> m_fovDegrees = {};        ///< Field of view of the camera in degrees, horizontal then vertical.
       /// Distortion coefficients of the camera. @todo Describe the format.
       std::vector<double> m_distortion;
+      /// Queue of images from the camera.  The newest image is the one to render.
+      std::shared_ptr<asdp::render::ImageQueue> m_imageQueue;
     };
 
     /// @brief Information about the rendering of a single viewpoint, enabling multiple views to be requested at the same time.
     struct ViewRenderInfo {
       /// Position of the viewpoint in meters from the camera device origin.
-      /// Specifies the center of the view frustum in the world coordinate system.
+      /// Specifies the center of the view frustum in the camera coordinate system.
+      /// The canonical orientation is in the local helicopter coordinate system, with +X pointing
+      /// right, +Y pointing forwards, and +Z pointing up.  The camera is translated first and then
+      /// rotated around its new center.
       std::array<float, 3> viewpoint = {};
       /// Orientation of the viewpoint in degrees, Euler rotation around X, then Y around the
       /// new Y, then around the new Z.
-      /// The canonical orientation of the frustum has the viewpoint looking down the -Z axis,
-      /// with +X to the right and +Y up.  This is the same as the OpenGL default orientation.
+      /// The canonical orientation is in the local helicopter coordinate system, with +X pointing
+      /// right, +Y pointing forwards, and +Z pointing up.  The camera is translated first and then
+      /// rotated around its new center.
       std::array<float, 3> orientation = {};
       /// Left edge of the view in degrees from the principal ray (this will be half the horizontal FOV).
       /// Left and right are different for off-center projection.
@@ -116,9 +126,14 @@ namespace asdp {
 
       /// @brief Tear down state needed for rendering.
       virtual void TearDownRenderFrame() = 0;
+
+      static void checkShaderError(GLuint shaderId, const std::string& exceptionMsg);
+      static void checkProgramError(GLuint programId, const std::string& exceptionMsg);
     };
 
-    /// @brief Composite class that renders a cube rather than camera views.  Useful for debugging displays.
+    /// @brief Composite class that renders a cube rather than camera views.
+    /// @details This class does not make use of image data, rendering a stationary cube.
+    /// It is useful for testing the mechanics of the rendering pipeline.
     class CompositeCube : public Composite {
     public:
       /// @brief Constructor
@@ -137,12 +152,60 @@ namespace asdp {
       /// @brief The Uniform ID of the modelview-projection matrix.
       GLuint m_modelViewProjectionUniformId = 0;
 
-      void checkShaderError(GLuint shaderId, const std::string& exceptionMsg);
-      void checkProgramError(GLuint programId, const std::string& exceptionMsg);
-
       class MeshCube;
       std::shared_ptr<MeshCube> m_roomCube;
 
+      void RenderView(const float* modelViewProjection) override;
+      void SetupRenderFrame(asdp::Time scanOutTime) override;
+      void TearDownRenderFrame() override;
+    };
+
+    /// @brief Composite class that renders a set of camera views.
+    /// @details This is the class that is most likely to be used in
+    /// an application.
+    class CompositeCameras : public Composite {
+    public:
+      /// @brief Constructor
+      /// @param cameraRenderInfo The configuration of the cameras needed to generate textured geometry.
+      CompositeCameras(std::vector<CameraRenderInfo>& cameraRenderInfo);
+
+      /// @brief Destructor
+      ~CompositeCameras();
+
+    protected:
+      /// @brief The OpenGL program ID.
+      GLuint m_programId = 0;
+
+      /// @brief The Uniform ID of the modelview-projection matrix.
+      GLuint m_modelViewProjectionUniformId = 0;
+
+      /// @brief Vector of Image objects to use during a frame rendering, one per camera.
+      std::vector<std::shared_ptr<asdp::render::ImageData>> m_images;
+
+      /// @brief Vector of vertex buffer objects to hold the position + texture coords for each camera.
+      std::vector<GLuint> m_vertexBufferObjects;
+
+      /// @brief Vector of vertex buffer objects to hold the indices for each camera.
+      std::vector<GLuint> m_indexBufferObjects;
+
+      /// @brief Vector of number of elements for the element buffer objects for each camera.
+      std::vector<GLsizei> m_numIndices;
+
+      /// @brief Vector of vertex array objects for each camera.
+      std::vector<GLuint> m_vertexArrayObjects;
+
+      /// @brief Add the buffer objects for a camera to the OpenGL context and store the IDs.
+      /// @details This function creates the buffer objects for the camera and stores the IDs
+      /// in the m_vertexBufferObjects, m_indexBufferObjects, and m_vertexArrayObjects vectors.
+      /// It also stores the number of elements in the m_numIndices vector.
+      /// @param cameraRenderInfo The camera to add the buffer objects for.
+      /// @param nx The number of vertices in the X direction.
+      /// @param ny The number of vertices in the Y direction.
+      /// @param z The distance from the camera to the quadrilateral displaying the image.
+      void AddBufferObjects(const CameraRenderInfo& cameraRenderInfo, size_t nx = 10, size_t ny = 10,
+        GLfloat depth = 10);
+
+      // Overridden methods
       void RenderView(const float* modelViewProjection) override;
       void SetupRenderFrame(asdp::Time scanOutTime) override;
       void TearDownRenderFrame() override;

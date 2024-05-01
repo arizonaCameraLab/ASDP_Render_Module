@@ -33,6 +33,7 @@ FetchContent_MakeAvailable(glfw3)
 #-----------------------------------------------------------------------------
 # Checking for optional and required packages
 
+find_package(Threads REQUIRED)
 find_package(ASDP_Core_API REQUIRED)
 find_package(OpenGL REQUIRED COMPONENTS OpenGL)
 find_package(GLEW REQUIRED)
@@ -74,9 +75,11 @@ endif (BUILD_DOXYGEN)
 
 set (Render_Module_HEADERS
 	Composite.h
+  ImageQueue.h
 )
 set (Render_Module_SOURCES
 	Composite.cpp
+  ImageQueue.cpp
 )
 add_library(Render_Module STATIC ${Render_Module_SOURCES} ${Render_Module_HEADERS})
 target_include_directories(Render_Module PUBLIC
@@ -111,6 +114,7 @@ if(BUILD_UTILITIES)
   set (CUDA_UTILS
 	  Time_CUDA_Writes
     Speed_Test_Receiver_CUDA
+    deleteme
   )
   foreach (BASE ${CUDA_UTILS})
     set (APP ${BASE})
@@ -121,8 +125,12 @@ if(BUILD_UTILITIES)
     # CUDA separable compilation is enabled.
     set_property(TARGET ${APP} 
                  PROPERTY CUDA_SEPARABLE_COMPILATION ON)
+    target_include_directories(${APP} PRIVATE
+      ${CMAKE_CURRENT_SOURCE_DIR}
+      ${CMAKE_CURRENT_SOURCE_DIR}/dependencies/glm
+    )
     target_link_libraries(${APP} PRIVATE
-	    ASDP_Core_API::ASDP_Core_API
+	    Render_Module glfw ASDP_Core_API::ASDP_Core_API
     )
     set_property(TARGET ${APP} PROPERTY CUDA_ARCHITECTURES 75 80)
     install(TARGETS ${APP} EXPORT ${PROJECT_NAME}
@@ -140,7 +148,9 @@ if(BUILD_TESTS)
   enable_testing()
 
   set (CPP_TESTS
+    ImageQueue_Test
     Composite_Test
+    CompositeCameras_Test
   )
   foreach (BASE ${CPP_TESTS})
     set (APP ${BASE})

@@ -39,3 +39,42 @@ by running `make test` in the build directory.
 
 The **util** directory contains a number of utilities.
 - **Time_CUDA_Writes** is a utility to measure the time it takes to write frames from pinned CPU memory to to GPU memory.
+
+## Coordinate systems
+
+**Helicopter:** The figure below shows the coordinate system of the helicopter and how it relates to the
+position and orientation reported by the API.  The longitude, latitude, and altitude determine the
+position of the helicopter.  The local orientation is reported with respect to a coordinate system
+that has +X pointing East, +Y pointing North, and +Z pointing up.
+(This coordinate system fails at the North and South poles.)
+
+The velocity, rotation, and rotational velocity are reported in the local helicopter coordinate system.
+This means that translation in +Y is always straight ahead and a positive rotation around X is always
+tipping backwards no matter the orientation of the helicopter.
+
+![Helicopter Coordinate System](helicopter_coordinates.png "Helicopter coordinates")
+
+**CameraRenderInfo:** The center of the coordinate system is the origin point of the camera array
+(the entire chassis that holds all cameras).  The orientation is with respect to the local helicopter
+coordinate system, with +X pointing right, +Y pointing forwards, and +Z pointing up.  (This system
+is nested with the helicopter coordinate system.)  The camera center of projection is first translated
+by the specified offset and then rotated about this new center, first around X then around the new
+Y, then around the new Z axis.  For example, a camera that is in portrait mode and looking straight
+forward might have an offset of (0, 0.1, 0) and a rotation of (90, -90, -90).  If its X axis is
+pointing down, then its rotation would be (-90,  -90, 90).
+
+**ViewRenderInfo:** These transformations are also specified in the local helicopter space.
+The center of projection of the camera is specified by the offset and its orientation by the rotation.
+The origin of the coordinate system is the center of the camera array.
+Translations in -Y move the virtual camera backwards (into the helicopter) and translations of +Z
+move the virtual camera up.
+Because the OpenGL camera is looking down its -Z axis, a camera that is looking straight forward
+with its +Y axis up would have a rotation of (90, 0, 90).
+
+**PoseEstimator:** The pose estimator is a class that estimates the differential pose of the helicopter
+between two times.  It provides a description of how the helicopter has moved and rotated between
+these times in its own local coordinate system.  It provides a transformation describing how to
+transform points in the space of the first time parameter into the space of the second time parameter.
+If the first time parameter is the expected time of scan-out and the second is the time an image was
+acquired (an earlier time), then this transformation can be used to transform the vertices of the
+image representation to remove the effects of the helicopter motion.

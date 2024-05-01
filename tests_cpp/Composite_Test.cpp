@@ -57,6 +57,7 @@ int main()
     double angle = degreesPerSecond * (elapsed / 1000.0);
 
     // Offset the viewpoint center and rotate around the Y axis so we can verify correct behavior.
+    // Also rotate slowly around the X axis.
     views[0].viewpoint[0] = -5;
     views[0].orientation[0] = angle/100;
     views[0].orientation[1] = angle;
