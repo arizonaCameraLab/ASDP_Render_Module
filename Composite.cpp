@@ -63,6 +63,10 @@ void Composite::Render(asdp::Time scanOutTime, std::vector<ViewRenderInfo> views
       glDepthFunc(GL_LESS);
     }
 
+    // Rotate the view to match the helicopter's orientation, looking down the +Y axis with
+    // the up vector being Z.
+    /// @todo implement and adjust CompositeCube.
+
     // Compute the view-projection matrix (no model described here) from the ViewRenderInfo.
     // NOTE: We translate and rotate in the opposite direction because we're moving the world rather
     // than the camera but the offset and orientation are specified for camera movement.
@@ -646,16 +650,13 @@ void CompositeCameras::AddBufferObjects(CameraRenderInfo const& cameraRenderInfo
       // Compute the canonical Z location.
       double zc = -depth;
 
-      @todo Figure out how to handle the coordinate systems for world and camera cluster
       // Translate and rotate the X, Y, Z coordinates to match the camera center of projection
       // and viewing direction of this camera in the coordinate system of the camera cluster.
-      /// @todo
-
-      // Rotate from the coordinate system of the camera cluster, which has X to the right,
-      // Y forwards along the viewpoint, and Z up, into a world space that has the camera
-      // looking down -Z with its X and Y axis aligned with the image in a right-handed
-      // coordinate system.
-      /// @todo
+      // This will be the local helicopter coordinate system that maps +X camera to +X helicopter,
+      // +Y camera to +Z helicopter, and +Z camera to -Y helicopter.
+      double x = xc + cameraRenderInfo.m_positionMeters[0];
+      double y = zc + cameraRenderInfo.m_positionMeters[1];
+      double z = -yc + cameraRenderInfo.m_positionMeters[2];
 
       // Add the vertex
       vertices.push_back(x);
@@ -726,6 +727,9 @@ void CompositeCameras::SetupRenderFrame(asdp::Time scanOutTime)
   for (auto const& cameraRenderInfo : m_cameraRenderInfos) {
     m_images.push_back(cameraRenderInfo.m_imageQueue->GetNewestImagePointer());
   }
+
+  // Store the scan out time for use in rendering.
+  m_scanOutTime = scanOutTime;
 }
 
 void CompositeCameras::RenderView(const float* modelViewProjection)
@@ -741,6 +745,8 @@ void CompositeCameras::RenderView(const float* modelViewProjection)
       texture = m_images[i]->texture;
     }
     glBindTexture(GL_TEXTURE_2D, m_images[i]->texture);
+
+    /// @todo Adjust for helicopter motion changes.
 
     // Draw the camera view using its vertex array object.
     glBindVertexArray(m_vertexArrayObjects[i]);
