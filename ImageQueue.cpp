@@ -11,11 +11,9 @@ ImageData::~ImageData() {
   }
 }
 
-void ImageQueue::AddNewestImage(ImageData image)
+void ImageQueue::AddNewestImage(std::shared_ptr<ImageData> image)
 {
-  // Make a shared pointer to the image whose custom deleter will delete the image data
-  std::shared_ptr<ImageData> imagePtr = 
-    std::make_shared<ImageData>(image);
+  std::shared_ptr<ImageData> imagePtr = image;
 
   // Add it to the front of the queue
   std::lock_guard<std::mutex> lock(m_mutex);
@@ -73,7 +71,7 @@ std::string ImageQueue::Test()
   }
 
   // Create an image
-  ImageData image;
+  std::shared_ptr<ImageData> image = std::make_shared<ImageData>();
 
   // Add the image to the queue
   imageQueue.AddNewestImage(image);

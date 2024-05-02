@@ -44,9 +44,9 @@ int main()
   // Loop until the user closes the window, rotating the view each frame around the +Y axis.
   std::cout << "You should see a square of varying-brightness squares in the window." << std::endl;
   std::cout << "It should be rotating at 15 degrees per second around the Y axies." << std::endl;
-  std::cout << "This will make the far wall of the cube rotate towards the right." << std::endl;
+  std::cout << "This will make the far wall of the cube move towards the right." << std::endl;
   std::cout << "There is a much slower rotation about the X axis first that will make" << std::endl;
-  std::cout << "the magenta wall rotate downward and the blue up." << std::endl;
+  std::cout << "the green wall rotate downward and the yellow up." << std::endl;
   std::cout << "The center of location is closer to the magenta wall than the red wall." << std::endl;
   std::cout << "Close the window to exit." << std::endl;
   auto start = std::chrono::steady_clock::now();

@@ -63,10 +63,6 @@ void Composite::Render(asdp::Time scanOutTime, std::vector<ViewRenderInfo> views
       glDepthFunc(GL_LESS);
     }
 
-    // Rotate the view to match the helicopter's orientation, looking down the +Y axis with
-    // the up vector being Z.
-    /// @todo implement and adjust CompositeCube.
-
     // Compute the view-projection matrix (no model described here) from the ViewRenderInfo.
     // NOTE: We translate and rotate in the opposite direction because we're moving the world rather
     // than the camera but the offset and orientation are specified for camera movement.
@@ -78,8 +74,18 @@ void Composite::Render(asdp::Time scanOutTime, std::vector<ViewRenderInfo> views
       glm::radians(-view.orientation[1]), glm::vec3(0.0f, 1.0f, 0.0f));
     glm::mat4 ViewRotateX = glm::rotate(ViewRotateY,
       glm::radians(-view.orientation[0]), glm::vec3(1.0f, 0.0f, 0.0f));
-    glm::mat4 ViewTranslate = glm::translate(ViewRotateX,
+
+    // Rotate the view to match the helicopter's orientation, looking down the +Y axis with
+    // the up vector being Z.  This rotates the camera by 90 degrees around the X axis.  Because
+    // we're rotating the world rather than the camera, we rotate in the opposite direction.
+    glm::mat4 HelicopterRotateX = glm::rotate(ViewRotateX,
+      glm::radians(-90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
+
+    // Translate the view based on the specified viewpoint (negative due to world vs. camera).
+    glm::mat4 ViewTranslate = glm::translate(HelicopterRotateX,
       glm::vec3(-view.viewpoint[0], -view.viewpoint[1], -view.viewpoint[2]));
+
+    // Compute the projection matrix from the ViewRenderInfo.
     double leftFrust = tan(glm::radians(view.leftHalfFOV)) * view.nearClip;
     double rightFrust = tan(glm::radians(view.rightHalfFOV)) * view.nearClip;
     double bottomFrust = tan(glm::radians(view.bottomHalfFOV)) * view.nearClip;
@@ -87,6 +93,8 @@ void Composite::Render(asdp::Time scanOutTime, std::vector<ViewRenderInfo> views
     glm::mat4 Projection = glm::frustum<float>(leftFrust, rightFrust, bottomFrust, topFrust,
       view.nearClip, view.farClip);
     glm::mat4 VP = Projection * ViewTranslate;
+
+    /// @todo Adjust for shear and stretch due to head motion during scan-out.
 
     // Call the derived-class method to render the geometry into this viewpoint.
     RenderView(glm::value_ptr(VP));
@@ -627,8 +635,10 @@ void CompositeCameras::AddBufferObjects(CameraRenderInfo const& cameraRenderInfo
   for (size_t j = 0; j <= ny; j++) {
     for (size_t i = 0; i <= nx; i++) {
       // Compute the U and V normalized texture coordinates for the vertex in the range 0 to 1.
+      // Because standard image textures have the origin at the upper left and OpenGL has it
+      // at the lower right, we must invert the v texture coordinate.
       GLfloat u = i / fnx;
-      GLfloat v = j / fny;
+      GLfloat v = 1.0f - j / fny;
 
       // Compute the normalized X, Y, coordinates in the range -1 to 1.
       double xn = -1.0f + 2.0f * i / fnx;
@@ -642,7 +652,7 @@ void CompositeCameras::AddBufferObjects(CameraRenderInfo const& cameraRenderInfo
       double ys = yn * yHalfWidth;
 
       // Perform distortion correction on the X, Y coordinates to get to canonical view
-      // space, which has a camera looking down -Z from the origin.
+      // space, which has a camera looking down -Z.
       /// @todo
       double xc = xs;
       double yc = ys;
@@ -652,11 +662,33 @@ void CompositeCameras::AddBufferObjects(CameraRenderInfo const& cameraRenderInfo
 
       // Translate and rotate the X, Y, Z coordinates to match the camera center of projection
       // and viewing direction of this camera in the coordinate system of the camera cluster.
-      // This will be the local helicopter coordinate system that maps +X camera to +X helicopter,
-      // +Y camera to +Z helicopter, and +Z camera to -Y helicopter.
-      double x = xc + cameraRenderInfo.m_positionMeters[0];
-      double y = zc + cameraRenderInfo.m_positionMeters[1];
-      double z = -yc + cameraRenderInfo.m_positionMeters[2];
+      // This will be the local helicopter coordinate system that maps +X helicopter from +X,
+      // +Y helicopter from -Z, and +Z helicopter from +Y.
+      double xh = xc;
+      double yh = -zc;
+      double zh = yc;
+
+      // Rotate the points in the helicopter view space by the specified orientation change.
+      glm::vec3 point(xh, yh, zh);
+      glm::mat4 rotationX = glm::rotate(glm::mat4(1.0f),
+        glm::radians(static_cast<GLfloat>(cameraRenderInfo.m_orientationDegrees[0])),
+        glm::vec3(1.0f, 0.0f, 0.0f));
+      glm::mat4 rotationY = glm::rotate(rotationX,
+        glm::radians(static_cast<GLfloat>(cameraRenderInfo.m_orientationDegrees[1])),
+        glm::vec3(0.0f, 1.0f, 0.0f));
+      glm::mat4 rotation = glm::rotate(rotationY,
+        glm::radians(static_cast<GLfloat>(cameraRenderInfo.m_orientationDegrees[2])),
+        glm::vec3(0.0f, 0.0f, 1.0f));
+      glm::vec3 rotatedPoint = glm::vec3(rotation * glm::vec4(point, 1.0f));
+      double xr = rotatedPoint[0];
+      double yr = rotatedPoint[1];
+      double zr = rotatedPoint[2];
+      /// @todo
+
+      // Offset the points by the camera position in the helicopter view space.
+      double x = xr + cameraRenderInfo.m_positionMeters[0];
+      double y = yr + cameraRenderInfo.m_positionMeters[1];
+      double z = zr + cameraRenderInfo.m_positionMeters[2];
 
       // Add the vertex
       vertices.push_back(x);
@@ -739,6 +771,7 @@ void CompositeCameras::RenderView(const float* modelViewProjection)
 
   // Draw each camera, using the appropriate texture.
   for (size_t i = 0; i < m_cameraRenderInfos.size(); i++) {
+
     // If there is no texture, bind the default texture.
     GLuint texture = 0;
     if (m_images[i] != nullptr) {
@@ -746,7 +779,7 @@ void CompositeCameras::RenderView(const float* modelViewProjection)
     }
     glBindTexture(GL_TEXTURE_2D, m_images[i]->texture);
 
-    /// @todo Adjust for helicopter motion changes.
+    /// @todo Adjust for helicopter motion changes from image acquisition to scan-out.
 
     // Draw the camera view using its vertex array object.
     glBindVertexArray(m_vertexArrayObjects[i]);

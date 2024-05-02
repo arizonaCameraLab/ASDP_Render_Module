@@ -3,7 +3,7 @@
  */
 
  /**
-  * @file Composite.h
+  * @file ImageQueue.h
   * @brief Apache Strap-Down Pilotage Render/ImageQueue class header file.
   *
   * @author ReliaSolve.
@@ -25,13 +25,16 @@
 namespace asdp {
   namespace render {
 
+    /// @brief Stores an OpenGL texture ID and the time the image was read into the system.
     struct ImageData {
       /// @brief Destructor deletes the texture when the ImageData is destroyed.
       virtual ~ImageData();
 
       /// @brief Image data stored in an OpenGL texture.
       /// @details This struct takes "ownership" of the texture, in the sense that
-      /// the texture will be deleted when the ImageData is destroyed.
+      /// the texture will be deleted when the ImageData is destroyed.  It should be
+      /// created as a shared_ptr and passed around as a shared_ptr to avoid deleting
+      /// the texture while it is still being used.
       GLuint texture = 0;
 
       /// @brief Time the middle of the image was read into the system.
@@ -60,7 +63,7 @@ namespace asdp {
       /// @details This function adds an image to the queue.  The image becomes the
       /// newest image in the queue, the one that will be rendered next.
       /// @param[in] image Image to add to the queue.
-      void AddNewestImage(ImageData image);
+      void AddNewestImage(std::shared_ptr<ImageData> image);
 
       /// @brief Get the oldest image in the queue, to be overwritten and then rendered.
       /// @return Shared pointer to the oldest image in the queue.  Null pointer if the

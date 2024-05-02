@@ -5,19 +5,62 @@
 #include <iostream>
 #include <vector>
 #include <chrono>
+#include <cstdint>
+#include <memory>
 #include <Composite.h>
 #include <ASDP_Core_API.h>
 #include <GLFW/glfw3.h>
 
+/// @brief Make an image whose brightness varies from the top of the image to the bottom.
+/// @details The image will be a gradient from the minimum value at the bottom to the
+/// maximum value at the top.  The image order matches that of stored images, which is
+/// different from OpenGL texture order; the first pixel is at the upper left of the image.
+/// OpenGL must have been initialized before calling this function.
+/// @param width Width of the image.
+/// @param height Height of the image.
+/// @param minVal Minimum value of the image (at the bottom of the image).
+/// @param maxVal Maximum value of the image (at the top of the image).
+/// @return An OpenGL texture ID.
+GLuint MakeTexture(int width, int height, uint16_t minVal, uint16_t maxVal)
+{
+  std::vector<uint16_t> image(width * height);
+  float range = static_cast<float>(maxVal - minVal);
+  for (int j = 0; j < height; j++) {
+    float normJ = static_cast<float>(j) / static_cast<float>(height - 1);
+    for (int i = 0; i < width; i++) {
+      image[i + j*width] = static_cast<uint16_t>(maxVal - normJ*range);
+    }
+  }
+
+  unsigned int texture;
+  glGenTextures(1, &texture);
+  glBindTexture(GL_TEXTURE_2D, texture);
+  // Set the texture wrapping parameters
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP);
+  // Set texture filtering parameters
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+   // Load image into texture
+  glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, width, height, 0, GL_RED, GL_UNSIGNED_SHORT, image.data());
+  glBindTexture(GL_TEXTURE_2D, 0);
+
+  return texture;
+}
+
 int main()
 {
-  int width = 640;
-  int height = 640;
+  int windowSize = 640;
+  int width = 1280;
+  int height = 1024;
+  int nx = 1;
+  int ny = 1;
   double degreesPerSecond = 15.0;
 
   asdp::render::ViewRenderInfo viewRenderInfo;
-  viewRenderInfo.width = width;
-  viewRenderInfo.height = height;
+  viewRenderInfo.width = windowSize;
+  viewRenderInfo.height = windowSize;
   std::vector<asdp::render::ViewRenderInfo> views;
   views.push_back(viewRenderInfo);
 
@@ -28,7 +71,7 @@ int main()
   }
 
   // Create a windowed mode window and its OpenGL context
-  GLFWwindow* window = glfwCreateWindow(width, height, "CompositeCameras_Test", NULL, NULL);
+  GLFWwindow* window = glfwCreateWindow(windowSize, windowSize, "CompositeCameras_Test", NULL, NULL);
   if (!window) {
     std::cerr << "Failed to create GLFW window\n";
     glfwTerminate();
@@ -38,25 +81,45 @@ int main()
   // Make the window's context current
   glfwMakeContextCurrent(window);
 
+  // Construct the cameras to render.
+  // Construct the image queues to render, one per camera.
+  std::vector<asdp::render::CameraRenderInfo> cameras;
+  for (int x = 0; x < nx; x++) {
+    uint16_t minVal = static_cast<uint16_t>(x * (65535.0/3) / nx);
+    for (int y = 0; y < ny; y++) {
+      asdp::render::CameraRenderInfo camera;
+      camera.m_fovDegrees[0] = 40;
+      camera.m_fovDegrees[1] = 32.5;
+
+      // Make the image for the camera.
+      uint16_t maxVal = static_cast<uint16_t>( 2*(65535.0 / 3) + y * (65535.0/3) / ny);
+      std::shared_ptr<asdp::render::ImageData> image = std::make_shared<asdp::render::ImageData>();
+      image->texture = MakeTexture(width, height, minVal, maxVal);
+      camera.m_imageQueue = std::make_shared<asdp::render::ImageQueue>();
+      camera.m_imageQueue->AddNewestImage(image);
+
+      // Odd-numbered columns are rotated with X facing up, even with it facing down.
+      double rotY = 90;
+      if (x % 2 == 0) {
+        rotY = -90;
+      }
+      camera.m_orientationDegrees[1] = rotY;
+
+      /// @todo
+
+      cameras.push_back(camera);
+    }
+  }
+
+
   // Create a CompositeCameras object to render once the window is open and the context is active.
-  asdp::render::CompositeCube composite(10);
+  asdp::render::CompositeCameras composite(cameras);
 
   // Loop until the user closes the window.
   std::cout << "You should see @todo." << std::endl;
   std::cout << "Close the window to exit." << std::endl;
   auto start = std::chrono::steady_clock::now();
   while (!glfwWindowShouldClose(window)) {
-    /*
-    // Set the viewpoint here
-    auto now = std::chrono::steady_clock::now();
-    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - start).count();
-    double angle = degreesPerSecond * (elapsed / 1000.0);
-
-    // Offset the viewpoint center and rotate around the Y axis so we can verify correct behavior.
-    views[0].viewpoint[0] = -5;
-    views[0].orientation[0] = angle/100;
-    views[0].orientation[1] = angle;
-    */
 
     // Render here
     composite.Render(asdp::Time(), views);

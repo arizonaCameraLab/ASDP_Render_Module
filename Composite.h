@@ -32,13 +32,13 @@ namespace asdp {
       uint16_t m_ID = 0;                              ///< ID of the camera.
       /// Position of the cameras center of projection in meters from the camera device origin.
       /// The canonical orientation is in the local helicopter coordinate system, with +X pointing
-      /// right, +Y pointing forwards, and +Z pointing up.  The camera is translated first and then
-      /// rotated around its new center.
+      /// right, +Y pointing forwards, and +Z pointing up.  The camera is translated in the
+      /// helicopter frame of reference and then rotated around its new center.
       std::array<double, 3> m_positionMeters = {};
       /// Orientation of the camera in degrees, Euler rotation around X, then Y, then Z.
       /// The canonical orientation is in the local helicopter coordinate system, with +X pointing
-      /// right, +Y pointing forwards, and +Z pointing up.  The camera is translated first and then
-      /// rotated around its new center.
+      /// right, +Y pointing forwards, and +Z pointing up.  The camera is translated in the
+      /// helicopter frame of reference and then rotated around its new center.
       std::array<double, 3> m_orientationDegrees = {};
       std::array<uint16_t, 2> m_resolutionPixels = {};///< Resolution of the camera in pixels.
       std::array<double, 2> m_fovDegrees = {};        ///< Field of view of the camera in degrees, horizontal then vertical.
@@ -53,14 +53,16 @@ namespace asdp {
       /// Position of the viewpoint in meters from the camera device origin.
       /// Specifies the center of the view frustum in the camera coordinate system.
       /// The canonical orientation is in the local helicopter coordinate system, with +X pointing
-      /// right, +Y pointing forwards, and +Z pointing up.  The camera is translated first and then
-      /// rotated around its new center.
+      /// right, +Y pointing forwards, and +Z pointing up.  The camera is translated in the
+      /// helicopter frame of reference and then rotated around its new center.  A rotation around
+      /// the +X axis will tip the camera's view up, and a rotation around the +Y axis will pan the
+      /// camera's view left.
       std::array<float, 3> viewpoint = {};
       /// Orientation of the viewpoint in degrees, Euler rotation around X, then Y around the
       /// new Y, then around the new Z.
       /// The canonical orientation is in the local helicopter coordinate system, with +X pointing
-      /// right, +Y pointing forwards, and +Z pointing up.  The camera is translated first and then
-      /// rotated around its new center.
+      /// right, +Y pointing forwards, and +Z pointing up.  The camera is translated in the
+      /// helicopter frame of reference and then rotated around its new center.
       std::array<float, 3> orientation = {};
       /// Left edge of the view in degrees from the principal ray (this will be half the horizontal FOV).
       /// Left and right are different for off-center projection.
