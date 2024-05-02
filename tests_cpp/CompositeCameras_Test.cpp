@@ -54,13 +54,20 @@ int main()
   int windowSize = 640;
   int width = 1280;
   int height = 1024;
-  int nx = 1;
-  int ny = 1;
+  int nx = 3;
+  int ny = 3;
+  double hFOV = 40;
+  double vFOV = 32.5;
   double degreesPerSecond = 15.0;
 
   asdp::render::ViewRenderInfo viewRenderInfo;
   viewRenderInfo.width = windowSize;
   viewRenderInfo.height = windowSize;
+  // Set the view to be +/- 60 degrees so we can see more of the scene
+  viewRenderInfo.bottomHalfFOV = -60;
+  viewRenderInfo.topHalfFOV = 60;
+  viewRenderInfo.leftHalfFOV = -60;
+  viewRenderInfo.rightHalfFOV = 60;
   std::vector<asdp::render::ViewRenderInfo> views;
   views.push_back(viewRenderInfo);
 
@@ -88,8 +95,8 @@ int main()
     uint16_t minVal = static_cast<uint16_t>(x * (65535.0/3) / nx);
     for (int y = 0; y < ny; y++) {
       asdp::render::CameraRenderInfo camera;
-      camera.m_fovDegrees[0] = 40;
-      camera.m_fovDegrees[1] = 32.5;
+      camera.m_fovDegrees[0] = hFOV;
+      camera.m_fovDegrees[1] = vFOV;
 
       // Make the image for the camera.
       uint16_t maxVal = static_cast<uint16_t>( 2*(65535.0 / 3) + y * (65535.0/3) / ny);
@@ -99,11 +106,22 @@ int main()
       camera.m_imageQueue->AddNewestImage(image);
 
       // Odd-numbered columns are rotated with X facing up, even with it facing down.
-      double rotY = 90;
+      // The transformations are complicated by the fact that our Euler order of operations
+      // is XYZ.  We need to rotate around X by 90 or -90 degrees to point straight up or down.
+      // We then need to rotate around the the new Y axis by -90 plus the desired Y rotation
+      // so that the original X axis will be pointing down.  Finally, we need to rotate around
+      // the new Z axis by 90 + the desired vertical rotation.
+      double desiredHor = 1.01 * (x - (nx - 1)/2.0) * vFOV;  ///< Camera is rotated portrait
+      double desiredVer = 1.01 * (y - (ny - 1)/2.0) * hFOV;  ///< Camera is rotated portrait
       if (x % 2 == 0) {
-        rotY = -90;
+        camera.m_orientationDegrees[0] = 90;
+        camera.m_orientationDegrees[1] = -90 - desiredHor;
+        camera.m_orientationDegrees[2] = 90 - desiredVer;
+      } else {
+        camera.m_orientationDegrees[0] = 90;
+        camera.m_orientationDegrees[1] = 90 - desiredHor;
+        camera.m_orientationDegrees[2] = -90 + desiredVer;
       }
-      camera.m_orientationDegrees[1] = rotY;
 
       /// @todo
 
@@ -111,12 +129,16 @@ int main()
     }
   }
 
-
   // Create a CompositeCameras object to render once the window is open and the context is active.
   asdp::render::CompositeCameras composite(cameras);
 
   // Loop until the user closes the window.
-  std::cout << "You should see @todo." << std::endl;
+  std::cout << "You should see a row of three distorted dark boxes horizontally across" << std::endl;
+  std::cout << "the center of the view, the first and third brighter on the left and the" << std::endl;
+  std::cout << "second brighter on the right." << std::endl;
+  std::cout << "Above should be brighter extensions and below should be darker ones." << std::endl;
+  std::cout << "The extensions meet at dark and then bright boundaries from left to right." << std::endl;
+  std::cout << "" << std::endl;
   std::cout << "Close the window to exit." << std::endl;
   auto start = std::chrono::steady_clock::now();
   while (!glfwWindowShouldClose(window)) {
