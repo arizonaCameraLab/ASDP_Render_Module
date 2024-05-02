@@ -78,3 +78,25 @@ transform points in the space of the first time parameter into the space of the 
 If the first time parameter is the expected time of scan-out and the second is the time an image was
 acquired (an earlier time), then this transformation can be used to transform the vertices of the
 image representation to remove the effects of the helicopter motion.
+
+## Validation
+
+The **tests** directory contains a number of tests.  Some of these tests require a viewer to
+examine a graphical output.  These, along with the expected output, are described below.
+
+**Composite_Test:** This program displays a spinning cube that has varying-brightness colored
+sides. Red = +X, Green = +Y, Blue = +Z, Magenta = -X, Yellow = -Y, Cyan = -Z.  The initial frame
+is looking in +Y at green and it rotates around the horizontal axis rapidly and the vertical axis slowly.
+It center of rotation is closer to the magenta wall than to the red wall.  One frame is shown below.
+
+![Test of the Composite class](Composite_Test.png "Test of the Composite class")
+
+**CompositeCameras_Test:** This displays a set of cameras that are arranged in three rows and
+three columns.
+You should see a row of three distorted dark boxes horizontally across the center of the view,
+the first and third brighter on the left and the second brighter on the right.
+Above should be brighter extensions and below should be darker ones.
+The extensions meet at dark and then bright boundaries from left to right.
+The expected image is shown below.
+
+![Test of the CompositeCameras class](CompositeCameras_Test.png "Test of the CompositeCameras class")

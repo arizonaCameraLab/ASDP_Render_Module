@@ -114,7 +114,6 @@ if(BUILD_UTILITIES)
   set (CUDA_UTILS
 	  Time_CUDA_Writes
     Speed_Test_Receiver_CUDA
-    #deleteme
   )
   foreach (BASE ${CUDA_UTILS})
     set (APP ${BASE})
