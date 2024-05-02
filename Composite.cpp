@@ -646,8 +646,8 @@ void CompositeCameras::AddBufferObjects(CameraRenderInfo const& cameraRenderInfo
 
       // Compute the scaled X, Y coordinates for the four corners of the quad that place them
       // for a correctly-sized quad given the camera info to get them to scaled space.
-      double xHalfWidth = 0.5 * tan(radians(cameraRenderInfo.m_fovDegrees[0]) / 2.0) * depth;
-      double yHalfWidth = 0.5 * tan(radians(cameraRenderInfo.m_fovDegrees[1]) / 2.0) * depth;
+      double xHalfWidth = tan(radians(cameraRenderInfo.m_fovDegrees[0]) / 2.0) * depth;
+      double yHalfWidth = tan(radians(cameraRenderInfo.m_fovDegrees[1]) / 2.0) * depth;
       double xs = xn * xHalfWidth;
       double ys = yn * yHalfWidth;
 
