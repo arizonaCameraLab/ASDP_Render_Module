@@ -123,8 +123,6 @@ int main()
         camera.m_orientationDegrees[2] = -90 + desiredVer;
       }
 
-      /// @todo
-
       cameras.push_back(camera);
     }
   }
