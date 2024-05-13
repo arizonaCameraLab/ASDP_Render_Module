@@ -8,15 +8,20 @@
 #include <cmath>
 #include <string>
 #include <iostream>
-#include <gfxwrapper_opengl.h>
+#include "Composite.h"
+
+// These must come after Composite.h to avoid name collisions from X11.
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
-#include "Composite.h"
+#ifdef __linux__
+#define OS_LINUX_XCB_GLX
+#endif
+#include <gfxwrapper_opengl.h>
 
 using namespace asdp::render;
 
-Composite::Composite(std::vector<CameraRenderInfo>& cameraRenderInfo)
+Composite::Composite(std::vector<CameraRenderInfo> const & cameraRenderInfo)
   : m_cameraRenderInfos(cameraRenderInfo)
 {
 }

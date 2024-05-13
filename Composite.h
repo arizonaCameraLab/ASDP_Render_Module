@@ -94,7 +94,7 @@ namespace asdp {
       /// @details The OpenGL context to be used by the Composite object must be current when this
       /// constructor is called.
       /// @param cameraRenderInfo The configuration of the cameras needed to generate textured geometry.
-      Composite(std::vector<CameraRenderInfo>& cameraRenderInfo);
+      Composite(std::vector<CameraRenderInfo> const& cameraRenderInfo);
 
       /// @brief Destructor, virtual so that derived classes can have their destructors called from pointers.
       virtual ~Composite();
