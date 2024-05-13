@@ -22,7 +22,7 @@ Composite::Composite(std::vector<CameraRenderInfo>& cameraRenderInfo)
   // Initialize GLEW in our context. It is okay to initialize it more than once.
   glewExperimental = true;
   if (glewInit() != GLEW_OK) {
-    std::cerr << "Composite::Composite(): Failed to initialize GLEW\n" << std::endl;
+    std::cerr << "Composite::Composite(): Failed to initialize GLEW" << std::endl;
     return;
   }
   // Clear any GL error that Glew caused.  Apparently on Non-Windows
@@ -41,27 +41,35 @@ void Composite::Render(asdp::Time scanOutTime, std::vector<ViewRenderInfo> views
   SetupRenderFrame(scanOutTime);
 
   // Render each view
-  for (auto const& view : views) {
-    // Set up the frame buffer and assign the appropriate textures.
-    glBindFramebuffer(GL_FRAMEBUFFER, view.frameBuffer);
-    if (view.frameBuffer != 0) {
-      glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, view.colorBuffer, 0);
-      glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, view.depthBuffer, 0);
+  for (size_t eye = 0; eye < views.size(); eye++) {
+    const ViewRenderInfo& view = views[eye];
+
+    // Only set up the frame buffer and clear the buffers if we're the first eye or if the
+    // eyes use different frame buffers.
+    if ((eye == 0) || (views[eye].frameBuffer != views[0].frameBuffer)) {
+      // Bind the frame buffer and assign the appropriate textures.
+      glBindFramebuffer(GL_FRAMEBUFFER, view.frameBuffer);
+      if (view.frameBuffer != 0) {
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, view.colorBuffer, 0);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, view.depthBuffer, 0);
+      }
+
+      // Clear the buffers.
+      glClearColor(0, 0, 0, 1.0f);
+      GLbitfield clearBits = 0;
+      if ((view.frameBuffer == 0) || (view.colorBuffer != 0)) { clearBits |= GL_COLOR_BUFFER_BIT; }
+      if ((view.frameBuffer == 0) || (view.depthBuffer != 0)) { clearBits |= GL_DEPTH_BUFFER_BIT; }
+      glClear(clearBits);
     }
 
-    // Set up the viewport and clear the buffers.
-    glViewport(view.x, view.y, view.width, view.height);
-    glClearColor(0, 0, 0, 1.0f);
-    GLbitfield clearBits = 0;
-    if ( (view.frameBuffer == 0) || (view.colorBuffer != 0) ) { clearBits |= GL_COLOR_BUFFER_BIT; }
-    if ( (view.frameBuffer == 0) || (view.depthBuffer != 0) ) { clearBits |= GL_DEPTH_BUFFER_BIT; }
-    glClear(clearBits);
-
-    // Turn on depth testing so we get proper rendering.
+    // Turn on depth testing so we get proper rendering.  The default frame buffer has depth.
     if ((view.frameBuffer == 0) || (view.depthBuffer != 0)) {
       glEnable(GL_DEPTH_TEST);
       glDepthFunc(GL_LESS);
     }
+
+    // Set up the viewport for this view.
+    glViewport(view.x, view.y, view.width, view.height);
 
     // Compute the view-projection matrix (no model described here) from the ViewRenderInfo.
     // NOTE: We translate and rotate in the opposite direction because we're moving the world rather
@@ -94,14 +102,16 @@ void Composite::Render(asdp::Time scanOutTime, std::vector<ViewRenderInfo> views
       view.nearClip, view.farClip);
     glm::mat4 VP = Projection * ViewTranslate;
 
+    /// @todo Adjust for helicopter motion changes from image acquisition to scan-out.
+
     /// @todo Adjust for shear and stretch due to head motion during scan-out.
 
     // Call the derived-class method to render the geometry into this viewpoint.
     RenderView(glm::value_ptr(VP));
-
-    // Unset things
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
   }
+
+  // Unset things
+  glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
   // Done with the data for a render frame
   TearDownRenderFrame();
@@ -778,8 +788,6 @@ void CompositeCameras::RenderView(const float* modelViewProjection)
       texture = m_images[i]->texture;
     }
     glBindTexture(GL_TEXTURE_2D, m_images[i]->texture);
-
-    /// @todo Adjust for helicopter motion changes from image acquisition to scan-out.
 
     // Draw the camera view using its vertex array object.
     glBindVertexArray(m_vertexArrayObjects[i]);
