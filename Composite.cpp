@@ -8,7 +8,7 @@
 #include <cmath>
 #include <string>
 #include <iostream>
-#include <GL/glew.h>
+#include <gfxwrapper_opengl.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
@@ -19,15 +19,6 @@ using namespace asdp::render;
 Composite::Composite(std::vector<CameraRenderInfo>& cameraRenderInfo)
   : m_cameraRenderInfos(cameraRenderInfo)
 {
-  // Initialize GLEW in our context. It is okay to initialize it more than once.
-  glewExperimental = true;
-  if (glewInit() != GLEW_OK) {
-    std::cerr << "Composite::Composite(): Failed to initialize GLEW" << std::endl;
-    return;
-  }
-  // Clear any GL error that Glew caused.  Apparently on Non-Windows
-  // platforms, this can cause a spurious error 1280.
-  glGetError();
 }
 
 Composite::~Composite()

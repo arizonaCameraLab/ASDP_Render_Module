@@ -90,7 +90,7 @@ std::string ImageQueue::Test()
   }
 
   // Add another image to the queue
-  imageQueue.AddNewestImage(image);
+  imageQueue.AddNewestImage(std::make_shared<ImageData>());
 
   // Verify that the queue size is 2
   if (imageQueue.size() != 2) {

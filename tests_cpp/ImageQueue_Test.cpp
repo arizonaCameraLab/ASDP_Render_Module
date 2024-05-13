@@ -15,5 +15,6 @@ int main()
   }
 
   // Clean up resources and exit
+  std::cout << "Success" << std::endl;
   return 0;
 }
