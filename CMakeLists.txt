@@ -1,4 +1,4 @@
-﻿cmake_minimum_required(VERSION 3.16.0)
+cmake_minimum_required(VERSION 3.16.0)
 project(ASDP_Render_Module LANGUAGES C CXX CUDA)
 
 set(CMAKE_CXX_STANDARD 11)
@@ -8,6 +8,8 @@ list(APPEND CMAKE_PREFIX_PATH C:/Packages/GLEW/glew-2.2.0)
 #-----------------------------------------------------------------------------
 if(WIN32)
     add_definitions(-DNOMINMAX)
+else(WIN32)
+    add_definitions(-DOS_LINUX_XCB_GLX)
 endif(WIN32)
 
 #-----------------------------------------------------------------------------
@@ -126,6 +128,7 @@ if(BUILD_UTILITIES)
 	    Render_Module
     )
     set_property(TARGET ${APP} PROPERTY CUDA_ARCHITECTURES 75 80)
+    #set_property(TARGET ${APP} PROPERTY CUDA_ARCHITECTURES 70)
     install(TARGETS ${APP} EXPORT ${PROJECT_NAME}
       RUNTIME DESTINATION bin
     )

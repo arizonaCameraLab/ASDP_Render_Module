@@ -14,9 +14,6 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
-#ifdef __linux__
-#define OS_LINUX_XCB_GLX
-#endif
 #include <gfxwrapper_opengl.h>
 
 using namespace asdp::render;
