@@ -128,7 +128,6 @@ if(BUILD_UTILITIES)
 	    Render_Module
     )
     set_property(TARGET ${APP} PROPERTY CUDA_ARCHITECTURES 75 80)
-    #set_property(TARGET ${APP} PROPERTY CUDA_ARCHITECTURES 70)
     install(TARGETS ${APP} EXPORT ${PROJECT_NAME}
       RUNTIME DESTINATION bin
     )
