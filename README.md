@@ -13,7 +13,8 @@ be found automatically.  The library source can be obtained using:
 `git clone --recursive https://github.com/arizonaCameraLab/ASDP_Core_API` and instructions in the
 repository tell how to install it.  The --recursive flag is important to get the submodules.
 
-On Linux, the following packages must be installed: libxcb-keysyms1-dev, libx11-xcb-dev, libxcb-glx0-dev.
+On Linux, the following packages must be installed: libxcb-keysyms1-dev, libx11-xcb-dev, libxcb-glx0-dev,
+libxcb-icccm4-dev, libxcb-dri2-0-dev.
 
 **Build:** ASDP_Render_Module uses CMake to configure the builds (though other build
 systems could be used).  On Ubuntu Linux, this can be done as follows

@@ -115,8 +115,8 @@ int main()
 
   // Create a new thread that switches to the new context and generates a texture
   // in that context.
-  std::atomic<GLuint> texture = 0;
-  std::atomic_bool done = false;
+  std::atomic<GLuint> texture{0};
+  std::atomic_bool done{false};
   std::thread t([&sharedContext, width, height, &texture, &done]() {
     ksGpuContext_SetCurrent(&sharedContext);
     texture = MakeTexture(width, height, 0, 65535);
