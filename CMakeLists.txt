@@ -8,9 +8,10 @@ list(APPEND CMAKE_PREFIX_PATH C:/Packages/GLEW/glew-2.2.0)
 #-----------------------------------------------------------------------------
 if(WIN32)
     add_definitions(-DNOMINMAX)
-else(WIN32)
-    add_definitions(-DOS_LINUX_XCB_GLX)
 endif(WIN32)
+if(UNIX)
+    add_definitions(-DOS_LINUX_XCB_GLX)
+endif(UNIX)
 
 #-----------------------------------------------------------------------------
 # Local CMake Modules
@@ -64,12 +65,12 @@ endif (BUILD_DOXYGEN)
 # Build the libraries.
 
 set (Render_Module_HEADERS
-	Composite.h
+  Composite.h
   #Display.h
   ImageQueue.h
 )
 set (Render_Module_SOURCES
-	Composite.cpp
+  Composite.cpp
   #Display.cpp
   ImageQueue.cpp
   gfxwrapper/gfxwrapper_opengl.c
@@ -87,6 +88,11 @@ target_include_directories(Render_Module PRIVATE
 target_link_libraries(Render_Module PUBLIC
   ASDP_Core_API::ASDP_Core_API OpenGL::GL
 )
+if(UNIX)
+target_link_libraries(Render_Module PUBLIC
+  ASDP_Core_API::ASDP_Core_API xcb xcb-randr xcb-keysyms X11
+)
+endif(UNIX)
 
 #-----------------------------------------------------------------------------
 # Build utilities if we've been asked to.
