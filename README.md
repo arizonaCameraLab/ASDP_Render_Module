@@ -83,8 +83,8 @@ image representation to remove the effects of the helicopter motion.
 
 ## Validation
 
-The **tests** directory contains a number of tests.  Some of these tests require a viewer to
-examine a graphical output.  These, along with the expected output, are described below.
+The **tests_cpp** directory contains a number of tests.  Some of these tests require a viewer to
+examine a graphical output; these, along with their expected outputs, are described below.
 
 **Composite_Test:** This program displays a spinning cube that has varying-brightness colored
 sides. Red = +X, Green = +Y, Blue = +Z, Magenta = -X, Yellow = -Y, Cyan = -Z.  The initial frame
@@ -102,3 +102,9 @@ The extensions meet at dark and then bright boundaries from left to right.
 The expected image is shown below.
 
 ![Test of the CompositeCameras class](CompositeCameras_Test.png "Test of the CompositeCameras class")
+
+**SharedContext_Test:** This displays a red ramp from dark to bright from the top of the image to the
+bottom.
+The expected image is shown below.
+
+![Test of shared OpenGL contexts](SharedContext_Test.png "Test of shared OpenGL contexts")

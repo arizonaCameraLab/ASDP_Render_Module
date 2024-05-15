@@ -8,5 +8,5 @@ GENERATE_HTML          = YES
 GENERATE_LATEX         = NO
 RECURSIVE              = YES
 #EXCLUDE               = dependencies
-EXCLUDE_PATTERNS       = "@CMAKE_CURRENT_SOURCE_DIR@/dependencies/*"
+EXCLUDE_PATTERNS       = "@CMAKE_CURRENT_SOURCE_DIR@/dependencies/*" "@CMAKE_CURRENT_SOURCE_DIR@/gfxwrapper/*"
 USE_MDFILE_AS_MAINPAGE = "@CMAKE_CURRENT_SOURCE_DIR@/README.md"

@@ -72,6 +72,8 @@ int main()
   views.push_back(viewRenderInfo);
 
   // Create a windowed mode window and its OpenGL context
+  WINDOW_TITLE = "CompositeCameras_Test";
+  APPLICATION_NAME = "CompositeCameras_Test";
   ksDriverInstance driverInstance{};
   ksGpuQueueInfo queueInfo{};
   ksGpuSurfaceColorFormat colorFormat{ KS_GPU_SURFACE_COLOR_FORMAT_B8G8R8A8 };

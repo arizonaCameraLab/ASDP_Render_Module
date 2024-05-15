@@ -656,7 +656,7 @@ void CompositeCameras::AddBufferObjects(CameraRenderInfo const& cameraRenderInfo
 
       // Perform distortion correction on the X, Y coordinates to get to canonical view
       // space, which has a camera looking down -Z.
-      /// @todo
+      /// @todo perform distortion correction
       double xc = xs;
       double yc = ys;
 

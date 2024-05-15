@@ -66,12 +66,12 @@ endif (BUILD_DOXYGEN)
 
 set (Render_Module_HEADERS
   Composite.h
-  #Display.h
+  Display.h
   ImageQueue.h
 )
 set (Render_Module_SOURCES
   Composite.cpp
-  #Display.cpp
+  Display.cpp
   ImageQueue.cpp
   gfxwrapper/gfxwrapper_opengl.c
 )
