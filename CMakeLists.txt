@@ -15,12 +15,25 @@ endif(UNIX)
 
 #-----------------------------------------------------------------------------
 # Local CMake Modules
+
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
 #-----------------------------------------------------------------------------
 # Enable sorting projects within the solution on Visual Studio, to group
 # Test and Example files together.
+
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
+
+#-----------------------------------------------------------------------------
+# Fetch and build packages
+
+include(FetchContent)
+FetchContent_Declare(
+  glfw3
+  GIT_REPOSITORY https://github.com/arizonaCameraLab/glfw.git
+  GIT_TAG        b35641f4a3c62aa86a0b3c983d163bc0fe36026d # Master as of 4/26/2024
+)
+FetchContent_MakeAvailable(glfw3)
 
 #-----------------------------------------------------------------------------
 # Checking for optional and required packages
@@ -28,6 +41,7 @@ set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 find_package(Threads REQUIRED)
 find_package(ASDP_Core_API REQUIRED)
 find_package(OpenGL REQUIRED COMPONENTS OpenGL)
+find_package(GLEW REQUIRED)
 find_package(Doxygen)
 find_package(OpenMP)
 if(OPENMP_FOUND)
@@ -37,7 +51,8 @@ if(OPENMP_FOUND)
 endif()
 
 #-----------------------------------------------------------------------------
-# Build options.
+# Define build options.
+
 option(BUILD_TESTS "Build test programs" ON)
 option(BUILD_UTILITIES "Build utility programs" ON)
 
@@ -73,7 +88,6 @@ set (Render_Module_SOURCES
   Composite.cpp
   Display.cpp
   ImageQueue.cpp
-  gfxwrapper/gfxwrapper_opengl.c
 )
 add_library(Render_Module STATIC ${Render_Module_SOURCES} ${Render_Module_HEADERS})
 target_include_directories(Render_Module PUBLIC
@@ -82,17 +96,11 @@ target_include_directories(Render_Module PUBLIC
   "${CMAKE_CURRENT_BINARY_DIR}/Install/include"
 )
 target_include_directories(Render_Module PRIVATE
-  "${CMAKE_CURRENT_SOURCE_DIR}/gfxwrapper"
   "${CMAKE_CURRENT_SOURCE_DIR}/dependencies/glm"
 )
 target_link_libraries(Render_Module PUBLIC
-  ASDP_Core_API::ASDP_Core_API OpenGL::GL
+  ASDP_Core_API::ASDP_Core_API glfw GLEW::glew OpenGL::GL
 )
-if(UNIX)
-target_link_libraries(Render_Module PUBLIC
-  ASDP_Core_API::ASDP_Core_API xcb xcb-randr xcb-keysyms X11
-)
-endif(UNIX)
 
 #-----------------------------------------------------------------------------
 # Build utilities if we've been asked to.
@@ -160,7 +168,6 @@ if(BUILD_TESTS)
     set_target_properties(${APP} PROPERTIES FOLDER tests/C++)
     target_include_directories(${APP} PRIVATE
       "${CMAKE_CURRENT_SOURCE_DIR}"
-      "${CMAKE_CURRENT_SOURCE_DIR}/gfxwrapper"
       "${CMAKE_CURRENT_SOURCE_DIR}/dependencies/glm"
     )
     target_link_libraries(${APP}

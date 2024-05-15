@@ -8,7 +8,8 @@
 #include <cmath>
 #include <iostream>
 #include <thread>
-#include <gfxwrapper_opengl.h>
+#include <GL/glew.h>
+#include <GLFW/glfw3.h>
 #include "Display.h"
 
 using namespace asdp::render;
@@ -21,6 +22,16 @@ Display::Display(std::shared_ptr<Composite> composite,
   , m_offsetMicroseconds(triggerAheadMicroseconds)
   , m_done(false)
 {
+  // Initialize GLEW in our context. It is okay to initialize it more than once.
+  glewExperimental = true;
+  if (glewInit() != GLEW_OK) {
+    std::cerr << "Composite::Composite(): Failed to initialize GLEW" << std::endl;
+    return;
+  }
+  // Clear any GL error that Glew caused.  Apparently on Non-Windows
+  // platforms, this can cause a spurious error 1280.
+  glGetError();
+
   if (m_client) {
     Status status = m_client->GetTimer(m_timer);
     if (status != OKAY) {
@@ -97,43 +108,60 @@ public:
   float m_horizontalFOVDegrees{ 40.0f };
 
   /// Window that will be used to display the view.
-  ksGpuWindow m_window{};
+  GLFWwindow *m_window;
 
   /// Views to be rendered.
   std::vector<asdp::render::ViewRenderInfo> m_views;
-
-  /// Our main context (index 0) and shared contexts that we have produced
-  std::vector<ksGpuContext> m_contexts;
 };
 
 DisplayWindow::DisplayWindow(std::shared_ptr<Composite> composite,
     std::shared_ptr<CoreClient> client, uint8_t triggerID, uint32_t triggerAheadMicroseconds,
-    float horizontalFOVDegrees,
-    std::string joystick, int desiredWidth, int desiredHeight, bool fullScreen, int whichDisplay)
+    int desiredWidth, int desiredHeight, float horizontalFOVDegrees,
+    std::string joystick, DisplayWindow* sharedWindow,
+    bool fullScreen, int desiredDisplay, bool hidden)
   : Display(composite, client, triggerID, triggerAheadMicroseconds)
   , m_impl(new DisplayWindowImpl)
 {
   // Store info from the constructor.
   m_impl->m_horizontalFOVDegrees = horizontalFOVDegrees;
  
+  // Initialize the library
+  if (!glfwInit()) {
+    m_status = "Failed to initialize GLFW";
+    return;
+  }
+
+  // Create a windowed mode window and its OpenGL context
+  GLFWmonitor* fullScreenMonitor = nullptr;
+  if (fullScreen) {
+    int count;
+    GLFWmonitor** monitors = glfwGetMonitors(&count);
+    if ((count == 0) || !monitors) {
+      m_status = "Failed to create get monitors for fullscreen";
+      return;
+    }
+    if (desiredDisplay >= count) {
+      m_status = "Invalid monitor requested (not enough monitors)";
+      return;
+    }
+    fullScreenMonitor = monitors[desiredDisplay];
+  }
+  glfwWindowHint(GLFW_VISIBLE, hidden);
+  m_impl->m_window = glfwCreateWindow(desiredWidth, desiredHeight, "Render_Module", fullScreenMonitor,
+    sharedWindow->m_impl->m_window);
+  if (!m_impl->m_window) {
+    m_status = "Failed to create GLFW window";
+    return;
+  }
+
+  // Make the window's context current
+  glfwMakeContextCurrent(m_impl->m_window);
+
   // Open the joystick if there is one.
   /// @todo
 
   // Add hooks for keyboard and mouse input.
   /// @todo
-
-  // Create a windowed mode window and its OpenGL context
-  ksDriverInstance driverInstance{};
-  ksGpuQueueInfo queueInfo{};
-  ksGpuSurfaceColorFormat colorFormat{ KS_GPU_SURFACE_COLOR_FORMAT_B8G8R8A8 };
-  ksGpuSurfaceDepthFormat depthFormat{ KS_GPU_SURFACE_DEPTH_FORMAT_D24 };
-  ksGpuSampleCount sampleCount{ KS_GPU_SAMPLE_COUNT_1 };
-  if (!ksGpuWindow_Create(&m_impl->m_window, &driverInstance, &queueInfo, 0, colorFormat, depthFormat,
-    sampleCount, desiredWidth, desiredHeight, fullScreen)) {
-    m_status = "Failed to open window";
-    m_impl.reset();
-    return;
-  }
 
   // Construct a single view to be used.  We base is on the actual window size and we compute a
   // field of view that is 40 degrees total horizontal and the correct aspect ratio vertical.
@@ -143,9 +171,6 @@ DisplayWindow::DisplayWindow(std::shared_ptr<Composite> composite,
 
   // Start the rendering thread.
   m_displayThread = std::thread(&DisplayWindow::DisplayThread, this);
-
-  // Store our context.
-  m_impl->m_contexts.push_back(m_impl->m_window.context);
 }
 
 DisplayWindow::~DisplayWindow()
@@ -160,8 +185,10 @@ void DisplayWindow::SetViewportSizeAndFOVs(ViewRenderInfo& viewInfo)
   if (m_impl == nullptr) {
     return;
   }
-  viewInfo.width = m_impl->m_window.windowWidth;
-  viewInfo.height = m_impl->m_window.windowHeight;
+  int width, height;
+  glfwGetWindowSize(m_impl->m_window , &width, &height);
+  viewInfo.width = width;
+  viewInfo.height = height;
   viewInfo.leftHalfFOV = -m_impl->m_horizontalFOVDegrees / 2.0f;
   viewInfo.rightHalfFOV = m_impl->m_horizontalFOVDegrees / 2.0f;
 
@@ -176,46 +203,27 @@ void DisplayWindow::SetViewportSizeAndFOVs(ViewRenderInfo& viewInfo)
   viewInfo.topHalfFOV = halfAngle;
 }
 
-bool DisplayWindow::MakeContextCurrent(unsigned contextID)
+bool DisplayWindow::MakeContextCurrent()
 {
   if (m_impl == nullptr) {
     return false;
   }
 
-  // Make the specified context current
-  if (contextID >= m_impl->m_contexts.size()) {
-    return false;
-  }
-  ksGpuContext_SetCurrent(&m_impl->m_contexts[contextID]);
+  glfwMakeContextCurrent(m_impl->m_window);
 
   return true;
-}
-
-unsigned DisplayWindow::ConstructSharedContext()
-{
-  if (m_impl == nullptr) {
-    return 0;
-  }
-  
-  ksGpuContext sharedContext{};
-  if (!ksGpuContext_CreateShared(&sharedContext, &m_impl->m_contexts[0], 0)) {
-    return 0;
-  }
-  m_impl->m_contexts.push_back(sharedContext);
-
-  return m_impl->m_contexts.size() - 1;
 }
 
 void DisplayWindow::DisplayThread()
 {
   // Make the window's context current
-  MakeContextCurrent(0);
+  MakeContextCurrent();
 
   // Loop until the display is done.
   bool windowClosed = false;
   while (!m_done) {
     // Quit when our window closes.
-    if (KS_GPU_WINDOW_EVENT_EXIT != ksGpuWindow_ProcessEvents(&m_impl->m_window)) {
+    if (glfwWindowShouldClose(m_impl->m_window)) {
       m_status = "Done";
       windowClosed = true;
       break;
@@ -231,9 +239,12 @@ void DisplayWindow::DisplayThread()
     m_composite->Render(asdp::Time(), m_impl->m_views);
 
     // Swap front and back buffers
-    ksGpuWindow_SwapBuffers(&m_impl->m_window);
+    glfwSwapBuffers(m_impl->m_window);
+
+    // Poll for and process events
+    glfwPollEvents();
   }
 
   // Close the window if needed
-  if (!windowClosed) { ksGpuWindow_Destroy(&m_impl->m_window); }
+  if (!windowClosed) { glfwDestroyWindow(m_impl->m_window); }
 }

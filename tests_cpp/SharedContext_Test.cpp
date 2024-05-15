@@ -9,9 +9,10 @@
 #include <memory>
 #include <thread>
 #include <atomic>
+#include <GL/glew.h>
+#include <GLFW/glfw3.h>
 #include <Composite.h>
 #include <ASDP_Core_API.h>
-#include <gfxwrapper_opengl.h>
 
 /// @brief Make an image whose brightness varies from the top of the image to the bottom.
 /// @details The image will be a gradient from the minimum value at the bottom to the
@@ -89,36 +90,39 @@ int main()
   int width = 1280;
   int height = 1024;
 
+  // Initialize the library
+  if (!glfwInit()) {
+    std::cerr << "Failed to initialize GLFW\n";
+    return -1;
+  }
+
   // Create a windowed mode window and its OpenGL context
-  ksDriverInstance driverInstance{};
-  ksGpuQueueInfo queueInfo{};
-  ksGpuSurfaceColorFormat colorFormat{ KS_GPU_SURFACE_COLOR_FORMAT_B8G8R8A8 };
-  ksGpuSurfaceDepthFormat depthFormat{ KS_GPU_SURFACE_DEPTH_FORMAT_D24 };
-  ksGpuSampleCount sampleCount{ KS_GPU_SAMPLE_COUNT_1 };
-  ksGpuWindow m_window{};
-  if (!ksGpuWindow_Create(&m_window, &driverInstance, &queueInfo, 0, colorFormat, depthFormat,
-      sampleCount, windowSize, windowSize, false)) {
-    std::cerr << "Failed to open window\n";
-    return 1;
+  GLFWwindow* window = glfwCreateWindow(windowSize, windowSize, "SharedContext_Test", NULL, NULL);
+  if (!window) {
+    std::cerr << "Failed to create main window\n";
+    glfwTerminate();
+    return -1;
   }
 
   // Make the window's context current
-  ksGpuContext_SetCurrent(&m_window.context);
+  glfwMakeContextCurrent(window);
 
   // Create a new shared context that we'll use to generate a texture into that
-  // we'll use in the main context.
-  ksGpuContext sharedContext;
-  if (!ksGpuContext_CreateShared(&sharedContext, &m_window.context, 0)) {
-    std::cerr << "Failed to create shared context\n";
-    return 2;
+  // we'll use in the main context.  This will use a hidden window.
+  glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
+  GLFWwindow* window2 = glfwCreateWindow(windowSize, windowSize, "Hidden", NULL, window);
+  if (!window2) {
+    std::cerr << "Failed to create hidden window\n";
+    glfwTerminate();
+    return -1;
   }
 
   // Create a new thread that switches to the new context and generates a texture
   // in that context.
   std::atomic<GLuint> texture{0};
   std::atomic_bool done{false};
-  std::thread t([&sharedContext, width, height, &texture, &done]() {
-    ksGpuContext_SetCurrent(&sharedContext);
+  std::thread t([&window2, width, height, &texture, &done]() {
+    glfwMakeContextCurrent(window2);
     texture = MakeTexture(width, height, 0, 65535);
     glFinish();
     done = true;
@@ -135,7 +139,17 @@ int main()
   }
 
   // Make the window's context current
-  ksGpuContext_SetCurrent(&m_window.context);
+  glfwMakeContextCurrent(window);
+
+  // Initialize GLEW in our context. It is okay to initialize it more than once.
+  glewExperimental = true;
+  if (glewInit() != GLEW_OK) {
+    std::cerr << "Composite::Composite(): Failed to initialize GLEW" << std::endl;
+    return 4;
+  }
+  // Clear any GL error that Glew caused.  Apparently on Non-Windows
+  // platforms, this can cause a spurious error 1280.
+  glGetError();
 
   // Generate and bind the vertex array
   GLuint vao;
@@ -189,7 +203,7 @@ int main()
   std::cout << "You should see a gradient red texture from the top of the image to the bottom." << std::endl;
   std::cout << "" << std::endl;
   std::cout << "Close the window to exit." << std::endl;
-  while (KS_GPU_WINDOW_EVENT_EXIT != ksGpuWindow_ProcessEvents(&m_window)) {
+  while (!glfwWindowShouldClose(window)) {
 
     // Draw a single rectangle that fills the window with the texture.
     glViewport(0, 0, windowSize, windowSize);
@@ -205,9 +219,13 @@ int main()
     glBindTexture(GL_TEXTURE_2D, 0);
 
     // Swap front and back buffers
-    ksGpuWindow_SwapBuffers(&m_window);
+    glfwSwapBuffers(window);
+
+    // Poll for and process events
+    glfwPollEvents();
   }
 
-  // Done
+  // Clean up resources and exit
+  glfwTerminate();
   return 0;
 }

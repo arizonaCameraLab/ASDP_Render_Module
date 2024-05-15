@@ -9,7 +9,7 @@
 #include <memory>
 #include <Composite.h>
 #include <ASDP_Core_API.h>
-#include <gfxwrapper_opengl.h>
+#include <GLFW/glfw3.h>
 
 /// @brief Make an image whose brightness varies from the top of the image to the bottom.
 /// @details The image will be a gradient from the minimum value at the bottom to the
@@ -71,23 +71,22 @@ int main()
   std::vector<asdp::render::ViewRenderInfo> views;
   views.push_back(viewRenderInfo);
 
+  // Initialize the library
+  if (!glfwInit()) {
+    std::cerr << "Failed to initialize GLFW\n";
+    return -1;
+  }
+
   // Create a windowed mode window and its OpenGL context
-  WINDOW_TITLE = "CompositeCameras_Test";
-  APPLICATION_NAME = "CompositeCameras_Test";
-  ksDriverInstance driverInstance{};
-  ksGpuQueueInfo queueInfo{};
-  ksGpuSurfaceColorFormat colorFormat{ KS_GPU_SURFACE_COLOR_FORMAT_B8G8R8A8 };
-  ksGpuSurfaceDepthFormat depthFormat{ KS_GPU_SURFACE_DEPTH_FORMAT_D24 };
-  ksGpuSampleCount sampleCount{ KS_GPU_SAMPLE_COUNT_1 };
-  ksGpuWindow m_window{};
-  if (!ksGpuWindow_Create(&m_window, &driverInstance, &queueInfo, 0, colorFormat, depthFormat,
-    sampleCount, windowSize, windowSize, false)) {
-    std::cerr << "Failed to open window\n";
+  GLFWwindow* window = glfwCreateWindow(windowSize, windowSize, "Composite_Test", NULL, NULL);
+  if (!window) {
+    std::cerr << "Failed to create GLFW window\n";
+    glfwTerminate();
     return -1;
   }
 
   // Make the window's context current
-  ksGpuContext_SetCurrent(&m_window.context);
+  glfwMakeContextCurrent(window);
 
   // Construct the cameras to render.
   // Construct the image queues to render, one per camera.
@@ -140,15 +139,19 @@ int main()
   std::cout << "" << std::endl;
   std::cout << "Close the window to exit." << std::endl;
   auto start = std::chrono::steady_clock::now();
-  while (KS_GPU_WINDOW_EVENT_EXIT != ksGpuWindow_ProcessEvents(&m_window)) {
+  while (!glfwWindowShouldClose(window)) {
 
     // Render here
     composite.Render(asdp::Time(), views);
 
     // Swap front and back buffers
-    ksGpuWindow_SwapBuffers(&m_window);
+    glfwSwapBuffers(window);
+
+    // Poll for and process events
+    glfwPollEvents();
   }
 
   // Clean up resources and exit
+  glfwTerminate();
   return 0;
 }

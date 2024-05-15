@@ -44,16 +44,8 @@ namespace asdp {
       virtual ~Display();
 
       /// @brief Make the OpenGL context used by the Display current on this thread.
-      /// @param contextID The ID of the context to make current on this thread.  Use 0 for
-      /// the original context created by the Display and the index returned by ConstructSharedContext()
-      /// for others.
       /// @return True on success, false on failure.
-      virtual bool MakeContextCurrent(unsigned contextID = 0) = 0;
-
-      /// @brief Construct an OpenGL context that shares with the Display.
-      /// @details This must be called from a thread that has the original OpenGL context current.
-      /// @return The ID of the shared context, 0 on failure.
-      virtual unsigned ConstructSharedContext() = 0;
+      virtual bool MakeContextCurrent() = 0;
 
       /// @brief Cause the object to shut down any threads and release any resources.
       /// @details The base-class function will set m_done and join the display thread and then
@@ -109,20 +101,22 @@ namespace asdp {
       /// This is to ensure that the frames make it all the way through the Composite object before being needed.
       /// It is expected to be read from a configuration file and tuned for the specific hardware and software.
       /// @param horizontalFOVDegrees The horizontal field of view of the display in degrees.
-      /// @param joystick The name of the joystick to use for input, if any.
       /// @param desiredWidth The width of the display in pixels.
       /// @param desiredHeight The height of the display in pixels.
+      /// @param joystick The name of the joystick to use for input, if any.
+      /// @param sharedWindow A pointer to a DisplayWindow to share the OpenGL objects with, or nullptr if none.
       /// @param fullScreen True if the display should be full-screen.
       /// @param desiredDisplay The index of the desired display to use if full-screen.
+      /// @param hidden True if the window should be hidden.
       DisplayWindow(std::shared_ptr<Composite> composite,
         std::shared_ptr<CoreClient> client, uint8_t triggerID, uint32_t triggerAheadMicroseconds,
-        float horizontalFOVDegrees = 40.0, std::string joystick = "",
-        int desiredWidth = 1280, int desiredHeight = 1024, bool fullScreen = false, int desiredDisplay = 0);
+        int desiredWidth = 1280, int desiredHeight = 1024, float horizontalFOVDegrees = 40.0,
+        std::string joystick = "", DisplayWindow *sharedWindow = nullptr,
+        bool fullScreen = false, int desiredDisplay = 0, bool hidden = false);
 
       ~DisplayWindow();
 
-      bool MakeContextCurrent(unsigned contextID) override;
-      unsigned ConstructSharedContext() override;
+      bool MakeContextCurrent() override;
 
     private:
       /// @brief Method to implement the display thread.
