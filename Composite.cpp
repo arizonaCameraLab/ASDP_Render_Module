@@ -71,26 +71,26 @@ void Composite::Render(asdp::Time scanOutTime, std::vector<ViewRenderInfo> views
     // Set up the viewport for this view.
     glViewport(view.x, view.y, view.width, view.height);
 
+    // Rotate the view to match the helicopter's orientation, looking down the +Y axis with
+    // the up vector being Z.  This rotates the camera by 90 degrees around the X axis.  Because
+    // we're rotating the world rather than the camera, we rotate in the opposite direction.
+    glm::mat4 HelicopterRotateX = glm::rotate(glm::mat4(1.0f),
+      glm::radians(-90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
+
     // Compute the view-projection matrix (no model described here) from the ViewRenderInfo.
     // NOTE: We translate and rotate in the opposite direction because we're moving the world rather
     // than the camera but the offset and orientation are specified for camera movement.
     // NOTE: We also do the order of operations in reverse because we're moving the world rather
     // than the camera.
-    glm::mat4 ViewRotateZ = glm::rotate(glm::mat4(1.0f),
+    glm::mat4 ViewRotateZ = glm::rotate(HelicopterRotateX,
       glm::radians(-view.orientation[2]), glm::vec3(0.0f, 0.0f, 1.0f));
     glm::mat4 ViewRotateY = glm::rotate(ViewRotateZ,
       glm::radians(-view.orientation[1]), glm::vec3(0.0f, 1.0f, 0.0f));
     glm::mat4 ViewRotateX = glm::rotate(ViewRotateY,
       glm::radians(-view.orientation[0]), glm::vec3(1.0f, 0.0f, 0.0f));
 
-    // Rotate the view to match the helicopter's orientation, looking down the +Y axis with
-    // the up vector being Z.  This rotates the camera by 90 degrees around the X axis.  Because
-    // we're rotating the world rather than the camera, we rotate in the opposite direction.
-    glm::mat4 HelicopterRotateX = glm::rotate(ViewRotateX,
-      glm::radians(-90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
-
     // Translate the view based on the specified viewpoint (negative due to world vs. camera).
-    glm::mat4 ViewTranslate = glm::translate(HelicopterRotateX,
+    glm::mat4 ViewTranslate = glm::translate(ViewRotateX,
       glm::vec3(-view.viewpoint[0], -view.viewpoint[1], -view.viewpoint[2]));
 
     // Compute the projection matrix from the ViewRenderInfo.
@@ -727,7 +727,6 @@ void CompositeCameras::AddBufferObjects(CameraRenderInfo const& cameraRenderInfo
       double xr = rotatedPoint[0];
       double yr = rotatedPoint[1];
       double zr = rotatedPoint[2];
-      /// @todo
 
       // Offset the points by the camera position in the helicopter view space.
       double x = xr + cameraRenderInfo.m_positionMeters[0];

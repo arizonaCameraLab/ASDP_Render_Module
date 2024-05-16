@@ -56,11 +56,11 @@ int main()
     auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - start).count();
     double angle = degreesPerSecond * (elapsed / 1000.0);
 
-    // Offset the viewpoint center and rotate around the Y axis so we can verify correct behavior.
+    // Offset the viewpoint center and rotate around the Z axis so we can verify correct behavior.
     // Also rotate slowly around the X axis.
     views[0].viewpoint[0] = -5;
     views[0].orientation[0] = angle/100;
-    views[0].orientation[1] = angle;
+    views[0].orientation[2] = angle;
 
     // Render here
     composite.Render(asdp::Time(), views);

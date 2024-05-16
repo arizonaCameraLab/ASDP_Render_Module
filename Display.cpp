@@ -313,11 +313,11 @@ void DisplayWindow::HandleKeyboard()
   }
   // Rotate to look right when the right key is pressed
   if (glfwGetKey(m_impl->m_window, GLFW_KEY_RIGHT) == GLFW_PRESS) {
-    m_impl->m_views[0].orientation[1] -= DegreesPerSecond * elapsed.count();
+    m_impl->m_views[0].orientation[2] -= DegreesPerSecond * elapsed.count();
   }
   // Rotate to look left when the left key is pressed
   if (glfwGetKey(m_impl->m_window, GLFW_KEY_LEFT) == GLFW_PRESS) {
-    m_impl->m_views[0].orientation[1] += DegreesPerSecond * elapsed.count();
+    m_impl->m_views[0].orientation[2] += DegreesPerSecond * elapsed.count();
   }
 }
 
