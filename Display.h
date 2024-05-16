@@ -135,6 +135,12 @@ namespace asdp {
       /// @param height The height of the window in pixels, 0 to use the current height.
       void SetViewportSizeAndFOVs(ViewRenderInfo &viewInfo, int width = 0, int height = 0);
 
+      /// @brief Helper function to handle keyboard input.
+      void HandleKeyboard();
+
+      /// @brief Helper function to clamp the viewing orientation to be within the expected visible range.
+      void ClampViewOrienation();
+
       /// Opaque class used to enable not requiring the application to #include all headers.
       class DisplayWindowImpl;
       /// Instance of the implementation class used to store data.  Filled in by the constructor.

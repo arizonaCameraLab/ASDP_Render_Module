@@ -117,6 +117,9 @@ public:
 
   /// Views to be rendered.
   std::vector<asdp::render::ViewRenderInfo> m_views;
+
+  /// Last time we checked the keyboard, used to control motion rate.
+  std::chrono::steady_clock::time_point m_lastKeyboardCheck;
 };
 
 DisplayWindow::DisplayWindow(std::string windowName, std::shared_ptr<Composite> composite,
@@ -235,10 +238,10 @@ void DisplayWindow::DisplayThread(std::string windowName,
   // platforms, this can cause a spurious error 1280.
   glGetError();
 
-  // Open the joystick if there is one.
+  // Open the joystick if there is one asked for and there is one present.
   /// @todo
 
-  // Add hooks for keyboard and mouse input.
+  // Add hooks for mouse input.
   /// @todo
 
   // Make the window's context current
@@ -265,7 +268,9 @@ void DisplayWindow::DisplayThread(std::string windowName,
     }
 
     // Process keyboard/mouse/joystick input events and update the viewpoint
+    HandleKeyboard();
     /// @todo
+    ClampViewOrienation();
 
     // Handle any window resizing
     SetViewportSizeAndFOVs(m_impl->m_views[0]);
@@ -282,4 +287,52 @@ void DisplayWindow::DisplayThread(std::string windowName,
 
   // Close the window if needed
   if (!windowClosed) { glfwDestroyWindow(m_impl->m_window); }
+}
+
+void DisplayWindow::HandleKeyboard()
+{
+  // See how long it has been since the last keyboard check.  If there has not been one,
+  // then set the last check time to now and return.
+  if (m_impl->m_lastKeyboardCheck == std::chrono::steady_clock::time_point()) {
+    m_impl->m_lastKeyboardCheck = std::chrono::steady_clock::now();
+    return;
+  }
+  auto now = std::chrono::steady_clock::now();
+  std::chrono::duration<double> elapsed = now - m_impl->m_lastKeyboardCheck;
+  m_impl->m_lastKeyboardCheck = now;
+
+  double DegreesPerSecond = 30.0;
+
+  // Rotate to look up when the up key is pressed
+  if (glfwGetKey(m_impl->m_window, GLFW_KEY_UP) == GLFW_PRESS) {
+    m_impl->m_views[0].orientation[0] += DegreesPerSecond * elapsed.count();
+  }
+  // Rotate to look down when the down key is pressed
+  if (glfwGetKey(m_impl->m_window, GLFW_KEY_DOWN) == GLFW_PRESS) {
+    m_impl->m_views[0].orientation[0] -= DegreesPerSecond * elapsed.count();
+  }
+  // Rotate to look right when the right key is pressed
+  if (glfwGetKey(m_impl->m_window, GLFW_KEY_RIGHT) == GLFW_PRESS) {
+    m_impl->m_views[0].orientation[1] -= DegreesPerSecond * elapsed.count();
+  }
+  // Rotate to look left when the left key is pressed
+  if (glfwGetKey(m_impl->m_window, GLFW_KEY_LEFT) == GLFW_PRESS) {
+    m_impl->m_views[0].orientation[1] += DegreesPerSecond * elapsed.count();
+  }
+}
+
+void DisplayWindow::ClampViewOrienation()
+{
+  if (m_impl->m_views[0].orientation[0] > 60.0) {
+    m_impl->m_views[0].orientation[0] = 60.0;
+  }
+  if (m_impl->m_views[0].orientation[0] < -60.0) {
+    m_impl->m_views[0].orientation[0] = -60.0;
+  }
+  if (m_impl->m_views[0].orientation[1] > 120.0) {
+    m_impl->m_views[0].orientation[1] = 120.0;
+  }
+  if (m_impl->m_views[0].orientation[1] < -120.0) {
+    m_impl->m_views[0].orientation[1] = -120.0;
+  }
 }
