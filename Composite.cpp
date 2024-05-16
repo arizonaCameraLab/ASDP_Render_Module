@@ -18,16 +18,8 @@ using namespace asdp::render;
 
 Composite::Composite(std::vector<CameraRenderInfo> const & cameraRenderInfo)
   : m_cameraRenderInfos(cameraRenderInfo)
+  , m_initialized(false)
 {
-  // Initialize GLEW in our context. It is okay to initialize it more than once.
-  glewExperimental = true;
-  if (glewInit() != GLEW_OK) {
-    std::cerr << "Composite::Composite(): Failed to initialize GLEW" << std::endl;
-    return;
-  }
-  // Clear any GL error that Glew caused.  Apparently on Non-Windows
-  // platforms, this can cause a spurious error 1280.
-  glGetError();
 }
 
 Composite::~Composite()
@@ -37,6 +29,14 @@ Composite::~Composite()
 
 void Composite::Render(asdp::Time scanOutTime, std::vector<ViewRenderInfo> views)
 {
+  // Initialize for rendering if it has not already been done.
+  if (!m_initialized) {
+    if (!SetupRendering()) {
+      return;
+    }
+    m_initialized = true;
+  }
+
   // Set up the geometry for multiple renders
   SetupRenderFrame(scanOutTime);
 
@@ -496,6 +496,22 @@ CompositeCube::CompositeCube(double radius)
   : Composite(std::vector<CameraRenderInfo>())
   , m_radius(radius)
 {
+}
+
+bool CompositeCube::SetupRendering()
+{
+  // Initialize GLEW in our context. It is okay to initialize it more than once.
+  glewExperimental = true;
+  if (glewInit() != GLEW_OK) {
+    std::cerr << "CompositeCube::CompositeCube(): Failed to initialize GLEW" << std::endl;
+    return false;
+  }
+
+  // Clear any GL error that Glew caused.  Apparently on Non-Windows
+  // platforms, this can cause a spurious error 1280.
+  glGetError();
+
+  // Construct the shader programs.
   GLuint vertexShaderId = glCreateShader(GL_VERTEX_SHADER);
   GLuint fragmentShaderId = glCreateShader(GL_FRAGMENT_SHADER);
 
@@ -528,6 +544,8 @@ CompositeCube::CompositeCube(double radius)
   // 6 faces
   size_t numTriangles = static_cast<size_t>(trianglesPerSide * 6);
   m_roomCube = std::shared_ptr<MeshCube>(new MeshCube(m_radius, numTriangles));
+
+  return true;
 }
 
 CompositeCube::~CompositeCube()
@@ -582,6 +600,21 @@ static const GLchar* camerasFragmentShader =
 CompositeCameras::CompositeCameras(std::vector<CameraRenderInfo>& cameraRenderInfo)
   : Composite(cameraRenderInfo)
 {
+}
+
+bool CompositeCameras::SetupRendering()
+{
+  // Initialize GLEW in our context. It is okay to initialize it more than once.
+  glewExperimental = true;
+  if (glewInit() != GLEW_OK) {
+    std::cerr << "CompositeCameras::CompositeCameras(): Failed to initialize GLEW" << std::endl;
+    return false;
+  }
+
+  // Clear any GL error that Glew caused.  Apparently on Non-Windows
+  // platforms, this can cause a spurious error 1280.
+  glGetError();
+
   GLuint vertexShaderId = glCreateShader(GL_VERTEX_SHADER);
   GLuint fragmentShaderId = glCreateShader(GL_FRAGMENT_SHADER);
 
@@ -615,6 +648,7 @@ CompositeCameras::CompositeCameras(std::vector<CameraRenderInfo>& cameraRenderIn
   for (auto const& cameraRenderInfo : m_cameraRenderInfos) {
     AddBufferObjects(cameraRenderInfo);
   }
+  return true;
 }
 
 CompositeCameras::~CompositeCameras()

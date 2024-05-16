@@ -93,8 +93,12 @@ namespace asdp {
 
     /// @brief Display class that displays to a window, perhaps full-screen.
     class DisplayWindow : public Display {
+    public:
       /// @brief Constructor
-      /// @param composite The Composite used to generate textured geometry.
+      /// @param windowName The name of the window to create.
+      /// @param composite The Composite used to generate textured geometry.  The DisplayWindow object will
+      /// reset this pointer just before closing the window, and the caller should reset the pointer passed
+      /// in here so that it will be destroyed before the window closes.
       /// @param client The CoreClient used to communicate with the Core to cause software triggers.
       /// @param triggerID The ID of the trigger to use to trigger the cameras.
       /// @param triggerAheadMicroseconds The offset in microseconds to subtract from the time of frame swapping.
@@ -108,9 +112,9 @@ namespace asdp {
       /// @param fullScreen True if the display should be full-screen.
       /// @param desiredDisplay The index of the desired display to use if full-screen.
       /// @param hidden True if the window should be hidden.
-      DisplayWindow(std::shared_ptr<Composite> composite,
+      DisplayWindow(std::string windowName, std::shared_ptr<Composite> composite,
         std::shared_ptr<CoreClient> client, uint8_t triggerID, uint32_t triggerAheadMicroseconds,
-        int desiredWidth = 1280, int desiredHeight = 1024, float horizontalFOVDegrees = 40.0,
+        int desiredWidth = 1280, int desiredHeight = 1024, float horizontalFOVDegrees = 90.0,
         std::string joystick = "", DisplayWindow *sharedWindow = nullptr,
         bool fullScreen = false, int desiredDisplay = 0, bool hidden = false);
 
@@ -120,11 +124,16 @@ namespace asdp {
 
     private:
       /// @brief Method to implement the display thread.
-      void DisplayThread();
+      void DisplayThread(std::string windowName,
+        int desiredWidth, int desiredHeight, float horizontalFOVDegrees,
+        std::string joystick, DisplayWindow* sharedWindow,
+        bool fullScreen, int desiredDisplay, bool hidden);
 
       /// @brief Helper function to set the viewport dimensions based on the window size.
       /// @param viewInfo The ViewRenderInfo object to set the viewport size and field of view in.
-      void SetViewportSizeAndFOVs(ViewRenderInfo &viewInfo);
+      /// @param width The width of the window in pixels, 0 to use the current width.
+      /// @param height The height of the window in pixels, 0 to use the current height.
+      void SetViewportSizeAndFOVs(ViewRenderInfo &viewInfo, int width = 0, int height = 0);
 
       /// Opaque class used to enable not requiring the application to #include all headers.
       class DisplayWindowImpl;

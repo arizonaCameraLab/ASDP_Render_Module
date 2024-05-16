@@ -100,8 +100,10 @@ namespace asdp {
       virtual ~Composite();
 
       /// @brief Render the composite image from one or more viewpoints.
-      /// @details This is a pure virtual function that must be implemented by derived classes.  It does not return
-      /// until the rendering is complete and written to the buffers.  It calls SetupFrenderFrame() once per frame.
+      /// @details This function does not return until the rendering is complete and written to the buffers.
+      /// If initialization has not been done, it calls SetupRendering() to set up the rendering state.
+      /// An OpenGL context must be active when this function is called.
+      /// It calls SetupFrenderFrame() once per frame.
       /// It calls the RenderView() method to render each viewpoint after it has set up the frame buffer
       /// and cleared the color and depth textures.  It calls TearDownRenderFrame() after all views.
       /// @param scanOutTime The time that the scan out is occurring, in ASDP Core time.  This is the time of the middle of the frame.
@@ -115,6 +117,9 @@ namespace asdp {
       /// Information about the cameras, filled in by the constructor.
       std::vector<CameraRenderInfo> m_cameraRenderInfos;
 
+      /// Records whether we've initialized our geometry.
+      bool m_initialized;
+
       /// @brief Render the geometry for a particular view, assuming all parameters set up.
       /// @details This is a pure virtual function that must be implemented by derived classes.
       /// The Render() method calls it after setting up and clearing the frame buffer color and
@@ -122,6 +127,11 @@ namespace asdp {
       /// the program and the matrix parameter for it.
       /// @param modelViewProjection The matrix specifying the entire viewing transformation to use.
       virtual void RenderView(const float* modelViewProjection) = 0;
+
+      /// @brief Set up state needed for rendering, perhaps including the shader program and geometry/textures.
+      /// @details This function is called during the first call to Render().  If it fails, rendering is not
+      /// done that frame and it tries again the next.
+      virtual bool SetupRendering() = 0;
 
       /// @brief Set up state needed for rendering, perhaps including the shader program and geometry/textures.
       virtual void SetupRenderFrame(asdp::Time scanOutTime) = 0;
@@ -157,6 +167,7 @@ namespace asdp {
       class MeshCube;
       std::shared_ptr<MeshCube> m_roomCube;
 
+      bool SetupRendering() override;
       void RenderView(const float* modelViewProjection) override;
       void SetupRenderFrame(asdp::Time scanOutTime) override;
       void TearDownRenderFrame() override;
@@ -210,6 +221,7 @@ namespace asdp {
       asdp::Time m_scanOutTime; ///< The time of the scan out stored for use by RenderView.
 
       // Overridden methods
+      bool SetupRendering() override;
       void RenderView(const float* modelViewProjection) override;
       void SetupRenderFrame(asdp::Time scanOutTime) override;
       void TearDownRenderFrame() override;

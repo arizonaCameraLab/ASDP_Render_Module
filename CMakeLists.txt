@@ -158,9 +158,10 @@ if(BUILD_TESTS)
 
   set (CPP_TESTS
     ImageQueue_Test
-    SharedContext_Test
     Composite_Test
     CompositeCameras_Test
+    SharedContext_Test
+    Display_Test
   )
   foreach (BASE ${CPP_TESTS})
     set (APP ${BASE})

@@ -78,7 +78,7 @@ int main()
   }
 
   // Create a windowed mode window and its OpenGL context
-  GLFWwindow* window = glfwCreateWindow(windowSize, windowSize, "Composite_Test", NULL, NULL);
+  GLFWwindow* window = glfwCreateWindow(windowSize, windowSize, "CompositeCameras_Test", NULL, NULL);
   if (!window) {
     std::cerr << "Failed to create GLFW window\n";
     glfwTerminate();
