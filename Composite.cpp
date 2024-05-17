@@ -366,12 +366,14 @@ public:
     if (initialized) {
       glDeleteBuffers(1, &vertexBuffer);
       glDeleteBuffers(1, &colorBuffer);
-      glDeleteVertexArrays(1, &vertexArrayId);
     }
   }
 
   void init() {
     if (!initialized) {
+      // Unbind any vertex array object.
+      glBindVertexArray(0);
+
       // Vertex buffer
       glGenBuffers(1, &vertexBuffer);
       glBindBuffer(GL_ARRAY_BUFFER, vertexBuffer);
@@ -388,22 +390,6 @@ public:
         colorBufferData.data(), GL_STATIC_DRAW);
       glBindBuffer(GL_ARRAY_BUFFER, 0);
 
-      // Vertex array object
-      glGenVertexArrays(1, &vertexArrayId);
-      glBindVertexArray(vertexArrayId);
-      {
-        // VBO
-        glBindBuffer(GL_ARRAY_BUFFER, vertexBuffer);
-        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, (GLvoid*)0);
-
-        // color
-        glBindBuffer(GL_ARRAY_BUFFER, colorBuffer);
-        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 0, (GLvoid*)0);
-
-        glEnableVertexAttribArray(0);
-        glEnableVertexAttribArray(1);
-      }
-      glBindVertexArray(0);
       initialized = true;
     }
   }
@@ -411,12 +397,26 @@ public:
   void draw() {
     init();
 
-    glBindVertexArray(vertexArrayId);
-    {
-      glDrawArrays(GL_TRIANGLES, 0,
-        static_cast<GLsizei>(vertexBufferData.size()));
-    }
+    // Unbind any currently bound vertex array object.
+    // We cannot use vertex array objects because we're potentially going to be called
+    // from multiple OpenGL contexts in different threads and VAOs are not shared between
+    // contexts.
     glBindVertexArray(0);
+
+    // Enable the vertex attribute arrays we are going to use
+    glEnableVertexAttribArray(0);
+    glEnableVertexAttribArray(1);
+
+    // Bind the vertex buffer object
+    glBindBuffer(GL_ARRAY_BUFFER, vertexBuffer);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, (GLvoid*)0);
+
+    // Bind the color buffer object
+    glBindBuffer(GL_ARRAY_BUFFER, colorBuffer);
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 0, (GLvoid*)0);
+
+    // Draw our geometry
+    glDrawArrays(GL_TRIANGLES, 0, static_cast<GLsizei>(vertexBufferData.size()));
   }
 
 private:
@@ -425,7 +425,6 @@ private:
   bool initialized = false;
   GLuint colorBuffer = 0;
   GLuint vertexBuffer = 0;
-  GLuint vertexArrayId = 0;
   std::vector<GLfloat> colorBufferData;
   std::vector<GLfloat> vertexBufferData;
 
@@ -654,7 +653,6 @@ bool CompositeCameras::SetupRendering()
 CompositeCameras::~CompositeCameras()
 {
   for (size_t i = 0; i < m_cameraRenderInfos.size(); i++) {
-    glDeleteVertexArrays(1, &m_vertexArrayObjects[i]);
     glDeleteBuffers(1, &m_vertexBufferObjects[i]);
     glDeleteBuffers(1, &m_indexBufferObjects[i]);
   }
@@ -758,10 +756,8 @@ void CompositeCameras::AddBufferObjects(CameraRenderInfo const& cameraRenderInfo
     }
   }
 
-  // Create a vertex array object for this camera.
-  GLuint vertexArrayObject;
-  glGenVertexArrays(1, &vertexArrayObject);
-  glBindVertexArray(vertexArrayObject);
+  // Unbind any vertex array object.
+  glBindVertexArray(0);
 
   // Create a vertex buffer object for the vertices.
   GLuint vertexBufferObject;
@@ -781,11 +777,7 @@ void CompositeCameras::AddBufferObjects(CameraRenderInfo const& cameraRenderInfo
   glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(GLfloat), (GLvoid*)(3 * sizeof(GLfloat)));
   glEnableVertexAttribArray(1);
 
-  // Unbind the vertex array object.
-  glBindVertexArray(0);
-
   // Save the vertex array object and the number of elements in the index buffer.
-  m_vertexArrayObjects.push_back(vertexArrayObject);
   m_vertexBufferObjects.push_back(vertexBufferObject);
   m_indexBufferObjects.push_back(indexBufferObject);
   m_numIndices.push_back(indices.size());
@@ -822,8 +814,21 @@ void CompositeCameras::RenderView(const float* modelViewProjection)
     }
     glBindTexture(GL_TEXTURE_2D, m_images[i]->texture);
 
-    // Draw the camera view using its vertex array object.
-    glBindVertexArray(m_vertexArrayObjects[i]);
+    // Unbind any vertex array object.
+    // We cannot use vertex array objects because we're potentially going to be called
+    // from multiple OpenGL contexts in different threads and VAOs are not shared between
+    // contexts.
+    glBindVertexArray(0);
+
+    // Enable the vertex attribute arrays we are going to use
+    glEnableVertexAttribArray(0);
+    glEnableVertexAttribArray(1);
+
+    // Draw the camera view using its vertex buffer objects.
+    glBindBuffer(GL_ARRAY_BUFFER, m_vertexBufferObjects[i]);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(GLfloat), (GLvoid*)0);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_indexBufferObjects[i]);
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(GLfloat), (GLvoid*)(3 * sizeof(GLfloat)));
     glDrawElements(GL_TRIANGLES, m_numIndices[i], GL_UNSIGNED_INT, 0);
   }
 }

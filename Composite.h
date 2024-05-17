@@ -110,8 +110,6 @@ namespace asdp {
       /// @param views A vector of RenderInfo structures that contain the information about the views to render.
       virtual void Render(asdp::Time scanOutTime, std::vector<ViewRenderInfo> views);
 
-      /// @todo
-
     protected:
 
       /// Information about the cameras, filled in by the constructor.
