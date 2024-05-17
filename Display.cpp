@@ -159,6 +159,12 @@ DisplayWindow::DisplayWindow(std::string windowName, std::shared_ptr<Composite> 
   m_displayThread = std::thread(&DisplayWindow::DisplayThread, this, windowName,
     desiredWidth, desiredHeight, horizontalFOVDegrees,
     joystick, sharedWindow, fullScreen, desiredDisplay, hidden);
+
+  // Wait until either the context is ready or there has been a failure so that the
+  // constructor does not return before the rendering thread is ready.
+  while (!m_impl->m_contextAvailable && (m_status == "")) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
 }
 
 DisplayWindow::~DisplayWindow()
@@ -326,12 +332,6 @@ void DisplayWindow::DisplayThread(std::string windowName,
       m_composite.reset();
       m_status = "Done";
       break;
-    }
-
-    const char* description;
-    int code = glfwGetError(&description);
-    if (code != GLFW_NO_ERROR) {
-      std::cerr << "GLFW error: " << code << ": " << description << std::endl;
     }
 
     // Process keyboard/mouse/joystick input events and update the viewpoint
