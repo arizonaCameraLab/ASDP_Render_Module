@@ -17,6 +17,7 @@
 #include <cstdint>
 #include <chrono>
 #include <string>
+#include <mutex>
 #include <ASDP_Core_API.h>
 #include <Composite.h>
 
@@ -42,10 +43,6 @@ namespace asdp {
 
       /// @brief Destructor, virtual so that derived classes can have their destructors called from pointers.
       virtual ~Display();
-
-      /// @brief Make the OpenGL context used by the Display current on this thread.
-      /// @return True on success, false on failure.
-      virtual bool MakeContextCurrent() = 0;
 
       /// @brief Cause the object to shut down any threads and release any resources.
       /// @details The base-class function will set m_done and join the display thread and then
@@ -79,6 +76,10 @@ namespace asdp {
 
       std::string m_status = ""; ///< Status of the Display.  Should be set by derived classes.
 
+      /// Mutex to ensure that only one entity is trying to create a window/context at a time
+      /// This avoids race conditions due to global state in the window-management library.
+      static std::mutex m_windowMutex;
+
       /// @brief Trigger the cameras to take a picture at the given time.
       /// @details This function is called by the derived class to trigger the cameras to take a picture.
       /// It handles conversion from the time_point to the time format expected by the Core.
@@ -89,6 +90,19 @@ namespace asdp {
       /// @param when The time at which to take the picture.
       /// @return True on success, false on failure.
       virtual bool TriggerCameras(std::chrono::steady_clock::time_point when);
+
+      /// @brief Make the OpenGL context used by this Display current on the calling thread.
+      /// @details This will stop rendering from happening on the Display object until the context
+      /// is returned by calling ReturnContext().  It is expected to be called by a thread that wants
+      /// to create a context that shares objects with this Display object.
+      /// @return True on success, false on failure.
+      virtual bool BorrowContext() = 0;
+
+      /// @brief Return the OpenGL context used by this Display to its display thread.
+      /// @details This will allow rendering to happen on the Display object again.  It detaches the
+      /// context from the calling thread and re-attaches it to the display thread.
+      /// @return True on success, false on failure.
+      virtual bool ReturnContext() = 0;
     };
 
     /// @brief Display class that displays to a window, perhaps full-screen.
@@ -120,8 +134,6 @@ namespace asdp {
 
       ~DisplayWindow();
 
-      bool MakeContextCurrent() override;
-
     private:
       /// @brief Method to implement the display thread.
       void DisplayThread(std::string windowName,
@@ -145,6 +157,9 @@ namespace asdp {
       class DisplayWindowImpl;
       /// Instance of the implementation class used to store data.  Filled in by the constructor.
       std::unique_ptr<DisplayWindowImpl> m_impl;
+
+      bool BorrowContext() override;
+      bool ReturnContext() override;
     };
 
   } // namespace render

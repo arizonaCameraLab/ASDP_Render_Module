@@ -17,6 +17,8 @@
 #include <vector>
 #include <cstdint>
 #include <memory>
+#include <mutex>
+#include <atomic>
 #ifdef WIN32
 #include <windows.h>
 #endif
@@ -116,7 +118,10 @@ namespace asdp {
       std::vector<CameraRenderInfo> m_cameraRenderInfos;
 
       /// Records whether we've initialized our geometry.
-      bool m_initialized;
+      std::atomic_bool m_initialized {false};
+
+      /// Mutex to control access to initialization.
+      std::mutex m_initMutex;
 
       /// @brief Render the geometry for a particular view, assuming all parameters set up.
       /// @details This is a pure virtual function that must be implemented by derived classes.
@@ -137,7 +142,9 @@ namespace asdp {
       /// @brief Tear down state needed for rendering.
       virtual void TearDownRenderFrame() = 0;
 
+      /// @brief Helper function to check for errors.
       static void checkShaderError(GLuint shaderId, const std::string& exceptionMsg);
+      /// @brief Helper function to check for errors.
       static void checkProgramError(GLuint programId, const std::string& exceptionMsg);
     };
 
@@ -162,7 +169,9 @@ namespace asdp {
       /// @brief The Uniform ID of the modelview-projection matrix.
       GLuint m_modelViewProjectionUniformId = 0;
 
+      /// @briegf Forward declaration of a class defined in the source code.
       class MeshCube;
+      /// @brief Pointer to the mesh to use to draw the room.
       std::shared_ptr<MeshCube> m_roomCube;
 
       bool SetupRendering() override;
@@ -212,7 +221,7 @@ namespace asdp {
       /// @param cameraRenderInfo The camera to add the buffer objects for.
       /// @param nx The number of vertices in the X direction.
       /// @param ny The number of vertices in the Y direction.
-      /// @param z The distance from the camera to the quadrilateral displaying the image.
+      /// @param depth The distance from the camera to the quadrilateral displaying the image.
       void AddBufferObjects(const CameraRenderInfo& cameraRenderInfo, size_t nx = 10, size_t ny = 10,
         GLfloat depth = 10);
 

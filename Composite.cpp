@@ -29,12 +29,17 @@ Composite::~Composite()
 
 void Composite::Render(asdp::Time scanOutTime, std::vector<ViewRenderInfo> views)
 {
-  // Initialize for rendering if it has not already been done.
-  if (!m_initialized) {
-    if (!SetupRendering()) {
-      return;
+  // Initialize for rendering if it has not already been done.  Do this while holding
+  // a mutex lock so we don't have it happen in two threads as a race.
+  {
+    std::lock_guard<std::mutex> lock(m_initMutex);
+    if (!m_initialized) {
+      if (!SetupRendering()) {
+        std::cerr << "Composite::Render(): Could not set up rendering" << std::endl;
+        return;
+      }
+      m_initialized = true;
     }
-    m_initialized = true;
   }
 
   // Set up the geometry for multiple renders

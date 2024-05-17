@@ -8,6 +8,8 @@
 #include <cmath>
 #include <iostream>
 #include <thread>
+#include <atomic>
+#include <mutex>
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
 #include "Display.h"
@@ -28,6 +30,8 @@ class GLFWInitializer {
   }
 };
 static GLFWInitializer initGLFW;
+
+std::mutex Display::m_windowMutex;
 
 Display::Display(std::shared_ptr<Composite> composite,
   std::shared_ptr<CoreClient> client, uint8_t triggerID, uint32_t triggerAheadMicroseconds)
@@ -110,7 +114,7 @@ bool Display::TriggerCameras(std::chrono::steady_clock::time_point when)
 class asdp::render::DisplayWindow::DisplayWindowImpl {
 public:
   /// Horizontal field of view in degrees.
-  float m_horizontalFOVDegrees{ 90.0f };
+  float m_horizontalFOVDegrees {90.0f};
 
   /// Window that will be used to display the view.
   GLFWwindow *m_window = nullptr;
@@ -120,6 +124,17 @@ public:
 
   /// Last time we checked the keyboard, used to control motion rate.
   std::chrono::steady_clock::time_point m_lastKeyboardCheck;
+
+  //===========================
+  // Machinery required for borrowing and returning the context from DisplayThread.
+  // We need to be sure that the context is available before borrowing it, so we have
+  // and atomic to track that.  We need to ensure that we don't try to use the context
+  // while it is being borrowed, so we have a mutex to protect that.
+  // Some operating systems (Windows, for example), require the OpenGL context to be
+  // shared to be active on the thread that is creating the new window.
+
+  std::atomic_bool m_contextAvailable {false};
+  std::mutex m_contextMutex;
 };
 
 DisplayWindow::DisplayWindow(std::string windowName, std::shared_ptr<Composite> composite,
@@ -139,9 +154,6 @@ DisplayWindow::DisplayWindow(std::string windowName, std::shared_ptr<Composite> 
   ViewRenderInfo view;
   SetViewportSizeAndFOVs(view, desiredWidth, desiredHeight);
   m_impl->m_views.push_back(view);
-
-  // Detach our context so that it can be attached in the rendering thread.
-  glfwMakeContextCurrent(nullptr);
 
   // Start the rendering thread.
   m_displayThread = std::thread(&DisplayWindow::DisplayThread, this, windowName,
@@ -180,13 +192,37 @@ void DisplayWindow::SetViewportSizeAndFOVs(ViewRenderInfo& viewInfo, int width, 
   viewInfo.topHalfFOV = halfAngle;
 }
 
-bool DisplayWindow::MakeContextCurrent()
+bool DisplayWindow::BorrowContext()
 {
   if (m_impl == nullptr) {
     return false;
   }
 
+  // Wait until the context is available.
+  while (!m_impl->m_contextAvailable) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+
+  // Grab the context mutex.
+  m_impl->m_contextMutex.lock();
+
+  // Make the context current on the calling thread.
   glfwMakeContextCurrent(m_impl->m_window);
+
+  return true;
+}
+
+bool DisplayWindow::ReturnContext()
+{
+  if (m_impl == nullptr) {
+    return false;
+  }
+
+  // Release the current context.
+  glfwMakeContextCurrent(nullptr);
+
+  // Release the context mutex.
+  m_impl->m_contextMutex.unlock();
 
   return true;
 }
@@ -196,68 +232,99 @@ void DisplayWindow::DisplayThread(std::string windowName,
   std::string joystick, DisplayWindow* sharedWindow,
   bool fullScreen, int desiredDisplay, bool hidden)
 {
-  // Create a windowed mode window and its OpenGL context.
-  // This must be done in the same thread that will do the rendering so that the window events will
-  // be handles properly on all architectures.
-  GLFWmonitor* fullScreenMonitor = nullptr;
-  if (fullScreen) {
-    int count;
-    GLFWmonitor** monitors = glfwGetMonitors(&count);
-    if ((count == 0) || !monitors) {
-      m_status = "No monitors for fullscreen";
+  // Hold the window mutex so that only one window can be created at a time.
+  {
+    std::lock_guard<std::mutex> windowLock(m_windowMutex);
+
+    // Determine the full-screen monitor to use, if any.
+    GLFWmonitor* fullScreenMonitor = nullptr;
+    if (fullScreen) {
+      int count;
+      GLFWmonitor** monitors = glfwGetMonitors(&count);
+      if ((count == 0) || !monitors) {
+        m_status = "No monitors for fullscreen";
+        return;
+      }
+      if (desiredDisplay >= count) {
+        m_status = "Invalid monitor requested (index larger than available monitors)";
+        return;
+      }
+      fullScreenMonitor = monitors[desiredDisplay];
+    }
+
+    // Set the window visibility.
+    glfwWindowHint(GLFW_VISIBLE, !hidden);
+
+    // Create a windowed mode window and its OpenGL context.
+    // This must be done in the same thread that will do the rendering so that the window events will
+    // be handled properly on all architectures.
+    // We must make the OpenGL context of the window we want to share current on this thread
+    // if we are sharing it by borrowing it and then returning it once the window is open because
+    // Windows requires it to be current.
+    GLFWwindow* windowToShare = nullptr;
+    if (sharedWindow) {
+      windowToShare = sharedWindow->m_impl->m_window;
+      if (!sharedWindow->BorrowContext()) {
+        m_status = "Failed to borrow context from shared window";
+        return;
+      }
+    }
+    m_impl->m_window = glfwCreateWindow(desiredWidth, desiredHeight, windowName.c_str(), fullScreenMonitor,
+      windowToShare);
+    if (sharedWindow) {
+      if (!sharedWindow->ReturnContext()) {
+        m_status = "Failed to return context to shared window";
+        return;
+      }
+    }
+
+    // Verify that the window was created.
+    if (!m_impl->m_window) {
+      m_status = "Failed to create GLFW window";
       return;
     }
-    if (desiredDisplay >= count) {
-      m_status = "Invalid monitor requested (index larger than available monitors)";
+
+    // Make the window's context current
+    glfwMakeContextCurrent(m_impl->m_window);
+
+    // Initialize GLEW in our context. It is okay to initialize it more than once.
+    glewExperimental = true;
+    if (glewInit() != GLEW_OK) {
+      m_status = "Failed to initialize GLEW";
       return;
     }
-    fullScreenMonitor = monitors[desiredDisplay];
-  }
-  GLFWwindow* windowToShare = nullptr;
-  if (sharedWindow) {
-    windowToShare = sharedWindow->m_impl->m_window;
-  }
-  glfwWindowHint(GLFW_VISIBLE, !hidden);
-  m_impl->m_window = glfwCreateWindow(desiredWidth, desiredHeight, windowName.c_str(), fullScreenMonitor,
-    windowToShare);
-  if (!m_impl->m_window) {
-    m_status = "Failed to create GLFW window";
-    return;
-  }
+    // Clear any GL error that Glew caused.  Apparently on Non-Windows
+    // platforms, this can cause a spurious error 1280.
+    glGetError();
 
-  // Make the window's context current
-  MakeContextCurrent();
+    // Open the joystick if there is one asked for and there is one present.
+    /// @todo
 
-  // Initialize GLEW in our context. It is okay to initialize it more than once.
-  glewExperimental = true;
-  if (glewInit() != GLEW_OK) {
-    m_status = "Failed to initialize GLEW";
-    return;
-  }
-  // Clear any GL error that Glew caused.  Apparently on Non-Windows
-  // platforms, this can cause a spurious error 1280.
-  glGetError();
+    // Add hooks for mouse input.
+    /// @todo
 
-  // Open the joystick if there is one asked for and there is one present.
-  /// @todo
+    // Release the window's current context in case another Display wants to borrow it.
+    glfwMakeContextCurrent(nullptr);
 
-  // Add hooks for mouse input.
-  /// @todo
-
-  // Make the window's context current
-  if (!MakeContextCurrent()) {
-    std::cerr << "DisplayWindow::DisplayThread(): could not make context current" << std::endl;
-    return;
+    // After we're done with the context for set-up and have released it, indicate that the context is available
+    // for borrowing.
+    m_impl->m_contextAvailable = true;
   }
 
   // Loop until the display is done.
-  bool windowClosed = false;
+  bool frameCompleted = false;
   while (!m_done) {
+    // Grab the context mutex for the duration of the loop.  Once we have it, we know
+    // that the context is not active in another context.
+    std::lock_guard<std::mutex> lock(m_impl->m_contextMutex);
+
+    // Make the window's context current
+    glfwMakeContextCurrent(m_impl->m_window);
+
     // Quit when our window closes.
     if (glfwWindowShouldClose(m_impl->m_window)) {
       m_composite.reset();
       m_status = "Done";
-      windowClosed = true;
       break;
     }
 
@@ -283,10 +350,13 @@ void DisplayWindow::DisplayThread(std::string windowName,
 
     // Poll for and process events
     glfwPollEvents();
+
+    // Release the window's current context in case another Display wants to borrow it.
+    glfwMakeContextCurrent(nullptr);
   }
 
-  // Close the window if needed
-  if (!windowClosed) { glfwDestroyWindow(m_impl->m_window); }
+  // Done with the window
+  glfwDestroyWindow(m_impl->m_window);
 }
 
 void DisplayWindow::HandleKeyboard()
