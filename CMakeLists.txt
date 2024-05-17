@@ -27,6 +27,7 @@ set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 #-----------------------------------------------------------------------------
 # Fetch and build packages
 
+if(WIN32)
 include(FetchContent)
 FetchContent_Declare(
   glfw3
@@ -34,6 +35,9 @@ FetchContent_Declare(
   GIT_TAG        b35641f4a3c62aa86a0b3c983d163bc0fe36026d # Master as of 4/26/2024
 )
 FetchContent_MakeAvailable(glfw3)
+else(WIN32)
+find_package(glfw3 REQUIRED)
+endif(WIN32)
 
 #-----------------------------------------------------------------------------
 # Checking for optional and required packages
