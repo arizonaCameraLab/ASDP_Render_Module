@@ -10,6 +10,7 @@
 #include <thread>
 #include <atomic>
 #include <mutex>
+#include <chrono>
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
 #include "Display.h"
@@ -125,6 +126,9 @@ public:
   /// Last time we checked the keyboard, used to control motion rate.
   std::chrono::steady_clock::time_point m_lastKeyboardCheck;
 
+  /// Time point to start rendering the next frame.
+  std::chrono::steady_clock::time_point m_nextFrameTime;
+
   //===========================
   // Machinery required for borrowing and returning the context from DisplayThread.
   // We need to be sure that the context is available before borrowing it, so we have
@@ -139,6 +143,7 @@ public:
 
 DisplayWindow::DisplayWindow(std::string windowName, std::shared_ptr<Composite> composite,
     std::shared_ptr<CoreClient> client, uint8_t triggerID, uint32_t triggerAheadMicroseconds,
+    float fps, uint32_t renderAheadMicroseconds,
     int desiredWidth, int desiredHeight, float horizontalFOVDegrees,
     std::string joystick, DisplayWindow* sharedWindow,
     bool fullScreen, int desiredDisplay, bool hidden)
@@ -157,6 +162,7 @@ DisplayWindow::DisplayWindow(std::string windowName, std::shared_ptr<Composite> 
 
   // Start the rendering thread.
   m_displayThread = std::thread(&DisplayWindow::DisplayThread, this, windowName,
+    fps, renderAheadMicroseconds,
     desiredWidth, desiredHeight, horizontalFOVDegrees,
     joystick, sharedWindow, fullScreen, desiredDisplay, hidden);
 
@@ -234,6 +240,7 @@ bool DisplayWindow::ReturnContext()
 }
 
 void DisplayWindow::DisplayThread(std::string windowName,
+  float fps, uint32_t renderAheadMicroseconds,
   int desiredWidth, int desiredHeight, float horizontalFOVDegrees,
   std::string joystick, DisplayWindow* sharedWindow,
   bool fullScreen, int desiredDisplay, bool hidden)
@@ -241,22 +248,6 @@ void DisplayWindow::DisplayThread(std::string windowName,
   // Hold the window mutex so that only one window can be created at a time.
   {
     std::lock_guard<std::mutex> windowLock(m_windowMutex);
-
-    // Determine the full-screen monitor to use, if any.
-    GLFWmonitor* fullScreenMonitor = nullptr;
-    if (fullScreen) {
-      int count;
-      GLFWmonitor** monitors = glfwGetMonitors(&count);
-      if ((count == 0) || !monitors) {
-        m_status = "No monitors for fullscreen";
-        return;
-      }
-      if (desiredDisplay >= count) {
-        m_status = "Invalid monitor requested (index larger than available monitors)";
-        return;
-      }
-      fullScreenMonitor = monitors[desiredDisplay];
-    }
 
     // Set the window visibility.
     glfwWindowHint(GLFW_VISIBLE, !hidden);
@@ -275,7 +266,7 @@ void DisplayWindow::DisplayThread(std::string windowName,
         return;
       }
     }
-    m_impl->m_window = glfwCreateWindow(desiredWidth, desiredHeight, windowName.c_str(), fullScreenMonitor,
+    m_impl->m_window = glfwCreateWindow(desiredWidth, desiredHeight, windowName.c_str(), nullptr,
       windowToShare);
     if (sharedWindow) {
       if (!sharedWindow->ReturnContext()) {
@@ -288,6 +279,27 @@ void DisplayWindow::DisplayThread(std::string windowName,
     if (!m_impl->m_window) {
       m_status = "Failed to create GLFW window";
       return;
+    }
+
+    // Determine the full-screen monitor to use, if any.
+    GLFWmonitor* fullScreenMonitor = nullptr;
+    if (fullScreen) {
+      int count;
+      GLFWmonitor** monitors = glfwGetMonitors(&count);
+      if ((count == 0) || !monitors) {
+        m_status = "No monitors for fullscreen";
+        return;
+      }
+      if (desiredDisplay >= count) {
+        m_status = "Invalid monitor requested (index larger than available monitors)";
+        return;
+      }
+      fullScreenMonitor = monitors[desiredDisplay];
+    }
+
+    // If we're displaying full-screen engage that here along with specifying the refresh rate.
+    if (fullScreenMonitor) {
+      glfwSetWindowMonitor(m_impl->m_window, fullScreenMonitor, 0, 0, desiredWidth, desiredHeight, fps);
     }
 
     // Make the window's context current
@@ -320,6 +332,11 @@ void DisplayWindow::DisplayThread(std::string windowName,
   // Loop until the display is done.
   bool frameCompleted = false;
   while (!m_done) {
+    // Wait until it is time to render the next frame.  We must busy-wait here to avoid having our
+    // thread swapped out for longer than we want.
+    while (std::chrono::steady_clock::now() < m_impl->m_nextFrameTime) {
+    }
+
     // Grab the context mutex for the duration of the loop.  Once we have it, we know
     // that the context is not active in another context.
     std::lock_guard<std::mutex> lock(m_impl->m_contextMutex);
@@ -345,8 +362,10 @@ void DisplayWindow::DisplayThread(std::string windowName,
     // Render here
     m_composite->Render(asdp::Time(), m_impl->m_views);
 
-    // Swap front and back buffers
+    // Swap front and back buffers and compute the next frame time.
     glfwSwapBuffers(m_impl->m_window);
+    m_impl->m_nextFrameTime = std::chrono::steady_clock::now() +
+      std::chrono::microseconds(static_cast<long long>(1e6/fps) - renderAheadMicroseconds);
 
     // Poll for and process events
     glfwPollEvents();

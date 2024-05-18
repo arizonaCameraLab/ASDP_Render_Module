@@ -166,6 +166,7 @@ if(BUILD_TESTS)
     CompositeCameras_Test
     SharedContext_Test
     Display_Test
+    Fullscreen_Test
   )
   foreach (BASE ${CPP_TESTS})
     set (APP ${BASE})

@@ -11,8 +11,9 @@
 
 int main()
 {
-  int width = 640;
-  int height = 640;
+  int width = 1280;
+  int height = 1024;
+  float fps = 60.0f;
 
   asdp::render::ViewRenderInfo viewRenderInfo;
   viewRenderInfo.width = width;
@@ -29,33 +30,23 @@ int main()
     // Create a CompositeCube object to render once the window is open and the context is active.
     std::shared_ptr<asdp::render::CompositeCube> composite = std::make_shared<asdp::render::CompositeCube>(10);
 
-    // Create a Display window to show the CompositeCube object.
-    asdp::render::DisplayWindow window("Display_Test", composite, client, 0, 0, 60.0f, 2500, width, height);
+    // Create a full-screen Display window to show the CompositeCube object.
+    asdp::render::DisplayWindow window("Fullscreen_Test", composite, client, 0, 0, fps, 2500, width, height,
+      90, "", nullptr, true);
     if (window.GetStatus() != "") {
       std::cerr << "Error opening first display: " << window.GetStatus() << std::endl;
       return 1;
-    }
-
-    // Create a second Display window to show the same CompositeCube object that shares objects
-    // with the original window's context.
-    asdp::render::DisplayWindow window2("Display_Test2", composite, client, 0, 0, 60.0f, 2500,
-      width, height,
-      90, "", &window);
-    if (window2.GetStatus() != "") {
-      std::cerr << "Error opening second display: " << window2.GetStatus() << std::endl;
-      return 2;
     }
 
     // Done with the composite object -- let the display objects take over destroying it+.
     composite.reset();
 
     // Loop until the user closes both windows.
-    std::cout << "You should see a square of varying-brightness green squares in two windows." << std::endl;
-    std::cout << "You should be able to move and resize the windows, with the display updating." << std::endl;
+    std::cout << "You should see a square of varying-brightness green squares in a full-screen window." << std::endl;
     std::cout << "You should be able to rotate the views by pressing the arrow keys." << std::endl;
-    std::cout << "Close the windows to exit." << std::endl;
+    std::cout << "Close the window using the keyboard shortcut to exit." << std::endl;
     auto start = std::chrono::steady_clock::now();
-    while ((window.GetStatus() == "") || (window2.GetStatus() == "")) {
+    while (window.GetStatus() == "") {
       std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
   }

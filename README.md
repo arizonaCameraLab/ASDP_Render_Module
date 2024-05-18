@@ -112,3 +112,13 @@ bottom.
 The expected image is shown below.
 
 ![Test of shared OpenGL contexts](SharedContext_Test.png "Test of shared OpenGL contexts")
+
+**Display_Test:** This displays two windows, each with a keyboard-controllable cube.  The arrow keys
+control cube rotation.
+The expected initial image in each window is shown below.
+
+![Test of the Display class](Display_Test.png "Test of the Display class")
+
+**Fullscreen_Test:** This a full-screen 1280x1024 window at 60Hz with a keyboard-controllable cube.  The arrow keys
+control cube rotation.
+the expected initial image matches that of one window in the Display_Test (shown above).

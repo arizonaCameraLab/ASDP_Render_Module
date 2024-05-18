@@ -118,9 +118,17 @@ namespace asdp {
       /// @param triggerAheadMicroseconds The offset in microseconds to subtract from the time of frame swapping.
       /// This is to ensure that the frames make it all the way through the Composite object before being needed.
       /// It is expected to be read from a configuration file and tuned for the specific hardware and software.
-      /// @param horizontalFOVDegrees The horizontal field of view of the display in degrees.
+      /// @param fps The number of frames per second requested for the window.  The system will busy-wait
+      /// to achieve at most this frame rate.  For full-screen windows, this is the frame rate we ask for
+      /// on the monitor.
+      /// @param renderAheadMicroseconds The number of microseconds ahead of the next swap time to begin
+      /// rendering.  This is to ensure that the rendering is done in time for the swap to happen while
+      /// providing the minimum prediction interval and delaying as long as possible to enable new frames
+      /// to arrive before rendering.  If this value is larger than 1 million / fps, the frames will not
+      /// wait before rendering.
       /// @param desiredWidth The width of the display in pixels.
       /// @param desiredHeight The height of the display in pixels.
+      /// @param horizontalFOVDegrees The horizontal field of view of the display in degrees.
       /// @param joystick The name of the joystick to use for input, if any.
       /// @param sharedWindow A pointer to a DisplayWindow to share the OpenGL objects with, or nullptr if none.
       /// @param fullScreen True if the display should be full-screen.
@@ -128,6 +136,7 @@ namespace asdp {
       /// @param hidden True if the window should be hidden.
       DisplayWindow(std::string windowName, std::shared_ptr<Composite> composite,
         std::shared_ptr<CoreClient> client, uint8_t triggerID, uint32_t triggerAheadMicroseconds,
+        float fps = 60, uint32_t renderAheadMicroseconds = 2500,
         int desiredWidth = 1280, int desiredHeight = 1024, float horizontalFOVDegrees = 90.0,
         std::string joystick = "", DisplayWindow *sharedWindow = nullptr,
         bool fullScreen = false, int desiredDisplay = 0, bool hidden = false);
@@ -137,6 +146,7 @@ namespace asdp {
     private:
       /// @brief Method to implement the display thread.
       void DisplayThread(std::string windowName,
+        float fps, uint32_t renderAheadMicroseconds,
         int desiredWidth, int desiredHeight, float horizontalFOVDegrees,
         std::string joystick, DisplayWindow* sharedWindow,
         bool fullScreen, int desiredDisplay, bool hidden);
