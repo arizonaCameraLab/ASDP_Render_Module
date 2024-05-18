@@ -145,7 +145,7 @@ if(BUILD_UTILITIES)
     target_link_libraries(${APP} PRIVATE
 	    Render_Module
     )
-    set_property(TARGET ${APP} PROPERTY CUDA_ARCHITECTURES 75 80)
+    set_property(TARGET ${APP} PROPERTY CUDA_ARCHITECTURES 60 75 80)
     install(TARGETS ${APP} EXPORT ${PROJECT_NAME}
       RUNTIME DESTINATION bin
     )
