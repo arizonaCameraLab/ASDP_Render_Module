@@ -118,9 +118,10 @@ namespace asdp {
       /// @param triggerAheadMicroseconds The offset in microseconds to subtract from the time of frame swapping.
       /// This is to ensure that the frames make it all the way through the Composite object before being needed.
       /// It is expected to be read from a configuration file and tuned for the specific hardware and software.
-      /// @param fps The number of frames per second requested for the window.  The system will busy-wait
+      /// @param fps The number of frames per second requested for a full-screen window.  The system will busy-wait
       /// to achieve at most this frame rate.  For full-screen windows, this is the frame rate we ask for
-      /// on the monitor.
+      /// on the monitor.  For windows that are not full screen, this should be set to the actual monitor
+      /// refresh rate.
       /// @param renderAheadMicroseconds The number of microseconds ahead of the next swap time to begin
       /// rendering.  This is to ensure that the rendering is done in time for the swap to happen while
       /// providing the minimum prediction interval and delaying as long as possible to enable new frames
