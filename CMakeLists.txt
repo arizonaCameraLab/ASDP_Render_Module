@@ -1,7 +1,8 @@
 cmake_minimum_required(VERSION 3.16.0)
 project(ASDP_Render_Module LANGUAGES C CXX CUDA)
 
-set(CMAKE_CXX_STANDARD 11)
+# We require C++17 for the use of std::filesystem.
+set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 list(APPEND CMAKE_PREFIX_PATH C:/Packages/GLEW/glew-2.2.0)
 
@@ -27,8 +28,14 @@ set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 #-----------------------------------------------------------------------------
 # Fetch and build packages
 
-if(WIN32)
 include(FetchContent)
+FetchContent_Declare(
+  json
+  GIT_REPOSITORY https://github.com/arizonaCameraLab/json.git
+  GIT_TAG        9cca280a4d0ccf0c08f47a99aa71d1b0e52f8d03 # Master as of 5/20/2024
+)
+FetchContent_MakeAvailable(json)
+if(WIN32)
 FetchContent_Declare(
   glfw3
   GIT_REPOSITORY https://github.com/arizonaCameraLab/glfw.git
@@ -105,6 +112,34 @@ target_include_directories(Render_Module PRIVATE
 target_link_libraries(Render_Module PUBLIC
   ASDP_Core_API::ASDP_Core_API glfw GLEW::glew OpenGL::GL
 )
+
+#-----------------------------------------------------------------------------
+# Build the Render module application.
+
+set (ASDP_Render_Module_HEADERS
+)
+
+set (ASDP_Render_Module_SOURCES
+    ASDP_Render_Module.cu
+)
+
+add_executable(ASDP_Render_Module ${ASDP_Render_Module_SOURCES} ${ASDP_Render_Module_HEADERS})
+target_compile_definitions(ASDP_Render_Module PRIVATE
+  -DCONFIG_FILE_PATH="${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR}/ASDP_Render_Module_Configs")
+set_property(TARGET ASDP_Render_Module PROPERTY CUDA_ARCHITECTURES 60 75 80)
+target_link_libraries(ASDP_Render_Module Render_Module nlohmann_json::nlohmann_json)
+
+install(TARGETS ASDP_Render_Module EXPORT ${PROJECT_NAME}
+  RUNTIME DESTINATION bin COMPONENT bin
+  LIBRARY DESTINATION lib${LIB_SUFFIX} COMPONENT lib
+  ARCHIVE DESTINATION lib${LIB_SUFFIX} COMPONENT lib
+  INCLUDES DESTINATION include
+  PUBLIC_HEADER DESTINATION include
+)
+
+# Install the directory of configuration files into the build and install binary directories
+install(DIRECTORY ${CMAKE_SOURCE_DIR}/ASDP_Render_Module_Configs DESTINATION ${CMAKE_BINARY_DIR})
+install(DIRECTORY ${CMAKE_SOURCE_DIR}/ASDP_Render_Module_Configs DESTINATION ${CMAKE_INSTALL_BINDIR})
 
 #-----------------------------------------------------------------------------
 # Build utilities if we've been asked to.
