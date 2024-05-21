@@ -220,4 +220,25 @@ if(BUILD_TESTS)
     add_test(${APP} ${APP})
   endforeach (BASE)
 
+  set (CU_TESTS
+    CUDA_To_Texture_Test
+  )
+  foreach (BASE ${CU_TESTS})
+    set (APP ${BASE})
+    add_executable (${APP} tests_CUDA/${BASE}.cu)
+    set_target_properties(${APP} PROPERTIES FOLDER tests/CUDA)
+    target_include_directories(${APP} PRIVATE
+      "${CMAKE_CURRENT_SOURCE_DIR}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/dependencies/glm"
+    )
+    set_property(TARGET ${APP} PROPERTY CUDA_ARCHITECTURES 60 75 80)
+    target_link_libraries(${APP}
+      Render_Module
+    )
+    install(TARGETS ${APP} EXPORT ${PROJECT_NAME}
+      RUNTIME DESTINATION bin
+    )
+    add_test(${APP} ${APP})
+  endforeach (BASE)
+
 endif(BUILD_TESTS)
