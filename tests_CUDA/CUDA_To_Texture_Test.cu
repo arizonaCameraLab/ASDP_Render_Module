@@ -100,7 +100,7 @@ GLuint MakeTexture(int width, int height, uint16_t minVal, uint16_t maxVal)
 
   // Register the OpenGL texture with CUDA
   cudaGraphicsResource* resource;
-  cudaStatus = cudaGraphicsGLRegisterImage(&resource, textureID, GL_TEXTURE_2D, cudaGraphicsRegisterFlagsWriteDiscard);
+  cudaStatus = cudaGraphicsGLRegisterImage(&resource, textureID, GL_TEXTURE_2D, cudaGraphicsRegisterFlagsSurfaceLoadStore);
   if (cudaStatus != cudaSuccess) {
     std::cerr << "Failed to register texture: " << cudaGetErrorString(cudaStatus) << std::endl;
     glDeleteTextures(1, &textureID);
