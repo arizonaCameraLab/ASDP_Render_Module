@@ -67,7 +67,7 @@ namespace asdp {
 
       /// @brief Get the oldest image in the queue, to be overwritten and then rendered.
       /// @return Shared pointer to the oldest image in the queue.  Null pointer if the
-      /// queue is empty.  The entry is removed from the queue.  Note: This will not
+      /// queue has less than two elements.  The entry is removed from the queue.  Note: This will not
       /// pop the last image off the queue, so that we don't pull the rug out from under
       /// a consumer that is still using the image.
       std::shared_ptr<ImageData> PopOldestImage();
