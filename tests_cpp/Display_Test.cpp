@@ -46,6 +46,22 @@ int main()
       return 2;
     }
 
+    // Create a third Display to handle textures, sharing with the first window.
+    asdp::render::DisplayTexture window3(&window);
+    if (window3.GetStatus() != "") {
+      std::cerr << "Error opening third display: " << window3.GetStatus() << std::endl;
+      return 3;
+    }
+
+    // Borrow the OpenGL context from the third window.
+    if (!window3.BorrowContext()) {
+      std::cerr << "Error borrowing context from third display." << std::endl;
+      return 4;
+    }
+
+    /// @todo Verify that we can write textures in the third window and have them visible in the
+    /// other two.
+
     // Done with the composite object -- let the display objects take over destroying it+.
     composite.reset();
 

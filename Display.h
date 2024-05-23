@@ -57,7 +57,20 @@ namespace asdp {
       /// It contains an error message when there is an error.
       std::string GetStatus() const;
 
-    protected:
+      /// @brief Make the OpenGL context used by this Display current on the calling thread.
+      /// @details This will stop rendering from happening on the Display object until the context
+      /// is returned by calling ReturnContext().  It is expected to be called by a thread that wants
+      /// to create a context that shares objects with this Display object.
+      /// @return True on success, false on failure.
+      virtual bool BorrowContext() = 0;
+
+      /// @brief Return the OpenGL context used by this Display to its display thread.
+      /// @details This will allow rendering to happen on the Display object again.  It detaches the
+      /// context from the calling thread and re-attaches it to the display thread.
+      /// @return True on success, false on failure.
+      virtual bool ReturnContext() = 0;
+
+protected:
 
       /// Compositor to use, filled in by the constructor.
       std::shared_ptr<Composite> m_composite;
@@ -91,18 +104,6 @@ namespace asdp {
       /// @return True on success, false on failure.
       virtual bool TriggerCameras(std::chrono::steady_clock::time_point when);
 
-      /// @brief Make the OpenGL context used by this Display current on the calling thread.
-      /// @details This will stop rendering from happening on the Display object until the context
-      /// is returned by calling ReturnContext().  It is expected to be called by a thread that wants
-      /// to create a context that shares objects with this Display object.
-      /// @return True on success, false on failure.
-      virtual bool BorrowContext() = 0;
-
-      /// @brief Return the OpenGL context used by this Display to its display thread.
-      /// @details This will allow rendering to happen on the Display object again.  It detaches the
-      /// context from the calling thread and re-attaches it to the display thread.
-      /// @return True on success, false on failure.
-      virtual bool ReturnContext() = 0;
     };
 
     /// @brief Display class that displays to a window, perhaps full-screen.
@@ -144,6 +145,9 @@ namespace asdp {
 
       ~DisplayWindow();
 
+      bool BorrowContext() override;
+      bool ReturnContext() override;
+
     private:
       /// @brief Method to implement the display thread.
       void DisplayThread(std::string windowName,
@@ -169,8 +173,35 @@ namespace asdp {
       /// Instance of the implementation class used to store data.  Filled in by the constructor.
       std::unique_ptr<DisplayWindowImpl> m_impl;
 
+      friend class DisplayTexture;
+    };
+
+    /// @brief Display class that handles writing to textures, not actually displaying.
+    /// @details This class basically produces an OpenGL context that is shared with another
+    /// Display object, allowing a thread to render to a texture that can be used by the other
+    /// Display object to display the rendered scene.
+    /// @todo Refactor the DisplayWindow and DisplayTexture classes to share more code and a
+    /// common base class that enables borrow/return with the same mechanism.  Or pull the context
+    /// out of the Display classes and make it a separate object that can be shared between them.
+    class DisplayTexture : public Display {
+    public:
+      /// @brief Constructor
+      /// @param sharedWindow A pointer to a DisplayWindow to share the OpenGL objects with.
+      DisplayTexture(DisplayWindow* sharedWindow);
+
+      ~DisplayTexture();
+
       bool BorrowContext() override;
       bool ReturnContext() override;
+
+    private:
+
+      /// Opaque class used to enable not requiring the application to #include all headers.
+      class DisplayTextureImpl;
+      /// Instance of the implementation class used to store data.  Filled in by the constructor.
+      std::unique_ptr<DisplayTextureImpl> m_impl;
+
+      friend class DisplayWindow;
     };
 
   } // namespace render

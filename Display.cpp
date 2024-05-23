@@ -425,3 +425,91 @@ void DisplayWindow::ClampViewOrienation()
     m_impl->m_views[0].orientation[1] = -120.0;
   }
 }
+
+//==============================================================================
+// Structures and methods for DisplayTexture class.
+
+class asdp::render::DisplayTexture::DisplayTextureImpl {
+public:
+  /// Window that will be used to display the view.
+  GLFWwindow* m_window = nullptr;
+
+  //===========================
+  // Machinery required for borrowing and returning the context from DisplayThread.
+  // Mutex to ensure that only one thread has borrowed our context at a time.
+
+  std::mutex m_contextMutex;
+};
+
+DisplayTexture::DisplayTexture(DisplayWindow* sharedWindow)
+  : Display(std::shared_ptr<CompositeCube>(), std::shared_ptr<CoreClient>(), 0, 0)
+  , m_impl(new DisplayTextureImpl)
+{
+  if (sharedWindow == nullptr) {
+    m_status = "Shared window must be provided to create a DisplayTexture";
+    return;
+  }
+
+  // Hold the window mutex so that only one window can be created at a time.
+  {
+    std::lock_guard<std::mutex> windowLock(m_windowMutex);
+
+    // Set the window to be hidden.
+    glfwWindowHint(GLFW_VISIBLE, false);
+
+    // Construct our context, borrowing the context of the shared window so that it will be
+    // active on our context (required for Windows).
+    if (!sharedWindow->BorrowContext()) {
+      m_status = "Failed to borrow context from shared window";
+      return;
+    }
+    m_impl->m_window = glfwCreateWindow(100, 100, "", nullptr, sharedWindow->m_impl->m_window);
+    if (!sharedWindow->ReturnContext()) {
+      m_status = "Failed to return context to shared window";
+      return;
+    }
+
+    // Verify that the window was created.
+    if (!m_impl->m_window) {
+      m_status = "Failed to create GLFW window";
+      return;
+    }
+  }
+}
+
+DisplayTexture::~DisplayTexture()
+{
+  // Make sure we're done with our rendering state and then clean up.
+  Quit();
+  m_impl.reset();
+}
+
+bool DisplayTexture::BorrowContext()
+{
+  if (m_impl == nullptr) {
+    return false;
+  }
+
+  // Grab the context mutex.
+  m_impl->m_contextMutex.lock();
+
+  // Make the context current on the calling thread.
+  glfwMakeContextCurrent(m_impl->m_window);
+
+  return true;
+}
+
+bool DisplayTexture::ReturnContext()
+{
+  if (m_impl == nullptr) {
+    return false;
+  }
+
+  // Release the current context.
+  glfwMakeContextCurrent(nullptr);
+
+  // Release the context mutex.
+  m_impl->m_contextMutex.unlock();
+
+  return true;
+}
