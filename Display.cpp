@@ -182,9 +182,6 @@ public:
   /// Horizontal field of view in degrees.
   float m_horizontalFOVDegrees {90.0f};
 
-  /// Window that will be used to display the view.
-  GLFWwindow *m_window = nullptr;
-
   /// Views to be rendered.
   std::vector<asdp::render::ViewRenderInfo> m_views;
 
@@ -239,7 +236,7 @@ void DisplayWindow::SetViewportSizeAndFOVs(ViewRenderInfo& viewInfo, int width, 
     return;
   }
   if ((width == 0) || (height == 0)) {
-    glfwGetWindowSize(m_impl->m_window, &width, &height);
+    glfwGetWindowSize(Display::m_impl->m_window, &width, &height);
     viewInfo.width = width;
     viewInfo.height = height;
   }
@@ -284,7 +281,7 @@ void DisplayWindow::DisplayThread(std::string windowName,
         return;
       }
     }
-    m_impl->m_window = glfwCreateWindow(desiredWidth, desiredHeight, windowName.c_str(), nullptr,
+    Display::m_impl->m_window = glfwCreateWindow(desiredWidth, desiredHeight, windowName.c_str(), nullptr,
       windowToShare);
     if (sharedWindow) {
       if (!sharedWindow->ReturnContext()) {
@@ -294,7 +291,7 @@ void DisplayWindow::DisplayThread(std::string windowName,
     }
 
     // Verify that the window was created.
-    if (!m_impl->m_window) {
+    if (!Display::m_impl->m_window) {
       m_status = "Failed to create GLFW window";
       return;
     }
@@ -317,11 +314,11 @@ void DisplayWindow::DisplayThread(std::string windowName,
 
     // If we're displaying full-screen engage that here along with specifying the refresh rate.
     if (fullScreenMonitor) {
-      glfwSetWindowMonitor(m_impl->m_window, fullScreenMonitor, 0, 0, desiredWidth, desiredHeight, fps);
+      glfwSetWindowMonitor(Display::m_impl->m_window, fullScreenMonitor, 0, 0, desiredWidth, desiredHeight, fps);
     }
 
     // Make the window's context current
-    glfwMakeContextCurrent(m_impl->m_window);
+    glfwMakeContextCurrent(Display::m_impl->m_window);
 
     // Initialize GLEW in our context. It is okay to initialize it more than once.
     glewExperimental = true;
@@ -360,10 +357,10 @@ void DisplayWindow::DisplayThread(std::string windowName,
     std::lock_guard<std::mutex> lock(Display::m_impl->m_contextMutex);
 
     // Make the window's context current
-    glfwMakeContextCurrent(m_impl->m_window);
+    glfwMakeContextCurrent(Display::m_impl->m_window);
 
     // Quit when our window closes.
-    if (glfwWindowShouldClose(m_impl->m_window)) {
+    if (glfwWindowShouldClose(Display::m_impl->m_window)) {
       m_composite.reset();
       m_status = "Done";
       break;
@@ -381,7 +378,7 @@ void DisplayWindow::DisplayThread(std::string windowName,
     m_composite->Render(asdp::Time(), m_impl->m_views);
 
     // Swap front and back buffers and compute the next frame time.
-    glfwSwapBuffers(m_impl->m_window);
+    glfwSwapBuffers(Display::m_impl->m_window);
     m_impl->m_nextFrameTime = std::chrono::steady_clock::now() +
       std::chrono::microseconds(static_cast<long long>(1e6/fps) - renderAheadMicroseconds);
 
@@ -393,7 +390,7 @@ void DisplayWindow::DisplayThread(std::string windowName,
   }
 
   // Done with the window
-  glfwDestroyWindow(m_impl->m_window);
+  glfwDestroyWindow(Display::m_impl->m_window);
 }
 
 void DisplayWindow::HandleKeyboard()
@@ -411,19 +408,19 @@ void DisplayWindow::HandleKeyboard()
   double DegreesPerSecond = 30.0;
 
   // Rotate to look up when the up key is pressed
-  if (glfwGetKey(m_impl->m_window, GLFW_KEY_UP) == GLFW_PRESS) {
+  if (glfwGetKey(Display::m_impl->m_window, GLFW_KEY_UP) == GLFW_PRESS) {
     m_impl->m_views[0].orientation[0] += DegreesPerSecond * elapsed.count();
   }
   // Rotate to look down when the down key is pressed
-  if (glfwGetKey(m_impl->m_window, GLFW_KEY_DOWN) == GLFW_PRESS) {
+  if (glfwGetKey(Display::m_impl->m_window, GLFW_KEY_DOWN) == GLFW_PRESS) {
     m_impl->m_views[0].orientation[0] -= DegreesPerSecond * elapsed.count();
   }
   // Rotate to look right when the right key is pressed
-  if (glfwGetKey(m_impl->m_window, GLFW_KEY_RIGHT) == GLFW_PRESS) {
+  if (glfwGetKey(Display::m_impl->m_window, GLFW_KEY_RIGHT) == GLFW_PRESS) {
     m_impl->m_views[0].orientation[2] -= DegreesPerSecond * elapsed.count();
   }
   // Rotate to look left when the left key is pressed
-  if (glfwGetKey(m_impl->m_window, GLFW_KEY_LEFT) == GLFW_PRESS) {
+  if (glfwGetKey(Display::m_impl->m_window, GLFW_KEY_LEFT) == GLFW_PRESS) {
     m_impl->m_views[0].orientation[2] += DegreesPerSecond * elapsed.count();
   }
 }
@@ -485,6 +482,22 @@ DisplayTexture::DisplayTexture(Display* sharedWindow)
     m_status = "Failed to create GLFW window";
     return;
   }
+
+  // Make the window's context current
+  glfwMakeContextCurrent(Display::m_impl->m_window);
+
+  // Initialize GLEW in our context. It is okay to initialize it more than once.
+  glewExperimental = true;
+  if (glewInit() != GLEW_OK) {
+    m_status = "Failed to initialize GLEW";
+    return;
+  }
+  // Clear any GL error that Glew caused.  Apparently on Non-Windows
+  // platforms, this can cause a spurious error 1280.
+  glGetError();
+
+  // Release the window's current context in case another Display wants to borrow it.
+  glfwMakeContextCurrent(nullptr);
 
   // After we're done with the context for set-up and have released it, indicate that the context is available
   // for borrowing.
