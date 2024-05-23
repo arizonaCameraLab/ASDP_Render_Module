@@ -59,8 +59,8 @@ void Composite::Render(asdp::Time scanOutTime, std::vector<ViewRenderInfo> views
         glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, view.depthBuffer, 0);
       }
 
-      // Clear the buffers.
-      glClearColor(0, 0, 0, 1.0f);
+      // Clear the buffers.  The clear color is sky blue to distingiush from a camera with a black texture.
+      glClearColor(0.6f, 0.8f, 1.0f, 1.0f);
       GLbitfield clearBits = 0;
       if ((view.frameBuffer == 0) || (view.colorBuffer != 0)) { clearBits |= GL_COLOR_BUFFER_BIT; }
       if ((view.frameBuffer == 0) || (view.depthBuffer != 0)) { clearBits |= GL_DEPTH_BUFFER_BIT; }
@@ -817,7 +817,7 @@ void CompositeCameras::RenderView(const float* modelViewProjection)
     if (m_images[i] != nullptr) {
       texture = m_images[i]->texture;
     }
-    glBindTexture(GL_TEXTURE_2D, m_images[i]->texture);
+    glBindTexture(GL_TEXTURE_2D, texture);
 
     // Unbind any vertex array object.
     // We cannot use vertex array objects because we're potentially going to be called
