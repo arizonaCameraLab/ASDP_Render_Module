@@ -29,38 +29,30 @@ int main()
     // Create a CompositeCube object to render once the window is open and the context is active.
     std::shared_ptr<asdp::render::CompositeCube> composite = std::make_shared<asdp::render::CompositeCube>(10);
 
-    // Create a Display window to show the CompositeCube object.
-    asdp::render::DisplayWindow window("Display_Test", composite, client, 0, 0, 60.0f, 2500, width, height);
+    // Create a Display to handle textures, sharing its context with the other windows.
+    asdp::render::DisplayTexture texWindow;
+    if (texWindow.GetStatus() != "") {
+      std::cerr << "Error opening third display: " << texWindow.GetStatus() << std::endl;
+      return 3;
+    }
+
+    // Create a Display window to show the CompositeCube object that shares objects with the texWindow.
+    asdp::render::DisplayWindow window("Display_Test", composite, client, 0, 0, 60.0f, 2500, width, height,
+      90, "", &texWindow);
     if (window.GetStatus() != "") {
       std::cerr << "Error opening first display: " << window.GetStatus() << std::endl;
       return 1;
     }
 
     // Create a second Display window to show the same CompositeCube object that shares objects
-    // with the original window's context.
+    // with the texWindow (and therefore the first Display window).
     asdp::render::DisplayWindow window2("Display_Test2", composite, client, 0, 0, 60.0f, 2500,
       width, height,
-      90, "", &window);
+      90, "", &texWindow);
     if (window2.GetStatus() != "") {
       std::cerr << "Error opening second display: " << window2.GetStatus() << std::endl;
       return 2;
     }
-
-    // Create a third Display to handle textures, sharing with the first window.
-    asdp::render::DisplayTexture window3(&window);
-    if (window3.GetStatus() != "") {
-      std::cerr << "Error opening third display: " << window3.GetStatus() << std::endl;
-      return 3;
-    }
-
-    // Borrow the OpenGL context from the third window.
-    if (!window3.BorrowContext()) {
-      std::cerr << "Error borrowing context from third display." << std::endl;
-      return 4;
-    }
-
-    /// @todo Verify that we can write textures in the third window and have them visible in the
-    /// other two.
 
     // Done with the composite object -- let the display objects take over destroying it+.
     composite.reset();

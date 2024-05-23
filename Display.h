@@ -62,13 +62,13 @@ namespace asdp {
       /// is returned by calling ReturnContext().  It is expected to be called by a thread that wants
       /// to create a context that shares objects with this Display object.
       /// @return True on success, false on failure.
-      virtual bool BorrowContext() = 0;
+      bool BorrowContext();
 
       /// @brief Return the OpenGL context used by this Display to its display thread.
       /// @details This will allow rendering to happen on the Display object again.  It detaches the
       /// context from the calling thread and re-attaches it to the display thread.
       /// @return True on success, false on failure.
-      virtual bool ReturnContext() = 0;
+      bool ReturnContext();
 
 protected:
 
@@ -104,6 +104,13 @@ protected:
       /// @return True on success, false on failure.
       virtual bool TriggerCameras(std::chrono::steady_clock::time_point when);
 
+      /// Opaque class used to enable not requiring the application to #include all headers.
+      class DisplayImpl;
+      /// Instance of the implementation class used to store data.  Filled in by the constructor.
+      std::unique_ptr<DisplayImpl> m_impl;
+
+      friend class DisplayWindow;
+      friend class DisplayTexture;
     };
 
     /// @brief Display class that displays to a window, perhaps full-screen.
@@ -140,20 +147,17 @@ protected:
         std::shared_ptr<CoreClient> client, uint8_t triggerID, uint32_t triggerAheadMicroseconds,
         float fps = 60, uint32_t renderAheadMicroseconds = 2500,
         int desiredWidth = 1280, int desiredHeight = 1024, float horizontalFOVDegrees = 90.0,
-        std::string joystick = "", DisplayWindow *sharedWindow = nullptr,
+        std::string joystick = "", Display *sharedWindow = nullptr,
         bool fullScreen = false, int desiredDisplay = 0, bool hidden = false);
 
       ~DisplayWindow();
-
-      bool BorrowContext() override;
-      bool ReturnContext() override;
 
     private:
       /// @brief Method to implement the display thread.
       void DisplayThread(std::string windowName,
         float fps, uint32_t renderAheadMicroseconds,
         int desiredWidth, int desiredHeight, float horizontalFOVDegrees,
-        std::string joystick, DisplayWindow* sharedWindow,
+        std::string joystick, Display* sharedWindow,
         bool fullScreen, int desiredDisplay, bool hidden);
 
       /// @brief Helper function to set the viewport dimensions based on the window size.
@@ -172,27 +176,20 @@ protected:
       class DisplayWindowImpl;
       /// Instance of the implementation class used to store data.  Filled in by the constructor.
       std::unique_ptr<DisplayWindowImpl> m_impl;
-
-      friend class DisplayTexture;
     };
 
     /// @brief Display class that handles writing to textures, not actually displaying.
     /// @details This class basically produces an OpenGL context that is shared with another
     /// Display object, allowing a thread to render to a texture that can be used by the other
     /// Display object to display the rendered scene.
-    /// @todo Refactor the DisplayWindow and DisplayTexture classes to share more code and a
-    /// common base class that enables borrow/return with the same mechanism.  Or pull the context
-    /// out of the Display classes and make it a separate object that can be shared between them.
     class DisplayTexture : public Display {
     public:
       /// @brief Constructor
-      /// @param sharedWindow A pointer to a DisplayWindow to share the OpenGL objects with.
-      DisplayTexture(DisplayWindow* sharedWindow);
+      /// @param sharedWindow A pointer to a DisplayWindow to share the OpenGL objects with, null if it
+      /// is to be the base object to be shared.
+      DisplayTexture(Display* sharedWindow = nullptr);
 
       ~DisplayTexture();
-
-      bool BorrowContext() override;
-      bool ReturnContext() override;
 
     private:
 
@@ -200,8 +197,6 @@ protected:
       class DisplayTextureImpl;
       /// Instance of the implementation class used to store data.  Filled in by the constructor.
       std::unique_ptr<DisplayTextureImpl> m_impl;
-
-      friend class DisplayWindow;
     };
 
   } // namespace render

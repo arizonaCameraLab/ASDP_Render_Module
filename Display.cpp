@@ -34,6 +34,34 @@ static GLFWInitializer initGLFW;
 
 std::mutex Display::m_windowMutex;
 
+//==============================================================================
+// Structures and methods for Display class.
+
+class asdp::render::Display::DisplayImpl {
+public:
+  /// Window that will be used to display the view.
+  GLFWwindow* m_window = nullptr;
+
+  //===========================
+  // Machinery required for borrowing and returning the context from DisplayThread.
+  // We need to be sure that the context is available before borrowing it, so we have
+  // and atomic to track that.  We need to ensure that we don't try to use the context
+  // while it is being borrowed, so we have a mutex to protect that.
+  // Some operating systems (Windows, for example), require the OpenGL context to be
+  // shared to be active on the thread that is creating the new window.
+
+  // NOTE: All derived classes must set m_contextAvailable to true after the context is created
+  // and read to be borrowed.
+  std::atomic_bool m_contextAvailable{ false };
+
+  // NOTE: All derived classes must lock m_contextMutex when they are using the context and must
+  // periodically unlock it so that it can be borrowed to create another context that shares objects
+  // with this one.  On Linux, this must be an extended period of time (not just a few instructions)
+  // so that another thread can get a chance to lock the mutex.
+  std::mutex m_contextMutex;
+};
+
+
 Display::Display(std::shared_ptr<Composite> composite,
   std::shared_ptr<CoreClient> client, uint8_t triggerID, uint32_t triggerAheadMicroseconds)
   : m_composite(composite)
@@ -41,6 +69,7 @@ Display::Display(std::shared_ptr<Composite> composite,
   , m_triggerID(triggerID)
   , m_offsetMicroseconds(triggerAheadMicroseconds)
   , m_done(false)
+  , m_impl(new DisplayImpl)
 {
   if (m_client) {
     Status status = m_client->GetTimer(m_timer);
@@ -54,6 +83,7 @@ Display::~Display()
 {
   // Call the Quit() virtual function to stop all threads and clean up resources.
   Quit();
+  m_impl.reset();
 }
 
 bool Display::Quit()
@@ -109,6 +139,41 @@ bool Display::TriggerCameras(std::chrono::steady_clock::time_point when)
   return true;
 }
 
+bool Display::BorrowContext()
+{
+  if (m_impl == nullptr) {
+    return false;
+  }
+
+  // Wait until the context is available.
+  while (!m_impl->m_contextAvailable) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+
+  // Grab the context mutex.
+  m_impl->m_contextMutex.lock();
+
+  // Make the context current on the calling thread.
+  glfwMakeContextCurrent(m_impl->m_window);
+
+  return true;
+}
+
+bool Display::ReturnContext()
+{
+  if (m_impl == nullptr) {
+    return false;
+  }
+
+  // Release the current context.
+  glfwMakeContextCurrent(nullptr);
+
+  // Release the context mutex.
+  m_impl->m_contextMutex.unlock();
+
+  return true;
+}
+
 //==============================================================================
 // Structures and methods for DisplayWindow class.
 
@@ -128,31 +193,19 @@ public:
 
   /// Time point to start rendering the next frame.
   std::chrono::steady_clock::time_point m_nextFrameTime;
-
-  //===========================
-  // Machinery required for borrowing and returning the context from DisplayThread.
-  // We need to be sure that the context is available before borrowing it, so we have
-  // and atomic to track that.  We need to ensure that we don't try to use the context
-  // while it is being borrowed, so we have a mutex to protect that.
-  // Some operating systems (Windows, for example), require the OpenGL context to be
-  // shared to be active on the thread that is creating the new window.
-
-  std::atomic_bool m_contextAvailable {false};
-  std::mutex m_contextMutex;
 };
 
 DisplayWindow::DisplayWindow(std::string windowName, std::shared_ptr<Composite> composite,
     std::shared_ptr<CoreClient> client, uint8_t triggerID, uint32_t triggerAheadMicroseconds,
     float fps, uint32_t renderAheadMicroseconds,
     int desiredWidth, int desiredHeight, float horizontalFOVDegrees,
-    std::string joystick, DisplayWindow* sharedWindow,
+    std::string joystick, Display* sharedWindow,
     bool fullScreen, int desiredDisplay, bool hidden)
   : Display(composite, client, triggerID, triggerAheadMicroseconds)
   , m_impl(new DisplayWindowImpl)
 {
   // Store info from the constructor.
-  m_impl->m_horizontalFOVDegrees = horizontalFOVDegrees;
- 
+  m_impl->m_horizontalFOVDegrees = horizontalFOVDegrees; 
 
   // Construct a single view to be used.  We base is on the requested window size and we compute a
   // field of view that is 40 degrees total horizontal and the correct aspect ratio vertical.
@@ -168,7 +221,7 @@ DisplayWindow::DisplayWindow(std::string windowName, std::shared_ptr<Composite> 
 
   // Wait until either the context is ready or there has been a failure so that the
   // constructor does not return before the rendering thread is ready.
-  while (!m_impl->m_contextAvailable && (m_status == "")) {
+  while (!Display::m_impl->m_contextAvailable && (m_status == "")) {
     std::this_thread::sleep_for(std::chrono::milliseconds(10));
   }
 }
@@ -204,45 +257,10 @@ void DisplayWindow::SetViewportSizeAndFOVs(ViewRenderInfo& viewInfo, int width, 
   viewInfo.topHalfFOV = halfAngle;
 }
 
-bool DisplayWindow::BorrowContext()
-{
-  if (m_impl == nullptr) {
-    return false;
-  }
-
-  // Wait until the context is available.
-  while (!m_impl->m_contextAvailable) {
-    std::this_thread::sleep_for(std::chrono::milliseconds(10));
-  }
-
-  // Grab the context mutex.
-  m_impl->m_contextMutex.lock();
-
-  // Make the context current on the calling thread.
-  glfwMakeContextCurrent(m_impl->m_window);
-
-  return true;
-}
-
-bool DisplayWindow::ReturnContext()
-{
-  if (m_impl == nullptr) {
-    return false;
-  }
-
-  // Release the current context.
-  glfwMakeContextCurrent(nullptr);
-
-  // Release the context mutex.
-  m_impl->m_contextMutex.unlock();
-
-  return true;
-}
-
 void DisplayWindow::DisplayThread(std::string windowName,
   float fps, uint32_t renderAheadMicroseconds,
   int desiredWidth, int desiredHeight, float horizontalFOVDegrees,
-  std::string joystick, DisplayWindow* sharedWindow,
+  std::string joystick, Display* sharedWindow,
   bool fullScreen, int desiredDisplay, bool hidden)
 {
   // Hold the window mutex so that only one window can be created at a time.
@@ -326,7 +344,7 @@ void DisplayWindow::DisplayThread(std::string windowName,
 
     // After we're done with the context for set-up and have released it, indicate that the context is available
     // for borrowing.
-    m_impl->m_contextAvailable = true;
+    Display::m_impl->m_contextAvailable = true;
   }
 
   // Loop until the display is done.
@@ -339,7 +357,7 @@ void DisplayWindow::DisplayThread(std::string windowName,
 
     // Grab the context mutex for the duration of the loop.  Once we have it, we know
     // that the context is not active in another context.
-    std::lock_guard<std::mutex> lock(m_impl->m_contextMutex);
+    std::lock_guard<std::mutex> lock(Display::m_impl->m_contextMutex);
 
     // Make the window's context current
     glfwMakeContextCurrent(m_impl->m_window);
@@ -431,50 +449,46 @@ void DisplayWindow::ClampViewOrienation()
 
 class asdp::render::DisplayTexture::DisplayTextureImpl {
 public:
-  /// Window that will be used to display the view.
-  GLFWwindow* m_window = nullptr;
-
-  //===========================
-  // Machinery required for borrowing and returning the context from DisplayThread.
-  // Mutex to ensure that only one thread has borrowed our context at a time.
-
-  std::mutex m_contextMutex;
+  // Nothing here, we re-use base-class objects for everything we need.
 };
 
-DisplayTexture::DisplayTexture(DisplayWindow* sharedWindow)
+DisplayTexture::DisplayTexture(Display* sharedWindow)
   : Display(std::shared_ptr<CompositeCube>(), std::shared_ptr<CoreClient>(), 0, 0)
   , m_impl(new DisplayTextureImpl)
 {
-  if (sharedWindow == nullptr) {
-    m_status = "Shared window must be provided to create a DisplayTexture";
-    return;
-  }
-
   // Hold the window mutex so that only one window can be created at a time.
-  {
-    std::lock_guard<std::mutex> windowLock(m_windowMutex);
+  std::lock_guard<std::mutex> windowLock(m_windowMutex);
 
-    // Set the window to be hidden.
-    glfwWindowHint(GLFW_VISIBLE, false);
+  // Set the window to be hidden.
+  glfwWindowHint(GLFW_VISIBLE, false);
 
-    // Construct our context, borrowing the context of the shared window so that it will be
-    // active on our context (required for Windows).
+  // Construct our context, borrowing the context of the shared window so that it will be
+  // active on our context (required for Windows).
+  GLFWwindow* windowToShare = nullptr;
+  if (sharedWindow != nullptr) {
     if (!sharedWindow->BorrowContext()) {
       m_status = "Failed to borrow context from shared window";
       return;
     }
-    m_impl->m_window = glfwCreateWindow(100, 100, "", nullptr, sharedWindow->m_impl->m_window);
+    windowToShare = sharedWindow->m_impl->m_window;
+  }
+  Display::m_impl->m_window = glfwCreateWindow(100, 100, "", nullptr, windowToShare);
+  if (sharedWindow != nullptr) {
     if (!sharedWindow->ReturnContext()) {
       m_status = "Failed to return context to shared window";
       return;
     }
-
-    // Verify that the window was created.
-    if (!m_impl->m_window) {
-      m_status = "Failed to create GLFW window";
-      return;
-    }
   }
+
+  // Verify that the window was created.
+  if (!Display::m_impl->m_window) {
+    m_status = "Failed to create GLFW window";
+    return;
+  }
+
+  // After we're done with the context for set-up and have released it, indicate that the context is available
+  // for borrowing.
+  Display::m_impl->m_contextAvailable = true;
 }
 
 DisplayTexture::~DisplayTexture()
@@ -482,34 +496,4 @@ DisplayTexture::~DisplayTexture()
   // Make sure we're done with our rendering state and then clean up.
   Quit();
   m_impl.reset();
-}
-
-bool DisplayTexture::BorrowContext()
-{
-  if (m_impl == nullptr) {
-    return false;
-  }
-
-  // Grab the context mutex.
-  m_impl->m_contextMutex.lock();
-
-  // Make the context current on the calling thread.
-  glfwMakeContextCurrent(m_impl->m_window);
-
-  return true;
-}
-
-bool DisplayTexture::ReturnContext()
-{
-  if (m_impl == nullptr) {
-    return false;
-  }
-
-  // Release the current context.
-  glfwMakeContextCurrent(nullptr);
-
-  // Release the context mutex.
-  m_impl->m_contextMutex.unlock();
-
-  return true;
 }
