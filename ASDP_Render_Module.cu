@@ -21,15 +21,19 @@
 #include <thread>
 #include <string>
 #include <filesystem>
+#include <vector>
 #include <ASDP_Core_API.h>
 #include <ASDP_SpinFreeQueue.hpp>
 #include <ASDP_BufferPool.h>
 #include <cuda.h>
 #include <cuda_runtime.h>
 #include <nlohmann/json.hpp>
+#include <GL/glew.h>
 #include <Composite.h>
+#include <Display.h>
 
 using namespace asdp;
+using namespace asdp::render;
 using json = nlohmann::json;
 
 static std::string VERSION = "1.0.0";
@@ -47,9 +51,13 @@ struct DataToSendToGPU {
   std::shared_ptr<cudaStream_t> streamPtr;         ///< Stream to use to for the copy and kernel run
 };
 
-/// @brief Function to copy data to the GPU and store it into the appropriate texture.
+/// @brief Function to copy data to the GPU and store it into the appropriate textures.
 /// It must create and record an event after all operations are complete.  All operations must be
-/// done on the stream that is passed in and they must all be asynchronous.
+/// done on the stream that is passed in and they must all be asynchronous.  There is a single
+/// thread to handle all cameras; it handles all cameras, using different CUDA streams to overlap the operations.
+/// To be able to map textures, it must have an OpenGL context that is shared with the Display submodule that
+/// will be rendering the images.  To enable this, it makes its own hidden Display that shares with the rendering
+/// Display.
 /// @param width The width of the image data.
 /// @param height The height of the image data.
 /// @param done A flag that is set to true when the program is done.
@@ -57,12 +65,20 @@ struct DataToSendToGPU {
 /// @param batchSize The number of lines to send to the GPU at once.  This is tuned to trade off latency
 /// for throughput, and it should be set to a value that is large enough to amortize the cost of sending
 /// data to the GPU, but small enough to keep latency low.  The value of 16 is a good starting point.
-static void CopyDataToGPU(uint16_t width, uint16_t height,
+/// @param sharedContext The Display object that shares the OpenGL context with the rendering Display.
+static void CopyDataToTextures(uint16_t width, uint16_t height,
   std::atomic<bool>& done,
   std::shared_ptr< SpinFreeQueue< std::shared_ptr<DataToSendToGPU> > > inQueue,
-  size_t batchSize)
+  size_t batchSize, std::shared_ptr<Display> sharedContext)
 {
   Status status;
+
+  // Borrow the context from the shared context so that we can use it to map textures.
+  if (!sharedContext->BorrowContext()) {
+    std::cerr << "CopyDataToGPU: Error borrowing context from shared context." << std::endl;
+    done = true;
+    return;
+  }
 
   while (!done) {
     std::shared_ptr<DataToSendToGPU> data;
@@ -202,6 +218,11 @@ static void CopyDataToGPU(uint16_t width, uint16_t height,
       } // End of while we have messages in the stream packet.
     } // End of if we got a message from the queue.
   } // End of while we are not done.
+
+  // Return the context to the shared context.
+  if (!sharedContext->ReturnContext()) {
+    std::cerr << "CopyDataToGPU: Error returning context to shared context." << std::endl;
+  }
 }
 
 static void ReceiveDataThread(ReceiverUDP& receiveSocket, size_t maxBytesPerPacket, std::atomic<bool>& done,
@@ -343,9 +364,9 @@ int main(int argc, char** argv)
     std::cout << "ASDP Render Module version " << VERSION << std::endl;
 
     // Open a client, specifying the IP address to listen on.
-    CoreClient client(ip_address);
-    if (client.GetConstructorStatus() != OKAY) {
-      std::cerr << "Failed to open client: " << ErrorMessage(client.GetConstructorStatus()) << std::endl;
+    std::shared_ptr<CoreClient> client = std::make_shared<CoreClient>(ip_address);
+    if (client->GetConstructorStatus() != OKAY) {
+      std::cerr << "Failed to open client: " << ErrorMessage(client->GetConstructorStatus()) << std::endl;
       return 3;
     }
     std::cout << "Listening for servers on " << ip_address << std::endl;
@@ -356,7 +377,7 @@ int main(int argc, char** argv)
     Status threadStatus;
     Status status;
     do {
-      status = client.GetDiscoveryThreadStatus(threadStatus);
+      status = client->GetDiscoveryThreadStatus(threadStatus);
       if (status != OKAY) {
         std::cerr << "Failed to get discovery thread status: " << ErrorMessage(status) << std::endl;
         return 4;
@@ -365,7 +386,7 @@ int main(int argc, char** argv)
         std::cerr << "Discovery thread status: " << ErrorMessage(threadStatus) << std::endl;
         return 5;
       }
-      status = client.IdentifiedServers(servers);
+      status = client->IdentifiedServers(servers);
       if (status != OKAY) {
         std::cerr << "Failed to get identified servers: " << ErrorMessage(status) << std::endl;
         return 6;
@@ -385,13 +406,13 @@ int main(int argc, char** argv)
     // Connect to the first server found.
     std::cout << "Connecting to " << servers[0] << std::endl;
     uint16_t major, minor, patch;
-    status = client.ConnectToServer(servers[0], major, minor, patch);
+    status = client->ConnectToServer(servers[0], major, minor, patch);
     if (status != OKAY) {
       std::cerr << "Failed to connect to server: " << ErrorMessage(status) << std::endl;
       return 8;
     }
     uint32_t serialNumber;
-    status = client.GetServerSerialNumber(serialNumber);
+    status = client->GetServerSerialNumber(serialNumber);
     if (status != OKAY) {
       std::cerr << "Failed to get server serial number: " << ErrorMessage(status) << std::endl;
       return 9;
@@ -401,7 +422,7 @@ int main(int argc, char** argv)
 
     // Get the main stream receiver
     std::shared_ptr<Receiver> receiver;
-    status = client.GetMainStreamReceiver(receiver);
+    status = client->GetMainStreamReceiver(receiver);
     if (status != OKAY) {
       std::cerr << "Failed to get main stream receiver: " << ErrorMessage(status) << std::endl;
       return 10;
@@ -434,7 +455,7 @@ int main(int argc, char** argv)
       }
     }
 
-    // Read the configuration file asociated with the serial number for the server. Verify that
+    // Read the configuration file associated with the serial number for the server. Verify that
     // it has a matching serial number and number of cameras.
     std::filesystem::path configPath = dirPath / (std::to_string(serialNumber) + ".json");
     if (!std::filesystem::exists(configPath)) {
@@ -454,6 +475,10 @@ int main(int argc, char** argv)
     }
     std::cout << "Read configuration from " << configPath << std::endl;
 
+    // Construct a DisplayTexture object to handle textures.  It will be the base object that all others will use
+    // to share contexts.
+    std::shared_ptr<DisplayTexture> displayTexture = std::make_shared<DisplayTexture>();
+
     // Construct a vector of CameraRenderInfo objects from the configuration file, adding an image
     // queue to each.
     std::vector<asdp::render::CameraRenderInfo> cameraRenderInfos;
@@ -469,12 +494,63 @@ int main(int argc, char** argv)
           info.m_distortion.push_back(d);
         }
         info.m_imageQueue = std::make_shared<asdp::render::ImageQueue>();
+
+        //==================================================================================================
+        // Fill in two textures for this camera, both gray and at time zero.
+        // We must borrow the context from the displayTexture so that we can create the textures.
+        if (!displayTexture->BorrowContext()) {
+          std::cerr << "Error borrowing context from displayTexture." << std::endl;
+          return 17;
+        }
+
+        unsigned int width = info.m_resolutionPixels[0];
+        unsigned int height = info.m_resolutionPixels[1];
+        std::vector<uint16_t> image(width * height, 32767);
+
+        for (size_t i = 0; i < 2; i++) {
+          // Create the textures for the camera.
+          std::shared_ptr<ImageData> imageData = std::make_shared<ImageData>();
+
+          unsigned int texture;
+          glGenTextures(1, &texture);
+          glBindTexture(GL_TEXTURE_2D, texture);
+          // Set the texture wrapping parameters
+          glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP);
+          glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP);
+          // Set texture filtering parameters
+          glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+          glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+          // Load image into texture
+          glTexImage2D(GL_TEXTURE_2D, 0, GL_R32F, width, height, 0, GL_RED, GL_UNSIGNED_SHORT, image.data());
+          glBindTexture(GL_TEXTURE_2D, 0);
+
+          imageData->texture = texture;
+          info.m_imageQueue->AddNewestImage(imageData);
+        }
+
+        if (!displayTexture->ReturnContext()) {
+          std::cerr << "Error returning context to displayTexture." << std::endl;
+          return 18;
+        }
+        //
+        //==================================================================================================
+
+        // Push the CameraRenderInfo onto the vector.
         cameraRenderInfos.push_back(info);
       }
     }  catch (const std::exception& e) {
       std::cerr << "Error parsing configuration file: " << e.what() << std::endl;
-      return 17;
+      return 24;
     }
+
+    // Construct a Composite object to render the cameras.
+    std::shared_ptr<Composite> composite = std::make_shared<CompositeCameras>(cameraRenderInfos);
+
+    // Construct one or more Display objects to render the cameras.  They all share object with the texture Display.
+    std::vector<std::shared_ptr<DisplayWindow>> displays;
+    displays.push_back(std::make_shared<DisplayWindow>("ASDP Render Module", composite, client, 0, 0, 60.0f, 2500, 640, 640,
+      90.0f, "", displayTexture.get()));
 
     // Construct shared pointers to the data structures that we'll need to do rendering, with the
     // custom destructors that will clean up when the shared_ptr is destroyed.
@@ -511,14 +587,14 @@ int main(int argc, char** argv)
       std::shared_ptr<ReceiverUDP> receiverUDP = std::make_shared<ReceiverUDP>();
       if (receiverUDP->GetConstructorStatus() != OKAY) {
         std::cerr << "Error constructing ReceiverUDP: " << ErrorMessage(receiverUDP->GetConstructorStatus()) << std::endl;
-        return 18;
+        return 25;
       }
       UDPReceivers.push_back(receiverUDP);
     }
 
     // Launch the threads, hooking them together using the queues.
-    std::thread copyDataToGPUThread(CopyDataToGPU, cameras[0].width, cameras[0].height,
-      std::ref(done), dataQueue, 16);
+    std::thread copyDataToGPUThread(CopyDataToTextures, cameras[0].width, cameras[0].height,
+      std::ref(done), dataQueue, 16, displayTexture);
     std::vector<std::thread> receiveDataThreads;
     for (size_t i = 0; i < cameras.size(); i++) {
       receiveDataThreads.push_back(std::thread(ReceiveDataThread, std::ref(*UDPReceivers[i]), 9000,
@@ -536,11 +612,12 @@ int main(int argc, char** argv)
       ti.period = cameras[camID - 1].minTriggerPeriod;
       ti.offset = 0;
       ti.trackingFactor = 0.5;
-      status = client.SendCommandPacket(CommandPacketConfigureTrigger(ti));
+      status = client->SendCommandPacket(CommandPacketConfigureTrigger(ti));
       if (status != OKAY) {
         std::cerr << "Failed to configure trigger: " << ErrorMessage(status) << std::endl;
         return 29;
       }
+      std::cout << "  Configured trigger for camera " << camID << " with period " << ti.period << " seconds" << std::endl;
 
       // Request the camera to stream full-frame images once every frameStride frames.
       uint16_t port;
@@ -559,7 +636,7 @@ int main(int argc, char** argv)
       region.top = 0;
       region.right = cameras[camID - 1].width - 1;
       region.bottom = cameras[camID - 1].height - 1;
-      status = client.SendCommandPacket(CommandPacketStreamSubregion(endpoint, region));
+      status = client->SendCommandPacket(CommandPacketStreamSubregion(endpoint, region));
       if (status != OKAY) {
         std::cerr << "Failed to stream images: " << ErrorMessage(status) << std::endl;
         return 32;
@@ -570,6 +647,18 @@ int main(int argc, char** argv)
     start = std::chrono::steady_clock::now();
     while (!done) {
       std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+      // If all of our DisplayWindows have been closed (or are broken), then we're done.
+      bool allClosed = true;
+      for (auto& display : displays) {
+        if (display->GetStatus() == "") {
+          allClosed = false;
+          break;
+        }
+      }
+      if (allClosed) {
+        done = true;
+      }
     }
 
     // Set done and wait for all of our singleton threads to join.
@@ -586,6 +675,17 @@ int main(int argc, char** argv)
     // Now that all of the buffers have been returned to the buffer queue, join our receive-data threads.
     for (auto& thread : receiveDataThreads) {
       thread.join();
+    }
+
+    // Now borrow the context from the displayTexture so that we can delete the textures.
+    if (!displayTexture->BorrowContext()) {
+      std::cerr << "Error borrowing context from displayTexture." << std::endl;
+      return 33;
+    }
+    cameraRenderInfos.clear();
+    if (!displayTexture->ReturnContext()) {
+      std::cerr << "Error returning context to displayTexture." << std::endl;
+      return 34;
     }
   }
 

@@ -97,6 +97,7 @@ GLuint MakeTexture(int width, int height, uint16_t minVal, uint16_t maxVal)
     cudaFree(cudaBuffer);
     return 0;
   }
+  glBindTexture(GL_TEXTURE_2D, 0);
 
   // Register the OpenGL texture with CUDA
   cudaGraphicsResource* resource;
@@ -114,8 +115,8 @@ GLuint MakeTexture(int width, int height, uint16_t minVal, uint16_t maxVal)
   cudaStatus = cudaGraphicsSubResourceGetMappedArray(&textureData, resource, 0, 0);
   if (cudaStatus != cudaSuccess) {
     std::cerr << "Failed to map texture: " << cudaGetErrorString(cudaStatus) << std::endl;
-    glDeleteTextures(1, &textureID);
     cudaGraphicsUnregisterResource(resource);
+    glDeleteTextures(1, &textureID);
     cudaFree(cudaBuffer);
     return 0;
   }
@@ -130,9 +131,9 @@ GLuint MakeTexture(int width, int height, uint16_t minVal, uint16_t maxVal)
   cudaStatus = cudaCreateSurfaceObject(&surfObj, &resDesc);
   if (cudaStatus != cudaSuccess) {
     std::cerr << "Failed to create surface object: " << cudaGetErrorString(cudaStatus) << std::endl;
-    glDeleteTextures(1, &textureID);
     cudaGraphicsUnmapResources(1, &resource, 0);
     cudaGraphicsUnregisterResource(resource);
+    glDeleteTextures(1, &textureID);
     cudaFree(cudaBuffer);
     return 0;
   }
@@ -151,7 +152,6 @@ GLuint MakeTexture(int width, int height, uint16_t minVal, uint16_t maxVal)
   cudaGraphicsUnmapResources(1, &resource, 0);
   cudaGraphicsUnregisterResource(resource);
   cudaFree(cudaBuffer);
-  glBindTexture(GL_TEXTURE_2D, 0);
 
   return textureID;
 }
