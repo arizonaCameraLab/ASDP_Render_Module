@@ -82,9 +82,17 @@ __global__ void WriteScaledOffsetKernel(cudaSurfaceObject_t surface, uint16_t* b
 /// @brief Class to handle processing of the data from the cameras and sending it to texture.
 class CPUDataToTextureHandler {
 public:
-  /// @todo Document
+  /// @brief Constructor to create the handler and set up the resources needed to process a frame.
+  /// @details Be sure to call GetStatus() after construction to verify that the constructor succeeded.
+  /// @param dataPtr Pointer to the structure that holds the data to send to the GPU and the stream to use.
+  /// @param sharedContext The shared context to borrow from when handling textures.
+  /// @param width The width of the image data (the whole image).
+  /// @param height The height of the image data (the whole image).
+  /// @param batchSize The number of lines to send to the GPU at once (the height of the region that will be sent).
+  /// @param colorOffset The offset to add to each pixel value before scaling it during copy (total range 0-65535).
+  /// @param colorScale The scale factor to multiply each pixel value by during copy after adding the offset.
   CPUDataToTextureHandler(std::shared_ptr<DataToSendToGPU> dataPtr, std::shared_ptr<Display> sharedContext,
-    uint16_t width, uint16_t height, uint16_t batchSize);
+    uint16_t width, uint16_t height, uint16_t batchSize, float colorOffset, float colorScale);
 
   ~CPUDataToTextureHandler();
 
@@ -93,14 +101,12 @@ public:
   /// negative values to reduce the pixel count.
   /// @param dataPtr Pointer to the non-pinned CPU data to ingest.  This is not the beginnnig of the image but
   /// rather the beginning of a 16-bit block of tightly-packed data.
-  /// @param colorOffset The offset to add to each pixel value before scaling it during copy (total range 0-65535).
-  /// @param colorScale The scale factor to multiply each pixel value by during copy after adding the offset.
   /// @param left The left edge of the region to process.
   /// @param top The top edge of the region to process.
   /// @param width The width of the region to process.
   /// @param height The height of the region to process.
   /// @return Empty string on success, description of error on failure.
-  std::string ProcessImageSubset(uint8_t* dataPtr, float colorOffset, float colorScale,
+  std::string ProcessImageSubset(uint8_t* dataPtr,
     uint16_t left, uint16_t top, uint16_t width, uint16_t height);
 
   /// @brief Get the status of the constructor.
@@ -115,18 +121,27 @@ protected:
   uint16_t m_width;                           ///< The width of the image data
   uint16_t m_height;                          ///< The height of the image data
   uint16_t m_batchSize;                       ///< The number of lines to send to the GPU at once
+  float m_colorOffset;                        ///< The offset to add to each pixel value before scaling it during copy
+  float m_colorScale;                         ///< The scale factor to multiply each pixel value by during copy after adding the offset
   uint16_t m_lastLineSent;                    ///< The last line sent to the GPU
+  uint16_t m_largestLineReceived;             ///< The largest line received so far
 
   std::shared_ptr<ImageData> m_imageData;     ///< The image data for the texture, including time and texure ID
   cudaGraphicsResource* m_resource;           ///< The CUDA graphics resource for the texture
   cudaArray* m_textureData;                   ///< The CUDA array for the texture
   cudaSurfaceObject_t m_surfObj;              ///< The CUDA surface object for the texture
+
+  /// @brief Function to send all unsent data to the GPU and run the kernel to store it into the texture.
+  /// @return Empty string on success, description of error on failure.
+  std::string SendToGPU();
 };
 
 CPUDataToTextureHandler::CPUDataToTextureHandler(std::shared_ptr<DataToSendToGPU> dataPtr, std::shared_ptr<Display> sharedContext,
-  uint16_t width, uint16_t height, uint16_t batchSize)
+  uint16_t width, uint16_t height, uint16_t batchSize, float colorOffset, float colorScale)
   : m_status(""), m_dataPtr(dataPtr), m_sharedContext(sharedContext)
-  , m_width(width), m_height(height), m_batchSize(batchSize), m_lastLineSent(0)
+  , m_width(width), m_height(height), m_batchSize(batchSize)
+  , m_colorOffset(colorOffset), m_colorScale(colorScale)
+  , m_lastLineSent(0), m_largestLineReceived(0)
   , m_imageData(nullptr), m_resource(nullptr), m_textureData(nullptr), m_surfObj(0)
 {
   cudaError_t cudaStatus;
@@ -186,6 +201,12 @@ CPUDataToTextureHandler::CPUDataToTextureHandler(std::shared_ptr<DataToSendToGPU
 
 CPUDataToTextureHandler::~CPUDataToTextureHandler()
 {
+  // Send any unsent data to the GPU.
+  std::string ret = SendToGPU();
+  if (!ret.empty()) {
+    std::cerr << "CPUDataToTextureHandler::~CPUDataToTextureHandler(): Error sending data to GPU: " << ret << std::endl;
+  }
+
   // Wait for the operations on this stream to complete
   cudaEvent_t event;
   cudaEventCreate(&event);
@@ -202,7 +223,34 @@ CPUDataToTextureHandler::~CPUDataToTextureHandler()
   cudaGraphicsUnregisterResource(m_resource);
 }
 
-std::string CPUDataToTextureHandler::ProcessImageSubset(uint8_t* dataPtr, float colorOffset, float colorScale,
+std::string CPUDataToTextureHandler::SendToGPU()
+{
+  // The offset is just past the largest line sent so far.
+  int offsetY = m_lastLineSent + 1;
+  size_t offset = offsetY * m_width * sizeof(uint16_t);
+  unsigned linesToSend = m_largestLineReceived - m_lastLineSent;
+  // Copy the batch to the GPU.
+  cudaError_t ret = cudaMemcpyAsync(m_dataPtr->gpuImageBufferPtr.get() + offset, m_dataPtr->cpuImageBufferPtr.get() + offset,
+    linesToSend * m_width * sizeof(uint16_t),
+    cudaMemcpyHostToDevice, *m_dataPtr->streamPtr);
+  if (ret != cudaSuccess) {
+    std::cerr << "CopyDataToGPU: cudaMemcpyAsync() failed: " << cudaGetErrorString(ret) << std::endl;
+    return "CopyDataToGPU: cudaMemcpyAsync() failed: " + std::string(cudaGetErrorString(ret));
+  }
+
+  // Run the kernel to write this subset of the data to the texture, adding offset and scale.
+  dim3 dimBlock(128, 8); ///< Using a kernel that is wide but not tall because our batch sizes may be small
+  dim3 dimGrid((m_width + dimBlock.x - 1) / dimBlock.x, (linesToSend + dimBlock.y - 1) / dimBlock.y);
+  WriteScaledOffsetKernel << <dimGrid, dimBlock >> > (m_surfObj, reinterpret_cast<uint16_t*>(m_dataPtr->gpuImageBufferPtr.get()),
+    offsetY, m_width, m_height, m_colorOffset, m_colorScale);
+
+  // Record the fact that we've written up through this line.
+  m_lastLineSent = m_largestLineReceived;
+
+  return "";
+}
+
+std::string CPUDataToTextureHandler::ProcessImageSubset(uint8_t* dataPtr,
   uint16_t left, uint16_t top, uint16_t right, uint16_t bottom)
 {
   uint16_t regionWidth = right - left + 1;
@@ -221,33 +269,21 @@ std::string CPUDataToTextureHandler::ProcessImageSubset(uint8_t* dataPtr, float 
     }
   }
 
-  // Copy the image data to the GPU if we've completed a chunk of lines, or if we're writing to the last line.
-  // We check every line from the top of the region to the bottom and send the batch including
-  // that line if it is ever the last line in the region or the frame.  We always send entire lines, even if they have only
+  // Keep track of the largest line received so far.
+  m_largestLineReceived = std::max(m_largestLineReceived, bottom);
+
+  // Copy the image data to the GPU if we've completed a chunk of lines, or if we're writing to the last line in the image.
+  // We check every line from the top of the region to the bottom and send all unsent lines if it is ever the last line
+  // in the region or the frame.  We always send entire lines, even if they have only
   // been partially filled, so that we don't have to keep a mask for each line.
   for (uint16_t line = top; line <= bottom; ++line) {
     if ( (line + 1 == m_height) || ((line + 1) % m_batchSize == 0) ) {
-      // The offset is just past the largest line sent so far.
-      int offsetY = m_lastLineSent + 1;
-      size_t offset = offsetY * m_width * sizeof(uint16_t);
-      unsigned linesToSend = line - m_lastLineSent;
-      // Copy the batch to the GPU.
-      cudaError_t ret = cudaMemcpyAsync(m_dataPtr->gpuImageBufferPtr.get() + offset, m_dataPtr->cpuImageBufferPtr.get() + offset,
-        linesToSend * m_width * sizeof(uint16_t),
-        cudaMemcpyHostToDevice, *m_dataPtr->streamPtr);
-      if (ret != cudaSuccess) {
-        std::cerr << "CopyDataToGPU: cudaMemcpyAsync() failed: " << cudaGetErrorString(ret) << std::endl;
-        return "CopyDataToGPU: cudaMemcpyAsync() failed: " + std::string(cudaGetErrorString(ret));
+      std::string ret = SendToGPU();
+      if (!ret.empty()) {
+        return ret;
       }
-
-      // Run the kernel to write this subset of the data to the texture, adding offset and scale.
-      dim3 dimBlock(128, 8); ///< Using a kernel that is wide but not tall because our batch sizes may be small
-      dim3 dimGrid((m_width + dimBlock.x - 1) / dimBlock.x, (linesToSend + dimBlock.y - 1) / dimBlock.y);
-      WriteScaledOffsetKernel << <dimGrid, dimBlock >> > (m_surfObj, reinterpret_cast<uint16_t*>(m_dataPtr->gpuImageBufferPtr.get()),
-        offsetY, m_width, m_height, colorOffset, colorScale);
-
-      // Record the fact that we've written up through this line.
-      m_lastLineSent = line;
+      // We sent all of the unsent lines, so we don't need to keep looking.
+      break;
     }
   }
 
@@ -333,8 +369,9 @@ static void CopyDataToTextures(uint16_t width, uint16_t height,
             if (cameraID >= handlers.size()) {
               handlers.resize(cameraID + 1);
             }
+            /// @todo Get the offset and scale from NUC processing and/or frame metadata.
             handlers[cameraID] = std::make_shared<CPUDataToTextureHandler>(data, sharedContext, width, height,
-              static_cast<uint16_t>(batchSize));
+              static_cast<uint16_t>(batchSize), 0.0f, 1.0f);
           }
           // Nothing to do for the beginning of a frame.
           break;
@@ -394,13 +431,12 @@ static void CopyDataToTextures(uint16_t width, uint16_t height,
             }
 
             // Handle the data
-            /// @todo Get the offset and scale from NUC processing.
             if (cameraID >= handlers.size()) {
               std::cerr << "CopyDataToGPU: FRAME_DATA: Error: Camera ID " << cameraID << " not found." << std::endl;
               done = true;
               return;
             }
-            std::string ret = handlers[cameraID]->ProcessImageSubset(dataPtr, 0.0f, 1.0f, left, top, right, bottom);
+            std::string ret = handlers[cameraID]->ProcessImageSubset(dataPtr, left, top, right, bottom);
             if (!ret.empty()) {
               std::cerr << "Error processing image subset: " << ret << std::endl;
               done = true;
