@@ -229,6 +229,10 @@ std::string CPUDataToTextureHandler::SendToGPU()
   int offsetY = m_lastLineSent + 1;
   size_t offset = offsetY * m_width * sizeof(uint16_t);
   unsigned linesToSend = m_largestLineReceived - m_lastLineSent;
+  if (linesToSend == 0) {
+    return "";
+  }
+
   // Copy the batch to the GPU.
   cudaError_t ret = cudaMemcpyAsync(m_dataPtr->gpuImageBufferPtr.get() + offset, m_dataPtr->cpuImageBufferPtr.get() + offset,
     linesToSend * m_width * sizeof(uint16_t),
