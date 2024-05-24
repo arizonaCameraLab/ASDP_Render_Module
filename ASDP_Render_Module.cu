@@ -58,22 +58,20 @@ struct DataToSendToGPU {
 /// @brief CUDA kernel to write an offset and scaled copy of a uint16 image to a surface (OpenGL texture).
 /// @param surface The surface to write to.
 /// @param buffer The buffer containing the uint16 data.  This is a pointer to the beginning of the whole-frame data.
-/// @param offx The x offset to apply to the coordinate (added to the x coordinate in pixels).
 /// @param offy The y offset to apply to the coordinate (added to the y coordinate in pixels).
-/// @param stride The stride of the data (the width of the image in pixels).
 /// @param nx The total width of the image.
 /// @param ny The total height of the image.
 /// @param offset The offset to apply to the data (added to the data before scaling, normally negative in the range
 /// 0 to -65535).
 /// @param scale The scale to apply to the data (multiplied by the data after offsetting, should be positive).
 __global__ void WriteScaledOffsetKernel(cudaSurfaceObject_t surface, uint16_t* buffer,
-  int offx, int offy, int stride, int nx, int ny, float offset, float scale)
+  uint16_t offy, uint16_t nx, uint16_t ny, float offset, float scale)
 {
-  int x = offx + blockIdx.x * blockDim.x + threadIdx.x;
-  int y = offy + blockIdx.y * blockDim.y + threadIdx.y;
+  uint16_t x = blockIdx.x * blockDim.x + threadIdx.x;
+  uint16_t y = offy + blockIdx.y * blockDim.y + threadIdx.y;
   if (x < nx && y < ny) {
     // Convert the uint16 data, offset and then scaled.
-    float data = scale * (offset + buffer[x + y * stride]) / 65535.0f;
+    float data = scale * (offset + buffer[x + y * nx]) / 65535.0f;
 
     // Write the data to the surface. The x coordinate is in bytes, so we need to multiply by the
     // size of the data type.
@@ -95,13 +93,14 @@ public:
   /// negative values to reduce the pixel count.
   /// @param dataPtr Pointer to the non-pinned CPU data to ingest.  This is not the beginnnig of the image but
   /// rather the beginning of a 16-bit block of tightly-packed data.
-  /// @param scale The scale factor to multiply each pixel value by during copy after adding the offset.
+  /// @param colorOffset The offset to add to each pixel value before scaling it during copy (total range 0-65535).
+  /// @param colorScale The scale factor to multiply each pixel value by during copy after adding the offset.
   /// @param left The left edge of the region to process.
   /// @param top The top edge of the region to process.
   /// @param width The width of the region to process.
   /// @param height The height of the region to process.
   /// @return Empty string on success, description of error on failure.
-  std::string ProcessImageSubset(uint8_t* dataPtr, float offset, float scale,
+  std::string ProcessImageSubset(uint8_t* dataPtr, float colorOffset, float colorScale,
     uint16_t left, uint16_t top, uint16_t width, uint16_t height);
 
   /// @brief Get the status of the constructor.
@@ -203,65 +202,54 @@ CPUDataToTextureHandler::~CPUDataToTextureHandler()
   cudaGraphicsUnregisterResource(m_resource);
 }
 
-std::string CPUDataToTextureHandler::ProcessImageSubset(uint8_t* dataPtr, float offset, float scale,
+std::string CPUDataToTextureHandler::ProcessImageSubset(uint8_t* dataPtr, float colorOffset, float colorScale,
   uint16_t left, uint16_t top, uint16_t right, uint16_t bottom)
 {
-  uint16_t width = right - left + 1;
-  uint16_t height = bottom - top + 1;
+  uint16_t regionWidth = right - left + 1;
+  uint16_t regionHeight = bottom - top + 1;
 
   // Copy the image data to the pinned CPU memory buffer.
   uint16_t* cpuBuffer = reinterpret_cast<uint16_t*>(m_dataPtr->cpuImageBufferPtr.get());
   uint16_t* dataPtr16 = reinterpret_cast<uint16_t*>(dataPtr);
-  if ((left == 0) && (width == m_width)) {
+  if ((left == 0) && (regionWidth == m_width)) {
     // If we're copying whole lines, we can do it all at once.
-    memcpy(cpuBuffer + top * width + left, dataPtr16, width * height * sizeof(uint16_t));
+    memcpy(cpuBuffer + top * m_width, dataPtr16, m_width * regionHeight * sizeof(uint16_t));
   } else {
     // Otherwise, we must do it line by line.
     for (uint16_t line = top; line <= bottom; ++line) {
-      memcpy(cpuBuffer + line * width + left, dataPtr16 + (line - top) * width, width * sizeof(uint16_t));
+      memcpy(cpuBuffer + line * regionWidth + left, dataPtr16 + (line - top) * regionWidth, regionWidth * sizeof(uint16_t));
     }
   }
 
   // Copy the image data to the GPU if we've completed a chunk of lines, or if we're writing to the last line.
-  // We assume that the number of lines coming in from the camera is smaller than the batch size, so that we will
-  // send at most one batch.  We check every line from bottom to the top of the region and send the batch including
-  // that line if it is ever the last line in the region.  We always send the entire lines, even if they have only
+  // We check every line from the top of the region to the bottom and send the batch including
+  // that line if it is ever the last line in the region or the frame.  We always send entire lines, even if they have only
   // been partially filled, so that we don't have to keep a mask for each line.
   for (uint16_t line = top; line <= bottom; ++line) {
-    cudaError_t ret = {};
-    if (line + 1 == m_height) {
+    if ( (line + 1 == m_height) || ((line + 1) % m_batchSize == 0) ) {
       // The offset is just past the largest line sent so far.
-      size_t offset = (m_lastLineSent+1) * width * sizeof(uint16_t);
+      int offsetY = m_lastLineSent + 1;
+      size_t offset = offsetY * m_width * sizeof(uint16_t);
+      unsigned linesToSend = line - m_lastLineSent;
       // Copy the batch to the GPU.
       cudaError_t ret = cudaMemcpyAsync(m_dataPtr->gpuImageBufferPtr.get() + offset, m_dataPtr->cpuImageBufferPtr.get() + offset,
-        (line - m_lastLineSent) * width * sizeof(uint16_t),
+        linesToSend * m_width * sizeof(uint16_t),
         cudaMemcpyHostToDevice, *m_dataPtr->streamPtr);
-    } else if ((line + 1) % m_batchSize == 0) {
-      // The offset is to the start of the region, which is batchSize-1 lines before the current line.
-      size_t offset = (line + 1 - m_batchSize) * width * sizeof(uint16_t);
-      // Copy the batch to the GPU.
-      cudaError_t ret = cudaMemcpyAsync(m_dataPtr->gpuImageBufferPtr.get() + offset, m_dataPtr->cpuImageBufferPtr.get() + offset,
-        m_batchSize * width * sizeof(uint16_t),
-        cudaMemcpyHostToDevice, *m_dataPtr->streamPtr);
-    }
-    if (ret != cudaSuccess) {
-      std::cerr << "CopyDataToGPU: cudaMemcpyAsync() failed: " << cudaGetErrorString(ret) << std::endl;
-      return "CopyDataToGPU: cudaMemcpyAsync() failed: " + std::string(cudaGetErrorString(ret));
-    }
-    // Record that we've sent this line already.
-    m_lastLineSent = line;
-  }
+      if (ret != cudaSuccess) {
+        std::cerr << "CopyDataToGPU: cudaMemcpyAsync() failed: " << cudaGetErrorString(ret) << std::endl;
+        return "CopyDataToGPU: cudaMemcpyAsync() failed: " + std::string(cudaGetErrorString(ret));
+      }
 
-  // Run the kernel to write this subset of the data to the texture.
-  dim3 dimBlock(16, 16);
-  dim3 dimGrid((width + dimBlock.x - 1) / dimBlock.x, (height + dimBlock.y - 1) / dimBlock.y);
-  int offsetX = left;
-  int offsetY = top;
-  int stride = m_width;
-  float colorOffset = offset;
-  float colorScale = scale;
-  WriteScaledOffsetKernel << <dimGrid, dimBlock >> > (m_surfObj, reinterpret_cast<uint16_t*>(m_dataPtr->gpuImageBufferPtr.get()),
-    offsetX, offsetY, stride, m_width, m_height, colorOffset, colorScale);
+      // Run the kernel to write this subset of the data to the texture, adding offset and scale.
+      dim3 dimBlock(128, 8); ///< Using a kernel that is wide but not tall because our batch sizes may be small
+      dim3 dimGrid((m_width + dimBlock.x - 1) / dimBlock.x, (linesToSend + dimBlock.y - 1) / dimBlock.y);
+      WriteScaledOffsetKernel << <dimGrid, dimBlock >> > (m_surfObj, reinterpret_cast<uint16_t*>(m_dataPtr->gpuImageBufferPtr.get()),
+        offsetY, m_width, m_height, colorOffset, colorScale);
+
+      // Record the fact that we've written up through this line.
+      m_lastLineSent = line;
+    }
+  }
 
   return "";
 }
@@ -807,7 +795,7 @@ int main(int argc, char** argv)
 
     // Construct one or more Display objects to render the cameras.  They all share object with the texture Display.
     std::vector<std::shared_ptr<DisplayWindow>> displays;
-    displays.push_back(std::make_shared<DisplayWindow>("ASDP Render Module", composite, client, 0, 0, 60.0f, 2500, 640, 640,
+    displays.push_back(std::make_shared<DisplayWindow>("ASDP Render Module", composite, client, 0, 0, 60.0f, 2500, 1280, 1024,
       40.0f, "", displayTexture.get()));
 
     // Construct shared pointers to the data structures that we'll need to do rendering, with the
