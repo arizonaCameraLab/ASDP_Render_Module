@@ -25,12 +25,13 @@
 #include <ASDP_Core_API.h>
 #include <ASDP_SpinFreeQueue.hpp>
 #include <ASDP_BufferPool.h>
-#include <cuda.h>
-#include <cuda_runtime.h>
 #include <nlohmann/json.hpp>
 #include <GL/glew.h>
 #include <Composite.h>
 #include <Display.h>
+#include <cuda.h>
+#include <cuda_runtime.h>
+#include <cuda_gl_interop.h>
 
 using namespace asdp;
 using namespace asdp::render;
@@ -44,20 +45,233 @@ std::filesystem::path dirPath = CONFIG_FILE_PATH;
 /// @brief Structure to hold the data needed to send data to the GPU and run the kernel.
 /// @details These will all have been constructed by the thread that is pushing them onto the queue,
 /// with custom destructors as needed to free the memory when the shared_ptr is destroyed.
+/// This has all of the information needed to get the image all the way into the texture to be rendered.
 struct DataToSendToGPU {
   std::shared_ptr<StreamPacket> streamPacketPtr;   ///< The stream packet that was received, which includes camera ID
   std::shared_ptr<unsigned char> cpuImageBufferPtr;///< The pinned-memory buffer on the CPU that holds the image data
   std::shared_ptr<unsigned char> gpuImageBufferPtr;///< The buffer on the GPU that holds the image data
-  std::shared_ptr<cudaStream_t> streamPtr;         ///< Stream to use to for the copy and kernel run
+  std::shared_ptr<asdp::render::ImageQueue> imageQueuePtr;///< The image queue holding the textures to store into
+  std::shared_ptr<cudaStream_t> streamPtr;         ///< Stream to use to for copy and kernel calls
 };
+
+
+/// @brief CUDA kernel to write an offset and scaled copy of a uint16 image to a surface (OpenGL texture).
+/// @param surface The surface to write to.
+/// @param buffer The buffer containing the uint16 data.  This is a pointer to the beginning of the whole-frame data.
+/// @param offx The x offset to apply to the coordinate (added to the x coordinate in pixels).
+/// @param offy The y offset to apply to the coordinate (added to the y coordinate in pixels).
+/// @param stride The stride of the data (the width of the image in pixels).
+/// @param nx The total width of the image.
+/// @param ny The total height of the image.
+/// @param offset The offset to apply to the data (added to the data before scaling, normally negative in the range
+/// 0 to -65535).
+/// @param scale The scale to apply to the data (multiplied by the data after offsetting, should be positive).
+__global__ void WriteScaledOffsetKernel(cudaSurfaceObject_t surface, uint16_t* buffer,
+  int offx, int offy, int stride, int nx, int ny, float offset, float scale)
+{
+  int x = offx + blockIdx.x * blockDim.x + threadIdx.x;
+  int y = offy + blockIdx.y * blockDim.y + threadIdx.y;
+  if (x < nx && y < ny) {
+    // Convert the uint16 data, offset and then scaled.
+    float data = scale * (offset + buffer[x + y * stride]) / 65535.0f;
+
+    // Write the data to the surface. The x coordinate is in bytes, so we need to multiply by the
+    // size of the data type.
+    surf2Dwrite(data, surface, x * sizeof(float), y);
+  }
+}
+
+/// @brief Class to handle processing of the data from the cameras and sending it to texture.
+class CPUDataToTextureHandler {
+public:
+  /// @todo Document
+  CPUDataToTextureHandler(std::shared_ptr<DataToSendToGPU> dataPtr, std::shared_ptr<Display> sharedContext,
+    uint16_t width, uint16_t height, uint16_t batchSize);
+
+  ~CPUDataToTextureHandler();
+
+  /// @brief Process the image subset, sending to GPU memory and then running the kernel to store into texture.
+  /// @param offset The offset to add to each pixel value before scaling it during copy (total range 0-65535),
+  /// negative values to reduce the pixel count.
+  /// @param dataPtr Pointer to the non-pinned CPU data to ingest.  This is not the beginnnig of the image but
+  /// rather the beginning of a 16-bit block of tightly-packed data.
+  /// @param scale The scale factor to multiply each pixel value by during copy after adding the offset.
+  /// @param left The left edge of the region to process.
+  /// @param top The top edge of the region to process.
+  /// @param width The width of the region to process.
+  /// @param height The height of the region to process.
+  /// @return Empty string on success, description of error on failure.
+  std::string ProcessImageSubset(uint8_t* dataPtr, float offset, float scale,
+    uint16_t left, uint16_t top, uint16_t width, uint16_t height);
+
+  /// @brief Get the status of the constructor.
+  /// @return The status of the constructor, empty for good, error message for bad.
+  std::string GetStatus() const { return m_status; }
+
+protected:
+  std::string m_status;                       ///< The status of the constructor, empty for good, error message for bad
+
+  std::shared_ptr<DataToSendToGPU> m_dataPtr; ///< Information about the structure we're handling
+  std::shared_ptr<Display> m_sharedContext;   ///< The shared context to borrow from when handling textures
+  uint16_t m_width;                           ///< The width of the image data
+  uint16_t m_height;                          ///< The height of the image data
+  uint16_t m_batchSize;                       ///< The number of lines to send to the GPU at once
+  uint16_t m_lastLineSent;                    ///< The last line sent to the GPU
+
+  std::shared_ptr<ImageData> m_imageData;     ///< The image data for the texture, including time and texure ID
+  cudaGraphicsResource* m_resource;           ///< The CUDA graphics resource for the texture
+  cudaArray* m_textureData;                   ///< The CUDA array for the texture
+  cudaSurfaceObject_t m_surfObj;              ///< The CUDA surface object for the texture
+};
+
+CPUDataToTextureHandler::CPUDataToTextureHandler(std::shared_ptr<DataToSendToGPU> dataPtr, std::shared_ptr<Display> sharedContext,
+  uint16_t width, uint16_t height, uint16_t batchSize)
+  : m_status(""), m_dataPtr(dataPtr), m_sharedContext(sharedContext)
+  , m_width(width), m_height(height), m_batchSize(batchSize), m_lastLineSent(0)
+  , m_imageData(nullptr), m_resource(nullptr), m_textureData(nullptr), m_surfObj(0)
+{
+  cudaError_t cudaStatus;
+
+  // Get the texture ID to use for the image data and store it away for use in the destructor.
+  m_imageData = m_dataPtr->imageQueuePtr->PopOldestImage();
+  if (m_imageData == nullptr) {
+    m_status = "Error getting image data from image queue.";
+    return;
+  }
+  unsigned int textureID = m_imageData->texture;
+
+  // Borrow the context from the shared context so that we can use it to map textures.
+  if (!m_sharedContext->BorrowContext()) {
+    m_status = "Error borrowing context from shared context.";
+    return;
+  }
+
+  {
+    // Register the OpenGL texture with CUDA
+    cudaStatus = cudaGraphicsGLRegisterImage(&m_resource, textureID, GL_TEXTURE_2D, cudaGraphicsRegisterFlagsSurfaceLoadStore);
+    if (cudaStatus != cudaSuccess) {
+      m_status = "Failed to register texture: " + std::string(cudaGetErrorString(cudaStatus));
+      return;
+    }
+
+    // Map the texture for writing by CUDA
+    cudaGraphicsMapResources(1, &m_resource, 0);
+    cudaStatus = cudaGraphicsSubResourceGetMappedArray(&m_textureData, m_resource, 0, 0);
+    if (cudaStatus != cudaSuccess) {
+      m_status = "Failed to map texture: " + std::string(cudaGetErrorString(cudaStatus));
+      cudaGraphicsUnregisterResource(m_resource);
+      return;
+    }
+  }
+
+  // Return the context to the shared context since we don't need it for the rest of the processing.
+  if (!m_sharedContext->ReturnContext()) {
+    m_status = "CopyDataToGPU: Error returning context to shared context.";
+    return;
+  }
+
+  // Create a 2D surface object
+  cudaResourceDesc resDesc;
+  memset(&resDesc, 0, sizeof(resDesc));
+  resDesc.resType = cudaResourceTypeArray;
+  resDesc.res.array.array = m_textureData;
+
+  cudaStatus = cudaCreateSurfaceObject(&m_surfObj, &resDesc);
+  if (cudaStatus != cudaSuccess) {
+    m_status = "Failed to create surface object: " + std::string(cudaGetErrorString(cudaStatus));
+    cudaGraphicsUnmapResources(1, &m_resource, 0);
+    cudaGraphicsUnregisterResource(m_resource);
+    return;
+  }
+}
+
+CPUDataToTextureHandler::~CPUDataToTextureHandler()
+{
+  // Wait for the operations on this stream to complete
+  cudaEvent_t event;
+  cudaEventCreate(&event);
+  cudaEventRecord(event, *(m_dataPtr->streamPtr));
+  cudaEventSynchronize(event);
+  cudaEventDestroy(event);
+
+  // Put the texture back into the image queue as the newest image so the Composite will use it.
+  m_dataPtr->imageQueuePtr->AddNewestImage(m_imageData);
+
+  // Free up our resources
+  cudaDestroySurfaceObject(m_surfObj);
+  cudaGraphicsUnmapResources(1, &m_resource, 0);
+  cudaGraphicsUnregisterResource(m_resource);
+}
+
+std::string CPUDataToTextureHandler::ProcessImageSubset(uint8_t* dataPtr, float offset, float scale,
+  uint16_t left, uint16_t top, uint16_t right, uint16_t bottom)
+{
+  uint16_t width = right - left + 1;
+  uint16_t height = bottom - top + 1;
+
+  // Copy the image data to the pinned CPU memory buffer.
+  uint16_t* cpuBuffer = reinterpret_cast<uint16_t*>(m_dataPtr->cpuImageBufferPtr.get());
+  uint16_t* dataPtr16 = reinterpret_cast<uint16_t*>(dataPtr);
+  if ((left == 0) && (width == m_width)) {
+    // If we're copying whole lines, we can do it all at once.
+    memcpy(cpuBuffer + top * width + left, dataPtr16, width * height * sizeof(uint16_t));
+  } else {
+    // Otherwise, we must do it line by line.
+    for (uint16_t line = top; line <= bottom; ++line) {
+      memcpy(cpuBuffer + line * width + left, dataPtr16 + (line - top) * width, width * sizeof(uint16_t));
+    }
+  }
+
+  // Copy the image data to the GPU if we've completed a chunk of lines, or if we're writing to the last line.
+  // We assume that the number of lines coming in from the camera is smaller than the batch size, so that we will
+  // send at most one batch.  We check every line from bottom to the top of the region and send the batch including
+  // that line if it is ever the last line in the region.  We always send the entire lines, even if they have only
+  // been partially filled, so that we don't have to keep a mask for each line.
+  for (uint16_t line = top; line <= bottom; ++line) {
+    cudaError_t ret = {};
+    if (line + 1 == m_height) {
+      // The offset is just past the largest line sent so far.
+      size_t offset = (m_lastLineSent+1) * width * sizeof(uint16_t);
+      // Copy the batch to the GPU.
+      cudaError_t ret = cudaMemcpyAsync(m_dataPtr->gpuImageBufferPtr.get() + offset, m_dataPtr->cpuImageBufferPtr.get() + offset,
+        (line - m_lastLineSent) * width * sizeof(uint16_t),
+        cudaMemcpyHostToDevice, *m_dataPtr->streamPtr);
+    } else if ((line + 1) % m_batchSize == 0) {
+      // The offset is to the start of the region, which is batchSize-1 lines before the current line.
+      size_t offset = (line + 1 - m_batchSize) * width * sizeof(uint16_t);
+      // Copy the batch to the GPU.
+      cudaError_t ret = cudaMemcpyAsync(m_dataPtr->gpuImageBufferPtr.get() + offset, m_dataPtr->cpuImageBufferPtr.get() + offset,
+        m_batchSize * width * sizeof(uint16_t),
+        cudaMemcpyHostToDevice, *m_dataPtr->streamPtr);
+    }
+    if (ret != cudaSuccess) {
+      std::cerr << "CopyDataToGPU: cudaMemcpyAsync() failed: " << cudaGetErrorString(ret) << std::endl;
+      return "CopyDataToGPU: cudaMemcpyAsync() failed: " + std::string(cudaGetErrorString(ret));
+    }
+    // Record that we've sent this line already.
+    m_lastLineSent = line;
+  }
+
+  // Run the kernel to write this subset of the data to the texture.
+  dim3 dimBlock(16, 16);
+  dim3 dimGrid((width + dimBlock.x - 1) / dimBlock.x, (height + dimBlock.y - 1) / dimBlock.y);
+  int offsetX = left;
+  int offsetY = top;
+  int stride = m_width;
+  float colorOffset = offset;
+  float colorScale = scale;
+  WriteScaledOffsetKernel << <dimGrid, dimBlock >> > (m_surfObj, reinterpret_cast<uint16_t*>(m_dataPtr->gpuImageBufferPtr.get()),
+    offsetX, offsetY, stride, m_width, m_height, colorOffset, colorScale);
+
+  return "";
+}
 
 /// @brief Function to copy data to the GPU and store it into the appropriate textures.
 /// It must create and record an event after all operations are complete.  All operations must be
 /// done on the stream that is passed in and they must all be asynchronous.  There is a single
 /// thread to handle all cameras; it handles all cameras, using different CUDA streams to overlap the operations.
-/// To be able to map textures, it must have an OpenGL context that is shared with the Display submodule that
-/// will be rendering the images.  To enable this, it makes its own hidden Display that shares with the rendering
-/// Display.
+/// To be able to map textures, it must have an OpenGL context whose objects are shared with the Display submodule that
+/// will be rendering the images.
 /// @param width The width of the image data.
 /// @param height The height of the image data.
 /// @param done A flag that is set to true when the program is done.
@@ -73,12 +287,9 @@ static void CopyDataToTextures(uint16_t width, uint16_t height,
 {
   Status status;
 
-  // Borrow the context from the shared context so that we can use it to map textures.
-  if (!sharedContext->BorrowContext()) {
-    std::cerr << "CopyDataToGPU: Error borrowing context from shared context." << std::endl;
-    done = true;
-    return;
-  }
+  /// Vector of handlers to process the data for each camera.  There will be one handler for each camera,
+  // indexed by its ID.  We add to this vector as we get new cameras.
+  std::vector< std::shared_ptr<CPUDataToTextureHandler> > handlers;
 
   while (!done) {
     std::shared_ptr<DataToSendToGPU> data;
@@ -98,6 +309,45 @@ static void CopyDataToTextures(uint16_t width, uint16_t height,
         if (OKAY != message->GetType(messageType)) { return; }
         switch (messageType) {
         case FRAME_BEGIN:
+          {
+            // Get the camera ID, width and height from the message.
+            MessageFrameBegin frameBegin(*message);
+            if (frameBegin.GetConstructorStatus() != OKAY) {
+              std::cerr << "CopyDataToGPU: Failed to construct MessageFrameBegin: "
+                << ErrorMessage(frameBegin.GetConstructorStatus()) << std::endl;
+              done = true;
+              return;
+            }
+            uint32_t cameraID;
+            status = frameBegin.GetCameraID(cameraID);
+            if (OKAY != status) {
+              std::cerr << "CopyDataToGPU: GetCameraID() failed: " << ErrorMessage(status) << std::endl;
+              done = true;
+              return;
+            }
+
+            uint16_t width, height;
+            status = frameBegin.GetSensorWidth(width);
+            if (OKAY != status) {
+              std::cerr << "CopyDataToGPU: GetSensorWidth() failed: " << ErrorMessage(status) << std::endl;
+              done = true;
+              return;
+            }
+            status = frameBegin.GetSensorHeight(height);
+            if (OKAY != status) {
+              std::cerr << "CopyDataToGPU: GetSensorHeight() failed: " << ErrorMessage(status) << std::endl;
+              done = true;
+              return;
+            }
+
+            // Construct the CPUDataToTextureHandler object to handle the data for this frame and store it in the vector
+            // of handlers.  This will be used to process the data as it comes in.  Make more handlers as needed.
+            if (cameraID >= handlers.size()) {
+              handlers.resize(cameraID + 1);
+            }
+            handlers[cameraID] = std::make_shared<CPUDataToTextureHandler>(data, sharedContext, width, height,
+              static_cast<uint16_t>(batchSize));
+          }
           // Nothing to do for the beginning of a frame.
           break;
 
@@ -110,7 +360,15 @@ static void CopyDataToTextures(uint16_t width, uint16_t height,
             // Get the region to copy and the data pointer from the message.
             MessageFrameData frameData(*message);
             if (frameData.GetConstructorStatus() != OKAY) {
-              std::cerr << "CopyDataToGPU: Failed to construct MessageFrameData: " << ErrorMessage(frameData.GetConstructorStatus()) << std::endl;
+              std::cerr << "CopyDataToGPU: Failed to construct MessageFrameData: "
+                << ErrorMessage(frameData.GetConstructorStatus()) << std::endl;
+              done = true;
+              return;
+            }
+            uint32_t cameraID;
+            status = frameData.GetCameraID(cameraID);
+            if (OKAY != status) {
+              std::cerr << "CopyDataToGPU: GetCameraID() failed: " << ErrorMessage(status) << std::endl;
               done = true;
               return;
             }
@@ -147,29 +405,18 @@ static void CopyDataToTextures(uint16_t width, uint16_t height,
               return;
             }
 
-            // Copy the image data to the pinned CPU memory buffer.
-            uint16_t* cpuBuffer = reinterpret_cast<uint16_t*>(data->cpuImageBufferPtr.get());
-            uint16_t* dataPtr16 = reinterpret_cast<uint16_t*>(dataPtr);
-            memcpy(cpuBuffer + top * width + left, dataPtr16, (right - left + 1) * (bottom - top + 1) * sizeof(uint16_t));
-
-            // Copy the image data to the GPU if we've completed a chunk of lines.
-            // We assume that the number of lines coming in from the camera is smaller than the batch size, so that we will
-            // send at most one batch.  We check every line from bottom to the top of the region and send the batch including
-            // that line if it is ever the last line in the region.
-            for (uint16_t line = top; line <= bottom; ++line) {
-              if ((line + 1) % batchSize == 0) {
-                // The offset is to the start of the region, which is batchSize-1 lines before the current line.
-                size_t offset = (line + 1 - batchSize) * width * sizeof(uint16_t);
-                // Copy the batch to the GPU.
-                cudaError_t ret =  cudaMemcpyAsync(data->gpuImageBufferPtr.get() + offset, data->cpuImageBufferPtr.get() + offset,
-                  batchSize * width * sizeof(uint16_t),
-                  cudaMemcpyHostToDevice, *data->streamPtr);
-                if (ret != cudaSuccess) {
-                  std::cerr << "CopyDataToGPU: cudaMemcpyAsync() failed: " << cudaGetErrorString(ret) << std::endl;
-                  done = true;
-                  return;
-                }
-              }
+            // Handle the data
+            /// @todo Get the offset and scale from NUC processing.
+            if (cameraID >= handlers.size()) {
+              std::cerr << "CopyDataToGPU: FRAME_DATA: Error: Camera ID " << cameraID << " not found." << std::endl;
+              done = true;
+              return;
+            }
+            std::string ret = handlers[cameraID]->ProcessImageSubset(dataPtr, 0.0f, 1.0f, left, top, right, bottom);
+            if (!ret.empty()) {
+              std::cerr << "Error processing image subset: " << ret << std::endl;
+              done = true;
+              return;
             }
           }
           break;
@@ -180,17 +427,28 @@ static void CopyDataToTextures(uint16_t width, uint16_t height,
             // Construct the end-of-frame message from the message.
             MessageFrameEnd frameEnd(*message);
             if (frameEnd.GetConstructorStatus() != OKAY) {
-              std::cerr << "CopyDataToGPU: Failed to construct MessageFrameEnd: " << ErrorMessage(frameEnd.GetConstructorStatus()) << std::endl;
+              std::cerr << "CopyDataToGPU: Failed to construct MessageFrameEnd: "
+                << ErrorMessage(frameEnd.GetConstructorStatus()) << std::endl;
               done = true;
               return;
             }
 
-            //==================================================================================================
-            /// @todo Replace this block of code with your own kernel launch or other work.
-
-
-            /// @todo Replace this block of code with your own kernel launch or other work.
-            //==================================================================================================
+            // Done with this frame, so we reset the pointer to delete the handler, which will clean
+            // up and finally push the data to the texture before returning.
+            /// @todo Consider putting these into a completion list and polling for done rather than hanging here.
+            uint32_t cameraID;
+            status = frameEnd.GetCameraID(cameraID);
+            if (OKAY != status) {
+              std::cerr << "CopyDataToGPU: GetCameraID() failed: " << ErrorMessage(status) << std::endl;
+              done = true;
+              return;
+            }
+            if (cameraID >= handlers.size()) {
+              std::cerr << "CopyDataToGPU: FRAME_END: Error: Camera ID " << cameraID << " not found." << std::endl;
+              done = true;
+              return;
+            }
+            handlers[cameraID].reset();
 
             // Note: This must be done after all other operations on the stream so that it will wait for them to complete.
             // Create the completion event, storing a pointer to it in a shared pointer whose destructor will delete
@@ -219,15 +477,12 @@ static void CopyDataToTextures(uint16_t width, uint16_t height,
     } // End of if we got a message from the queue.
   } // End of while we are not done.
 
-  // Return the context to the shared context.
-  if (!sharedContext->ReturnContext()) {
-    std::cerr << "CopyDataToGPU: Error returning context to shared context." << std::endl;
-  }
 }
 
 static void ReceiveDataThread(ReceiverUDP& receiveSocket, size_t maxBytesPerPacket, std::atomic<bool>& done,
   std::shared_ptr<unsigned char> cpuImageBufferPtr, std::shared_ptr<unsigned char> gpuImageBufferPtr,
   std::shared_ptr<cudaStream_t> streamPtr,
+  std::shared_ptr<asdp::render::ImageQueue> imageQueue,
   std::shared_ptr< SpinFreeQueue< std::shared_ptr<DataToSendToGPU> > > outQueue)
 {
   // Generate a buffer pool to use to get pre-allocated buffers for reading the data from
@@ -276,6 +531,7 @@ static void ReceiveDataThread(ReceiverUDP& receiveSocket, size_t maxBytesPerPack
     data.streamPacketPtr = streamPacket;
     data.cpuImageBufferPtr = cpuImageBufferPtr;
     data.gpuImageBufferPtr = gpuImageBufferPtr;
+    data.imageQueuePtr = imageQueue;
     data.streamPtr = streamPtr;
     outQueue->enqueue(std::make_shared<DataToSendToGPU>(data));
   }
@@ -496,7 +752,9 @@ int main(int argc, char** argv)
         info.m_imageQueue = std::make_shared<asdp::render::ImageQueue>();
 
         //==================================================================================================
-        // Fill in two textures for this camera, both gray and at time zero.
+        // Fill in three textures for this camera, all gray and at time zero.
+        // This creates one for the display to be using, one for the texture thread to write to, and
+        // one to lie fallow so that there is a buffer between the two when the writing thread switches.
         // We must borrow the context from the displayTexture so that we can create the textures.
         if (!displayTexture->BorrowContext()) {
           std::cerr << "Error borrowing context from displayTexture." << std::endl;
@@ -507,7 +765,7 @@ int main(int argc, char** argv)
         unsigned int height = info.m_resolutionPixels[1];
         std::vector<uint16_t> image(width * height, 32767);
 
-        for (size_t i = 0; i < 2; i++) {
+        for (size_t i = 0; i < 3; i++) {
           // Create the textures for the camera.
           std::shared_ptr<ImageData> imageData = std::make_shared<ImageData>();
 
@@ -550,7 +808,7 @@ int main(int argc, char** argv)
     // Construct one or more Display objects to render the cameras.  They all share object with the texture Display.
     std::vector<std::shared_ptr<DisplayWindow>> displays;
     displays.push_back(std::make_shared<DisplayWindow>("ASDP Render Module", composite, client, 0, 0, 60.0f, 2500, 640, 640,
-      90.0f, "", displayTexture.get()));
+      40.0f, "", displayTexture.get()));
 
     // Construct shared pointers to the data structures that we'll need to do rendering, with the
     // custom destructors that will clean up when the shared_ptr is destroyed.
@@ -598,7 +856,8 @@ int main(int argc, char** argv)
     std::vector<std::thread> receiveDataThreads;
     for (size_t i = 0; i < cameras.size(); i++) {
       receiveDataThreads.push_back(std::thread(ReceiveDataThread, std::ref(*UDPReceivers[i]), 9000,
-        std::ref(done), cpuPinnedImageBuffers[i], gpuImageBuffers[i], streams[i], dataQueue));
+        std::ref(done), cpuPinnedImageBuffers[i], gpuImageBuffers[i], streams[i], cameraRenderInfos[i].m_imageQueue,
+        dataQueue));
     }
 
     // Request streaming on the cameras at their maximum rates.
