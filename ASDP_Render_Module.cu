@@ -793,7 +793,7 @@ int main(int argc, char** argv)
     // Construct a Composite object to render the cameras.
     std::shared_ptr<Composite> composite = std::make_shared<CompositeCameras>(cameraRenderInfos);
 
-    // Construct one or more Display objects to render the cameras.  They all share object with the texture Display.
+    // Construct one or more Display objects to render the cameras.  They all share objects with the texture Display.
     std::vector<std::shared_ptr<DisplayWindow>> displays;
     displays.push_back(std::make_shared<DisplayWindow>("ASDP Render Module", composite, client, 0, 0, 60.0f, 2500, 1280, 1024,
       40.0f, "", displayTexture.get()));
