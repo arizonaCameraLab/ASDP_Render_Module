@@ -94,11 +94,13 @@ set (Render_Module_HEADERS
   Composite.h
   Display.h
   ImageQueue.h
+  Distortion.h
 )
 set (Render_Module_SOURCES
   Composite.cpp
   Display.cpp
   ImageQueue.cpp
+  Distortion.cpp
 )
 add_library(Render_Module STATIC ${Render_Module_SOURCES} ${Render_Module_HEADERS})
 target_include_directories(Render_Module PUBLIC
@@ -202,6 +204,7 @@ if(BUILD_TESTS)
     SharedContext_Test
     Display_Test
     Fullscreen_Test
+    Distortion_Test
   )
   foreach (BASE ${CPP_TESTS})
     set (APP ${BASE})
