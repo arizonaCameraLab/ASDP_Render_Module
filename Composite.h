@@ -25,6 +25,7 @@
 #include <GL/gl.h>
 #include <ASDP_Core_API.h>
 #include <ImageQueue.h>
+#include <Distortion.h>
 
 namespace asdp {
   namespace render {
@@ -44,8 +45,8 @@ namespace asdp {
       std::array<double, 3> m_orientationDegrees = {};
       std::array<uint16_t, 2> m_resolutionPixels = {};///< Resolution of the camera in pixels.
       std::array<double, 2> m_fovDegrees = {};        ///< Field of view of the camera in degrees, horizontal then vertical.
-      /// Distortion coefficients of the camera. @todo Describe the format.
-      std::vector<double> m_distortion;
+      /// Distortion correction object for the camera.
+      std::shared_ptr<Distortion> m_distortion;
       /// Queue of images from the camera.  The newest image is the one to render.
       std::shared_ptr<asdp::render::ImageQueue> m_imageQueue;
     };
@@ -222,7 +223,7 @@ namespace asdp {
       /// @param nx The number of vertices in the X direction.
       /// @param ny The number of vertices in the Y direction.
       /// @param depth The distance from the camera to the quadrilateral displaying the image.
-      void AddBufferObjects(const CameraRenderInfo& cameraRenderInfo, size_t nx = 10, size_t ny = 10,
+      void AddBufferObjects(const CameraRenderInfo& cameraRenderInfo, size_t nx = 100, size_t ny = 100,
         GLfloat depth = 10);
 
       asdp::Time m_scanOutTime; ///< The time of the scan out stored for use by RenderView.

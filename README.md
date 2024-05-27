@@ -64,7 +64,13 @@ serial number 0 that has two microcameras so it would be saved in *0.json*.
       "orientationDegrees" : [0.0, 0.0, 0.0],
       "resolutionPixels" : [1280, 1024],
       "fieldOfViewDegrees" : [40.0, 32.5],
-      "distortion" : [0.5, 0.5, 1.0, 0.0]
+      "distortion" : {
+        "type" : "radial",
+        "parameters" : {
+          "COP" : [0.0, 0.0],
+          "map" : [[0, 0], [1, 1]]
+        }
+      }
     },
     {
       "id" : 2,
@@ -72,7 +78,10 @@ serial number 0 that has two microcameras so it would be saved in *0.json*.
       "orientationDegrees" : [30.0, 0.0, 0.0],
       "resolutionPixels" : [1280, 1024],
       "fieldOfViewDegrees" : [40.0, 32.5],
-      "distortion" : [0.5, 0.5, 1.0, 0.0]
+      "distortion" : {
+        "type" : "none",
+        "parameters" : {}
+      }
     }
   ]
 }
@@ -80,7 +89,20 @@ serial number 0 that has two microcameras so it would be saved in *0.json*.
 
 The cameras are placed in the helicopter coordinate system described below.
 
-@todo - describe the distortion format
+The **distortion** field is an object that has a *type* field that specifies the type of distortion
+and a *parameters* field that specifies the parameters of the distortion.  The type field can be
+"none" for no distortion or "radial" for radial distortion (other approaches may be added).  The
+parameters field depends on the type of distortion.  For none distortion, the parameters are empty.
+For radial distortion, the parameters are as follows:
+- **COP:** The center of projection of the camera in fraction of the sensor in the range [-1..1] for
+  each axis.  This is the point in the image that is not distorted.  A value of [0.0, 0.0] is the center of the image.
+  A value of [1.0, 1.0] is the upper right corner of the image.  A value of [-1.0, -1.0] is the lower left corner.
+- **map:** A list of points with the first one being [0,0] and the later ones in increasing order that specify
+  the ideal-camra radius and its distorted radius.  These are for points that are projected onto the 
+  Z = -1 plane.  They must span the entire range of the image (including the corners).  For example, a
+  distortion that increased the distance by a factor of 2 could be specified by the list [[0,0], [1,2]] for
+  a camera whose field of view is less than 45 degrees at its corners, with the second entry changed to
+  [3, 6] for a wider field of view.
 
 ## Utilities
 

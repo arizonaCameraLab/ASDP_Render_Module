@@ -59,8 +59,9 @@ namespace asdp {
     class DistortionRadialLERP : public Distortion {
     public:
       /// @brief Constructor that takes the center of projection and control points for the distortion.
-      /// @param COP Center of projection for the distortion.  This is the normalized point in the region
-      /// covered by the sensor.  For an ideal camera, the center of the sensor would be (0.5, 0.5).
+      /// @param COP Center of projection for the distortion.  This is the normalized point in the range
+      /// [-1..1] for each axis going from one side of the sensor to the other.  For an ideal camera, the
+      /// center of the sensor would be (0.0, 0.0).
       /// @param controlPoints Control points for the distortion.  These points are the radial distance
       /// from the center of projection and they lie on a plane that is 1 unit down the -Z axis.  The first
       /// element is the radial distance in the undistored case, and the second element is the radial distance

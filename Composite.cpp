@@ -693,19 +693,24 @@ void CompositeCameras::AddBufferObjects(CameraRenderInfo const& cameraRenderInfo
 
       // Compute the scaled X, Y coordinates for the four corners of the quad that place them
       // for a correctly-sized quad given the camera info to get them to scaled space.
+      // The Z coordinate it along the negative Z axis at the specified depth.
       double xHalfWidth = tan(radians(cameraRenderInfo.m_fovDegrees[0]) / 2.0) * depth;
       double yHalfWidth = tan(radians(cameraRenderInfo.m_fovDegrees[1]) / 2.0) * depth;
       double xs = xn * xHalfWidth;
       double ys = yn * yHalfWidth;
+      double zs = -depth;
 
       // Perform distortion correction on the X, Y coordinates to get to canonical view
-      // space, which has a camera looking down -Z.
-      /// @todo perform distortion correction
-      double xc = xs;
-      double yc = ys;
-
-      // Compute the canonical Z location.
-      double zc = -depth;
+      // space, which has a camera looking down -Z.  This provides us the location in the
+      // canonical view space.  If we don't have a distortion model, we just use the X, Y, Z
+      // coordinates as-is.
+      std::array<double, 3> distPoint = std::array<double, 3>{xs, ys, zs};
+      if (cameraRenderInfo.m_distortion != nullptr) {
+        distPoint = cameraRenderInfo.m_distortion->MapPoint(distPoint);
+      }
+      double xc = distPoint[0];
+      double yc = distPoint[1];
+      double zc = distPoint[2];
 
       // Translate and rotate the X, Y, Z coordinates to match the camera center of projection
       // and viewing direction of this camera in the coordinate system of the camera cluster.

@@ -774,9 +774,29 @@ int main(int argc, char** argv)
         info.m_orientationDegrees = camera["orientationDegrees"];
         info.m_resolutionPixels = camera["resolutionPixels"];
         info.m_fovDegrees = camera["fieldOfViewDegrees"];
+        json distortion = camera["distortion"];
+        if (distortion["type"] == "none") {
+          DistortionNone* distortion = new DistortionNone;
+          info.m_distortion = std::shared_ptr<Distortion>(distortion);
+          /// @todo Handle radial distortion
+        } else if (distortion["type"] == "radial") {
+          json parameters = distortion["parameters"];
+          std::array<double, 2> center = parameters["COP"];
+          json map = parameters["map"];
+          std::vector< std::array<double, 2> > mapPoints = map;
+          DistortionRadialLERP* distortion = new DistortionRadialLERP(center, mapPoints);
+          info.m_distortion = std::shared_ptr<Distortion>(distortion);
+        } else {
+          std::cerr << "Error: Unknown distortion type: " << distortion["type"] << std::endl;
+          return 17;
+        }
+
+        /// @todo Parse and fill in the distortion parameters from the configuration file rather than passing None always.
+        /*
         for (double d : camera["distortion"]) {
           info.m_distortion.push_back(d);
         }
+        */
         info.m_imageQueue = std::make_shared<asdp::render::ImageQueue>();
 
         //==================================================================================================
