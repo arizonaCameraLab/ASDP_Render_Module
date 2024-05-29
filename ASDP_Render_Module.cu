@@ -65,17 +65,14 @@ struct DataToSendToGPU {
 /// 0 to -65535).
 /// @param scale The scale to apply to the data (multiplied by the data after offsetting, should be positive).
 __global__ void WriteScaledOffsetKernel(cudaSurfaceObject_t surface, uint16_t* buffer,
-  uint16_t offy, uint16_t nx, uint16_t ny, float offset, float scale)
+  uint16_t offy, uint16_t nx, uint16_t ny)
 {
   uint16_t x = blockIdx.x * blockDim.x + threadIdx.x;
   uint16_t y = offy + blockIdx.y * blockDim.y + threadIdx.y;
   if (x < nx && y < ny) {
-    // Convert the uint16 data, offset and then scaled.
-    float data = scale * (offset + buffer[x + y * nx]) / 65535.0f;
-
     // Write the data to the surface. The x coordinate is in bytes, so we need to multiply by the
     // size of the data type.
-    surf2Dwrite(data, surface, x * sizeof(float), y);
+    surf2Dwrite(buffer[x + y * nx], surface, x * sizeof(uint16_t), y);
   }
 }
 
@@ -89,10 +86,8 @@ public:
   /// @param width The width of the image data (the whole image).
   /// @param height The height of the image data (the whole image).
   /// @param batchSize The number of lines to send to the GPU at once (the height of the region that will be sent).
-  /// @param colorOffset The offset to add to each pixel value before scaling it during copy (total range 0-65535).
-  /// @param colorScale The scale factor to multiply each pixel value by during copy after adding the offset.
   CPUDataToTextureHandler(std::shared_ptr<DataToSendToGPU> dataPtr, std::shared_ptr<Display> sharedContext,
-    uint16_t width, uint16_t height, uint16_t batchSize, float colorOffset, float colorScale);
+    uint16_t width, uint16_t height, uint16_t batchSize);
 
   ~CPUDataToTextureHandler();
 
@@ -121,8 +116,6 @@ protected:
   uint16_t m_width;                           ///< The width of the image data
   uint16_t m_height;                          ///< The height of the image data
   uint16_t m_batchSize;                       ///< The number of lines to send to the GPU at once
-  float m_colorOffset;                        ///< The offset to add to each pixel value before scaling it during copy
-  float m_colorScale;                         ///< The scale factor to multiply each pixel value by during copy after adding the offset
   uint16_t m_lastLineSent;                    ///< The last line sent to the GPU
   uint16_t m_largestLineReceived;             ///< The largest line received so far
 
@@ -137,10 +130,9 @@ protected:
 };
 
 CPUDataToTextureHandler::CPUDataToTextureHandler(std::shared_ptr<DataToSendToGPU> dataPtr, std::shared_ptr<Display> sharedContext,
-  uint16_t width, uint16_t height, uint16_t batchSize, float colorOffset, float colorScale)
+  uint16_t width, uint16_t height, uint16_t batchSize)
   : m_status(""), m_dataPtr(dataPtr), m_sharedContext(sharedContext)
   , m_width(width), m_height(height), m_batchSize(batchSize)
-  , m_colorOffset(colorOffset), m_colorScale(colorScale)
   , m_lastLineSent(0), m_largestLineReceived(0)
   , m_imageData(nullptr), m_resource(nullptr), m_textureData(nullptr), m_surfObj(0)
 {
@@ -238,7 +230,6 @@ std::string CPUDataToTextureHandler::SendToGPU()
     linesToSend * m_width * sizeof(uint16_t),
     cudaMemcpyHostToDevice, *m_dataPtr->streamPtr);
   if (ret != cudaSuccess) {
-    std::cerr << "CopyDataToGPU: cudaMemcpyAsync() failed: " << cudaGetErrorString(ret) << std::endl;
     return "CopyDataToGPU: cudaMemcpyAsync() failed: " + std::string(cudaGetErrorString(ret));
   }
 
@@ -246,7 +237,7 @@ std::string CPUDataToTextureHandler::SendToGPU()
   dim3 dimBlock(128, 8); ///< Using a kernel that is wide but not tall because our batch sizes may be small
   dim3 dimGrid((m_width + dimBlock.x - 1) / dimBlock.x, (linesToSend + dimBlock.y - 1) / dimBlock.y);
   WriteScaledOffsetKernel << <dimGrid, dimBlock >> > (m_surfObj, reinterpret_cast<uint16_t*>(m_dataPtr->gpuImageBufferPtr.get()),
-    offsetY, m_width, m_height, m_colorOffset, m_colorScale);
+    offsetY, m_width, m_height);
 
   // Record the fact that we've written up through this line.
   m_lastLineSent = m_largestLineReceived;
@@ -373,9 +364,8 @@ static void CopyDataToTextures(uint16_t width, uint16_t height,
             if (cameraID >= handlers.size()) {
               handlers.resize(cameraID + 1);
             }
-            /// @todo Get the offset and scale from NUC processing and/or frame metadata.
             handlers[cameraID] = std::make_shared<CPUDataToTextureHandler>(data, sharedContext, width, height,
-              static_cast<uint16_t>(batchSize), 0.0f, 1.0f);
+              static_cast<uint16_t>(batchSize));
           }
           // Nothing to do for the beginning of a frame.
           break;
@@ -828,7 +818,7 @@ int main(int argc, char** argv)
           glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
           // Load image into texture
-          glTexImage2D(GL_TEXTURE_2D, 0, GL_R32F, width, height, 0, GL_RED, GL_UNSIGNED_SHORT, image.data());
+          glTexImage2D(GL_TEXTURE_2D, 0, GL_R16, width, height, 0, GL_RED, GL_UNSIGNED_SHORT, image.data());
           glBindTexture(GL_TEXTURE_2D, 0);
 
           imageData->texture = texture;

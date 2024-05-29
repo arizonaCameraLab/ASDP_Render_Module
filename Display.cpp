@@ -369,6 +369,8 @@ void DisplayWindow::DisplayThread(std::string windowName,
     // Process keyboard/mouse/joystick input events and update the viewpoint
     HandleKeyboard();
     /// @todo
+
+    // Ensure that the view orientation stays within bounds.
     ClampViewOrienation();
 
     // Handle any window resizing
