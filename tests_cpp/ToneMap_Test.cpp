@@ -4,55 +4,16 @@
 
 #include <iostream>
 #include <vector>
-#include <thread>
-#include <atomic>
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
-
-/// @brief Make an image whose brightness varies from the top of the image to the bottom.
-/// @details The image will be a gradient from the minimum value at the bottom to the
-/// maximum value at the top.  The image order matches that of stored images, which is
-/// different from OpenGL texture order; the first pixel is at the upper left of the image.
-/// OpenGL must have been initialized before calling this function.
-/// @param width Width of the image.
-/// @param height Height of the image.
-/// @param minVal Minimum value of the image (at the bottom of the image).
-/// @param maxVal Maximum value of the image (at the top of the image).
-/// @return An OpenGL texture ID.
-GLuint MakeTexture(int width, int height, uint16_t minVal, uint16_t maxVal)
-{
-  std::vector<uint16_t> image(width * height);
-  float range = static_cast<float>(maxVal - minVal);
-  for (int j = 0; j < height; j++) {
-    float normJ = static_cast<float>(j) / static_cast<float>(height - 1);
-    for (int i = 0; i < width; i++) {
-      image[i + j*width] = static_cast<uint16_t>(maxVal - normJ*range);
-    }
-  }
-
-  unsigned int texture;
-  glGenTextures(1, &texture);
-  glBindTexture(GL_TEXTURE_2D, texture);
-  // Set the texture wrapping parameters
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP);
-  // Set texture filtering parameters
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-
-   // Load image into texture
-  glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, width, height, 0, GL_RED, GL_UNSIGNED_SHORT, image.data());
-  glBindTexture(GL_TEXTURE_2D, 0);
-
-  return texture;
-}
+#include <ToneMap.h>
 
 // Vertex data for a full-screen quad with 3 spatial coordinates and 2 texture coordinates per vertex
 GLfloat vertices[] = {
-    -1.0f, -1.0f, 0.0f, 0.0f, 0.0f,
-     1.0f, -1.0f, 0.0f, 1.0f, 0.0f,
-     1.0f,  1.0f, 0.0f, 1.0f, 1.0f,
-    -1.0f,  1.0f, 0.0f, 0.0f, 1.0f
+    -1.0f, -1.0f, 0.0f, 0.0f,
+     1.0f, -1.0f, 0.0f, 1.0f,
+     1.0f,  1.0f, 0.0f, 1.0f,
+    -1.0f,  1.0f, 0.0f, 0.0f
 };
 
 // Index data to share position data
@@ -62,20 +23,20 @@ GLushort indices[] = { 0, 1, 2, 0, 2, 3 };
 const char* vertexShaderSource =
 R"(#version 330 core
    layout (location = 0) in vec3 aPos;
-   layout (location = 1) in vec2 aTexCoord;
-   out vec2 TexCoord;
+   layout (location = 1) in float aTexCoord;
+   out float TexCoord;
    void main()
    {
       gl_Position = vec4(aPos, 1.0);
-      TexCoord = vec2(aTexCoord.x, aTexCoord.y);
+      TexCoord = aTexCoord;
    })";
 
 // Fragment Shader
 const char* fragmentShaderSource =
 R"(#version 330 core
    out vec4 FragColor;
-   in vec2 TexCoord;
-   uniform sampler2D texture1;
+   in float TexCoord;
+   uniform sampler1D texture1;
    void main()
    {
       FragColor = texture(texture1, TexCoord);
@@ -94,45 +55,11 @@ int main()
   }
 
   // Create a windowed mode window and its OpenGL context
-  GLFWwindow* window = glfwCreateWindow(windowSize, windowSize, "SharedContext_Test", NULL, NULL);
+  GLFWwindow* window = glfwCreateWindow(windowSize, windowSize, "ToneMap_Test", NULL, NULL);
   if (!window) {
     std::cerr << "Failed to create main window\n";
     glfwTerminate();
     return -1;
-  }
-
-  // Make the window's context current
-  glfwMakeContextCurrent(window);
-
-  // Create a new shared context that we'll use to generate a texture into that
-  // we'll use in the main context.  This will use a hidden window.
-  glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
-  GLFWwindow* window2 = glfwCreateWindow(windowSize, windowSize, "Hidden", NULL, window);
-  if (!window2) {
-    std::cerr << "Failed to create hidden window\n";
-    glfwTerminate();
-    return -1;
-  }
-
-  // Create a new thread that switches to the new context and generates a texture
-  // in that context.
-  std::atomic<GLuint> texture{0};
-  std::atomic_bool done{false};
-  std::thread t([&window2, width, height, &texture, &done]() {
-    glfwMakeContextCurrent(window2);
-    texture = MakeTexture(width, height, 0, 65535);
-    glFinish();
-    done = true;
-  });
-
-  // Wait until the thread is done and verify that the texture ID is valid.
-  while (!done) {
-    std::this_thread::sleep_for(std::chrono::milliseconds(10));
-  }
-  t.join();
-  if (texture == 0) {
-    std::cerr << "Failed to generate texture\n";
-    return 3;
   }
 
   // Make the window's context current
@@ -147,6 +74,19 @@ int main()
   // Clear any GL error that Glew caused.  Apparently on Non-Windows
   // platforms, this can cause a spurious error 1280.
   glGetError();
+
+  // Generate the texture for the tone map
+  std::vector<asdp::render::ToneMapEntry> mapping;
+  mapping.push_back(asdp::render::ToneMapEntry(0.00f, 0.0f, 0.0f, 0.0f));
+  mapping.push_back(asdp::render::ToneMapEntry(0.33f, 0.3f, 0.0f, 0.0f));
+  mapping.push_back(asdp::render::ToneMapEntry(0.67f, 0.6f, 0.5f, 0.0f));
+  mapping.push_back(asdp::render::ToneMapEntry(1.00f, 1.0f, 1.0f, 1.0f));
+  asdp::render::ToneMap toneMap(mapping);
+  GLuint texture = toneMap.GenerateTexture();
+  if (texture == 0) {
+    std::cerr << "Failed to generate texture" << std::endl;
+    return 5;
+  }
 
   // Generate and bind the vertex array
   GLuint vao;
@@ -190,14 +130,14 @@ int main()
   // Specify the layout of the vertex data
   GLint posAttrib = glGetAttribLocation(shaderProgram, "aPos");
   glEnableVertexAttribArray(posAttrib);
-  glVertexAttribPointer(posAttrib, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), 0);
+  glVertexAttribPointer(posAttrib, 3, GL_FLOAT, GL_FALSE, 4 * sizeof(float), 0);
 
   GLint texAttrib = glGetAttribLocation(shaderProgram, "aTexCoord");
   glEnableVertexAttribArray(texAttrib);
-  glVertexAttribPointer(texAttrib, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3 * sizeof(float)));
+  glVertexAttribPointer(texAttrib, 1, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(3 * sizeof(float)));
 
   // Loop until the user closes the window.
-  std::cout << "You should see a gradient red texture from the top of the image to the bottom." << std::endl;
+  std::cout << "You should see a gradient black/red/yellow/white texture from the left of the image to the right." << std::endl;
   std::cout << "" << std::endl;
   std::cout << "Close the window to exit." << std::endl;
   while (!glfwWindowShouldClose(window)) {
@@ -208,12 +148,12 @@ int main()
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     glDisable(GL_CULL_FACE);
     glDisable(GL_DEPTH_TEST);
-    glBindTexture(GL_TEXTURE_2D, texture);
+    glBindTexture(GL_TEXTURE_1D, texture);
 
     // Draw the quad
     glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, 0);
 
-    glBindTexture(GL_TEXTURE_2D, 0);
+    glBindTexture(GL_TEXTURE_1D, 0);
 
     // Swap front and back buffers
     glfwSwapBuffers(window);

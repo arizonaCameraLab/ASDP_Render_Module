@@ -207,6 +207,7 @@ if(BUILD_TESTS)
     Display_Test
     Fullscreen_Test
     Distortion_Test
+    ToneMap_Test
   )
   foreach (BASE ${CPP_TESTS})
     set (APP ${BASE})
