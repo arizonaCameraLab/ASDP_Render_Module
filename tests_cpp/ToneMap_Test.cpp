@@ -87,6 +87,10 @@ int main()
     std::cerr << "Failed to generate texture" << std::endl;
     return 5;
   }
+  if (!toneMap.FillTexture(texture)) {
+    std::cerr << "Failed to fill texture" << std::endl;
+    return 6;
+  }
 
   // Generate and bind the vertex array
   GLuint vao;
