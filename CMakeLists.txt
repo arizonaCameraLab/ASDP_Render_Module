@@ -95,12 +95,14 @@ set (Render_Module_HEADERS
   Display.h
   ImageQueue.h
   Distortion.h
+  ToneMap.h
 )
 set (Render_Module_SOURCES
   Composite.cpp
   Display.cpp
   ImageQueue.cpp
   Distortion.cpp
+  ToneMap.cpp
 )
 add_library(Render_Module STATIC ${Render_Module_SOURCES} ${Render_Module_HEADERS})
 target_include_directories(Render_Module PUBLIC

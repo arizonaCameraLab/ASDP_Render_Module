@@ -477,24 +477,25 @@ private:
 };
 
 static const GLchar* cubeVertexShader =
-  "#version 330 core\n"
-  "layout(location = 0) in vec3 position;\n"
-  "layout(location = 1) in vec3 vertexColor;\n"
-  "out vec3 fragmentColor;\n"
-  "uniform mat4 modelViewProjection;\n"
-  "void main()\n"
-  "{\n"
-  "   gl_Position = modelViewProjection * vec4(position,1);\n"
-  "   fragmentColor = vertexColor;\n"
-  "}\n\0";
+R"(#version 330 core
+   layout(location = 0) in vec3 position;
+   layout(location = 1) in vec3 vertexColor;
+   out vec3 fragmentColor;
+   uniform mat4 modelViewProjection;
+   void main()
+   {
+      gl_Position = modelViewProjection * vec4(position,1);
+      fragmentColor = vertexColor;
+   })";
 
-static const GLchar* cubeFragmentShader = "#version 330 core\n"
-  "in vec3 fragmentColor;\n"
-  "out vec3 color;\n"
-  "void main()\n"
-  "{\n"
-  "    color = fragmentColor;\n"
-  "}\n\0";
+static const GLchar* cubeFragmentShader =
+R"(#version 330 core
+   in vec3 fragmentColor;
+   out vec3 color;
+   void main()
+   {
+       color = fragmentColor;
+   })";
 
 CompositeCube::CompositeCube(double radius)
   : Composite(std::vector<CameraRenderInfo>())
@@ -579,27 +580,27 @@ void CompositeCube::TearDownRenderFrame()
 // Objects needed by the CompositeCameras class.
 
 static const GLchar* camerasVertexShader =
-  "#version 330 core\n"
-  "layout (location = 0) in vec3 aPos;\n"
-  "layout (location = 1) in vec2 aTexCoord;\n"
-  "out vec2 TexCoord;\n"
-  "uniform mat4 modelViewProjection;\n"
-  "void main()\n"
-  "{\n"
-  "   gl_Position = modelViewProjection * vec4(aPos, 1.0);\n"
-  "   TexCoord = vec2(aTexCoord.x, aTexCoord.y);\n"
-  "}\0";
+R"(#version 330 core
+   layout (location = 0) in vec3 aPos;
+   layout (location = 1) in vec2 aTexCoord;
+   out vec2 TexCoord;
+   uniform mat4 modelViewProjection;
+   void main()
+   {
+      gl_Position = modelViewProjection * vec4(aPos, 1.0);
+      TexCoord = vec2(aTexCoord.x, aTexCoord.y);
+   })";
 
 static const GLchar* camerasFragmentShader =
-  "#version 330 core\n"
-  "out vec4 FragColor;\n"
-  "in vec2 TexCoord;\n"
-  "uniform sampler2D texture1;\n"
-  "void main()\n"
-  "{\n"
-  "   // This is a monochromatic image, so we spread the red channel to all three color channels.\n"
-  "   FragColor = vec4(vec3(texture(texture1, TexCoord).r), 1.0);\n"
-  "}\n\0";
+R"(#version 330 core
+   out vec4 FragColor;
+   in vec2 TexCoord;
+   uniform sampler2D texture1;
+   void main()
+   {
+      // This is a monochromatic image, so we spread the red channel to all three color channels.
+      FragColor = vec4(vec3(texture(texture1, TexCoord).r), 1.0);
+   })";
 
 CompositeCameras::CompositeCameras(std::vector<CameraRenderInfo>& cameraRenderInfo)
   : Composite(cameraRenderInfo)

@@ -88,6 +88,7 @@ namespace asdp {
       /// @brief Mutex to protect access to the image queue.
       mutable std::mutex m_mutex;
 
+      /// @brief The images associated with this queue.
       std::list< std::shared_ptr<ImageData> > m_images;
     };
 
