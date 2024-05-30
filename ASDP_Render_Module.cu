@@ -554,6 +554,10 @@ static void ReceiveDataThread(ReceiverUDP& receiveSocket, size_t maxBytesPerPack
     data.streamPtr = streamPtr;
     outQueue->enqueue(std::make_shared<DataToSendToGPU>(data));
   }
+
+  // Release our out-queue pointer so it will be destroyed and release all its resources back to our
+  // buffer pool.
+  outQueue.reset();
 }
 
 std::shared_ptr<Message> WaitForMessageType(std::shared_ptr<Receiver> receiver, MessageID type, float seconds)
@@ -992,12 +996,13 @@ int main(int argc, char** argv)
     done = true;
     copyDataToGPUThread.join();
 
-    // Clear all remaining data from the queues.
-    // Do this in a block so that the shared_ptrs are destroyed before we join the receiveDataThreads.
-    {
-      std::shared_ptr<DataToSendToGPU> data;
-      while (dataQueue->dequeue(data, std::chrono::milliseconds(1))) {}
-    }
+    // Destroy our client
+    client.reset();
+
+    // Clear all remaining data from the queue now that the receivers are done.
+    // All of the receiving threads will also delete this before they exit, which will remove all of the
+    // references and push their buffers back onto their empty queues.
+    dataQueue.reset();
 
     // Now that all of the buffers have been returned to the buffer queue, join our receive-data threads.
     for (auto& thread : receiveDataThreads) {
