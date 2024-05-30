@@ -1001,7 +1001,9 @@ int main(int argc, char** argv)
 
     // Now that all of the buffers have been returned to the buffer queue, join our receive-data threads.
     for (auto& thread : receiveDataThreads) {
-      thread.join();
+      if (thread.joinable()) {
+        thread.join();
+      }
     }
 
     // Now borrow the context from the displayTexture so that we can delete the textures.
