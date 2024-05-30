@@ -7,6 +7,8 @@
 #include <chrono>
 #include <cstdint>
 #include <memory>
+#include <GL/glew.h>
+#include <ToneMap.h>
 #include <Composite.h>
 #include <ASDP_Core_API.h>
 #include <GLFW/glfw3.h>
@@ -88,6 +90,16 @@ int main()
   // Make the window's context current
   glfwMakeContextCurrent(window);
 
+  // Initialize GLEW in our context. It is okay to initialize it more than once.
+  glewExperimental = true;
+  if (glewInit() != GLEW_OK) {
+    std::cerr << "Failed to initialize GLEW" << std::endl;
+    return 4;
+  }
+  // Clear any GL error that Glew caused.  Apparently on Non-Windows
+  // platforms, this can cause a spurious error 1280.
+  glGetError();
+
   // Construct the cameras to render.
   // Construct the image queues to render, one per camera.
   std::vector<asdp::render::CameraRenderInfo> cameras;
@@ -127,8 +139,12 @@ int main()
     }
   }
 
+  // Use the default tone-map texture for the cameras.
+  asdp::render::ToneMap toneMap;
+  GLuint toneMapTexture = toneMap.GenerateTexture();
+
   // Create a CompositeCameras object to render once the window is open and the context is active.
-  asdp::render::CompositeCameras composite(cameras);
+  asdp::render::CompositeCameras composite(cameras, toneMapTexture);
 
   // Loop until the user closes the window.
   std::cout << "You should see a row of three distorted dark boxes horizontally across" << std::endl;

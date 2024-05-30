@@ -30,27 +30,6 @@
 namespace asdp {
   namespace render {
 
-    /// @brief Information about a single camera needed to produce a renderable view from it.
-    struct CameraRenderInfo {
-      uint16_t m_ID = 0;                              ///< ID of the camera.
-      /// Position of the cameras center of projection in meters from the camera device origin.
-      /// The canonical orientation is in the local helicopter coordinate system, with +X pointing
-      /// right, +Y pointing forwards, and +Z pointing up.  The camera is translated in the
-      /// helicopter frame of reference and then rotated around its new center.
-      std::array<double, 3> m_positionMeters = {};
-      /// Orientation of the camera in degrees, Euler rotation around X, then Y, then Z.
-      /// The canonical orientation is in the local helicopter coordinate system, with +X pointing
-      /// right, +Y pointing forwards, and +Z pointing up.  The camera is translated in the
-      /// helicopter frame of reference and then rotated around its new center.
-      std::array<double, 3> m_orientationDegrees = {};
-      std::array<uint16_t, 2> m_resolutionPixels = {};///< Resolution of the camera in pixels.
-      std::array<double, 2> m_fovDegrees = {};        ///< Field of view of the camera in degrees, horizontal then vertical.
-      /// Distortion correction object for the camera.
-      std::shared_ptr<Distortion> m_distortion;
-      /// Queue of images from the camera.  The newest image is the one to render.
-      std::shared_ptr<asdp::render::ImageQueue> m_imageQueue;
-    };
-
     /// @brief Information about the rendering of a single viewpoint, enabling multiple views to be requested at the same time.
     struct ViewRenderInfo {
       /// Position of the viewpoint in meters from the camera device origin.
@@ -93,11 +72,6 @@ namespace asdp {
     /// @brief Composite base class that renders a composite image from multiple cameras.
     class Composite {
     public:
-      /// @brief Constructor
-      /// @details The OpenGL context to be used by the Composite object must be current when this
-      /// constructor is called.
-      /// @param cameraRenderInfo The configuration of the cameras needed to generate textured geometry.
-      Composite(std::vector<CameraRenderInfo> const& cameraRenderInfo);
 
       /// @brief Destructor, virtual so that derived classes can have their destructors called from pointers.
       virtual ~Composite();
@@ -114,9 +88,6 @@ namespace asdp {
       virtual void Render(asdp::Time scanOutTime, std::vector<ViewRenderInfo> views);
 
     protected:
-
-      /// Information about the cameras, filled in by the constructor.
-      std::vector<CameraRenderInfo> m_cameraRenderInfos;
 
       /// Records whether we've initialized our geometry.
       std::atomic_bool m_initialized {false};
@@ -166,9 +137,9 @@ namespace asdp {
       double m_radius;
 
       /// @brief The OpenGL program ID.
-      GLuint m_programId = 0;
+      GLuint m_programId;
       /// @brief The Uniform ID of the modelview-projection matrix.
-      GLuint m_modelViewProjectionUniformId = 0;
+      GLuint m_modelViewProjectionUniformId;
 
       /// @briegf Forward declaration of a class defined in the source code.
       class MeshCube;
@@ -181,6 +152,28 @@ namespace asdp {
       void TearDownRenderFrame() override;
     };
 
+
+    /// @brief Information about a single camera needed to produce a renderable view from it.
+    struct CameraRenderInfo {
+      uint16_t m_ID = 0;                              ///< ID of the camera.
+      /// Position of the cameras center of projection in meters from the camera device origin.
+      /// The canonical orientation is in the local helicopter coordinate system, with +X pointing
+      /// right, +Y pointing forwards, and +Z pointing up.  The camera is translated in the
+      /// helicopter frame of reference and then rotated around its new center.
+      std::array<double, 3> m_positionMeters = {};
+      /// Orientation of the camera in degrees, Euler rotation around X, then Y, then Z.
+      /// The canonical orientation is in the local helicopter coordinate system, with +X pointing
+      /// right, +Y pointing forwards, and +Z pointing up.  The camera is translated in the
+      /// helicopter frame of reference and then rotated around its new center.
+      std::array<double, 3> m_orientationDegrees = {};
+      std::array<uint16_t, 2> m_resolutionPixels = {};///< Resolution of the camera in pixels.
+      std::array<double, 2> m_fovDegrees = {};        ///< Field of view of the camera in degrees, horizontal then vertical.
+      /// Distortion correction object for the camera.
+      std::shared_ptr<Distortion> m_distortion;
+      /// Queue of images from the camera.  The newest image is the one to render.
+      std::shared_ptr<asdp::render::ImageQueue> m_imageQueue;
+    };
+
     /// @brief Composite class that renders a set of camera views.
     /// @details This is the class that is most likely to be used in
     /// an application.
@@ -188,17 +181,26 @@ namespace asdp {
     public:
       /// @brief Constructor
       /// @param cameraRenderInfo The configuration of the cameras needed to generate textured geometry.
-      CompositeCameras(std::vector<CameraRenderInfo>& cameraRenderInfo);
+      /// @param toneMapTexture The OpenGL texture ID of the tone map to use.
+      CompositeCameras(std::vector<CameraRenderInfo>& cameraRenderInfo, GLuint toneMapTexture);
 
       /// @brief Destructor
       ~CompositeCameras();
 
     protected:
+      /// Information about the cameras, filled in by the constructor.
+      std::vector<CameraRenderInfo> m_cameraRenderInfos;
+      GLuint m_toneMapTexture; ///< The OpenGL texture ID of the tone map to use.
+
       /// @brief The OpenGL program ID.
-      GLuint m_programId = 0;
+      GLuint m_programId;
 
       /// @brief The Uniform ID of the modelview-projection matrix.
-      GLuint m_modelViewProjectionUniformId = 0;
+      GLuint m_modelViewProjectionUniformId;
+
+      /// The identifiers for the image and tone-map textures.
+      GLuint m_imageTextureId;
+      GLuint m_toneMapTextureId;
 
       /// @brief Vector of Image objects to use during a frame rendering, one per camera.
       std::vector<std::shared_ptr<asdp::render::ImageData>> m_images;

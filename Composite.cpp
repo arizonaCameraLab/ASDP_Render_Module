@@ -16,12 +16,6 @@
 
 using namespace asdp::render;
 
-Composite::Composite(std::vector<CameraRenderInfo> const & cameraRenderInfo)
-  : m_cameraRenderInfos(cameraRenderInfo)
-  , m_initialized(false)
-{
-}
-
 Composite::~Composite()
 {
   // Empty destructor.
@@ -498,8 +492,10 @@ R"(#version 330 core
    })";
 
 CompositeCube::CompositeCube(double radius)
-  : Composite(std::vector<CameraRenderInfo>())
+  : Composite()
   , m_radius(radius)
+  , m_programId(0)
+  , m_modelViewProjectionUniformId(0)
 {
 }
 
@@ -595,15 +591,21 @@ static const GLchar* camerasFragmentShader =
 R"(#version 330 core
    out vec4 FragColor;
    in vec2 TexCoord;
-   uniform sampler2D texture1;
+   uniform sampler2D imageTexture;
+   uniform sampler1D toneMapTexture;
    void main()
    {
-      // This is a monochromatic image, so we spread the red channel to all three color channels.
-      FragColor = vec4(vec3(texture(texture1, TexCoord).r), 1.0);
+      // Look up the intensity from the image texture and then use the tone map to get the color.
+      float intensity = texture(imageTexture, TexCoord).r;
+      FragColor = texture(toneMapTexture, intensity);
    })";
 
-CompositeCameras::CompositeCameras(std::vector<CameraRenderInfo>& cameraRenderInfo)
-  : Composite(cameraRenderInfo)
+CompositeCameras::CompositeCameras(std::vector<CameraRenderInfo>& cameraRenderInfo, GLuint toneMaptexture)
+  : Composite()
+  , m_cameraRenderInfos(cameraRenderInfo)
+  , m_toneMapTexture(toneMaptexture)
+  , m_programId(0)
+  , m_modelViewProjectionUniformId(0)
 {
 }
 
@@ -646,6 +648,8 @@ bool CompositeCameras::SetupRendering()
 
   // Get the IDs for all of the uniform parameters we will want to change.
   m_modelViewProjectionUniformId = glGetUniformLocation(m_programId, "modelViewProjection");
+  m_imageTextureId = glGetUniformLocation(m_programId, "imageTexture");
+  m_toneMapTextureId = glGetUniformLocation(m_programId, "toneMapTexture");
 
   // Construct a Vertex Array Object for each camera that describes the positions and
   // texture coordinates along with the indices.  We'll also keep two vertex buffer objects,
@@ -818,12 +822,19 @@ void CompositeCameras::RenderView(const float* modelViewProjection)
   // Draw each camera, using the appropriate texture.
   for (size_t i = 0; i < m_cameraRenderInfos.size(); i++) {
 
-    // If there is no texture, bind the default texture.
+    // If there is no texture, bind the default texture for the image to texture unit 0.
     GLuint texture = 0;
     if (m_images[i] != nullptr) {
       texture = m_images[i]->texture;
     }
+    glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, texture);
+    glUniform1i(m_imageTextureId, 0);
+
+    // Bind the tone map texture to texture unit 1.
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_1D, m_toneMapTexture);
+    glUniform1i(m_toneMapTextureId, 1);
 
     // Unbind any vertex array object.
     // We cannot use vertex array objects because we're potentially going to be called

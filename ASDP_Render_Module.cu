@@ -27,6 +27,7 @@
 #include <ASDP_BufferPool.h>
 #include <nlohmann/json.hpp>
 #include <GL/glew.h>
+#include <ToneMap.h>
 #include <Composite.h>
 #include <Display.h>
 #include <cuda.h>
@@ -595,17 +596,21 @@ std::shared_ptr<Message> WaitForMessageType(std::shared_ptr<Receiver> receiver, 
 
 void usage(std::string name)
 {
-  std::cerr << "Usage: " << name << " [--framestride <frameStride>] <ip_address>" << std::endl;
+  std::cerr << "Usage: " << name << " [--framestride <frameStride>] [--fullScreen] [--toneMap <tone map>] <ip_address>" << std::endl;
   std::cerr << "  --frameStride <frameStride>  Read one out of every this many frames. Set to 1 for every frame." << std::endl;
+  std::cerr << "  --fullScreen                 Run in full screen mode." << std::endl;
+  std::cerr << "  --toneMap <tone map>         The tone map to use.  Options are: linear blackbody bluesky" << std::endl;
   std::cerr << "  <ip_address>  The IP address to listen for servers on." << std::endl;
 }
 
 int main(int argc, char** argv)
 {
   uint32_t frameStride = 1;     ///< Read one out of every this many frames. Set to 1 for every frame.
+  bool fullScreen = false;      ///< Run in full screen mode.
+  ToneMap toneMap = ToneMap();  ///< The tone map to use, default linear.
   std::string ip_address;       ///< The IP address to listen on.
   std::set<uint32_t> cameraIDs; ///< The camera IDs to render.
-  size_t realParams = 0;
+  size_t realParams = 0;        ///< The number of non-flag parameters we've seen.
 
   // Parse the command line arguments, with the first non-flag argument being the
   // name of the IP address to listen on.
@@ -616,6 +621,23 @@ int main(int argc, char** argv)
         return 2;
       }
       frameStride = std::stoi(argv[i]);
+    } else if (std::string("--fullScreen") == argv[i]) {
+      fullScreen = true;
+    } else if (std::string("--toneMap") == argv[i]) {
+      if (++i >= argc) {
+        usage(argv[0]);
+        return 2;
+      }
+      if (std::string("linear") == argv[i]) {
+        toneMap = ToneMap();
+      } else if (std::string("blackbody") == argv[i]) {
+        toneMap = ToneMapBlackbody();
+      } else if (std::string("bluesky") == argv[i]) {
+        toneMap = ToneMapBlueSky();
+      } else {
+        std::cerr << "Unknown tone map: " << argv[i] << std::endl;
+        return 1;
+      }
     } else if (argv[i][0] == '-') {
       std::cerr << "Unknown flag: " << argv[i] << std::endl;
       return 1;
@@ -780,13 +802,6 @@ int main(int argc, char** argv)
           std::cerr << "Error: Unknown distortion type: " << distortion["type"] << std::endl;
           return 17;
         }
-
-        /// @todo Parse and fill in the distortion parameters from the configuration file rather than passing None always.
-        /*
-        for (double d : camera["distortion"]) {
-          info.m_distortion.push_back(d);
-        }
-        */
         info.m_imageQueue = std::make_shared<asdp::render::ImageQueue>();
 
         //==================================================================================================
@@ -817,7 +832,7 @@ int main(int argc, char** argv)
           glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
           glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
-          // Load image into texture
+          // Load image into the texture
           glTexImage2D(GL_TEXTURE_2D, 0, GL_R16, width, height, 0, GL_RED, GL_UNSIGNED_SHORT, image.data());
           glBindTexture(GL_TEXTURE_2D, 0);
 
@@ -837,16 +852,31 @@ int main(int argc, char** argv)
       }
     }  catch (const std::exception& e) {
       std::cerr << "Error parsing configuration file: " << e.what() << std::endl;
-      return 24;
+      return 19;
+    }
+
+    // Construct a Tone Map texture to use for rendering the cameras.
+    if (!displayTexture->BorrowContext()) {
+      std::cerr << "Error borrowing context from displayTexture for ToneMap." << std::endl;
+      return 20;
+    }
+    GLuint toneMapTexture = toneMap.GenerateTexture();
+    if (toneMapTexture == 0) {
+      std::cerr << "Error generating texture for ToneMap." << std::endl;
+      return 21;
+    }
+    if (!displayTexture->ReturnContext()) {
+      std::cerr << "Error returning context to displayTexture for ToneMap." << std::endl;
+      return 21;
     }
 
     // Construct a Composite object to render the cameras.
-    std::shared_ptr<Composite> composite = std::make_shared<CompositeCameras>(cameraRenderInfos);
+    std::shared_ptr<Composite> composite = std::make_shared<CompositeCameras>(cameraRenderInfos, toneMapTexture);
 
     // Construct one or more Display objects to render the cameras.  They all share objects with the texture Display.
     std::vector<std::shared_ptr<DisplayWindow>> displays;
     displays.push_back(std::make_shared<DisplayWindow>("ASDP Render Module", composite, client, 0, 0, 60.0f, 2500, 1280, 1024,
-      40.0f, "", displayTexture.get()));
+      40.0f, "", displayTexture.get(), fullScreen));
 
     // Construct shared pointers to the data structures that we'll need to do rendering, with the
     // custom destructors that will clean up when the shared_ptr is destroyed.
@@ -888,7 +918,7 @@ int main(int argc, char** argv)
       UDPReceivers.push_back(receiverUDP);
     }
 
-    // Launch the threads, hooking them together using the queues.
+    // Launch the threads, hooking them together using the queues and passing the texture OpenGL context to it.
     std::thread copyDataToGPUThread(CopyDataToTextures, cameras[0].width, cameras[0].height,
       std::ref(done), dataQueue, 16, displayTexture);
     std::vector<std::thread> receiveDataThreads;
@@ -980,6 +1010,7 @@ int main(int argc, char** argv)
       return 33;
     }
     cameraRenderInfos.clear();
+    glDeleteTextures(1, &toneMapTexture);
     if (!displayTexture->ReturnContext()) {
       std::cerr << "Error returning context to displayTexture." << std::endl;
       return 34;
