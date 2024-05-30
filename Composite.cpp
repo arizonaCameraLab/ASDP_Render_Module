@@ -736,20 +736,15 @@ void CompositeCameras::AddBufferObjects(CameraRenderInfo const& cameraRenderInfo
       glm::mat4 rotation = glm::rotate(rotationY,
         glm::radians(static_cast<GLfloat>(cameraRenderInfo.m_orientationDegrees[2])),
         glm::vec3(0.0f, 0.0f, 1.0f));
-      glm::vec3 rotatedPoint = glm::vec3(rotation * glm::vec4(point, 1.0f));
-      double xr = rotatedPoint[0];
-      double yr = rotatedPoint[1];
-      double zr = rotatedPoint[2];
-
       // Offset the points by the camera position in the helicopter view space.
-      double x = xr + cameraRenderInfo.m_positionMeters[0];
-      double y = yr + cameraRenderInfo.m_positionMeters[1];
-      double z = zr + cameraRenderInfo.m_positionMeters[2];
+      glm::mat4 total = glm::translate(rotation, glm::vec3(
+        cameraRenderInfo.m_positionMeters[0], cameraRenderInfo.m_positionMeters[1], cameraRenderInfo.m_positionMeters[2]));
+      glm::vec3 transformedPoint = glm::vec3(total  *glm::vec4(point, 1.0f));
 
       // Add the vertex
-      vertices.push_back(x);
-      vertices.push_back(y);
-      vertices.push_back(z);
+      vertices.push_back(transformedPoint[0]);
+      vertices.push_back(transformedPoint[1]);
+      vertices.push_back(transformedPoint[2]);
       vertices.push_back(u);
       vertices.push_back(v);
     }
