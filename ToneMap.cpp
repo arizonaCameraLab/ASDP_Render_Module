@@ -4,6 +4,7 @@
 
 #include "ToneMap.h"
 #include <GL/glew.h>
+#include <cmath>
 
 using namespace asdp::render;
 
@@ -84,4 +85,26 @@ bool ToneMap::FillTexture(uint32_t textureID)
   glBindTexture(GL_TEXTURE_1D, 0);
 
   return true;
+}
+
+ToneMapBlackbody::ToneMapBlackbody(size_t numEntries)
+  : ToneMap({ {0, 0, 0, 0}, {0.333, 0.3, 0, 0}, {0.667, 0.6, 0.5, 0}, {1, 1, 1, 1} }, numEntries)
+{
+}
+
+ToneMapBlueSky::ToneMapBlueSky(size_t numEntries)
+  : ToneMap({ {0, 0, 0, 1}, {0.5, 0, 0, 0}, {0.667, 0.3, 0, 0}, {0.833, 0.6, 0.5, 0}, {1, 1, 1, 1} }, numEntries)
+{
+}
+
+ToneMapGamma::ToneMapGamma(float gamma, float red, float green, float blue, size_t numEntries)
+  : ToneMap({}, numEntries)
+{
+  // Replace the mapping with the gamma correction.
+  for (size_t i = 0; i < numEntries; ++i) {
+    float intensity = static_cast<float>(i) / static_cast<float>(numEntries - 1);
+    m_mapping[i][0] = std::pow(intensity, gamma) * red;
+    m_mapping[i][1] = std::pow(intensity, gamma) * green;
+    m_mapping[i][2] = std::pow(intensity, gamma) * blue;
+  }
 }

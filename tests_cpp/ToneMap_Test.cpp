@@ -75,13 +75,8 @@ int main()
   // platforms, this can cause a spurious error 1280.
   glGetError();
 
-  // Generate the texture for the tone map
-  std::vector<asdp::render::ToneMapEntry> mapping;
-  mapping.push_back(asdp::render::ToneMapEntry(0.00f, 0.0f, 0.0f, 0.0f));
-  mapping.push_back(asdp::render::ToneMapEntry(0.33f, 0.3f, 0.0f, 0.0f));
-  mapping.push_back(asdp::render::ToneMapEntry(0.67f, 0.6f, 0.5f, 0.0f));
-  mapping.push_back(asdp::render::ToneMapEntry(1.00f, 1.0f, 1.0f, 1.0f));
-  asdp::render::ToneMap toneMap(mapping);
+  // Generate a sky tone map and use it to make a texture
+  asdp::render::ToneMapBlueSky toneMap;
   GLuint texture = toneMap.GenerateTexture();
   if (texture == 0) {
     std::cerr << "Failed to generate texture" << std::endl;
@@ -141,7 +136,8 @@ int main()
   glVertexAttribPointer(texAttrib, 1, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(3 * sizeof(float)));
 
   // Loop until the user closes the window.
-  std::cout << "You should see a gradient black/red/yellow/white texture from the left of the image to the right." << std::endl;
+  std::cout << "You should see a gradient blue to black on the left half and then "
+            << "black-red-goldyellow-white on the right half." << std::endl;
   std::cout << "" << std::endl;
   std::cout << "Close the window to exit." << std::endl;
   while (!glfwWindowShouldClose(window)) {

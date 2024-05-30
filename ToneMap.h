@@ -66,5 +66,35 @@ namespace asdp {
       std::vector< std::array<float, 3> >   m_mapping;  ///< The mapping from intensity to color.
     };
 
+    /// @brief Specialized tone map that uses the black-body radiation spectrum.
+    class ToneMapBlackbody : public ToneMap {
+    public:
+      /// @brief Constructor
+      /// @param numEntries The number of entries in the mapping.
+      ToneMapBlackbody(size_t numEntries = 1024);
+    };
+
+    /// @brief Specialized tone map that stretches half the view to blue/cold sky and other half blackbody.
+    class ToneMapBlueSky : public ToneMap {
+    public:
+      /// @brief Constructor
+      /// @param numEntries The number of entries in the mapping.
+      ToneMapBlueSky(size_t numEntries = 1024);
+    };
+
+    /// @brief Monochrome tone map with a specified gamma.
+    class ToneMapGamma : public ToneMap {
+    public:
+      /// @brief Constructor
+      /// @param red The fraction of red to use in the brightest color (range 0-1).
+      /// @param green The fraction of green to use in the brightest color (range 0-1).
+      /// @param blue The fraction of blue to use in the brightest color (range 0-1).
+      /// @param gamma The gamma value to use for the tone map.  This should be lower than
+      /// 1 to highlight bright areas and higher than 1 to highlight dark areas.
+      /// @param numEntries The number of entries in the mapping.
+      ToneMapGamma(float gamma, float red = 1, float green = 1, float blue = 1, size_t numEntries = 1024);
+    };
+
+
   } // namespace render
 } // namespace asdp
