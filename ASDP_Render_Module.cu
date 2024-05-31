@@ -431,6 +431,10 @@ static void CopyDataToTextures(uint16_t width, uint16_t height,
               done = true;
               return;
             }
+            if (handlers[cameraID] == nullptr) {
+              std::cerr << "CopyDataToGPU: FRAME_DATA: Warning: Camera ID " << cameraID << " frame data without begin data." << std::endl;
+              break;
+            }
             std::string ret = handlers[cameraID]->ProcessImageSubset(dataPtr, left, top, right, bottom);
             if (!ret.empty()) {
               std::cerr << "Error processing image subset: " << ret << std::endl;
@@ -453,7 +457,7 @@ static void CopyDataToTextures(uint16_t width, uint16_t height,
             }
 
             // Done with this frame, so we reset the pointer to delete the handler, which will clean
-            // up and finally push the data to the texture before returning.
+            // up and push the data to the texture before returning.
             /// @todo Consider putting these into a completion list and polling for done rather than hanging here.
             uint32_t cameraID;
             status = frameEnd.GetCameraID(cameraID);
@@ -498,6 +502,15 @@ static void CopyDataToTextures(uint16_t width, uint16_t height,
 
 }
 
+/// @brief Thread for each camera that receives the data from the network and sends it to the GPU.
+/// @param receiveSocket The socket to receive the data on.
+/// @param maxBytesPerPacket The maximum number of bytes in a packet.
+/// @param done The flag to set when we're done.
+/// @param cpuImageBufferPtr The pinned memory buffer on the CPU to hold the image data.
+/// @param gpuImageBufferPtr The buffer on the GPU to hold the image data.
+/// @param streamPtr The stream to use for copy and kernel calls.
+/// @param imageQueue The image queue to store the textures in.
+/// @param outQueue The queue to send the data to the GPU-feeding thread.
 static void ReceiveDataThread(ReceiverUDP& receiveSocket, size_t maxBytesPerPacket, std::atomic<bool>& done,
   std::shared_ptr<unsigned char> cpuImageBufferPtr, std::shared_ptr<unsigned char> gpuImageBufferPtr,
   std::shared_ptr<cudaStream_t> streamPtr,
@@ -512,6 +525,7 @@ static void ReceiveDataThread(ReceiverUDP& receiveSocket, size_t maxBytesPerPack
   // Loop through and receive packets until we've been told to quit.
   size_t packetsReceived = 0;
   DataToSendToGPU data;
+  bool waitingForFrameBegin = true;
   while (!done) {
 
     // Get the next packet into a preallocated buffer, timing out quickly to ensure that we check
@@ -529,7 +543,9 @@ static void ReceiveDataThread(ReceiverUDP& receiveSocket, size_t maxBytesPerPack
       break;
     }
 
-    // Verify that the data is correct and we haven't missed any packets
+    // Verify that the data is correct and we haven't missed any packets.
+    // If we have missed a packet, we will reset the sequence number and start over
+    // at the next frame begin.
     uint32_t sequenceNumber;
     status = streamPacket->GetSequenceNumber(sequenceNumber);
     if (status != OKAY) {
@@ -538,13 +554,44 @@ static void ReceiveDataThread(ReceiverUDP& receiveSocket, size_t maxBytesPerPack
       break;
     }
     if (sequenceNumber != packetsReceived) {
-      std::cerr << "Error: Bad sequence number: expected " << packetsReceived << " but got " << sequenceNumber << std::endl;
-      done = true;
-      break;
+      std::cerr << "Warning: Bad sequence number: expected " << packetsReceived << " but got " << sequenceNumber << std::endl;
+      packetsReceived = sequenceNumber + 1;
+      waitingForFrameBegin = true;
+      continue;
     }
 
     // Increment the number of packets received
     packetsReceived++;
+
+    // If we're waiting for a frame begin message, check the message type and verify
+    // that it is a frame begin message.  Otherwise, we ignore the message and wait for
+    // the next packet.
+    if (waitingForFrameBegin) {
+      std::shared_ptr<Message> message;
+      status = streamPacket->GetNextMessage(message);
+      if (status != OKAY) {
+        std::cerr << "Error getting message: " << ErrorMessage(status) << std::endl;
+        done = true;
+        break;
+      }
+      if (message == nullptr) {
+        std::cerr << "Error: No message in stream packet." << std::endl;
+        done = true;
+        break;
+      }
+      MessageID messageType;
+      status = message->GetType(messageType);
+      if (status != OKAY) {
+        std::cerr << "Error getting message type: " << ErrorMessage(status) << std::endl;
+        done = true;
+        break;
+      }
+      if (messageType == FRAME_BEGIN) {
+        waitingForFrameBegin = false;
+      } else {
+        continue;
+      }
+    }
 
     // Enqueue the packet for processing.
     data.streamPacketPtr = streamPacket;
