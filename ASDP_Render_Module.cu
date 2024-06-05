@@ -223,7 +223,7 @@ CPUDataToTextureHandler::CPUDataToTextureHandler(std::shared_ptr<DataToSendToGPU
     }
 
     // Map the texture for writing by CUDA
-    cudaGraphicsMapResources(1, &m_resource, 0);
+    cudaGraphicsMapResources(1, &m_resource, *(m_dataPtr->streamPtr));
     cudaStatus = cudaGraphicsSubResourceGetMappedArray(&m_textureData, m_resource, 0, 0);
     if (cudaStatus != cudaSuccess) {
       m_status = "Failed to map texture: " + std::string(cudaGetErrorString(cudaStatus));
@@ -241,7 +241,7 @@ CPUDataToTextureHandler::CPUDataToTextureHandler(std::shared_ptr<DataToSendToGPU
   cudaStatus = cudaCreateSurfaceObject(&m_surfObj, &resDesc);
   if (cudaStatus != cudaSuccess) {
     m_status = "Failed to create surface object: " + std::string(cudaGetErrorString(cudaStatus));
-    cudaGraphicsUnmapResources(1, &m_resource, 0);
+    cudaGraphicsUnmapResources(1, &m_resource, *(m_dataPtr->streamPtr));
     cudaGraphicsUnregisterResource(m_resource);
     return;
   }
@@ -255,16 +255,10 @@ CPUDataToTextureHandler::~CPUDataToTextureHandler()
     std::cerr << "CPUDataToTextureHandler::~CPUDataToTextureHandler(): Error sending data to GPU: " << ret << std::endl;
   }
 
-  // Wait for the operations on this stream to complete
-  cudaEvent_t event;
-  cudaEventCreate(&event);
-  cudaEventRecord(event, *(m_dataPtr->streamPtr));
-  cudaEventSynchronize(event);
-  cudaEventDestroy(event);
-
   // Free up our resources
   cudaDestroySurfaceObject(m_surfObj);
-  cudaGraphicsUnmapResources(1, &m_resource, 0);
+  cudaGraphicsUnmapResources(1, &m_resource, *(m_dataPtr->streamPtr));
+  // This call guarantees that all CUDA work completes before any later-called OpenGL work starts.
   cudaGraphicsUnregisterResource(m_resource);
 
   // Put the texture back into the image queue as the newest image so the Composite will use it.
@@ -289,17 +283,11 @@ std::string CPUDataToTextureHandler::SendToGPU()
     return "CopyDataToGPU: cudaMemcpyAsync() failed: " + std::string(cudaGetErrorString(ret));
   }
 
-  // Wait for the copy to complete before we start the kernel
-  cudaEvent_t event;
-  cudaEventCreate(&event);
-  cudaEventRecord(event, *(m_dataPtr->streamPtr));
-  cudaEventSynchronize(event);
-  cudaEventDestroy(event);
-
   // Run the kernel to write this subset of the data to the texture, adding offset and scale.
+  // Run it on the same stream so that it will wait for the copy to complete before running.
   dim3 dimBlock(128, 8); ///< Using a kernel that is wide but not tall because our batch sizes may be small
   dim3 dimGrid((m_width + dimBlock.x - 1) / dimBlock.x, (linesToSend + dimBlock.y - 1) / dimBlock.y);
-  WriteScaledOffsetKernel << <dimGrid, dimBlock >> > (m_surfObj, reinterpret_cast<uint16_t*>(m_dataPtr->gpuImageBufferPtr.get()),
+  WriteScaledOffsetKernel << <dimGrid, dimBlock, 0, *(m_dataPtr->streamPtr) >> > (m_surfObj, reinterpret_cast<uint16_t*>(m_dataPtr->gpuImageBufferPtr.get()),
     offsetY, m_width, m_height);
 
   // Record the fact that we've written up through this line.
@@ -476,16 +464,6 @@ static void CopyDataToTextures(uint16_t width, uint16_t height,
               return;
             }
             handlers[cameraID].reset();
-
-            // Note: This must be done after all other operations on the stream so that it will wait for them to complete.
-            // Create the completion event, storing a pointer to it in a shared pointer whose destructor will delete
-            // the event when there are no more references to it.  Record the event so that the caller can wait for it.
-            /*
-            cudaEvent_t* eventPtr = new cudaEvent_t;
-            cudaEventCreate(eventPtr);
-            cudaEventRecord(*eventPtr, *(data->streamPtr));
-            */
-            /// @todo Store in the appropriate location
           }
           break;
 
