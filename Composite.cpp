@@ -818,6 +818,7 @@ void CompositeCameras::RenderView(const float* modelViewProjection)
   for (size_t i = 0; i < m_cameraRenderInfos.size(); i++) {
 
     // If there is no texture, bind the default texture for the image to texture unit 0.
+    // Otherwise, bind the stored texture.
     GLuint texture = 0;
     if (m_images[i] != nullptr) {
       texture = m_images[i]->texture;
@@ -844,8 +845,8 @@ void CompositeCameras::RenderView(const float* modelViewProjection)
     // Draw the camera view using its vertex buffer objects.
     glBindBuffer(GL_ARRAY_BUFFER, m_vertexBufferObjects[i]);
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(GLfloat), (GLvoid*)0);
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_indexBufferObjects[i]);
     glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(GLfloat), (GLvoid*)(3 * sizeof(GLfloat)));
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_indexBufferObjects[i]);
     glDrawElements(GL_TRIANGLES, m_numIndices[i], GL_UNSIGNED_INT, 0);
   }
 }

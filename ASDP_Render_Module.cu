@@ -927,8 +927,8 @@ int main(int argc, char** argv)
         unsigned int height = info.m_resolutionPixels[1];
         std::vector<uint16_t> image(width * height, 32767);
 
+        // Create the textures for the camera.
         for (size_t i = 0; i < 3; i++) {
-          // Create the textures for the camera.
           std::shared_ptr<ImageData> imageData = std::make_shared<ImageData>();
 
           unsigned int texture;
