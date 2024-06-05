@@ -152,11 +152,10 @@ public:
   /// @brief Constructor to create the handler and set up the resources needed to process a frame.
   /// @details Be sure to call GetStatus() after construction to verify that the constructor succeeded.
   /// @param dataPtr Pointer to the structure that holds the data to send to the GPU and the stream to use.
-  /// @param sharedContext The shared context to borrow from when handling textures.
   /// @param width The width of the image data (the whole image).
   /// @param height The height of the image data (the whole image).
   /// @param batchSize The number of lines to send to the GPU at once (the height of the region that will be sent).
-  CPUDataToTextureHandler(std::shared_ptr<DataToSendToGPU> dataPtr, std::shared_ptr<Display> sharedContext,
+  CPUDataToTextureHandler(std::shared_ptr<DataToSendToGPU> dataPtr,
     uint16_t width, uint16_t height, uint16_t batchSize);
 
   ~CPUDataToTextureHandler();
@@ -182,7 +181,6 @@ protected:
   std::string m_status;                       ///< The status of the constructor, empty for good, error message for bad
 
   std::shared_ptr<DataToSendToGPU> m_dataPtr; ///< Information about the structure we're handling
-  std::shared_ptr<Display> m_sharedContext;   ///< The shared context to borrow from when handling textures
   uint16_t m_width;                           ///< The width of the image data
   uint16_t m_height;                          ///< The height of the image data
   uint16_t m_batchSize;                       ///< The number of lines to send to the GPU at once
@@ -199,9 +197,9 @@ protected:
   std::string SendToGPU();
 };
 
-CPUDataToTextureHandler::CPUDataToTextureHandler(std::shared_ptr<DataToSendToGPU> dataPtr, std::shared_ptr<Display> sharedContext,
+CPUDataToTextureHandler::CPUDataToTextureHandler(std::shared_ptr<DataToSendToGPU> dataPtr,
   uint16_t width, uint16_t height, uint16_t batchSize)
-  : m_status(""), m_dataPtr(dataPtr), m_sharedContext(sharedContext)
+  : m_status(""), m_dataPtr(dataPtr)
   , m_width(width), m_height(height), m_batchSize(batchSize)
   , m_lastLineSent(0), m_largestLineReceived(0)
   , m_imageData(nullptr), m_resource(nullptr), m_textureData(nullptr), m_surfObj(0)
@@ -215,12 +213,6 @@ CPUDataToTextureHandler::CPUDataToTextureHandler(std::shared_ptr<DataToSendToGPU
     return;
   }
   unsigned int textureID = m_imageData->texture;
-
-  // Borrow the context from the shared context so that we can use it to map textures.
-  if (!m_sharedContext->BorrowContext()) {
-    m_status = "Error borrowing context from shared context.";
-    return;
-  }
 
   {
     // Register the OpenGL texture with CUDA
@@ -238,12 +230,6 @@ CPUDataToTextureHandler::CPUDataToTextureHandler(std::shared_ptr<DataToSendToGPU
       cudaGraphicsUnregisterResource(m_resource);
       return;
     }
-  }
-
-  // Return the context to the shared context since we don't need it for the rest of the processing.
-  if (!m_sharedContext->ReturnContext()) {
-    m_status = "CopyDataToGPU: Error returning context to shared context.";
-    return;
   }
 
   // Create a 2D surface object
@@ -367,6 +353,13 @@ static void CopyDataToTextures(uint16_t width, uint16_t height,
 {
   Status status;
 
+  // Borrow the context from the shared context so that we can use it to map textures.
+  if (!sharedContext->BorrowContext()) {
+    std::cerr << "CopyDataToGPU: Error borrowing context from shared context." << std::endl;
+    done = true;
+    return;
+  }
+
   /// Vector of handlers to process the data for each camera.  There will be one handler for each camera,
   // indexed by its ID.  We add to this vector as we get new cameras.
   std::vector< std::shared_ptr<CPUDataToTextureHandler> > handlers;
@@ -413,7 +406,7 @@ static void CopyDataToTextures(uint16_t width, uint16_t height,
             if (cameraID >= handlers.size()) {
               handlers.resize(cameraID + 1);
             }
-            handlers[cameraID] = std::make_shared<CPUDataToTextureHandler>(data, sharedContext, width, height,
+            handlers[cameraID] = std::make_shared<CPUDataToTextureHandler>(data, width, height,
               static_cast<uint16_t>(batchSize));
           }
           // Nothing to do for the beginning of a frame.
@@ -510,6 +503,14 @@ static void CopyDataToTextures(uint16_t width, uint16_t height,
       } // End of while we have messages in the stream packet.
     } // End of if we got a message from the queue.
   } // End of while we are not done.
+
+  // Return the context borrowed from the shared context so that we can use it to map textures.
+  if (!sharedContext->ReturnContext()) {
+    std::cerr << "CopyDataToGPU: Error return context to shared context." << std::endl;
+    done = true;
+    return;
+  }
+
 
 }
 
@@ -718,11 +719,12 @@ std::shared_ptr<Message> WaitForMessageType(std::shared_ptr<Receiver> receiver, 
 
 void usage(std::string name)
 {
-  std::cerr << "Usage: " << name << " [--framestride <frameStride>] [--fullScreen] [--toneMap <tone map>] <ip_address>" << std::endl;
-  std::cerr << "  --frameStride <frameStride>  Read one out of every this many frames. Set to 1 for every frame." << std::endl;
-  std::cerr << "  --fullScreen                 Run in full screen mode." << std::endl;
-  std::cerr << "  --toneMap <tone map>         The tone map to use.  Options are: linear blackbody bluesky" << std::endl;
-  std::cerr << "  <ip_address>  The IP address to listen for servers on." << std::endl;
+  std::cerr << "Usage: " << name << " [--framestride <frameStride>] [--fullScreen] [--toneMap <tone map>] [--numDisplays <number of displays>] <ip_address>" << std::endl;
+  std::cerr << "  --frameStride <frameStride>         Read one out of every this many frames. Set to 1 for every frame." << std::endl;
+  std::cerr << "  --fullScreen                        Run in full screen mode." << std::endl;
+  std::cerr << "  --toneMap <tone map>                The tone map to use.  Options are: linear blackbody bluesky" << std::endl;
+  std::cerr << "  --numDisplays <number of displays>  The number of display windows (default 1)" << std::endl;
+  std::cerr << "  <ip_address>                        The IP address to listen for servers on." << std::endl;
 }
 
 int main(int argc, char** argv)
@@ -732,6 +734,7 @@ int main(int argc, char** argv)
   ToneMap toneMap = ToneMap();  ///< The tone map to use, default linear.
   std::string ip_address;       ///< The IP address to listen on.
   std::set<uint32_t> cameraIDs; ///< The camera IDs to render.
+  size_t numDisplays = 1;       ///< The number of display windows to create.
   size_t realParams = 0;        ///< The number of non-flag parameters we've seen.
 
   // Parse the command line arguments, with the first non-flag argument being the
@@ -760,6 +763,12 @@ int main(int argc, char** argv)
         std::cerr << "Unknown tone map: " << argv[i] << std::endl;
         return 1;
       }
+    } else if (std::string("--numDisplays") == argv[i]) {
+      if (++i >= argc) {
+        usage(argv[0]);
+        return 2;
+      }
+      numDisplays = std::stoi(argv[i]);
     } else if (argv[i][0] == '-') {
       std::cerr << "Unknown flag: " << argv[i] << std::endl;
       return 1;
@@ -997,8 +1006,15 @@ int main(int argc, char** argv)
 
     // Construct one or more Display objects to render the cameras.  They all share objects with the texture Display.
     std::vector<std::shared_ptr<DisplayWindow>> displays;
-    displays.push_back(std::make_shared<DisplayWindow>("ASDP Render Module", composite, client, 0, 0, 60.0f, 2500, 1280, 1024,
-      40.0f, "", displayTexture.get(), fullScreen));
+    for (size_t i = 0; i < numDisplays; i++) {
+      bool thisFullScreen = fullScreen;
+      if (i > 0) {
+        thisFullScreen = false;
+      }
+      displays.push_back(std::make_shared<DisplayWindow>("ASDP Render Module " + std::to_string(i),
+        composite, client, 0, 0, 60.0f, 2500, 1280, 1024,
+        40.0f, "", displayTexture.get(), thisFullScreen));    
+    }
 
     // Construct shared pointers to the data structures that we'll need to do rendering, with the
     // custom destructors that will clean up when the shared_ptr is destroyed.
