@@ -261,6 +261,10 @@ CPUDataToTextureHandler::~CPUDataToTextureHandler()
   // This call guarantees that all CUDA work completes before any later-called OpenGL work starts.
   cudaGraphicsUnregisterResource(m_resource);
 
+  // Be sure that everything is registered with OpenGL before putting the texture back into use on another thread.
+  // Adding this call fixed a misalignment between cameras where neighbors had different-timed images.
+  glFinish();
+
   // Put the texture back into the image queue as the newest image so the Composite will use it.
   m_dataPtr->imageQueuePtr->AddNewestImage(m_imageData);
 }
