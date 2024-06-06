@@ -983,12 +983,12 @@ int main(int argc, char** argv)
       return 21;
     }
 
-    // Construct a Composite object to render the cameras.
-    std::shared_ptr<Composite> composite = std::make_shared<CompositeCameras>(cameraRenderInfos, toneMapTexture);
-
     // Construct one or more Display objects to render the cameras.  They all share objects with the texture Display.
     std::vector<std::shared_ptr<DisplayWindow>> displays;
     for (size_t i = 0; i < numDisplays; i++) {
+      // Construct a Composite object to render the cameras.
+      std::shared_ptr<Composite> composite = std::make_shared<CompositeCameras>(cameraRenderInfos, toneMapTexture);
+
       bool thisFullScreen = fullScreen;
       if (i > 0) {
         thisFullScreen = false;
