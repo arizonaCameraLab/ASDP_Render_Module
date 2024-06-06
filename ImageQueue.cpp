@@ -5,7 +5,8 @@
 #include <ImageQueue.h>
 using namespace asdp::render;
 
-ImageData::~ImageData() {
+ImageData::~ImageData()
+{
   if (texture != 0) {
     glDeleteTextures(1, &texture);
   }

@@ -258,7 +258,7 @@ CPUDataToTextureHandler::~CPUDataToTextureHandler()
   // Free up our resources
   cudaDestroySurfaceObject(m_surfObj);
   cudaGraphicsUnmapResources(1, &m_resource, *(m_dataPtr->streamPtr));
-  // This call guarantees that all CUDA work completes before any later-called OpenGL work starts.
+  // As a side effect, this call guarantees that all CUDA work completes before any later-called OpenGL work starts.
   cudaGraphicsUnregisterResource(m_resource);
 
   // Be sure that everything is registered with OpenGL before putting the texture back into use on another thread.
