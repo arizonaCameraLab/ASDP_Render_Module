@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16.0)
-project(ASDP_Render_Module LANGUAGES C CXX CUDA)
+project(ASDP_Render_Module LANGUAGES CUDA CXX C)
 
 # We require C++17 for the use of std::filesystem.
 set(CMAKE_CXX_STANDARD 17)

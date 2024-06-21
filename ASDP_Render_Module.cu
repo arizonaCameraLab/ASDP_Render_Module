@@ -492,8 +492,6 @@ static void CopyDataToTextures(uint16_t width, uint16_t height,
     done = true;
     return;
   }
-
-
 }
 
 /// @brief Thread for each camera that receives the data from the network and sends it to the GPU.
@@ -697,6 +695,17 @@ std::shared_ptr<Message> WaitForMessageType(std::shared_ptr<Receiver> receiver, 
   } while (std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count() <= seconds);
 
   return empty;
+}
+
+Status HandleStreamPacket(std::shared_ptr<StreamPacket> packet, std::shared_ptr<Timer> timer)
+{
+  // Adjust the timer offset based on clock-sync messages.  The first message (or the first one
+  // after replay resumes), sets the estimated offset based on that single number and the relative
+  // rate to 1.0. Later ones adjust based on an average of the previous ones as described in the
+  // render implementation document.
+  /// @todo
+
+  return OKAY;
 }
 
 void usage(std::string name)
@@ -986,7 +995,9 @@ int main(int argc, char** argv)
     // Construct one or more Display objects to render the cameras.  They all share objects with the texture Display.
     std::vector<std::shared_ptr<DisplayWindow>> displays;
     for (size_t i = 0; i < numDisplays; i++) {
-      // Construct a Composite object to render the cameras.
+      // Construct a Composite object to render the cameras.  We need a separate Composite per Display so that each
+      // can cache consistent camera images for the whole frame while views are being rendered.  Multiple Display
+      // objects may run at different frame rates, so no consistent state would work for both.
       std::shared_ptr<Composite> composite = std::make_shared<CompositeCameras>(cameraRenderInfos, toneMapTexture);
 
       bool thisFullScreen = fullScreen;
@@ -1090,10 +1101,34 @@ int main(int argc, char** argv)
       }
     }
 
+    // Get a shared pointer to the timer so that we can use it to convert times, and can adjust
+    // it based on sync events from the server.
+    std::shared_ptr<Timer> timer;
+    status = client->GetTimer(timer);
+    if (status != OKAY) {
+      std::cerr << "Failed to get timer: " << ErrorMessage(status) << std::endl;
+      return 33;
+    }
+
     // Render frames until someone has marked us to be done.
     start = std::chrono::steady_clock::now();
     while (!done) {
-      std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+      // Receive and handle any message from the server, waiting at most 100ms for a
+      // new packet before looping back around.
+      std::shared_ptr<StreamPacket> response;
+      size_t offset = 0;
+      Status status = receiver->ReceiveStreamPacket(0.1, response, offset);
+      if (status == OKAY) {
+        status = HandleStreamPacket(response, timer);
+        if (status != OKAY) {
+          std::cerr << "Error handling stream packet: " << ErrorMessage(status) << std::endl;
+          done = true;
+        }
+      } else if (status != TIMEOUT) {
+        std::cerr << "Error receiving data: " << ErrorMessage(status) << std::endl;
+        done = true;
+      }
 
       // If all of our DisplayWindows have been closed (or are broken), then we're done.
       bool allClosed = true;
