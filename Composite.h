@@ -45,6 +45,8 @@ namespace asdp {
       /// The canonical orientation is in the local helicopter coordinate system, with +X pointing
       /// right, +Y pointing forwards, and +Z pointing up.  The camera is translated in the
       /// helicopter frame of reference and then rotated around its new center.
+      /// The camera is looking out the front of the helicopter (along the +Y axis) with its "up" vector
+      /// pointing above the helicopter (along the +Z axis) when the orientation is (0,0,0).
       std::array<float, 3> orientation = {};
       /// Left edge of the view in degrees from the principal ray (this will be half the horizontal FOV).
       /// Left and right are different for off-center projection.

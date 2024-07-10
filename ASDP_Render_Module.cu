@@ -700,9 +700,9 @@ std::shared_ptr<Message> WaitForMessageType(std::shared_ptr<Receiver> receiver, 
 Status HandleStreamPacket(std::shared_ptr<StreamPacket> packet, std::shared_ptr<Timer> timer)
 {
   // Adjust the timer offset based on clock-sync messages.  The first message (or the first one
-  // after replay resumes), sets the estimated offset based on that single number and the relative
-  // rate to 1.0. Later ones adjust based on an average of the previous ones as described in the
-  // render implementation document.
+  // after replay resumes, or the first one after replay stops), sets the estimated offset based
+  // on that single number and the relative rate to 1.0. Later ones adjust based on an average of
+  // the previous ones as described in the render implementation document.
   /// @todo
 
   return OKAY;

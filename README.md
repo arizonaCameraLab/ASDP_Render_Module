@@ -139,6 +139,8 @@ Translations in -Y move the virtual camera backwards (into the helicopter) and t
 move the virtual camera up.
 A rotation around the +X axis will tip the camera's view up, and a rotation around the +Y axis will
 pan the camera's view left.
+The camera is looking out the front of the helicopter (along the +Y axis) with its "up" vector
+pointing above the helicopter (along the +Z axis) when the orientation is (0,0,0).
 
 **PoseEstimator:** The pose estimator is a class that estimates the differential pose of the helicopter
 between two times.  It provides a description of how the helicopter has moved and rotated between

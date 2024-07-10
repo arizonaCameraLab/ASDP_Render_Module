@@ -4,7 +4,7 @@ project(ASDP_Render_Module LANGUAGES CUDA CXX C)
 # We require C++17 for the use of std::filesystem.
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-list(APPEND CMAKE_PREFIX_PATH C:/Packages/GLEW/glew-2.2.0)
+list(APPEND CMAKE_PREFIX_PATH F:/Packages/GLEW/glew-2.2.0)
 
 #-----------------------------------------------------------------------------
 if(WIN32)
