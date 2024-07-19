@@ -31,7 +31,7 @@ namespace asdp {
       /// for an ideal camera of known horizontal and vertical fields of view whose center of
       /// projection is the center of the image sensor.  The camera will be right-handed with its
       /// +X axis to the right in the image, its +Y axis pointing up in the image, looking down
-      /// the -Z axis.  The center of projection for the camera is at the origin.  For example.
+      /// the -Z axis.  The center of projection for the camera is at the origin.  For example,
       /// the point (0, 0, -5) will project to the center of the image, 5 units away from the camera
       /// in any ideal camera's space.
       /// @return Projection point for this pixel in the real camera.  The point will have the same

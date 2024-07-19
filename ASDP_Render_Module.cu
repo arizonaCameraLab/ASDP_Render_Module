@@ -360,7 +360,7 @@ static void CopyDataToTextures(uint16_t width, uint16_t height,
 
   while (!done) {
     // Once per second, print out the size of the input queue
-    if (std::chrono::duration<double>(std::chrono::steady_clock::now() - lastPrint).count() > 1.0) {
+    if (std::chrono::duration<double>(std::chrono::steady_clock::now() - lastPrint).count() > 5.0) {
       std::cout << "Input queue size: " << inQueue->size() << std::endl;
       lastPrint = std::chrono::steady_clock::now();
     }
@@ -401,7 +401,6 @@ static void CopyDataToTextures(uint16_t width, uint16_t height,
             handlers[cameraID] = std::make_shared<CPUDataToTextureHandler>(data, width, height,
               static_cast<uint16_t>(batchSize));
           }
-          // Nothing to do for the beginning of a frame.
           break;
 
         case FRAME_DATA:
@@ -710,13 +709,15 @@ Status HandleStreamPacket(std::shared_ptr<StreamPacket> packet, std::shared_ptr<
 
 void usage(std::string name)
 {
-  std::cerr << "Usage: " << name << " [--framestride <frameStride>] [--fullScreen] [--toneMap <tone map>] [--numDisplays <number of displays>] <ip_address>" << std::endl;
-  std::cerr << "  --frameStride <frameStride>         Read one out of every this many frames. Set to 1 for every frame." << std::endl;
+  std::cerr << "Usage: " << name << " [options] <ip_address>" << std::endl;
+  std::cerr << "  <ip_address>                        The IP address to listen for servers on." << std::endl;
+  std::cerr << "  Options:" << std::endl;
+  std::cerr << "  --frameStride <frame stride>         Read one out of every this many frames. Set to 1 for every frame." << std::endl;
   std::cerr << "  --fullScreen                        Run in full screen mode." << std::endl;
   std::cerr << "  --toneMap <tone map>                The tone map to use.  Options are: linear blackbody bluesky" << std::endl;
   std::cerr << "  --numDisplays <number of displays>  The number of display windows (default 1)" << std::endl;
-  std::cerr << "  <ip_address>                        The IP address to listen for servers on." << std::endl;
-}
+  std::cerr << "  --replay <stream id>                ID of the stream to replay (1+)." << std::endl;
+};
 
 int main(int argc, char** argv)
 {
@@ -726,6 +727,7 @@ int main(int argc, char** argv)
   std::string ip_address;       ///< The IP address to listen on.
   std::set<uint32_t> cameraIDs; ///< The camera IDs to render.
   size_t numDisplays = 1;       ///< The number of display windows to create.
+  uint32_t replayStreamID = 0;  ///< The stream ID to replay, 0 for live.
   size_t realParams = 0;        ///< The number of non-flag parameters we've seen.
 
   // Parse the command line arguments, with the first non-flag argument being the
@@ -752,7 +754,7 @@ int main(int argc, char** argv)
         toneMap = ToneMapBlueSky();
       } else {
         std::cerr << "Unknown tone map: " << argv[i] << std::endl;
-        return 1;
+        return 2;
       }
     } else if (std::string("--numDisplays") == argv[i]) {
       if (++i >= argc) {
@@ -760,6 +762,12 @@ int main(int argc, char** argv)
         return 2;
       }
       numDisplays = std::stoi(argv[i]);
+    } else if (std::string("--replay") == argv[i]) {
+      if (++i >= argc) {
+        usage(argv[0]);
+        return 2;
+      }
+      replayStreamID = std::stoi(argv[i]);
     } else if (argv[i][0] == '-') {
       std::cerr << "Unknown flag: " << argv[i] << std::endl;
       return 1;
@@ -882,11 +890,7 @@ int main(int argc, char** argv)
     }
     std::ifstream configFile(configPath);
     json config = json::parse(configFile);
-    std::string configSerial = config["serialNumber"];
-    if (serialNumber != std::stoi(configSerial)) {
-      std::cerr << "Serial number mismatch: expected " << serialNumber << " but got " << config["serialNumber"] << std::endl;
-      return 15;
-    }
+    uint32_t configSerial = config["serialNumber"];
     if (cameras.size() != config["cameras"].size()) {
       std::cerr << "Number of cameras mismatch: expected " << cameras.size() << " but got " << config["cameras"].size() << std::endl;
       return 16;
@@ -912,7 +916,6 @@ int main(int argc, char** argv)
         if (distortion["type"] == "none") {
           DistortionNone* distortion = new DistortionNone;
           info.m_distortion = std::shared_ptr<Distortion>(distortion);
-          /// @todo Handle radial distortion
         } else if (distortion["type"] == "radial") {
           json parameters = distortion["parameters"];
           std::array<double, 2> center = parameters["COP"];
@@ -1098,6 +1101,33 @@ int main(int argc, char** argv)
       if (status != OKAY) {
         std::cerr << "Failed to stream images: " << ErrorMessage(status) << std::endl;
         return 32;
+      }
+    }
+
+    // If we've been asked to replay a stream, then send a request to do this.
+    if (replayStreamID) {
+      std::vector<FeatureID> features;
+      status = state.GetFeatures(features);
+      if (status != OKAY) {
+        std::cerr << "Failed to get features: " << ErrorMessage(status) << std::endl;
+        return 1000;
+      }
+      bool hasStorage = false;
+      for (const auto& feature : features) {
+        if (feature == STORAGE_API_AVAILABLE) {
+          hasStorage = true;
+          break;
+        }
+      }
+      if (!hasStorage) {
+        std::cerr << "Error: Storage API not available when replay requested." << std::endl;
+        return 1001;
+      }
+      std::cout << "Requesting replay of stream " << replayStreamID << std::endl;
+      status = client->SendCommandPacket(CommandPacketStartReplay(replayStreamID, Time()));
+      if (status != OKAY) {
+        std::cerr << "Failed to start replay: " << ErrorMessage(status) << std::endl;
+        return 1002;
       }
     }
 

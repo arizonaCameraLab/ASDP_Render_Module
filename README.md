@@ -56,7 +56,7 @@ serial number 0 that has two microcameras so it would be saved in *0.json*.
 
 ```
 {
-  "serialNumber" : "0",
+  "serialNumber" : 0,
   "cameras" : [
     {
       "id" : 1,
