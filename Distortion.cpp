@@ -30,10 +30,10 @@ std::array<double, 3> DistortionRadialLERP::MapPoint(std::array<double, 3> point
     return point;
   }
 
-  // Calculate the vector from the center of projection to the point
+  // Calculate the vector from the center of projection to the point.
   // Project the vector onto the Z = -1 plane (scales it to Z = -1)
   double scale = -1 / point[2];
-  std::array<double, 2> vec = {point[0] - m_COP[0], point[1] - m_COP[1]};
+  std::array<double, 2> vec = {point[0] - m_COP[0]/scale, point[1] - m_COP[1]/scale};
   vec[0] *= scale;
   vec[1] *= scale;
   double dist = std::sqrt(vec[0] * vec[0] + vec[1] * vec[1]);
@@ -60,7 +60,7 @@ std::array<double, 3> DistortionRadialLERP::MapPoint(std::array<double, 3> point
     reScale *= (d / dist);
   }
 
-  return {m_COP[0] + vec[0] * reScale, m_COP[1] + vec[1] * reScale, point[2]};
+  return {m_COP[0]/scale + vec[0] * reScale, m_COP[1]/scale + vec[1] * reScale, point[2]};
 }
 
 
@@ -85,15 +85,16 @@ std::string Distortion::Test()
 
   // Test the DistortionRadialLERP class
   {
-    // Test an identity distortion that does not change anything.
-    std::array<double, 2> COP = {0.5, 0.5};
+    // Test an identity distortion that does not change anything with a nonzero
+    // center of projection.
+    std::array<double, 2> COP = {-0.15, 0.5};
     std::vector<std::array<double, 2>> controlPoints = {{0, 0}, {1, 1}};
     DistortionRadialLERP radialLERP(COP, controlPoints);
-    std::array<double, 3> point = {0.5, 0.5, -1};
+    std::array<double, 3> point = {COP[0], COP[1], -1};
     if (!isNear(radialLERP.MapPoint(point), point)) {
       return "DistortionRadialLERP: Unit radial point not returned unchanged";
     }
-    point = {0.5, 0.5, -2};
+    point = { 2*COP[0], 2*COP[1], -2};
     if (!isNear(radialLERP.MapPoint(point), point)) {
       return "DistortionRadialLERP: Radial point not returned unchanged at Z = 2";
     }
@@ -107,22 +108,23 @@ std::string Distortion::Test()
     }
   }
   {
-    // Test a factor-of-2 distortion both inside and outside the unit circle.
-    std::array<double, 2> COP = { 0.5, 0.5 };
+    // Test a factor-of-2 distortion both inside and outside the unit circle,
+    // with a nonzero center of projection.
+    std::array<double, 2> COP = { 0.5, 0.25 };
     std::vector<std::array<double, 2>> controlPoints = { {0, 0}, {10, 20} };
     DistortionRadialLERP radialLERP(COP, controlPoints);
-    std::array<double, 3> point = { 0.5, 0.5, -1 };
+    std::array<double, 3> point = { COP[0], COP[1], -1};
     if (!isNear(radialLERP.MapPoint(point), point)) {
       return "DistortionRadialLERP: 2x Unit radial point not returned unchanged";
     }
-    point = { 0.5, 0.5, -2 };
+    point = { 2*COP[0], 2*COP[1], -2 };
     if (!isNear(radialLERP.MapPoint(point), point)) {
       return "DistortionRadialLERP: 2x Radial point not returned unchanged at Z = 2";
     }
     for (double x = -2; x <= 2; x += 0.1) {
       for (double y = -2; y <= 2; y += 0.1) {
         point = { x, y, -2 };
-        std::array<double, 3> expected = { (x-0.5) * 2 + 0.5, (y-0.5) * 2 + 0.5, -2 };
+        std::array<double, 3> expected = { (x-2*COP[0]) * 2 + 2*COP[0], (y-2*COP[1]) * 2 + 2*COP[1], -2 };
         if (!isNear(radialLERP.MapPoint(point), expected)) {
           return "DistortionRadialLERP: 2x Point not changed as expected at Z = 2";
         }
@@ -135,7 +137,7 @@ std::string Distortion::Test()
   }
   {
     // Test a factor-of-3 distortion with a large number of interpolated points.
-    std::array<double, 2> COP = { 0.5, 0.5 };
+    std::array<double, 2> COP = { 0.5, -0.5 };
     std::vector<std::array<double, 2>> controlPoints;
     for (double i = 0; i < 10; i += 0.01) {
       controlPoints.push_back({ i, i * 3 });
@@ -145,7 +147,7 @@ std::string Distortion::Test()
     for (double x = -2; x <= 2; x += 0.1) {
       for (double y = -2; y <= 2; y += 0.1) {
         point = { x, y, -2 };
-        std::array<double, 3> expected = { (x - 0.5) * 3 + 0.5, (y - 0.5) * 3 + 0.5, -2 };
+        std::array<double, 3> expected = { (x - 2*COP[0]) * 3 + 2*COP[0], (y - 2*COP[1]) * 3 + 2*COP[1], -2};
         if (!isNear(radialLERP.MapPoint(point), expected)) {
           return "DistortionRadialLERP: 2x large count Point not changed as expected at Z = 2";
         }
@@ -159,4 +161,3 @@ std::string Distortion::Test()
 
   return "";
 }
-

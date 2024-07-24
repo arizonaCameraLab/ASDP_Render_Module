@@ -708,7 +708,7 @@ void CompositeCameras::AddBufferObjects(CameraRenderInfo const& cameraRenderInfo
       // Perform distortion correction on the X, Y coordinates to get to canonical view
       // space, which has a camera looking down -Z.  This provides us the location in the
       // canonical view space.  If we don't have a distortion model, we just use the X, Y, Z
-      // coordinates as-is.
+      // coordinates as is.
       std::array<double, 3> distPoint = std::array<double, 3>{xs, ys, zs};
       if (cameraRenderInfo.m_distortion != nullptr) {
         distPoint = cameraRenderInfo.m_distortion->MapPoint(distPoint);
