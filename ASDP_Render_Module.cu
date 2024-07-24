@@ -698,11 +698,53 @@ std::shared_ptr<Message> WaitForMessageType(std::shared_ptr<Receiver> receiver, 
 
 Status HandleStreamPacket(std::shared_ptr<StreamPacket> packet, std::shared_ptr<Timer> timer)
 {
-  // Adjust the timer offset based on clock-sync messages.  The first message (or the first one
-  // after replay resumes, or the first one after replay stops), sets the estimated offset based
-  // on that single number and the relative rate to 1.0. Later ones adjust based on an average of
-  // the previous ones as described in the render implementation document.
-  /// @todo
+  // Parse all of the messages in the stream packet, handling each of them in turn.
+  std::shared_ptr<Message> message;
+  Status status = packet->GetNextMessage(message);
+  if (OKAY != status) {
+    return status;
+  }
+  while (message != nullptr) {
+    MessageID messageType;
+    status = message->GetType(messageType);
+    if (OKAY != status) {
+      return status;
+    }
+
+    switch (messageType) {
+    case CLOCK_SYNC:
+      {
+          // Adjust the timer offset based on clock-sync messages.  The first message (or the first one
+          // after replay resumes, or the first one after replay stops), sets the estimated offset based
+          // on that single number and the relative rate to 1.0. Later ones adjust based on an average of
+          // the previous ones as described in the render implementation document.
+          /// @todo
+      }
+      break;
+    case STATE:
+      {
+        // Parse the state message and keep track of anything we need to.
+        MessageState state(*message);
+        if (state.GetConstructorStatus() != OKAY) {
+          return state.GetConstructorStatus();
+        }
+        uint8_t replaying;
+        status = state.GetReplaying(replaying);
+        if (status != OKAY) {
+          return status;
+        }
+        //std::cout << "XXX Replaying = " << (replaying ? "true" : "false") << std::endl;
+      }
+    default:
+      // Ignore other message types.
+      break;
+    }
+
+    status = packet->GetNextMessage(message);
+    if (OKAY != status) {
+      return status;
+    }
+  }
 
   return OKAY;
 }
