@@ -24,6 +24,11 @@
 namespace asdp {
   namespace render {
 
+    /// @brief Event-handling class that passes asynchronous events to the caller.
+    struct EventHandlers {
+      void (*TogglePlayPause)(void *userData) = nullptr; ///< Toggle the play/pause behavior.
+    };
+
     /// @brief Display base class that defines the interface that all Displays use.
     class Display {
     public:
@@ -39,7 +44,8 @@ namespace asdp {
       /// It is expected to be read from a configuration file and tuned for the specific hardware and software.
       /// @param composite The Composite used to generate textured geometry.
       Display(std::shared_ptr<Composite> composite,
-        std::shared_ptr<CoreClient> client, uint8_t triggerID, uint32_t triggerAheadMicroseconds);
+        std::shared_ptr<CoreClient> client, uint8_t triggerID, uint32_t triggerAheadMicroseconds,
+        std::shared_ptr<EventHandlers> handlers = nullptr, void* userData = nullptr);
 
       /// @brief Destructor, virtual so that derived classes can have their destructors called from pointers.
       virtual ~Display();
@@ -74,6 +80,10 @@ protected:
 
       /// Compositor to use, filled in by the constructor.
       std::shared_ptr<Composite> m_composite;
+
+      /// Event handlers, if any.
+      std::shared_ptr<EventHandlers> m_eventHandlers;
+      void* m_userData;
 
       std::shared_ptr<CoreClient> m_client; ///< CoreClient to use, filled in by the constructor.
       uint8_t m_triggerID; ///< Trigger ID to use, filled in by the constructor.
@@ -148,7 +158,8 @@ protected:
         float fps = 60, uint32_t renderAheadMicroseconds = 2500,
         int desiredWidth = 1280, int desiredHeight = 1024, float horizontalFOVDegrees = 90.0,
         std::string joystick = "", Display *sharedWindow = nullptr,
-        bool fullScreen = false, int desiredDisplay = 0, bool hidden = false);
+        bool fullScreen = false, int desiredDisplay = 0, bool hidden = false,
+        std::shared_ptr<EventHandlers> handlers = nullptr, void* userData = nullptr);
 
       ~DisplayWindow();
 

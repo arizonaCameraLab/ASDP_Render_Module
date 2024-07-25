@@ -63,8 +63,11 @@ public:
 
 
 Display::Display(std::shared_ptr<Composite> composite,
-  std::shared_ptr<CoreClient> client, uint8_t triggerID, uint32_t triggerAheadMicroseconds)
+  std::shared_ptr<CoreClient> client, uint8_t triggerID, uint32_t triggerAheadMicroseconds,
+  std::shared_ptr<EventHandlers> handlers, void* userData)
   : m_composite(composite)
+  , m_eventHandlers(handlers)
+  , m_userData(userData)
   , m_client(client)
   , m_triggerID(triggerID)
   , m_offsetMicroseconds(triggerAheadMicroseconds)
@@ -190,6 +193,9 @@ public:
 
   /// Time point to start rendering the next frame.
   std::chrono::steady_clock::time_point m_nextFrameTime;
+
+  /// Whether the space bar was pressed during the last loop, used to toggle play/pause.
+  bool m_spacePressed = false;
 };
 
 DisplayWindow::DisplayWindow(std::string windowName, std::shared_ptr<Composite> composite,
@@ -197,8 +203,9 @@ DisplayWindow::DisplayWindow(std::string windowName, std::shared_ptr<Composite> 
     float fps, uint32_t renderAheadMicroseconds,
     int desiredWidth, int desiredHeight, float horizontalFOVDegrees,
     std::string joystick, Display* sharedWindow,
-    bool fullScreen, int desiredDisplay, bool hidden)
-  : Display(composite, client, triggerID, triggerAheadMicroseconds)
+    bool fullScreen, int desiredDisplay, bool hidden,
+    std::shared_ptr<EventHandlers> handlers, void* userData)
+  : Display(composite, client, triggerID, triggerAheadMicroseconds, handlers, userData)
   , m_impl(new DisplayWindowImpl)
 {
   // Store info from the constructor.
@@ -425,6 +432,14 @@ void DisplayWindow::HandleKeyboard()
   if (glfwGetKey(Display::m_impl->m_window, GLFW_KEY_LEFT) == GLFW_PRESS) {
     m_impl->m_views[0].orientation[2] += DegreesPerSecond * elapsed.count();
   }
+  // Toggle play/pause when the space key is pressed (once per press/release cycle)
+  bool spacePressed = (glfwGetKey(Display::m_impl->m_window, GLFW_KEY_SPACE) == GLFW_PRESS);
+  if (spacePressed && !m_impl->m_spacePressed) {
+    if (m_eventHandlers && m_eventHandlers->TogglePlayPause) {
+      m_eventHandlers->TogglePlayPause(m_userData);
+    }
+  }
+  m_impl->m_spacePressed = spacePressed;
 }
 
 void DisplayWindow::ClampViewOrienation()

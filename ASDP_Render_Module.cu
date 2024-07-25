@@ -22,6 +22,7 @@
 #include <string>
 #include <filesystem>
 #include <vector>
+#include <atomic>
 #include <ASDP_Core_API.h>
 #include <ASDP_SpinFreeQueue.hpp>
 #include <ASDP_BufferPool.h>
@@ -42,6 +43,16 @@ static std::string VERSION = "1.0.0";
 
 /// @brief The path to the configuration file. Defined in the CMakeLists file.
 std::filesystem::path dirPath = CONFIG_FILE_PATH;
+
+/// @brief Global variable set by callback handlers to tell when we're playing and pausing.
+std::atomic<bool> g_paused(false);
+
+/// @brief Callback handler to toggle play and pause.
+static void TogglePlayPause(void* /* unused */)
+{
+  g_paused = !g_paused;
+  std::cout << "Toggled play/pause to: " << (g_paused ? "paused" : "playing") << std::endl;
+}
 
 /// @brief Structure to hold the data needed to send data to the GPU and run the kernel.
 /// @details These will all have been constructed by the thread that is pushing them onto the queue,
@@ -1037,6 +1048,10 @@ int main(int argc, char** argv)
       return 21;
     }
 
+    // Configure an event structure to handle callbacks for the display windows.
+    std::shared_ptr<EventHandlers> handlers = std::make_shared<EventHandlers>();
+    handlers->TogglePlayPause = TogglePlayPause;
+
     // Construct one or more Display objects to render the cameras.  They all share objects with the texture Display.
     std::vector<std::shared_ptr<DisplayWindow>> displays;
     for (size_t i = 0; i < numDisplays; i++) {
@@ -1051,7 +1066,7 @@ int main(int argc, char** argv)
       }
       displays.push_back(std::make_shared<DisplayWindow>("ASDP Render Module " + std::to_string(i),
         composite, client, 0, 0, 60.0f, 2500, 1280, 1024,
-        40.0f, "", displayTexture.get(), thisFullScreen));    
+        40.0f, "", displayTexture.get(), thisFullScreen, 0, false, handlers));
     }
 
     // Construct shared pointers to the data structures that we'll need to do rendering, with the
@@ -1183,6 +1198,7 @@ int main(int argc, char** argv)
     }
 
     // Render frames until someone has marked us to be done.
+    bool nowPaused = false;
     start = std::chrono::steady_clock::now();
     while (!done) {
 
@@ -1212,6 +1228,18 @@ int main(int argc, char** argv)
       }
       if (allClosed) {
         done = true;
+      }
+
+      // If our state of play/pause has switched and we're replaying, send a command to the server.
+      if (replayStreamID) {
+        if (nowPaused != g_paused) {
+          if (g_paused) {
+            status = client->SendCommandPacket(CommandPacketPauseReplay());
+          } else {
+            status = client->SendCommandPacket(CommandPacketResumeReplay());
+          }
+          nowPaused = g_paused;
+        }
       }
     }
 

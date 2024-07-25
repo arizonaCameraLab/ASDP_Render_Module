@@ -161,3 +161,4 @@ std::string Distortion::Test()
 
   return "";
 }
+

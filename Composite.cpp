@@ -689,6 +689,10 @@ void CompositeCameras::AddBufferObjects(CameraRenderInfo const& cameraRenderInfo
       // Compute the U and V normalized texture coordinates for the vertex in the range 0 to 1.
       // Because standard image textures have the origin at the upper left and OpenGL has it
       // at the lower right, we must invert the v texture coordinate.
+      /// @todo The triangles go past the edges of the pixels, so we need to adjust the texture
+      // coordinates to land correctly, with the edges of the far triangles going half a pixel
+      // into the bordering pixels. The range will be from slightly negative to slightly greater
+      // than 1.0 for each axis, depending on the number of pixels in X and Y.
       GLfloat u = i / fnx;
       GLfloat v = 1.0f - j / fny;
 
