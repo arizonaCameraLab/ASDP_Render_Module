@@ -13,9 +13,19 @@ be found automatically.  The library source can be obtained using:
 `git clone --recursive https://github.com/arizonaCameraLab/ASDP_Core_API` and instructions in the
 repository tell how to install it.  The --recursive flag is important to get the submodules.
 
-The following packages are required (apt install) on Linux:
+The following packages are required (apt install) to build on Linux:
 - libglfw3-dev
 - libglew-dev
+
+To upgrade a server-only Mint distribution (with added nVidia drivers) on a Render Server to a
+desktop environment that uses the light-weight XFCE desktop, use the following command:
+`sudo apt install xfce4` and then make (as root) the file */etc/lightdm/lightdm.conf* with the
+following contents:
+
+    [SeatDefaults]
+    user-session=xfce
+
+and then reboot.
 
 On Windows it requires GLEW to be installed. Pre-built binaries are available for many systems at
 https://github.com/nigels-com/glew/releases/tag/glew-2.2.0
