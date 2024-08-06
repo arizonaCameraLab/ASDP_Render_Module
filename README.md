@@ -27,6 +27,9 @@ following contents:
 
 and then reboot.
 
+Then run the following: `sudo systemctl mask sleep.target suspend.target hibernate.target hybrid-sleep.target`
+to prevent the system from suspending or sleeping when inactive.
+
 On Windows it requires GLEW to be installed. Pre-built binaries are available for many systems at
 https://github.com/nigels-com/glew/releases/tag/glew-2.2.0
 
