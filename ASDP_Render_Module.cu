@@ -1101,7 +1101,7 @@ int main(int argc, char** argv)
       ));
 
       // Create a UDP receiver for the camera.
-      std::shared_ptr<ReceiverUDP> receiverUDP = std::make_shared<ReceiverUDP>();
+      std::shared_ptr<ReceiverUDP> receiverUDP = std::make_shared<ReceiverUDP>(ip_address);
       if (receiverUDP->GetConstructorStatus() != OKAY) {
         std::cerr << "Error constructing ReceiverUDP: " << ErrorMessage(receiverUDP->GetConstructorStatus()) << std::endl;
         return 25;
