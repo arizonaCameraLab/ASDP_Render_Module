@@ -181,7 +181,11 @@ protected:
       void HandleKeyboard();
 
       /// @brief Helper function to clamp the viewing orientation to be within the expected visible range.
-      void ClampViewOrienation();
+      /// @details This function is called by the display thread to ensure that the view orientation is
+      /// within the expected range.  It is expected to be called after the view orientation is updated.
+      /// It also converts from the specified amount of rotation about Z and X into an Euler angle that
+      /// describes the entire transformation.
+      void ComputeAndClampViewOrientation();
 
       /// Opaque class used to enable not requiring the application to #include all headers.
       class DisplayWindowImpl;

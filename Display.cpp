@@ -11,6 +11,12 @@
 #include <atomic>
 #include <mutex>
 #include <chrono>
+#define GLM_ENABLE_EXPERIMENTAL
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/quaternion.hpp>
+#include <glm/gtx/euler_angles.hpp>
+#include <glm/gtx/matrix_decompose.hpp>
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
 #include "Display.h"
@@ -187,6 +193,11 @@ public:
 
   /// Views to be rendered.
   std::vector<asdp::render::ViewRenderInfo> m_views;
+
+  /// Angles of rotation in degrees based on keyboard and/or joystick input.
+  /// rotation is around the original Z axis, then the original Z axis.
+  float m_rotationZDegrees {0.0f};
+  float m_rotationXDegrees = {0.0f};
 
   /// Last time we checked the keyboard, used to control motion rate.
   std::chrono::steady_clock::time_point m_lastKeyboardCheck;
@@ -378,7 +389,7 @@ void DisplayWindow::DisplayThread(std::string windowName,
     /// @todo
 
     // Ensure that the view orientation stays within bounds.
-    ClampViewOrienation();
+    ComputeAndClampViewOrientation();
 
     // Handle any window resizing
     SetViewportSizeAndFOVs(m_impl->m_views[0]);
@@ -418,19 +429,19 @@ void DisplayWindow::HandleKeyboard()
 
   // Rotate to look up when the up key is pressed
   if (glfwGetKey(Display::m_impl->m_window, GLFW_KEY_UP) == GLFW_PRESS) {
-    m_impl->m_views[0].orientation[0] += DegreesPerSecond * elapsed.count();
+    m_impl->m_rotationXDegrees += DegreesPerSecond * elapsed.count();
   }
   // Rotate to look down when the down key is pressed
   if (glfwGetKey(Display::m_impl->m_window, GLFW_KEY_DOWN) == GLFW_PRESS) {
-    m_impl->m_views[0].orientation[0] -= DegreesPerSecond * elapsed.count();
+    m_impl->m_rotationXDegrees -= DegreesPerSecond * elapsed.count();
   }
   // Rotate to look right when the right key is pressed
   if (glfwGetKey(Display::m_impl->m_window, GLFW_KEY_RIGHT) == GLFW_PRESS) {
-    m_impl->m_views[0].orientation[2] -= DegreesPerSecond * elapsed.count();
+    m_impl->m_rotationZDegrees -= DegreesPerSecond * elapsed.count();
   }
   // Rotate to look left when the left key is pressed
   if (glfwGetKey(Display::m_impl->m_window, GLFW_KEY_LEFT) == GLFW_PRESS) {
-    m_impl->m_views[0].orientation[2] += DegreesPerSecond * elapsed.count();
+    m_impl->m_rotationZDegrees += DegreesPerSecond * elapsed.count();
   }
   // Toggle play/pause when the space key is pressed (once per press/release cycle)
   bool spacePressed = (glfwGetKey(Display::m_impl->m_window, GLFW_KEY_SPACE) == GLFW_PRESS);
@@ -442,20 +453,59 @@ void DisplayWindow::HandleKeyboard()
   m_impl->m_spacePressed = spacePressed;
 }
 
-void DisplayWindow::ClampViewOrienation()
+void DisplayWindow::ComputeAndClampViewOrientation()
 {
-  if (m_impl->m_views[0].orientation[0] > 60.0) {
-    m_impl->m_views[0].orientation[0] = 60.0;
+  // Clamp the rotation angles to reasonable values.
+  if (m_impl->m_rotationXDegrees > 60.0) {
+    m_impl->m_rotationXDegrees = 60.0;
   }
-  if (m_impl->m_views[0].orientation[0] < -60.0) {
-    m_impl->m_views[0].orientation[0] = -60.0;
+  if (m_impl->m_rotationXDegrees < -60.0) {
+    m_impl->m_rotationXDegrees = -60.0;
   }
-  if (m_impl->m_views[0].orientation[1] > 120.0) {
-    m_impl->m_views[0].orientation[1] = 120.0;
+  if (m_impl->m_rotationZDegrees > 120.0) {
+    m_impl->m_rotationZDegrees = 120.0;
   }
-  if (m_impl->m_views[0].orientation[1] < -120.0) {
-    m_impl->m_views[0].orientation[1] = -120.0;
+  if (m_impl->m_rotationZDegrees < -120.0) {
+    m_impl->m_rotationZDegrees = -120.0;
   }
+
+  // Compute the orientation in Euler angles by building two different rotation
+  // matrices and applying them in the correct order.
+  float rotationZRadians = glm::radians(m_impl->m_rotationZDegrees);
+  float rotationXRadians = glm::radians(m_impl->m_rotationXDegrees);
+
+  // GLM gives us rotations in order Z, Y, X but we want X, Y, Z.  We make use of
+  // the fact that an inverse rotation matrix is the same as doing three individual
+  // rotations in the opposite directions and order.  So we find the inverse matrix
+  // that we want, then ask for Euler angles from that and then negate them.
+
+  // Create rotation matrices
+  glm::mat4 rotationZ = glm::rotate(glm::mat4(1.0f), rotationZRadians, glm::vec3(0.0f, 0.0f, 1.0f));
+  glm::mat4 rotationX = glm::rotate(rotationZ, rotationXRadians, glm::vec3(1.0f, 0.0f, 0.0f));
+
+  // Combine the rotations: first X, then Z
+  glm::mat4 combinedRotation = rotationX;
+
+  // Find the inverse matrix
+  glm::mat4 inverseRotation = glm::inverse(combinedRotation);
+
+  // Decompose the combined rotation matrix to get the Euler angles
+  glm::vec3 scale, translation, skew;
+  glm::vec4 perspective;
+  glm::quat orientation;
+  glm::decompose(inverseRotation, scale, orientation, translation, skew, perspective);
+
+  // Convert quaternion to Euler angles (X, Y, Z)
+  /// @todo The above plus this extraction is doing them in the incorrect order.
+  glm::vec3 eulerAngles = glm::eulerAngles(orientation);
+
+  // Convert radians to degrees
+  eulerAngles = glm::degrees(eulerAngles);
+
+  // Store the negative of the Euler angles in the view, completing the inverse.
+  m_impl->m_views[0].orientation[0] = -eulerAngles[0];
+  m_impl->m_views[0].orientation[1] = -eulerAngles[1];
+  m_impl->m_views[0].orientation[2] = -eulerAngles[2];
 }
 
 //==============================================================================
