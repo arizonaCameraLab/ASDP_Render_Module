@@ -141,16 +141,18 @@ tipping backwards no matter the orientation of the helicopter.
 coordinate system, with +X pointing right, +Y pointing forwards, and +Z pointing up.  (This system
 is nested with the helicopter coordinate system.)  The camera center of projection is first translated
 by the specified offset and then rotated about this new center, first around X then around the new
-Y, then around the new Z axis.  For example, a camera that is in portrait mode looking straight
-forward might with its X axis down would have an offset of (0, 0.1, 0) and a rotation of (0, 0, 90).
-If its X axis is pointing up, then its rotation would be (0, 0, -90).
+Y, then around the new Z axis.  For example, a camera that is in portrait mode that is slightly ahead
+of the camera center looking straight forward with its X axis down would have an offset of (0, 0.1, 0)
+and a rotation of (0, 90, 0). If its X axis is pointing up, then its rotation would be (0, -90, 0).
+The camera's local coordinate system has it looking along the -Y axis with the +Z axis up and the +X
+axis to the right.
 
 **ViewRenderInfo:** These transformations are also specified in the local helicopter space.
 The center of projection of the camera is specified by the offset and its orientation by the rotation.
 The origin of the coordinate system is the center of the camera array.
 Translations in -Y move the virtual camera backwards (into the helicopter) and translations of +Z
 move the virtual camera up.
-A rotation around the +X axis will tip the camera's view up, and a rotation around the +Y axis will
+A rotation around the +X axis will tip the camera's view up, and a rotation around the +Z axis will
 pan the camera's view left.
 The camera is looking out the front of the helicopter (along the +Y axis) with its "up" vector
 pointing above the helicopter (along the +Z axis) when the orientation is (0,0,0).

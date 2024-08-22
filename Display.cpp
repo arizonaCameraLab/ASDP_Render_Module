@@ -496,7 +496,6 @@ void DisplayWindow::ComputeAndClampViewOrientation()
   glm::decompose(inverseRotation, scale, orientation, translation, skew, perspective);
 
   // Convert quaternion to Euler angles (X, Y, Z)
-  /// @todo The above plus this extraction is doing them in the incorrect order.
   glm::vec3 eulerAngles = glm::eulerAngles(orientation);
 
   // Convert radians to degrees
