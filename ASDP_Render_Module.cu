@@ -424,10 +424,10 @@ static void CopyDataToTextures(uint16_t width, uint16_t height,
           break;
 
         case FRAME_DATA:
-          // Copy the data to the pinned CPU memory buffer, and then asynchronously to the GPU buffer as
-          // we get enough data for a minimum block size.  We send the data to the GPU in chunks so that
-          // we amortize the per-send cost, but we send in chunks to reduce the latency and enable overlap
-          // between data copying and processing (which increases throughput).
+          // Asynchronously send data to the GPU buffer as we get enough data for a minimum block size. 
+          // We send the data to the GPU in chunks so that we amortize the per-send cost, but we send in
+          // chunks to reduce the latency and enable overlap between data copying and processing
+          // (which increases throughput).
           {
             // Handle the data
             if (message.cameraID >= handlers.size()) {
