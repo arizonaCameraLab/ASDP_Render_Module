@@ -24,6 +24,7 @@ struct DataToSend {
   unsigned char* gpuBuffer;    ///< Copy to here
   size_t size;                 ///< Size of the data
   cudaStream_t stream;         ///< Stream to use to for the copy and kernel run
+  bool waitToFinish = false;   ///< Wait until this stream finishes?
 };
 
 __global__ void squareAndDivideKernel(uint16_t* data, int size)
@@ -50,7 +51,7 @@ static void handleDataThread(std::atomic<bool>& done, SpinFreeQueue<DataToSend>&
       cudaError_t ret = cudaMemcpyAsync(data.gpuBuffer, data.cpuBuffer, data.size,
         cudaMemcpyHostToDevice, data.stream);
       if (ret != cudaSuccess) {
-        std::cerr << "Error: " << cudaGetErrorString(ret) << std::endl;
+        std::cerr << "Error copying: " << cudaGetErrorString(ret) << std::endl;
         return;
       }
 
@@ -60,6 +61,17 @@ static void handleDataThread(std::atomic<bool>& done, SpinFreeQueue<DataToSend>&
       int numBlocks = (size + blockSize - 1) / blockSize;
       uint16_t* data16 = reinterpret_cast<uint16_t*>(data.gpuBuffer);
       squareAndDivideKernel << <numBlocks, blockSize, 0, data.stream >> > (data16, size);
+
+      // Wait for this stream to sychhronize, if we've been asked to.
+      // This verifies that we can ensure completion of each frame without
+      // causing the queue to clog up.
+      if (data.waitToFinish) {
+        cudaError_t status = cudaStreamSynchronize(data.stream);
+        if (status != cudaSuccess) {
+        std::cerr << "Error synchronizing: " << cudaGetErrorString(ret) << std::endl;
+        return;
+        }
+      }
     }
   }
 }
@@ -121,6 +133,8 @@ static void receiveDataThread(ReceiverUDP& receiveSocket, SpinFreeQueue<DataToSe
       data.gpuBuffer = gpuBuffer + baseOffset;
       data.size = packetsPerGPUSend * bytesPerPacket;
       data.stream = stream;
+      // At the end of each frame, have the send-to-GPU thread await stream completion
+      data.waitToFinish = (packetsReceived % packetsPerFrame == (packetsPerFrame-1));
       queue.enqueue(data);
     }
 
