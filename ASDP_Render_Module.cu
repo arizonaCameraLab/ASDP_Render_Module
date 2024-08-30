@@ -1136,9 +1136,9 @@ int main(int argc, char** argv)
     }
 
     // Make additional OpenGL contexts for all but the first texture thread -- re-use the original for
-    // the first one.  Testing shows that we can handle up to 13 cameras on a single texture thread, so
-    // we make two threads to handle all 25.
-    static const int NUM_TEXTURE_THREADS = 2;
+    // the first one.  Testing shows that we can handle up to 13 cameras on a single texture thread,
+    // but when we tried 2 threads it could not quite keep up so we make 3 threads to handle all 25.
+    static const int NUM_TEXTURE_THREADS = 3;
     std::vector< std::shared_ptr<DisplayTexture> > displayTextures = { displayTexture };
     for (size_t i = 1; i < NUM_TEXTURE_THREADS; i++) {
       std::shared_ptr<DisplayTexture> dt = std::make_shared<DisplayTexture>(displayTexture.get());
