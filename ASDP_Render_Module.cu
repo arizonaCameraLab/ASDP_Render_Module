@@ -1100,8 +1100,6 @@ int main(int argc, char** argv)
     // Construct shared pointers to the data structures that we'll need to do rendering, with the
     // custom destructors that will clean up when the shared_ptr is destroyed.
     std::atomic<bool> done(false);
-    std::shared_ptr< SpinFreeQueue< std::shared_ptr<DataToSendToGPU> > > dataQueue =
-      std::make_shared< SpinFreeQueue< std::shared_ptr<DataToSendToGPU> > >();
     std::vector< std::shared_ptr<unsigned char> > cpuPinnedImageBuffers;
     std::vector< std::shared_ptr<unsigned char> > gpuImageBuffers;
     std::vector< std::shared_ptr<cudaStream_t> > streams;
@@ -1137,14 +1135,37 @@ int main(int argc, char** argv)
       UDPReceivers.push_back(receiverUDP);
     }
 
-    // Launch the threads, hooking them together using the queues and passing the texture OpenGL context to it.
-    std::thread copyDataToGPUThread(CopyDataToTextures, cameras[0].width, cameras[0].height,
-      std::ref(done), dataQueue, 16, displayTexture);
+    // Make additional OpenGL contexts for all but the first texture thread -- re-use the original for
+    // the first one.  Testing shows that we can handle up to 13 cameras on a single texture thread, so
+    // we make two threads to handle all 25.
+    static const int NUM_TEXTURE_THREADS = 2;
+    std::vector< std::shared_ptr<DisplayTexture> > displayTextures = { displayTexture };
+    for (size_t i = 1; i < NUM_TEXTURE_THREADS; i++) {
+      std::shared_ptr<DisplayTexture> dt = std::make_shared<DisplayTexture>(displayTexture.get());
+      displayTextures.push_back(dt);
+    }
+
+    // Make the queues to pass data between the receiver and texture threads, one for each texture thread.
+    // The cameras will be spread among the threads in a round-robin fashion.
+    std::vector< std::shared_ptr< SpinFreeQueue< std::shared_ptr<DataToSendToGPU> > > > dataQueues;
+    for (size_t i = 0; i < NUM_TEXTURE_THREADS; i++) {
+      dataQueues.push_back(std::make_shared< SpinFreeQueue< std::shared_ptr<DataToSendToGPU> > >());
+    }
+
+    // Launch the threads to copy data to the GPU and to render the cameras, each having its own queue.
+    std::vector<std::thread> copyDataToGPUThread;
+    for (size_t i = 0; i < NUM_TEXTURE_THREADS; i++) {
+      copyDataToGPUThread.push_back(std::thread(CopyDataToTextures, cameras[0].width, cameras[0].height, std::ref(done),
+        dataQueues[i], 16, displayTextures[i]));
+    }
+
+    // Launch the data receiving threads, hooking them together using the queues and passing the texture OpenGL
+    // context to it.  Round-robin the data queues among the cameras.
     std::vector<std::thread> receiveDataThreads;
     for (size_t i = 0; i < cameras.size(); i++) {
       receiveDataThreads.push_back(std::thread(ReceiveDataThread, std::ref(*UDPReceivers[i]), 9000,
         std::ref(done), cpuPinnedImageBuffers[i], gpuImageBuffers[i], streams[i], cameraRenderInfos[i].m_imageQueue,
-        dataQueue));
+        dataQueues[i % NUM_TEXTURE_THREADS]));
     }
 
     // Request streaming on the cameras at their maximum rates.
@@ -1271,17 +1292,23 @@ int main(int argc, char** argv)
       }
     }
 
-    // Set done and wait for all of our singleton threads to join.
+    // Set done and wait for all of our GPU data threads to join.
     done = true;
-    copyDataToGPUThread.join();
+    for (auto& thread : copyDataToGPUThread) {
+      if (thread.joinable()) {
+        thread.join();
+      }
+    }
 
     // Destroy our client
     client.reset();
 
-    // Clear all remaining data from the queue now that the receivers are done.
+    // Clear all remaining data from the queues now that the receivers are done.
     // All of the receiving threads will also delete this before they exit, which will remove all of the
     // references and push their buffers back onto their empty queues.
-    dataQueue.reset();
+    for (auto& queue : dataQueues) {
+      queue.reset();
+    }
 
     // Now that all of the buffers have been returned to the buffer queue, join our receive-data threads.
     for (auto& thread : receiveDataThreads) {
