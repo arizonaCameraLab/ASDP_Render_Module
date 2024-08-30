@@ -200,7 +200,7 @@ public:
   /// @param width The width of the image data (the whole image).
   /// @param height The height of the image data (the whole image).
   /// @param batchSize The number of lines to send to the GPU at once (the height of the region that will be sent).
-  CPUDataToTextureHandler(std::map<GLuint, cudaGraphicsResource*> texturesToCUDAMap,
+  CPUDataToTextureHandler(std::shared_ptr< std::map<GLuint, cudaGraphicsResource*> > texturesToCUDAMap,
     std::shared_ptr<DataToSendToGPU> dataPtr,
     uint16_t width, uint16_t height, uint16_t batchSize);
 
@@ -240,7 +240,8 @@ protected:
   std::string SendToGPU();
 };
 
-CPUDataToTextureHandler::CPUDataToTextureHandler(std::map<GLuint, cudaGraphicsResource*> texturesToCUDAMap,
+CPUDataToTextureHandler::CPUDataToTextureHandler(
+  std::shared_ptr< std::map<GLuint, cudaGraphicsResource*> > texturesToCUDAMap,
   std::shared_ptr<DataToSendToGPU> dataPtr,
   uint16_t width, uint16_t height, uint16_t batchSize)
   : m_status(""), m_dataPtr(dataPtr)
@@ -260,8 +261,8 @@ CPUDataToTextureHandler::CPUDataToTextureHandler(std::map<GLuint, cudaGraphicsRe
 
   {
     // Register the OpenGL texture with CUDA if we don't already have it registered.
-    auto texture = texturesToCUDAMap.find(textureID);
-    if (texture != texturesToCUDAMap.end()) {
+    auto texture = texturesToCUDAMap->find(textureID);
+    if (texture != texturesToCUDAMap->end()) {
       m_resource = texture->second;
     } else {
       cudaStatus = cudaGraphicsGLRegisterImage(&m_resource, textureID, GL_TEXTURE_2D, cudaGraphicsRegisterFlagsSurfaceLoadStore);
@@ -269,7 +270,8 @@ CPUDataToTextureHandler::CPUDataToTextureHandler(std::map<GLuint, cudaGraphicsRe
         m_status = "Failed to register texture: " + std::string(cudaGetErrorString(cudaStatus));
         return;
       }
-      texturesToCUDAMap[textureID] = m_resource;
+      (*texturesToCUDAMap)[textureID] = m_resource;
+      std::cout << "XXX Map size " << texturesToCUDAMap->size() << std::endl;
     }
 
     // Map the texture for writing by CUDA
@@ -405,7 +407,8 @@ static void CopyDataToTextures(uint16_t width, uint16_t height,
 
   // Map from Texture ID to cudaGraphicsResource* for the texture data.  This is used by the CPUDataToTextureHandler
   // objects to know which texture to use without having to repeatedly register and unregister it.
-  std::map<GLuint, cudaGraphicsResource*> texturesToCUDAMap;
+  std::shared_ptr< std::map<GLuint, cudaGraphicsResource*> > texturesToCUDAMap =
+    std::make_shared< std::map<GLuint, cudaGraphicsResource*> >();
 
   while (!done) {
     // Once per second, print out the size of the input queue
@@ -483,7 +486,7 @@ static void CopyDataToTextures(uint16_t width, uint16_t height,
   } // End of while we are not done.
 
   // Unregister all of our textures from CUDA.
-  for (auto &texture : texturesToCUDAMap) {
+  for (auto &texture : *texturesToCUDAMap) {
     cudaGraphicsUnregisterResource(texture.second);
   }
 
@@ -1138,7 +1141,7 @@ int main(int argc, char** argv)
     // Make additional OpenGL contexts for all but the first texture thread -- re-use the original for
     // the first one.  Testing shows that we can handle up to 13 cameras on a single texture thread,
     // but when we tried 2 threads it could not quite keep up so we make 3 threads to handle all 25.
-    static const int NUM_TEXTURE_THREADS = 3;
+    static const int NUM_TEXTURE_THREADS = 2;
     std::vector< std::shared_ptr<DisplayTexture> > displayTextures = { displayTexture };
     for (size_t i = 1; i < NUM_TEXTURE_THREADS; i++) {
       std::shared_ptr<DisplayTexture> dt = std::make_shared<DisplayTexture>(displayTexture.get());
