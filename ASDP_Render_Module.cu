@@ -54,12 +54,28 @@ static void TogglePlayPause(void* /* unused */)
   std::cout << "Toggled play/pause to: " << (g_paused ? "paused" : "playing") << std::endl;
 }
 
+/// @brief Summary of information from image messages, including start, data, and end.
+/// @details This enables us to retain the information about what messages were in a packet
+/// so that the data can be processed in the other thread without needing to keep around the
+/// stream packet object or re-parse it. This is necessary to avoid causing a bottleneck in the
+/// ReceiveDataThread.
+struct MessageSummary {
+  asdp::MessageID messageType = DISCOVERY;  ///< The type of message (filling in an arbitrary one here)
+  uint32_t cameraID = 0;            ///< The camera ID
+  uint16_t width = 0;               ///< The width of the image data (if present for a message type)
+  uint16_t height = 0;              ///< The height of the image data (if present for a message type)
+  uint16_t left = 0;                ///< The left edge of the region to process (if present for a message type)
+  uint16_t right = 0;               ///< The right edge of the region to process (if present for a message type)
+  uint16_t top = 0;                 ///< The top edge of the region to process (if present for a message type)
+  uint16_t bottom = 0;              ///< The bottom edge of the region to process (if present for a message type)
+};
+
 /// @brief Structure to hold the data needed to send data to the GPU and run the kernel.
 /// @details These will all have been constructed by the thread that is pushing them onto the queue,
 /// with custom destructors as needed to free the memory when the shared_ptr is destroyed.
 /// This has all of the information needed to get the image all the way into the texture to be rendered.
 struct DataToSendToGPU {
-  std::shared_ptr<StreamPacket> streamPacketPtr;   ///< The stream packet that was received, which includes camera ID
+  std::vector<MessageSummary> messages;   ///< Summaries of the messages included in this data packet
   std::shared_ptr<unsigned char> cpuImageBufferPtr;///< The pinned-memory buffer on the CPU that holds the image data
   std::shared_ptr<unsigned char> gpuImageBufferPtr;///< The buffer on the GPU that holds the image data
   std::shared_ptr<asdp::render::ImageQueue> imageQueuePtr;///< The image queue holding the textures to store into
@@ -136,6 +152,23 @@ asdp::Status ParseFrameDataMessage(Message &message, uint32_t &cameraID,
   return OKAY;
 }
 
+/// @brief Helper function to pull information from a FRAME_END message.
+/// @param message The message to pull the information from.
+/// @param cameraID The camera ID that the data is for.
+/// @return OKAY on success, error status on failure.
+asdp::Status ParseFrameEndMessage(Message &message, uint32_t &cameraID)
+{
+  MessageFrameEnd frameEnd(message);
+  if (frameEnd.GetConstructorStatus() != OKAY) {
+    return frameEnd.GetConstructorStatus();
+  }
+  Status status = frameEnd.GetCameraID(cameraID);
+  if (status != OKAY) {
+    return status;
+  }
+  return OKAY;
+}
+
 /// @brief CUDA kernel to write an offset and scaled copy of a uint16 image to a surface (OpenGL texture).
 /// @param surface The surface to write to.
 /// @param buffer The buffer containing the uint16 data.  This is a pointer to the beginning of the whole-frame data.
@@ -174,15 +207,12 @@ public:
   /// @brief Process the image subset, sending to GPU memory and then running the kernel to store into texture.
   /// @param offset The offset to add to each pixel value before scaling it during copy (total range 0-65535),
   /// negative values to reduce the pixel count.
-  /// @param dataPtr Pointer to the non-pinned CPU data to ingest.  This is not the beginnnig of the image but
-  /// rather the beginning of a 16-bit block of tightly-packed data.
   /// @param left The left edge of the region to process.
   /// @param top The top edge of the region to process.
   /// @param width The width of the region to process.
   /// @param height The height of the region to process.
   /// @return Empty string on success, description of error on failure.
-  std::string ProcessImageSubset(uint8_t* dataPtr,
-    uint16_t left, uint16_t top, uint16_t width, uint16_t height);
+  std::string ProcessImageSubset(uint16_t left, uint16_t top, uint16_t width, uint16_t height);
 
   /// @brief Get the status of the constructor.
   /// @return The status of the constructor, empty for good, error message for bad.
@@ -311,7 +341,7 @@ std::string CPUDataToTextureHandler::SendToGPU()
   return "";
 }
 
-std::string CPUDataToTextureHandler::ProcessImageSubset(uint8_t* dataPtr,
+std::string CPUDataToTextureHandler::ProcessImageSubset(
   uint16_t left, uint16_t top, uint16_t right, uint16_t bottom)
 {
   // Keep track of the largest line received so far.
@@ -354,8 +384,6 @@ static void CopyDataToTextures(uint16_t width, uint16_t height,
   std::shared_ptr< SpinFreeQueue< std::shared_ptr<DataToSendToGPU> > > inQueue,
   size_t batchSize, std::shared_ptr<Display> sharedContext)
 {
-  Status status;
-
   // Borrow the context from the shared context so that we can use it to map textures.
   if (!sharedContext->BorrowContext()) {
     std::cerr << "CopyDataToGPU: Error borrowing context from shared context." << std::endl;
@@ -381,35 +409,16 @@ static void CopyDataToTextures(uint16_t width, uint16_t height,
     if (inQueue->dequeue(data, std::chrono::milliseconds(10))) {
 
       // Parse all of the messages in the stream packet, handling each of them in turn.
-      std::shared_ptr<Message> message;
-      status = data->streamPacketPtr->GetNextMessage(message);
-      if (OKAY != status) {
-        std::cerr << "CopyDataToGPU: GetNextMessage() failed: " << ErrorMessage(status) << std::endl;
-        done = true;
-        return;
-      }
-      while (message != nullptr) {
-        MessageID messageType;
-        if (OKAY != message->GetType(messageType)) { return; }
-        switch (messageType) {
+      for (auto &message : data->messages) {
+        switch (message.messageType) {
         case FRAME_BEGIN:
           {
-            // Get the camera ID, width and height from the message.
-            uint32_t cameraID;
-            uint16_t width, height;
-            status = ParseFrameBeginMessage(*message, cameraID, width, height);
-            if (OKAY != status) {
-              std::cerr << "CopyDataToGPU: ParseFrameBeginMessage() failed: " << ErrorMessage(status) << std::endl;
-              done = true;
-              return;
-            }
-
             // Construct the CPUDataToTextureHandler object to handle the data for this frame and store it in the vector
             // of handlers.  This will be used to process the data as it comes in.  Make more handlers as needed.
-            if (cameraID >= handlers.size()) {
-              handlers.resize(cameraID + 1);
+            if (message.cameraID >= handlers.size()) {
+              handlers.resize(message.cameraID + 1);
             }
-            handlers[cameraID] = std::make_shared<CPUDataToTextureHandler>(data, width, height,
+            handlers[message.cameraID] = std::make_shared<CPUDataToTextureHandler>(data, message.width, message.height,
               static_cast<uint16_t>(batchSize));
           }
           break;
@@ -420,28 +429,17 @@ static void CopyDataToTextures(uint16_t width, uint16_t height,
           // we amortize the per-send cost, but we send in chunks to reduce the latency and enable overlap
           // between data copying and processing (which increases throughput).
           {
-            // Get the region to copy and the data pointer from the message.
-            uint32_t cameraID;
-            uint16_t left, right, top, bottom;
-            uint8_t* dataPtr;
-            status = ParseFrameDataMessage(*message, cameraID, left, right, top, bottom, dataPtr);
-            if (OKAY != status) {
-              std::cerr << "CopyDataToGPU: ParseFrameDataMessage() failed: " << ErrorMessage(status) << std::endl;
-              done = true;
-              return;
-            }
-
             // Handle the data
-            if (cameraID >= handlers.size()) {
-              std::cerr << "CopyDataToGPU: FRAME_DATA: Error: Camera ID " << cameraID << " not found." << std::endl;
+            if (message.cameraID >= handlers.size()) {
+              std::cerr << "CopyDataToGPU: FRAME_DATA: Error: Camera ID " << message.cameraID << " not found." << std::endl;
               done = true;
               return;
             }
-            if (handlers[cameraID] == nullptr) {
-              std::cerr << "CopyDataToGPU: FRAME_DATA: Warning: Camera ID " << cameraID << " frame data without begin data." << std::endl;
+            if (handlers[message.cameraID] == nullptr) {
+              std::cerr << "CopyDataToGPU: FRAME_DATA: Warning: Camera ID " << message.cameraID << " frame data without begin data." << std::endl;
               break;
             }
-            std::string ret = handlers[cameraID]->ProcessImageSubset(dataPtr, left, top, right, bottom);
+            std::string ret = handlers[message.cameraID]->ProcessImageSubset(message.left, message.top, message.right, message.bottom);
             if (!ret.empty()) {
               std::cerr << "Error processing image subset: " << ret << std::endl;
               done = true;
@@ -453,31 +451,15 @@ static void CopyDataToTextures(uint16_t width, uint16_t height,
         case FRAME_END:
           // Run the kernel and enqueue the result.
           {
-            // Construct the end-of-frame message from the message.
-            MessageFrameEnd frameEnd(*message);
-            if (frameEnd.GetConstructorStatus() != OKAY) {
-              std::cerr << "CopyDataToGPU: Failed to construct MessageFrameEnd: "
-                << ErrorMessage(frameEnd.GetConstructorStatus()) << std::endl;
-              done = true;
-              return;
-            }
-
             // Done with this frame, so we reset the pointer to delete the handler, which will clean
             // up and push the data to the texture before returning.
             /// @todo Consider putting these into a completion list and polling for done rather than hanging here.
-            uint32_t cameraID;
-            status = frameEnd.GetCameraID(cameraID);
-            if (OKAY != status) {
-              std::cerr << "CopyDataToGPU: GetCameraID() failed: " << ErrorMessage(status) << std::endl;
+            if (message.cameraID >= handlers.size()) {
+              std::cerr << "CopyDataToGPU: FRAME_END: Error: Camera ID " << message.cameraID << " not found." << std::endl;
               done = true;
               return;
             }
-            if (cameraID >= handlers.size()) {
-              std::cerr << "CopyDataToGPU: FRAME_END: Error: Camera ID " << cameraID << " not found." << std::endl;
-              done = true;
-              return;
-            }
-            handlers[cameraID].reset();
+            handlers[message.cameraID].reset();
           }
           break;
 
@@ -486,13 +468,7 @@ static void CopyDataToTextures(uint16_t width, uint16_t height,
           break;
         } // End of switch on message type.
 
-        status = data->streamPacketPtr->GetNextMessage(message);
-        if (OKAY != status) {
-          done = true;
-          std::cerr << "CopyDataToGPU: GetNextMessage() failed: " << ErrorMessage(status) << std::endl;
-          return;
-        }
-      } // End of while we have messages in the stream packet.
+      } // End of message summary loop.
     } // End of if we got a message from the queue.
   } // End of while we are not done.
 
@@ -571,7 +547,8 @@ static void ReceiveDataThread(ReceiverUDP& receiveSocket, size_t maxBytesPerPack
     // Because we must copy the data into pinned memory for data messages, and because we must
     // check for begin-frame messages before sending anything, we must parse all of the
     // messages in the packet and handle them in turn.  We will ignore any messages that are not
-    // these types.
+    // these types.  Store summaries of each message so we can process them in the other thread.
+    std::vector<MessageSummary> messageSummaries;
     std::shared_ptr<Message> message;
     status = streamPacket->GetNextMessage(message);
     if (OKAY != status) {
@@ -603,6 +580,14 @@ static void ReceiveDataThread(ReceiverUDP& receiveSocket, size_t maxBytesPerPack
             return;
           }
           cameraWidth = width;
+
+          // Store the summary
+          MessageSummary summary;
+          summary.messageType = FRAME_BEGIN;
+          summary.cameraID = cameraID;
+          summary.width = width;
+          summary.height = height;
+          messageSummaries.push_back(summary);
         }
         break;
       case FRAME_DATA:
@@ -635,6 +620,34 @@ static void ReceiveDataThread(ReceiverUDP& receiveSocket, size_t maxBytesPerPack
               }
             }
           }
+
+          // Store the summary
+          MessageSummary summary;
+          summary.messageType = FRAME_DATA;
+          summary.cameraID = cameraID;
+          summary.left = left;
+          summary.right = right;
+          summary.top = top;
+          summary.bottom = bottom;
+          messageSummaries.push_back(summary);
+        }
+        break;
+      case FRAME_END:
+        {
+          // Parse the message so we can make a summary.  We don't do anything else with it here.
+          uint32_t cameraID;
+          status = ParseFrameEndMessage(*message, cameraID);
+          if (OKAY != status) {
+            std::cerr << "ReceiveDataThread: ParseFrameEndMessage() failed: " << ErrorMessage(status) << std::endl;
+            done = true;
+            return;
+          }
+
+          // Store the summary
+          MessageSummary summary;
+          summary.messageType = FRAME_END;
+          summary.cameraID = cameraID;
+          messageSummaries.push_back(summary);
         }
         break;
       default:
@@ -656,7 +669,7 @@ static void ReceiveDataThread(ReceiverUDP& receiveSocket, size_t maxBytesPerPack
     }
 
     // Enqueue the packet for processing.
-    data.streamPacketPtr = streamPacket;
+    data.messages = messageSummaries;
     data.cpuImageBufferPtr = cpuImageBufferPtr;
     data.gpuImageBufferPtr = gpuImageBufferPtr;
     data.imageQueuePtr = imageQueue;
