@@ -298,7 +298,7 @@ CPUDataToTextureHandler::CPUDataToTextureHandler(
 
 CPUDataToTextureHandler::~CPUDataToTextureHandler()
 {
-  if (m_imageData = nullptr) {
+  if (m_imageData == nullptr) {
     std::cerr << "CPUDataToTextureHandler::~CPUDataToTextureHandler(): No m_imageData." << std::endl;
     return;
   }
@@ -356,7 +356,7 @@ std::string CPUDataToTextureHandler::SendToGPU()
 std::string CPUDataToTextureHandler::ProcessImageSubset(
   uint16_t left, uint16_t top, uint16_t right, uint16_t bottom)
 {
-  if (m_imageData = nullptr) {
+  if (m_imageData == nullptr) {
     return "No m_imageData";
   }
 
