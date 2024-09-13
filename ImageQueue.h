@@ -48,8 +48,8 @@ namespace asdp {
     /// by a creator thread to store images and by a consumer thread to retrieve image pointers.
     /// The consumer thread will get a pointer to the newest image without pulling it off
     /// the queue and it releases the shared pointer when it is done with the image.
-    /// The creator thread will pulls oldest image off the queue
-    /// and replace it with a new image, which becomes the one to be rendered.
+    /// The creator thread pulls the oldest image off the queue
+    /// and replaces it with a new image, which becomes the one to be rendered.
     /// This class will not pop the last image off the queue to avoid pulling the rug out
     /// from under a consumer thread that is still using the image.
     /// Remember to make a different OpenGL context for each thread that will be using
@@ -69,7 +69,7 @@ namespace asdp {
       /// @return Shared pointer to the oldest image in the queue.  Null pointer if the
       /// queue has less than two elements.  The entry is removed from the queue.  Note: This will not
       /// pop the last image off the queue, so that we don't pull the rug out from under
-      /// a consumer that is still using the image.
+      /// a consumer that is still using the image; it will return a null pointer in that case.
       std::shared_ptr<ImageData> PopOldestImage();
 
       /// @brief Get the newest image in the queue, to be rendered.

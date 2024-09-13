@@ -87,7 +87,7 @@ std::string ImageQueue::Test()
   // one image in the queue
   oldestImage = imageQueue.PopOldestImage();
   if (oldestImage != nullptr) {
-    return "Failed to get oldest image from queue.";
+    return "Incorrectly able to get oldest image from queue.";
   }
 
   // Add another image to the queue

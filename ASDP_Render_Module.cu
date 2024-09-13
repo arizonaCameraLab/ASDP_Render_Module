@@ -298,6 +298,11 @@ CPUDataToTextureHandler::CPUDataToTextureHandler(
 
 CPUDataToTextureHandler::~CPUDataToTextureHandler()
 {
+  if (m_imageData = nullptr) {
+    std::cerr << "CPUDataToTextureHandler::~CPUDataToTextureHandler(): No m_imageData." << std::endl;
+    return;
+  }
+
   // Send any unsent data to the GPU.
   std::string ret = SendToGPU();
   if (!ret.empty()) {
@@ -351,6 +356,10 @@ std::string CPUDataToTextureHandler::SendToGPU()
 std::string CPUDataToTextureHandler::ProcessImageSubset(
   uint16_t left, uint16_t top, uint16_t right, uint16_t bottom)
 {
+  if (m_imageData = nullptr) {
+    return "No m_imageData";
+  }
+
   // Keep track of the largest line received so far.
   m_largestLineReceived = std::max(m_largestLineReceived, bottom);
 
@@ -375,7 +384,7 @@ std::string CPUDataToTextureHandler::ProcessImageSubset(
 /// @brief Function to copy data to the GPU and store it into the appropriate textures.
 /// It must create and record an event after all operations are complete.  All operations must be
 /// done on the stream that is passed in and they must all be asynchronous.  There is a single
-/// thread to handle all cameras; it handles all cameras, using different CUDA streams to overlap the operations.
+/// thread to handle all cameras; it uses different CUDA streams to overlap the operations.
 /// To be able to map textures, it must have an OpenGL context whose objects are shared with the Display submodule that
 /// will be rendering the images.
 /// @param width The width of the image data.
@@ -432,13 +441,18 @@ static void CopyDataToTextures(uint16_t width, uint16_t height,
             }
             handlers[message.cameraID] = std::make_shared<CPUDataToTextureHandler>(texturesToCUDAMap, data, message.width, message.height,
               static_cast<uint16_t>(batchSize));
+            if (!handlers[message.cameraID]->GetStatus().empty()) {
+              std::cerr << "Error creating CPUDataToTextureHandler: " << handlers[message.cameraID]->GetStatus() << std::endl;
+              done = true;
+              return;
+            }
           }
           break;
 
         case FRAME_DATA:
           // Asynchronously send data to the GPU buffer as we get enough data for a minimum block size. 
-          // We send the data to the GPU in chunks so that we amortize the per-send cost, but we send in
-          // chunks to reduce the latency and enable overlap between data copying and processing
+          // We send the data to the GPU in chunks so that we amortize the per-send cost and reduce
+          // latency.  We send asynchronously to enable overlap between data copying and processing
           // (which increases throughput).
           {
             // Handle the data

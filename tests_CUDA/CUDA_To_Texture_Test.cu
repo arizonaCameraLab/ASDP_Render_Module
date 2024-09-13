@@ -303,23 +303,25 @@ int main()
   glEnableVertexAttribArray(texAttrib);
   glVertexAttribPointer(texAttrib, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3 * sizeof(float)));
 
+  // Render both sides of each triangle to make sure we see it no matter which way it is facing.
+  glDisable(GL_CULL_FACE);
+  glDisable(GL_DEPTH_TEST);
+
   // Loop until the user closes the window.
   std::cout << "You should see a gradient red texture from the top of the image to the bottom." << std::endl;
   std::cout << "" << std::endl;
   std::cout << "Close the window to exit." << std::endl;
   while (!glfwWindowShouldClose(window)) {
 
-    // Draw a single rectangle that fills the window with the texture.
+    // Prepare for rendering this frame
     glViewport(0, 0, windowSize, windowSize);
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-    glDisable(GL_CULL_FACE);
-    glDisable(GL_DEPTH_TEST);
+
+    // Draw a single rectangle that fills the window.
+    // Draw the quad using the texture
     glBindTexture(GL_TEXTURE_2D, texture);
-
-    // Draw the quad
     glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, 0);
-
     glBindTexture(GL_TEXTURE_2D, 0);
 
     // Swap front and back buffers
