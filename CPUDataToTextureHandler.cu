@@ -3,6 +3,7 @@
  */
 
 #include "CPUDataToTextureHandler.h"
+#include <cuda_gl_interop.h>
 #include <iostream>
 using namespace asdp;
 using namespace asdp::render;

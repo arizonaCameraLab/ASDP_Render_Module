@@ -6,7 +6,6 @@
 #include <GL/glew.h>
 #include <cuda.h>
 #include <cuda_runtime.h>
-#include <cuda_gl_interop.h>
 #include <string>
 #include <memory>
 #include <map>
@@ -63,10 +62,10 @@ public:
   /// negative values to reduce the pixel count.
   /// @param left The left edge of the region to process.
   /// @param top The top edge of the region to process.
-  /// @param width The width of the region to process.
-  /// @param height The height of the region to process.
+  /// @param right The right edge of the region to process.
+  /// @param bottom The bottom of the region to process.
   /// @return Empty string on success, description of error on failure.
-  std::string ProcessImageSubset(uint16_t left, uint16_t top, uint16_t width, uint16_t height);
+  std::string ProcessImageSubset(uint16_t left, uint16_t top, uint16_t right, uint16_t bottom);
 
   /// @brief Get the status of the constructor.
   /// @return The status of the constructor, empty for good, error message for bad.
