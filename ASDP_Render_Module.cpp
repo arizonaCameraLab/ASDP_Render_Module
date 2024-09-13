@@ -5,7 +5,7 @@
 // This is a client that connects to the first server it encounters and runs a Render Module.
 
 /**
- * @file ASDP_Render_Module.cu
+ * @file ASDP_Render_Module.cpp
  * @brief Apache Strap-Down Pilotage Render Module.
  *
 * @author ReliaSolve.

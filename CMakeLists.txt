@@ -118,6 +118,7 @@ target_include_directories(Render_Module PRIVATE
 target_link_libraries(Render_Module PUBLIC
   ASDP_Core_API::ASDP_Core_API glfw GLEW::glew OpenGL::GL
 )
+set_property(TARGET Render_Module PROPERTY CUDA_ARCHITECTURES 60 75 80)
 
 #-----------------------------------------------------------------------------
 # Build the Render module application.
@@ -132,7 +133,6 @@ set (ASDP_Render_Module_SOURCES
 add_executable(ASDP_Render_Module ${ASDP_Render_Module_SOURCES} ${ASDP_Render_Module_HEADERS})
 target_compile_definitions(ASDP_Render_Module PRIVATE
   -DCONFIG_FILE_PATH="${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR}/ASDP_Render_Module_Configs")
-set_property(TARGET ASDP_Render_Module PROPERTY CUDA_ARCHITECTURES 60 75 80)
 target_link_libraries(ASDP_Render_Module Render_Module nlohmann_json::nlohmann_json)
 
 install(TARGETS ASDP_Render_Module EXPORT ${PROJECT_NAME}
