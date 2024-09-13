@@ -92,12 +92,11 @@ void TextureThread(int width, int height, std::atomic_bool& done,
   std::shared_ptr< std::map<GLuint, cudaGraphicsResource*> > texturesToCUDAMap =
     std::make_shared< std::map<GLuint, cudaGraphicsResource*> >();
 
-  // Update the texture in the image queue with new image data at 65fps, faster than the 60fps display.
+  // Update the texture in the image queue with new image data as fast as possible
   double period = 1.0 / 65.0;
   unsigned frame = 0;
   auto startedRendering = std::chrono::steady_clock::now();
   while (!done) {
-    auto startedFrame = std::chrono::steady_clock::now();
 
     // Construct the data to send to the GPU and the CPUDataToTextureHandler object to send it
     std::shared_ptr<DataToSendToGPU> data = std::make_shared<DataToSendToGPU>();
@@ -113,13 +112,6 @@ void TextureThread(int width, int height, std::atomic_bool& done,
     std::shared_ptr<Image> image = imageSource.getNextImage();
     unsigned count = 0;
     for (uint16_t top = 0; top < height; top += 3) {
-      do {
-        auto now = std::chrono::steady_clock::now();
-        auto elapsed = std::chrono::duration_cast<std::chrono::duration<double>>(now - startedFrame).count();
-        if (elapsed >= (period * top) / height) {
-          break;
-        }
-      } while (true);
       size_t myHeight = 3;
       if (top + 3 > height) {
         myHeight = height - top;
@@ -132,14 +124,7 @@ void TextureThread(int width, int height, std::atomic_bool& done,
 
     // Wait until it is time for the next frame, then exit the loop, which will destroy the texture handler,
     // which will send the texture.
-    do {
-      auto now = std::chrono::steady_clock::now();
-      auto elapsed = std::chrono::duration_cast<std::chrono::duration<double>>(now - startedRendering).count();
-      if (elapsed > period * frame) {
-        break;
-      }
-    } while (true);
-    if (frame % 60 == 10) std::cout << "Frame " << frame << ", fps = " <<
+    if (frame % 200 == 190) std::cout << "Frame " << frame << ", texture-write fps = " <<
       frame / std::chrono::duration_cast<std::chrono::duration<double>>(std::chrono::steady_clock::now() - startedRendering).count() << std::endl;
 
     frame++;
@@ -275,7 +260,7 @@ int main()
   glDisable(GL_DEPTH_TEST);
 
   // Loop until the user closes the window.
-  std::cout << "You should see smooth rolling bars with no speed or horizontal defects." << std::endl;
+  std::cout << "You should see smooth rolling bars with no horizontal defects." << std::endl;
   std::cout << "" << std::endl;
   std::cout << "Close the window to exit." << std::endl;
   while (!glfwWindowShouldClose(window)) {
