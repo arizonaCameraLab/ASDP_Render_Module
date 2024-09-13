@@ -98,6 +98,12 @@ CPUDataToTextureHandler::~CPUDataToTextureHandler()
     std::cerr << "CPUDataToTextureHandler::~CPUDataToTextureHandler(): Error sending data to GPU: " << ret << std::endl;
   }
 
+  // Ensure that the stream completes (so OpenGL on other threads in other contexts won't race).
+  // This may be superfluous because the call to cudaGraphicsUnmapResources() handles this at least
+  // for OpenGL work on the current context and thread.  Adding it did not impact either the GPU
+  // or CPU resources when streaming 21 cameras.
+  cudaStreamSynchronize(*(m_dataPtr->streamPtr));
+
   // Free up our resources
   cudaDestroySurfaceObject(m_surfObj);
   // As a side effect, this call guarantees that all CUDA work completes before any later-called OpenGL work starts.
