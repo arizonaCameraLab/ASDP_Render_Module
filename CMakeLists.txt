@@ -96,6 +96,7 @@ set (Render_Module_HEADERS
   ImageQueue.h
   Distortion.h
   ToneMap.h
+  CPUDataToTextureHandler.h
 )
 set (Render_Module_SOURCES
   Composite.cpp
@@ -103,6 +104,7 @@ set (Render_Module_SOURCES
   ImageQueue.cpp
   Distortion.cpp
   ToneMap.cpp
+  CPUDataToTextureHandler.cu
 )
 add_library(Render_Module STATIC ${Render_Module_SOURCES} ${Render_Module_HEADERS})
 target_include_directories(Render_Module PUBLIC
@@ -124,7 +126,7 @@ set (ASDP_Render_Module_HEADERS
 )
 
 set (ASDP_Render_Module_SOURCES
-    ASDP_Render_Module.cu
+    ASDP_Render_Module.cpp
 )
 
 add_executable(ASDP_Render_Module ${ASDP_Render_Module_SOURCES} ${ASDP_Render_Module_HEADERS})
