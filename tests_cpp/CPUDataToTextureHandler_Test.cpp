@@ -8,6 +8,7 @@
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
 #include <Display.h>
+#include <string.h>
 #include <thread>
 #include <iostream>
 #include <chrono>
