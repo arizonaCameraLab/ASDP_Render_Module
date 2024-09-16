@@ -59,7 +59,7 @@ namespace asdp {
       ImageQueue() = default;
       virtual ~ImageQueue() = default;
 
-      /// @brief Add an image to the queue.
+      /// @brief Add an image to the queue as the next to be rendered.
       /// @details This function adds an image to the queue.  The image becomes the
       /// newest image in the queue, the one that will be rendered next.
       /// @param[in] image Image to add to the queue.
@@ -67,15 +67,20 @@ namespace asdp {
 
       /// @brief Get the oldest image in the queue, to be overwritten and then rendered.
       /// @return Shared pointer to the oldest image in the queue.  Null pointer if the
-      /// queue has less than two elements.  The entry is removed from the queue.  Note: This will not
-      /// pop the last image off the queue, so that we don't pull the rug out from under
-      /// a consumer that is still using the image; it will return a null pointer in that case.
+      /// queue has less than two elements.  The entry is removed from the queue.  Returns
+      /// a null pointer if the queue is empty.
       std::shared_ptr<ImageData> PopOldestImage();
 
       /// @brief Get the newest image in the queue, to be rendered.
       /// @return Shared pointer to the newest image in the queue.
-      /// Null pointer if the queue is empty.  The entry is not removed from the queue.
-      std::shared_ptr<ImageData> GetNewestImagePointer();
+      /// The entry is removed from the queue.  Returns a null pointer if the queue is empty.
+      std::shared_ptr<ImageData> PopNewestImage();
+
+      /// @brief Add an image to the queue as the oldest, first to be replaced.
+      /// @details This function adds an image to the queue.  The image becomes the
+      /// newest image in the queue, the one that will be rendered next.
+      /// @param[in] image Image to add to the queue.
+      void AddOldestImage(std::shared_ptr<ImageData> image);
 
       /// @brief Test function to test the ImageQueue class.
       /// @return Empty string on success, string with error message on failure.

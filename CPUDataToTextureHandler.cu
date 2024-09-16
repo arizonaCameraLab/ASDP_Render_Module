@@ -53,8 +53,7 @@ CPUDataToTextureHandler::CPUDataToTextureHandler(
     auto texture = texturesToCUDAMap->find(textureID);
     if (texture != texturesToCUDAMap->end()) {
       m_resource = texture->second;
-    }
-    else {
+    } else {
       cudaStatus = cudaGraphicsGLRegisterImage(&m_resource, textureID, GL_TEXTURE_2D, cudaGraphicsRegisterFlagsSurfaceLoadStore);
       if (cudaStatus != cudaSuccess) {
         m_status = "Failed to register texture: " + std::string(cudaGetErrorString(cudaStatus));
@@ -68,6 +67,8 @@ CPUDataToTextureHandler::CPUDataToTextureHandler(
     cudaStatus = cudaGraphicsSubResourceGetMappedArray(&m_textureData, m_resource, 0, 0);
     if (cudaStatus != cudaSuccess) {
       m_status = "Failed to map texture: " + std::string(cudaGetErrorString(cudaStatus));
+      cudaGraphicsUnmapResources(1, &m_resource, *(m_dataPtr->streamPtr));
+      (*texturesToCUDAMap)[textureID] = nullptr;
       return;
     }
   }
@@ -82,6 +83,7 @@ CPUDataToTextureHandler::CPUDataToTextureHandler(
   if (cudaStatus != cudaSuccess) {
     m_status = "Failed to create surface object: " + std::string(cudaGetErrorString(cudaStatus));
     cudaGraphicsUnmapResources(1, &m_resource, *(m_dataPtr->streamPtr));
+    (*texturesToCUDAMap)[textureID] = nullptr;
     return;
   }
 }

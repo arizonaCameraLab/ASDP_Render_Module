@@ -108,7 +108,6 @@ void TextureThread(int width, int height, std::atomic_bool& done,
 
     // Get the next image from the image source and copy it into the pinned memory buffer
     // three lines at a time, then send to the GPU to be stored in the texture.
-    // We busy-wait to ensure that we send all of the frames over a little less than 1/60th of a second.
     std::shared_ptr<Image> image = imageSource.getNextImage();
     unsigned count = 0;
     for (uint16_t top = 0; top < height; top += 3) {
@@ -272,12 +271,16 @@ int main()
 
     // Draw a single rectangle that fills the window.
     // Draw the quad using the newest texture
-    glBindTexture(GL_TEXTURE_2D, imageQueue->GetNewestImagePointer()->texture);
+    std::shared_ptr<ImageData> image = imageQueue->PopNewestImage();
+    glBindTexture(GL_TEXTURE_2D, image->texture);
     glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, 0);
     glBindTexture(GL_TEXTURE_2D, 0);
 
     // Swap front and back buffers
     glfwSwapBuffers(window);
+
+    // Done with the image (we just swapped our buffers), put it back in the queue.
+    imageQueue->AddOldestImage(image);
 
     // Poll for and process events
     glfwPollEvents();

@@ -606,6 +606,8 @@ CompositeCameras::CompositeCameras(std::vector<CameraRenderInfo>& cameraRenderIn
   , m_toneMapTexture(toneMaptexture)
   , m_programId(0)
   , m_modelViewProjectionUniformId(0)
+  , m_imageTextureId(0)
+  , m_toneMapTextureId(0)
 {
 }
 
@@ -804,9 +806,8 @@ void CompositeCameras::SetupRenderFrame(asdp::Time scanOutTime)
 
   // Grab shared pointers to the camera textures to be used for all views in this frame.
   // There will be one entry per camera with the same vector index as the cameraRenderInfo.
-  m_images.clear();
   for (auto const& cameraRenderInfo : m_cameraRenderInfos) {
-    m_images.push_back(cameraRenderInfo.m_imageQueue->GetNewestImagePointer());
+    m_images.push_back(cameraRenderInfo.m_imageQueue->PopNewestImage());
   }
 
   // Store the scan out time for use in rendering.
@@ -857,5 +858,12 @@ void CompositeCameras::RenderView(const float* modelViewProjection)
 
 void CompositeCameras::TearDownRenderFrame()
 {
+  for (size_t i = 0; i < m_cameraRenderInfos.size(); i++) {
+    CameraRenderInfo const& CRI = m_cameraRenderInfos[i];
+    if (m_images[i] != nullptr) {
+      CRI.m_imageQueue->AddOldestImage(m_images[i]);
+    }
+  }
+  m_images.clear();
   glUseProgram(0);
 }
