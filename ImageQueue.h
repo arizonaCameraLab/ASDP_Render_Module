@@ -65,7 +65,7 @@ namespace asdp {
       /// @param[in] image Image to add to the queue.
       void AddNewestImage(std::shared_ptr<ImageData> image);
 
-      /// @brief Get the oldest image in the queue, to be overwritten and then rendered.
+      /// @brief Get the oldest image in the queue, to be overwritten with new data.
       /// @return Shared pointer to the oldest image in the queue.  Null pointer if the
       /// queue has less than two elements.  The entry is removed from the queue.  Returns
       /// a null pointer if the queue is empty.
@@ -74,13 +74,14 @@ namespace asdp {
       /// @brief Get the newest image in the queue, to be rendered.
       /// @return Shared pointer to the newest image in the queue.
       /// The entry is removed from the queue.  Returns a null pointer if the queue is empty.
-      std::shared_ptr<ImageData> PopNewestImage();
+      std::shared_ptr<ImageData> GetRenderImage();
 
-      /// @brief Add an image to the queue as the oldest, first to be replaced.
-      /// @details This function adds an image to the queue.  The image becomes the
-      /// newest image in the queue, the one that will be rendered next.
+      /// @brief Puts the just-rendered image back.  If it is still the newest, adds to the front
+      /// @details This function adds an image to the queue.  If it is newer than the newest image
+      /// in the queue, it adds it to the front to be re-used next time.  Otherwise, it adds it to
+      /// the back to be overwritten.
       /// @param[in] image Image to add to the queue.
-      void AddOldestImage(std::shared_ptr<ImageData> image);
+      void ReturnRenderImage(std::shared_ptr<ImageData> image);
 
       /// @brief Test function to test the ImageQueue class.
       /// @return Empty string on success, string with error message on failure.

@@ -272,7 +272,7 @@ int main()
 
     // Draw a single rectangle that fills the window.
     // Draw the quad using the newest texture
-    std::shared_ptr<ImageData> image = imageQueue->PopNewestImage();
+    std::shared_ptr<ImageData> image = imageQueue->GetRenderImage();
     glBindTexture(GL_TEXTURE_2D, image->texture);
     glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, 0);
     glBindTexture(GL_TEXTURE_2D, 0);
@@ -281,7 +281,7 @@ int main()
     glfwSwapBuffers(window);
 
     // Done with the image (we just swapped our buffers), put it back in the queue.
-    imageQueue->AddOldestImage(image);
+    imageQueue->ReturnRenderImage(image);
 
     // Poll for and process events
     glfwPollEvents();

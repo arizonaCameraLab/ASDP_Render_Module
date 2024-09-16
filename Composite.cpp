@@ -807,7 +807,7 @@ void CompositeCameras::SetupRenderFrame(asdp::Time scanOutTime)
   // Grab shared pointers to the camera textures to be used for all views in this frame.
   // There will be one entry per camera with the same vector index as the cameraRenderInfo.
   for (auto const& cameraRenderInfo : m_cameraRenderInfos) {
-    m_images.push_back(cameraRenderInfo.m_imageQueue->PopNewestImage());
+    m_images.push_back(cameraRenderInfo.m_imageQueue->GetRenderImage());
   }
 
   // Store the scan out time for use in rendering.
@@ -861,7 +861,7 @@ void CompositeCameras::TearDownRenderFrame()
   for (size_t i = 0; i < m_cameraRenderInfos.size(); i++) {
     CameraRenderInfo const& CRI = m_cameraRenderInfos[i];
     if (m_images[i] != nullptr) {
-      CRI.m_imageQueue->AddOldestImage(m_images[i]);
+      CRI.m_imageQueue->ReturnRenderImage(m_images[i]);
     }
   }
   m_images.clear();
