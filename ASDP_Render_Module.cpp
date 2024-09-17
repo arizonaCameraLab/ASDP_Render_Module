@@ -403,6 +403,7 @@ static void ReceiveDataThread(ReceiverUDP& receiveSocket, size_t maxBytesPerPack
           // Store the summary
           MessageSummary summary;
           summary.messageType = FRAME_BEGIN;
+          message->GetTime(summary.time);
           summary.cameraID = cameraID;
           summary.width = width;
           summary.height = height;
@@ -466,6 +467,7 @@ static void ReceiveDataThread(ReceiverUDP& receiveSocket, size_t maxBytesPerPack
           // Store the summary
           MessageSummary summary;
           summary.messageType = FRAME_END;
+          message->GetTime(summary.time);
           summary.cameraID = cameraID;
           messageSummaries.push_back(summary);
         }
