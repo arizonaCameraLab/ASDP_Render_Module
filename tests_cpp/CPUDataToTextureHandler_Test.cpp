@@ -97,7 +97,10 @@ void TextureThread(int width, int height, std::atomic_bool& done,
   double period = 1.0 / 65.0;
   unsigned frame = 0;
   auto startedRendering = std::chrono::steady_clock::now();
+  asdp::Time now, dt(0, 1);
   while (!done) {
+
+    std::string ret;
 
     // Construct the data to send to the GPU and the CPUDataToTextureHandler object to send it
     std::shared_ptr<DataToSendToGPU> data = std::make_shared<DataToSendToGPU>();
@@ -117,17 +120,28 @@ void TextureThread(int width, int height, std::atomic_bool& done,
         myHeight = height - top;
       }
       memcpy(cpuPinnedImageBuffer + top * width*2, &(*image->getData())[top * width/2], width * myHeight * sizeof(uint16_t));
-      handler.ProcessImageSubset(0, top, width-1, top + myHeight - 1);
+      ret = handler.ProcessImageSubset(0, top, width-1, top + myHeight - 1);
+      if (ret.size() > 0) {
+        std::cerr << "Error in CPUDataToTextureHandler::ProcessImageSubset(): " << ret << std::endl;
+        return;
+      }
 
       count++;
     }
 
-    // Wait until it is time for the next frame, then exit the loop, which will destroy the texture handler,
-    // which will send the texture.
     if (frame % 200 == 190) std::cout << "Frame " << frame << ", texture-write fps = " <<
       frame / std::chrono::duration_cast<std::chrono::duration<double>>(std::chrono::steady_clock::now() - startedRendering).count() << std::endl;
-
     frame++;
+
+    now += dt;
+    ret = handler.SetCenterTime(now);
+    if (ret.size() > 0) {
+      std::cerr << "Error in CPUDataToTextureHandler::SetCenterTime(): " << ret << std::endl;
+      return;
+    }
+
+    // Exit the loop, which will destroy the texture handler,
+    // which will send the texture.
   }
 }
 
@@ -154,7 +168,7 @@ int main()
   glfwMakeContextCurrent(window);
 
   // Make the image queue that will hold the textures to be filled in by the thread and
-  // rendered by the main thread.  Initially fill all of the images with gray.
+  // rendered by the main thread.  Initially fill all of the images with gray and time zero.
   std::shared_ptr<ImageQueue> imageQueue = std::make_shared<ImageQueue>();
   std::vector<uint16_t> image(width * height, 32767);
   for (size_t i = 0; i < 3; i++) {

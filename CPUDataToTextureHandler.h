@@ -20,6 +20,7 @@
  /// ReceiveDataThread.
 struct MessageSummary {
   asdp::MessageID messageType = asdp::DISCOVERY;  ///< The type of message (filling in an arbitrary one here)
+  asdp::Time time;                  ///< The time associated with the message
   uint32_t cameraID = 0;            ///< The camera ID
   uint16_t width = 0;               ///< The width of the image data (if present for a message type)
   uint16_t height = 0;              ///< The height of the image data (if present for a message type)
@@ -67,6 +68,11 @@ public:
   /// @return Empty string on success, description of error on failure.
   std::string ProcessImageSubset(uint16_t left, uint16_t top, uint16_t right, uint16_t bottom);
 
+  /// @brief Set the center time for the image data.  Can be called any time before destruction.
+  /// @param centerTime The time the image was taken.
+  /// @return Empty string on success, description of error on failure.
+  std::string SetCenterTime(asdp::Time centerTime);
+
   /// @brief Get the status of the constructor.
   /// @return The status of the constructor, empty for good, error message for bad.
   std::string GetStatus() const { return m_status; }
@@ -80,6 +86,7 @@ protected:
   uint16_t m_batchSize;                       ///< The number of lines to send to the GPU at once
   uint16_t m_lastLineSent;                    ///< The last line sent to the GPU
   uint16_t m_largestLineReceived;             ///< The largest line received so far
+  asdp::Time m_centerTime;                    ///< The time the image was taken
 
   std::shared_ptr<asdp::render::ImageData> m_imageData;///< The image data for the texture, including time and texure ID
   cudaGraphicsResource* m_resource;           ///< The CUDA graphics resource for the texture

@@ -168,9 +168,13 @@ static void CopyDataToTextures(uint16_t width, uint16_t height,
     return;
   }
 
-  /// Vector of handlers to process the data for each camera.  There will be one handler for each camera,
+  // Vector of handlers to process the data for each camera.  There will be one handler for each camera,
   // indexed by its ID.  We add to this vector as we get new cameras.
   std::vector< std::shared_ptr<CPUDataToTextureHandler> > handlers;
+
+  // Vector of times for the current frame from each camera, indexed by camera ID.  We add to this vector
+  // as we get new cameras.
+  std::vector<asdp::Time> frameTimes;
 
   auto lastPrint = std::chrono::steady_clock::now();
 
@@ -207,6 +211,12 @@ static void CopyDataToTextures(uint16_t width, uint16_t height,
               done = true;
               return;
             }
+
+            // Store the initial frame time for this camera.
+            if (message.cameraID >= frameTimes.size()) {
+              frameTimes.resize(message.cameraID + 1);
+            }
+            frameTimes[message.cameraID] = message.time;
           }
           break;
 
@@ -238,11 +248,28 @@ static void CopyDataToTextures(uint16_t width, uint16_t height,
         case FRAME_END:
           // Run the kernel and enqueue the result.
           {
+            // Set the center time for the image data, which is the average of the frame begin and end times.
+            if (message.cameraID >= frameTimes.size()) {
+              std::cerr << "CopyDataToGPU: FRAME_END: Error: Camera ID " << message.cameraID << " not found in frameTimes." << std::endl;
+              done = true;
+              return;
+            }
+            asdp::Time duration = message.time - frameTimes[message.cameraID];
+            float durationSeconds = duration.seconds + duration.microseconds / 1.0e6f;
+            float halfDurationSeconds = durationSeconds / 2;
+            asdp::Time centerTime = frameTimes[message.cameraID] + asdp::Time(halfDurationSeconds);
+            std::string ret = handlers[message.cameraID]->SetCenterTime(centerTime);
+            if (!ret.empty()) {
+              std::cerr << "Error setting center time: " << ret << std::endl;
+              done = true;
+              return;
+            }
+
             // Done with this frame, so we reset the pointer to delete the handler, which will clean
             // up and push the data to the texture before returning.
             /// @todo Consider putting these into a completion list and polling for done rather than hanging here.
             if (message.cameraID >= handlers.size()) {
-              std::cerr << "CopyDataToGPU: FRAME_END: Error: Camera ID " << message.cameraID << " not found." << std::endl;
+              std::cerr << "CopyDataToGPU: FRAME_END: Error: Camera ID " << message.cameraID << " not found in handlers." << std::endl;
               done = true;
               return;
             }
@@ -416,6 +443,7 @@ static void ReceiveDataThread(ReceiverUDP& receiveSocket, size_t maxBytesPerPack
           // Store the summary
           MessageSummary summary;
           summary.messageType = FRAME_DATA;
+          message->GetTime(summary.time);
           summary.cameraID = cameraID;
           summary.left = left;
           summary.right = right;

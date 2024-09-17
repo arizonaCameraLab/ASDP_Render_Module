@@ -101,6 +101,9 @@ CPUDataToTextureHandler::~CPUDataToTextureHandler()
     std::cerr << "CPUDataToTextureHandler::~CPUDataToTextureHandler(): Error sending data to GPU: " << ret << std::endl;
   }
 
+  // Set the time on the image data to the average of the begin and end times.
+  m_imageData->imageCenterTime = m_centerTime;
+
   // Ensure that the stream completes (so OpenGL on other threads in other contexts won't race).
   // This may be superfluous because the call to cudaGraphicsUnmapResources() handles this at least
   // for OpenGL work on the current context and thread.  Adding it did not impact either the GPU
@@ -118,6 +121,12 @@ CPUDataToTextureHandler::~CPUDataToTextureHandler()
 
   // Put the texture back into the image queue as the newest image so the Composite will use it.
   m_dataPtr->imageQueuePtr->AddNewestImage(m_imageData);
+}
+
+std::string CPUDataToTextureHandler::SetCenterTime(asdp::Time centerTime)
+{
+  m_centerTime = centerTime;
+  return "";
 }
 
 std::string CPUDataToTextureHandler::SendToGPU()
