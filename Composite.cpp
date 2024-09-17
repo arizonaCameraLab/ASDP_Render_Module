@@ -858,6 +858,8 @@ void CompositeCameras::RenderView(const float* modelViewProjection)
 
 void CompositeCameras::TearDownRenderFrame()
 {
+  // Make sure we've finished using our textures before returning them.
+  glFinish();
   for (size_t i = 0; i < m_cameraRenderInfos.size(); i++) {
     CameraRenderInfo const& CRI = m_cameraRenderInfos[i];
     if (m_images[i] != nullptr) {

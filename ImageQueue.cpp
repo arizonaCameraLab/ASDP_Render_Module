@@ -51,7 +51,7 @@ void ImageQueue::ReturnRenderImage(std::shared_ptr<ImageData> image)
 
   // Add it to the front of the queue if it is newer than the image that is there, or the back of the queue otherwise
   std::lock_guard<std::mutex> lock(m_mutex);
-  if (image->imageCenterTime > m_images.front()->imageCenterTime) {
+  if (m_images.empty() || (image->imageCenterTime > m_images.front()->imageCenterTime)) {
     m_images.push_front(std::move(imagePtr));
   } else {
     m_images.push_back(std::move(imagePtr));
