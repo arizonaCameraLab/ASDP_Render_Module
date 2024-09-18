@@ -374,6 +374,8 @@ static void ReceiveDataThread(ReceiverUDP& receiveSocket, size_t maxBytesPerPack
     // check for begin-frame messages before sending anything, we must parse all of the
     // messages in the packet and handle them in turn.  We will ignore any messages that are not
     // these types.  Store summaries of each message so we can process them in the other thread.
+    // NOTE: The following code relies on every message being sent in a separate packet so that
+    // we don't swap out the pinned memory buffer or GPU buffer while they are being used.
     std::vector<MessageSummary> messageSummaries;
     std::shared_ptr<Message> message;
     status = streamPacket->GetNextMessage(message);
@@ -506,6 +508,14 @@ static void ReceiveDataThread(ReceiverUDP& receiveSocket, size_t maxBytesPerPack
     // We're waiting for the frame begin message, so we ignore this packet that does not have one.
     if (waitingForFrameBegin) {
       continue;
+    }
+
+    // Make sure that we only have one message per packet.  If we get more, we will have to modify the
+    // pinned and GPU memory buffers to handle it.
+    if (messageSummaries.size() > 1) {
+      std::cerr << "Error: More than one message per packet." << std::endl;
+      done = true;
+      return;
     }
 
     // Enqueue the packet for processing.
