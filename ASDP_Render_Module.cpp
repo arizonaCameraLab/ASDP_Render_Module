@@ -26,6 +26,8 @@
 #include <ASDP_Core_API.h>
 #include <ASDP_SpinFreeQueue.hpp>
 #include <ASDP_BufferPool.h>
+#include "PinnedBufferPool.h"
+#include "GPUBufferPool.h"
 #include <nlohmann/json.hpp>
 #include <GL/glew.h>
 #include <ToneMap.h>
@@ -303,13 +305,13 @@ static void CopyDataToTextures(uint16_t width, uint16_t height,
 /// @param receiveSocket The socket to receive the data on.
 /// @param maxBytesPerPacket The maximum number of bytes in a packet.
 /// @param done The flag to set when we're done.
-/// @param cpuImageBufferPtr The pinned memory buffer on the CPU to hold the image data.
-/// @param gpuImageBufferPtr The buffer on the GPU to hold the image data.
+/// @param cpuImageBuffers Pool of pinned memory buffer on the CPU to hold the image data.
+/// @param gpuImageBuffers Pool of buffers on the GPU to hold the image data.
 /// @param streamPtr The stream to use for copy and kernel calls.
 /// @param imageQueue The image queue to store the textures in.
 /// @param outQueue The queue to send the data to the GPU-feeding thread.
 static void ReceiveDataThread(ReceiverUDP& receiveSocket, size_t maxBytesPerPacket, std::atomic<bool>& done,
-  std::shared_ptr<unsigned char> cpuImageBufferPtr, std::shared_ptr<unsigned char> gpuImageBufferPtr,
+  std::shared_ptr<PinnedBufferPool> cpuImageBuffers, std::shared_ptr<GPUBufferPool> gpuImageBuffers,
   std::shared_ptr<cudaStream_t> streamPtr,
   std::shared_ptr<asdp::render::ImageQueue> imageQueue,
   std::shared_ptr< SpinFreeQueue< std::shared_ptr<DataToSendToGPU> > > outQueue)
@@ -318,6 +320,11 @@ static void ReceiveDataThread(ReceiverUDP& receiveSocket, size_t maxBytesPerPack
   // the network.  Initially fill it with 100 buffers to give us enough to handle buffering a fraction
   // of a frame before the first packets are handled.  It will automatically expand if needed.
   BufferPool bufferPool(maxBytesPerPacket, 100);
+
+  // CPU and GPU buffers to hold the image data.  These will be created when we get a frame begin message,
+  // and we wait until we get a frame begin message before we start processing data.
+  std::shared_ptr<uint8_t> cpuImageBufferPtr;
+  std::shared_ptr<uint8_t> gpuImageBufferPtr;
 
   // Image width
   uint16_t cameraWidth = 0;
@@ -399,6 +406,17 @@ static void ReceiveDataThread(ReceiverUDP& receiveSocket, size_t maxBytesPerPack
             return;
           }
           cameraWidth = width;
+
+          // Get a new pinned CPU memory and GPU memory buffer to hold the image data.
+          // The old ones will be returned to the pool when the shared pointers are reset.
+          try {
+            cpuImageBufferPtr = cpuImageBuffers->GetBuffer();
+            gpuImageBufferPtr = gpuImageBuffers->GetBuffer();
+          } catch (std::exception &e) {
+            std::cerr << "Error getting buffers: " << e.what() << std::endl;
+            done = true;
+            return;
+          }
 
           // Store the summary
           MessageSummary summary;
@@ -907,24 +925,21 @@ int main(int argc, char** argv)
     // Construct shared pointers to the data structures that we'll need to do rendering, with the
     // custom destructors that will clean up when the shared_ptr is destroyed.
     std::atomic<bool> done(false);
-    std::vector< std::shared_ptr<unsigned char> > cpuPinnedImageBuffers;
-    std::vector< std::shared_ptr<unsigned char> > gpuImageBuffers;
+    std::vector< std::shared_ptr<PinnedBufferPool> > cpuPinnedImageBuffers;
+    std::vector< std::shared_ptr<GPUBufferPool> > gpuImageBuffers;
     std::vector< std::shared_ptr<cudaStream_t> > streams;
     std::vector< std::shared_ptr<ReceiverUDP> > UDPReceivers;
     for (size_t i = 0; i < cameras.size(); i++) {
-      // Allocate pinned memory for the CPU image buffer.
-      unsigned char* cpuPinnedImageBuffer;
-      cudaMallocHost(&cpuPinnedImageBuffer, cameras[i].width * cameras[i].height * sizeof(uint16_t));
-      cpuPinnedImageBuffers.push_back(std::shared_ptr<unsigned char>(cpuPinnedImageBuffer,
-        [](unsigned char* ptr) { cudaFreeHost(ptr); }
-      ));
+      try {
+        // Preload pinned memory buffers for the CPU.
+        cpuPinnedImageBuffers.push_back(std::make_shared<PinnedBufferPool>(cameras[i].width* cameras[i].height * sizeof(uint16_t), 5));
 
-      // Allocate memory for the GPU image buffer.
-      unsigned char* gpuImageBuffer;
-      cudaMalloc(&gpuImageBuffer, cameras[i].width * cameras[i].height * sizeof(uint16_t));
-      gpuImageBuffers.push_back(std::shared_ptr<unsigned char>(gpuImageBuffer,
-        [](unsigned char* ptr) { cudaFree(ptr); }
-      ));
+        // Preload pinned memory buffers for the GPU.
+        gpuImageBuffers.push_back(std::make_shared<GPUBufferPool>(cameras[i].width* cameras[i].height * sizeof(uint16_t), 5));
+      } catch (std::exception &e) {
+        std::cerr << "Error creating buffer pools: " << e.what() << std::endl;
+        return 24;
+      }
 
       // Create a stream for the GPU to use.
       cudaStream_t* streamPtr = new cudaStream_t;
