@@ -641,7 +641,6 @@ int main(int argc, char** argv)
   bool fullScreen = false;      ///< Run in full screen mode.
   ToneMap toneMap = ToneMap();  ///< The tone map to use, default linear.
   std::string ip_address;       ///< The IP address to listen on.
-  std::set<uint32_t> cameraIDs; ///< The camera IDs to render.
   size_t numDisplays = 1;       ///< The number of display windows to create.
   uint32_t replayStreamID = 0;  ///< The stream ID to replay, 0 for live.
   size_t realParams = 0;        ///< The number of non-flag parameters we've seen.
@@ -789,12 +788,9 @@ int main(int argc, char** argv)
       return 13;
     }
 
-    // If we have an empty set of camera IDs, then we want to analyze all cameras.
-    /// @todo Replace with reading the configuration file to find out the cameras and their mappings
-    if (cameraIDs.empty()) {
-      for (uint32_t ID = 1; ID <= cameras.size(); ID++) {
-        cameraIDs.insert(ID);
-      }
+    std::set<uint32_t> cameraIDs; ///< The camera IDs to render.
+    for (uint32_t ID = 1; ID <= cameras.size(); ID++) {
+      cameraIDs.insert(ID);
     }
 
     // Read the configuration file associated with the serial number for the server. Verify that
