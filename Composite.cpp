@@ -854,9 +854,11 @@ void CompositeCameras::RenderView(const float* modelViewProjection)
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_indexBufferObjects[i]);
     glDrawElements(GL_TRIANGLES, m_numIndices[i], GL_UNSIGNED_INT, 0);
 
-    // Unbind the textures
-    glBindTexture(GL_TEXTURE_2D, 0);
+    // Unbind the textures from their respective texture units
+    glActiveTexture(GL_TEXTURE1);
     glBindTexture(GL_TEXTURE_1D, 0);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, 0);
   }
 }
 
