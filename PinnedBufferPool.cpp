@@ -52,7 +52,7 @@ PinnedBufferPool::~PinnedBufferPool()
   m_freeBuffers.clear();
 }
 
-std::shared_ptr<uint8_t> PinnedBufferPool::GetBuffer()
+std::shared_ptr<uint8_t> PinnedBufferPool::GetBuffer(bool allocateWhenEmpty)
 {
   // If we are being destroyed, then we can't return any more buffers
   if (m_done) {
@@ -60,22 +60,42 @@ std::shared_ptr<uint8_t> PinnedBufferPool::GetBuffer()
   }
 
   // If the buffer pool is empty, then we need to allocate a new buffer and also
-  // add it to the list of empty buffers.
-  std::lock_guard<std::mutex> lock(mtx);
+  // add it to the list of empty buffers or else wait for one to become available.
+  mtx.lock();
   if (m_freeBuffers.empty()) {
-    unsigned char* buffer = nullptr;
-    cudaError_t ret = cudaMallocHost(&buffer, m_bufferSize);
-    if (ret != cudaSuccess) {
-      std::cerr << "PinnedBufferPool::GetBuffer(): cudaMallocHost failed: " << cudaGetErrorString(ret) << std::endl;
-      throw std::runtime_error("cudaMallocHost failed");
+    if (allocateWhenEmpty) {
+      // Allocate a new buffer and put it on the free list.
+      unsigned char* buffer = nullptr;
+      cudaError_t ret = cudaMallocHost(&buffer, m_bufferSize);
+      if (ret != cudaSuccess) {
+        std::cerr << "PinnedBufferPool::GetBuffer(): cudaMallocHost failed: " << cudaGetErrorString(ret) << std::endl;
+        throw std::runtime_error("cudaMallocHost failed");
+      }
+      m_allBuffers.push_back(buffer);
+      m_freeBuffers.push_back(buffer);
+    } else {
+      // Wait until the free list is not empty, sleeping with an unlocked mutex
+      // so that other threads can free buffers.
+      while (m_freeBuffers.empty()) {
+        mtx.unlock();
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+
+        // If we are being destroyed, then we can't return any more buffers.
+        // We must check again here because done could have been set in the meantime.
+        if (m_done) {
+          return nullptr;
+        }
+        mtx.lock();
+      }
     }
-    m_allBuffers.push_back(buffer);
-    m_freeBuffers.push_back(buffer);
   }
 
   // Get a buffer from the pool and return it to the caller.
   uint8_t* buffer = m_freeBuffers.front();
   m_freeBuffers.pop_front();
+
+  // Done with the mutex
+  mtx.unlock();
 
   // Make a shared_ptr that will return the buffer to the empty pool when it is destroyed.
   return std::shared_ptr<uint8_t>(buffer, [this, buffer](uint8_t*) {
@@ -85,12 +105,12 @@ std::shared_ptr<uint8_t> PinnedBufferPool::GetBuffer()
 }
 
 static void TestBufferPoolAllocationThread(PinnedBufferPool* pool, double tryPeriod, int tryTimes,
-  int* successCount, std::atomic_bool *running)
+  std::atomic_int *successCount, std::atomic_bool *running, bool allocateWhenEmpty)
 {
   *running = true;
   std::vector< std::shared_ptr<uint8_t> > buffers;
   for (int i = 0; i < tryTimes; i++) {
-    std::shared_ptr<uint8_t> buffer = pool->GetBuffer();
+    std::shared_ptr<uint8_t> buffer = pool->GetBuffer(allocateWhenEmpty);
     buffers.push_back(buffer);
     if (buffer != nullptr) {
       (*successCount)++;
@@ -104,7 +124,7 @@ static void TestBufferPoolAllocationThread(PinnedBufferPool* pool, double tryPer
 std::string PinnedBufferPool::Test()
 {
   // Single-threaded test of the buffer pool.  Verify that the buffer pool size
-  // adjusts as expected.
+  // adjusts as expected when we allocate new buffers.
   {
     PinnedBufferPool pool(100, 10);
     if (pool.m_freeBuffers.size() != 10) {
@@ -115,7 +135,7 @@ std::string PinnedBufferPool::Test()
     std::vector < std::shared_ptr<uint8_t> > buffers;
     for (size_t i = 0; i < 20; i++) {
       size_t expected = (i < 9) ? 9 - i : 0;
-      std::shared_ptr<uint8_t> buffer = pool.GetBuffer();
+      std::shared_ptr<uint8_t> buffer = pool.GetBuffer(true);
       buffers.push_back(buffer);
       if (pool.m_freeBuffers.size() != expected) {
         return "Allocation failed: pool.m_freeBuffers.size() != " + std::to_string(expected);
@@ -133,12 +153,12 @@ std::string PinnedBufferPool::Test()
   // returns nullptr when the pool is being destroyed and that the destructor
   // waits for all buffers to be returned to the pool.
   {
-    PinnedBufferPool*pool = new PinnedBufferPool(100, 10);
-    int worked = 0;
+    PinnedBufferPool *pool = new PinnedBufferPool(100, 10);
+    std::atomic_int count = 0;
     std::atomic_bool running(false);
 
-    // Start a thread that will run for one second and allocate one buffer per tenth of a second
-    std::thread getThread(TestBufferPoolAllocationThread, pool, 0.1, 10, &worked, &running);
+    // Start a thread that will allocate one buffer per tenth of a second, asking for ten buffers
+    std::thread getThread(TestBufferPoolAllocationThread, pool, 0.1, 10, &count, &running, true);
     while (!running) {
       std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
@@ -150,9 +170,47 @@ std::string PinnedBufferPool::Test()
     getThread.join();
 
     // Verify that the thread allocated some but not all of the buffers.
-    if ((worked == 0) || (worked == 10)) {
-      return "Multi-threaded test failed: worked = " + std::to_string(worked);
+    if ((count == 0) || (count == 10)) {
+      return "Multi-threaded test failed: worked = " + std::to_string(count);
     }
+  }
+
+  /// Test that the read thread waits rather than allocating new buffers when it exhausts a pool.
+  /// Also test that it gets buffers that are returned.
+  {
+    PinnedBufferPool *pool = new PinnedBufferPool(100, 10);
+    std::atomic_int count = 0;
+    std::atomic_bool running(false);
+
+    // Start a thread that will allocate one buffer per tenth of a second, asking for ten buffers
+    // but will not allocate new buffers, so will hang.
+    std::thread getThread(TestBufferPoolAllocationThread, pool, 0.1, 10, &count, &running, false);
+    while (!running) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+
+    // Wait half a second and then allocate a buffer.  The thread should continue to run
+    // and try to allocate buffers, but the pool should not allocate all required buffers.
+    std::this_thread::sleep_for(std::chrono::microseconds(500000));
+    std::shared_ptr<uint8_t> buf = pool->GetBuffer(false);
+
+    // Wait a full second, and the thread should have allocated all buffers but should only have
+    // allocagted 9 buffers.
+    std::this_thread::sleep_for(std::chrono::seconds(1));
+    if (count != 9) {
+      return "Multi-threaded non-allocating test failed: count = " + std::to_string(count);
+    }
+
+    // Now return the entry and wait half a second.  The thread should have allocated the last buffer.
+    buf.reset();
+    std::this_thread::sleep_for(std::chrono::microseconds(500000));
+    if (count != 10) {
+      return "Multi-threaded non-allocating test failed: count = " + std::to_string(count);
+    }
+
+    // Clean up.
+    delete pool;
+    getThread.join();
   }
 
   // Everything worked.

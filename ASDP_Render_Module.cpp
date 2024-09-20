@@ -412,8 +412,9 @@ static void ReceiveDataThread(ReceiverUDP& receiveSocket, size_t maxBytesPerPack
           // Get a new pinned CPU memory and GPU memory buffer to hold the image data.
           // The old ones will be returned to the pool when the shared pointers are reset.
           try {
-            cpuImageBufferPtr = cpuImageBuffers->GetBuffer();
-            gpuImageBufferPtr = gpuImageBuffers->GetBuffer();
+            // Do not allocate new buffers if they are depleted -- wait for them to be returned.
+            cpuImageBufferPtr = cpuImageBuffers->GetBuffer(false);
+            gpuImageBufferPtr = gpuImageBuffers->GetBuffer(false);
           } catch (std::exception &e) {
             std::cerr << "Error getting buffers: " << e.what() << std::endl;
             done = true;

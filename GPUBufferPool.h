@@ -40,9 +40,11 @@ namespace asdp {
       /// When the shared_ptr is destroyed, the buffer is automatically returned to the pool.
       /// The nullptr is returned if the pool is being destroyed.
       /// This method is thread-safe.
+      /// @param allocateWhenEmpty Should we allocate more buffers when the pool is empty? Otherwise, wait
+      /// for buffers to be returned to the pool.
       /// @return A buffer from the pool, or nullptr if the pool is being destroyed.
       /// @throw std::runtime_error if a buffer cannot be created.
-      std::shared_ptr<uint8_t> GetBuffer();
+      std::shared_ptr<uint8_t> GetBuffer(bool allocateWhenEmpty = true);
 
       /// @brief Test the GPUBufferPool class.
       /// @return Empty string on success, descriptive error message on failure.
