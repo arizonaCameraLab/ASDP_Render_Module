@@ -43,6 +43,7 @@
 using namespace asdp;
 using namespace asdp::render;
 using json = nlohmann::json;
+using json = nlohmann::json;
 
 static std::string VERSION = "1.0.0";
 
@@ -358,7 +359,7 @@ static void ReceiveDataThread(ReceiverUDP& receiveSocket, size_t maxBytesPerPack
     // Add to the sorted queue and then handle any messages that are ready to be processed.
     std::list< std::shared_ptr<StreamPacket> > readyPackets = sortedQueue.AddPacket(packet);
     if (readyPackets.size() > 1) {
-      std::cerr << "Warning: More than one packet ready to process, indicating missing packets." << std::endl;
+      std::cerr << "Warning: More than one packet ready to process (re-ordered or missing packet)." << std::endl;
     }
     while (!readyPackets.empty()) {
       std::shared_ptr<StreamPacket> streamPacket = readyPackets.front();
