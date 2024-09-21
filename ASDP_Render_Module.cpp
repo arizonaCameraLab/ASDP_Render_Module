@@ -22,10 +22,12 @@
 #include <string>
 #include <filesystem>
 #include <vector>
+#include <list>
 #include <atomic>
 #include <ASDP_Core_API.h>
 #include <ASDP_SpinFreeQueue.hpp>
 #include <ASDP_BufferPool.h>
+#include <ASDP_StreamPacketSortedQueue.h>
 #include "PinnedBufferPool.h"
 #include "GPUBufferPool.h"
 #include <nlohmann/json.hpp>
@@ -329,8 +331,11 @@ static void ReceiveDataThread(ReceiverUDP& receiveSocket, size_t maxBytesPerPack
   // Image width
   uint16_t cameraWidth = 0;
 
+  // Use a sorting queue to ensure that we process the messages in order even if the UDP packets
+  // arrive out of order.
+  StreamPacketSortedQueue sortedQueue(50);
+
   // Loop through and receive packets until we've been told to quit.
-  size_t packetsReceived = 0;
   DataToSendToGPU data;
   bool waitingForFrameBegin = true;
   while (!done) {
@@ -339,8 +344,8 @@ static void ReceiveDataThread(ReceiverUDP& receiveSocket, size_t maxBytesPerPack
     // the done flag.
     std::shared_ptr< std::vector<uint8_t> > buffer = bufferPool.GetBuffer();
     size_t offset = 0;
-    std::shared_ptr<StreamPacket> streamPacket;
-    Status status = receiveSocket.ReceiveStreamPacket(0.1, streamPacket, offset, buffer);
+    std::shared_ptr<StreamPacket> packet;
+    Status status = receiveSocket.ReceiveStreamPacket(0.1, packet, offset, buffer);
     if (status == TIMEOUT) {
       continue;
     }
@@ -350,49 +355,38 @@ static void ReceiveDataThread(ReceiverUDP& receiveSocket, size_t maxBytesPerPack
       break;
     }
 
-    // Verify that the data is correct and we haven't missed any packets.
-    // If we have missed a packet, we will reset the sequence number and start over
-    // at the next frame begin.
-    uint32_t sequenceNumber;
-    status = streamPacket->GetSequenceNumber(sequenceNumber);
-    if (status != OKAY) {
-      std::cerr << "Error getting sequence number: " << ErrorMessage(status) << std::endl;
-      done = true;
-      break;
+    // Add to the sorted queue and then handle any messages that are ready to be processed.
+    std::list< std::shared_ptr<StreamPacket> > readyPackets = sortedQueue.AddPacket(packet);
+    if (readyPackets.size() > 1) {
+      std::cerr << "Warning: More than one packet ready to process, indicating missing packets." << std::endl;
     }
-    if (sequenceNumber != packetsReceived) {
-      std::cerr << "Warning: Bad sequence number: expected " << packetsReceived << " but got " << sequenceNumber << std::endl;
-      packetsReceived = sequenceNumber + 1;
-      waitingForFrameBegin = true;
-      continue;
-    }
+    while (!readyPackets.empty()) {
+      std::shared_ptr<StreamPacket> streamPacket = readyPackets.front();
+      readyPackets.pop_front();
 
-    // Increment the number of packets received
-    packetsReceived++;
-
-    // Because we must copy the data into pinned memory for data messages, and because we must
-    // check for begin-frame messages before sending anything, we must parse all of the
-    // messages in the packet and handle them in turn.  We will ignore any messages that are not
-    // these types.  Store summaries of each message so we can process them in the other thread.
-    // NOTE: The following code relies on every message being sent in a separate packet so that
-    // we don't swap out the pinned memory buffer or GPU buffer while they are being used.
-    std::vector<MessageSummary> messageSummaries;
-    std::shared_ptr<Message> message;
-    status = streamPacket->GetNextMessage(message);
-    if (OKAY != status) {
-      std::cerr << "ReceiveDataThread: GetNextMessage() failed: " << ErrorMessage(status) << std::endl;
-      done = true;
-      return;
-    }
-    while (message != nullptr) {
-      MessageID messageType;
-      if (OKAY != message->GetType(messageType)) {
-        std::cerr << "ReceiveDataThread: Error getting message type: " << ErrorMessage(status) << std::endl;
+      // Because we must copy the data into pinned memory for data messages, and because we must
+      // check for begin-frame messages before sending anything, we must parse all of the
+      // messages in the packet and handle them in turn.  We will ignore any messages that are not
+      // these types.  Store summaries of each message so we can process them in the other thread.
+      // NOTE: The following code relies on every message being sent in a separate packet so that
+      // we don't swap out the pinned memory buffer or GPU buffer while they are being used.
+      std::vector<MessageSummary> messageSummaries;
+      std::shared_ptr<Message> message;
+      status = streamPacket->GetNextMessage(message);
+      if (OKAY != status) {
+        std::cerr << "ReceiveDataThread: GetNextMessage() failed: " << ErrorMessage(status) << std::endl;
         done = true;
         return;
       }
-      switch (messageType) {
-      case FRAME_BEGIN:
+      while (message != nullptr) {
+        MessageID messageType;
+        if (OKAY != message->GetType(messageType)) {
+          std::cerr << "ReceiveDataThread: Error getting message type: " << ErrorMessage(status) << std::endl;
+          done = true;
+          return;
+        }
+        switch (messageType) {
+        case FRAME_BEGIN:
         {
           // We found a begin frame message, so we can start processing the data.
           waitingForFrameBegin = false;
@@ -415,7 +409,7 @@ static void ReceiveDataThread(ReceiverUDP& receiveSocket, size_t maxBytesPerPack
             // Do not allocate new buffers if they are depleted -- wait for them to be returned.
             cpuImageBufferPtr = cpuImageBuffers->GetBuffer(false);
             gpuImageBufferPtr = gpuImageBuffers->GetBuffer(false);
-          } catch (std::exception &e) {
+          } catch (std::exception& e) {
             std::cerr << "Error getting buffers: " << e.what() << std::endl;
             done = true;
             return;
@@ -431,50 +425,50 @@ static void ReceiveDataThread(ReceiverUDP& receiveSocket, size_t maxBytesPerPack
           messageSummaries.push_back(summary);
         }
         break;
-      case FRAME_DATA:
-        // We're waiting for the frame begin message, so we ignore this packet that does not have one.
-        if (!waitingForFrameBegin) {
-          // Get the region to copy and the data pointer from the message.
-          uint32_t cameraID;
-          uint16_t left, right, top, bottom;
-          uint8_t* data;
-          status = ParseFrameDataMessage(*message, cameraID, left, right, top, bottom, data);
-          if (OKAY != status) {
-            std::cerr << "ReceiveDataThread: ParseFrameDataMessage() failed: " << ErrorMessage(status) << std::endl;
-            done = true;
-            return;
-          }
+        case FRAME_DATA:
+          // We're waiting for the frame begin message, so we ignore this packet that does not have one.
+          if (!waitingForFrameBegin) {
+            // Get the region to copy and the data pointer from the message.
+            uint32_t cameraID;
+            uint16_t left, right, top, bottom;
+            uint8_t* data;
+            status = ParseFrameDataMessage(*message, cameraID, left, right, top, bottom, data);
+            if (OKAY != status) {
+              std::cerr << "ReceiveDataThread: ParseFrameDataMessage() failed: " << ErrorMessage(status) << std::endl;
+              done = true;
+              return;
+            }
 
-          // Copy the data to the pinned CPU memory buffer.
-          uint16_t regionWidth = right - left + 1;
-          uint16_t regionHeight = bottom - top + 1;
-          uint16_t *cpuBuffer16 = reinterpret_cast<uint16_t*>(cpuImageBufferPtr.get());
-          uint16_t *data16 = reinterpret_cast<uint16_t*>(data);
-          if (cameraWidth != 0) {
-            if ((left == 0) && (regionWidth == cameraWidth)) {
-              // If we're copying whole lines, we can do it all at once.
-              memcpy(cpuBuffer16 + top * regionWidth, data16, regionWidth * regionHeight * sizeof(uint16_t));
-            } else {
-              // Otherwise, we must do it line by line.
-              for (uint16_t line = top; line <= bottom; ++line) {
-                memcpy(cpuBuffer16 + line * cameraWidth + left, data16 + (line - top) * regionWidth, regionWidth * sizeof(uint16_t));
+            // Copy the data to the pinned CPU memory buffer.
+            uint16_t regionWidth = right - left + 1;
+            uint16_t regionHeight = bottom - top + 1;
+            uint16_t* cpuBuffer16 = reinterpret_cast<uint16_t*>(cpuImageBufferPtr.get());
+            uint16_t* data16 = reinterpret_cast<uint16_t*>(data);
+            if (cameraWidth != 0) {
+              if ((left == 0) && (regionWidth == cameraWidth)) {
+                // If we're copying whole lines, we can do it all at once.
+                memcpy(cpuBuffer16 + top * regionWidth, data16, regionWidth * regionHeight * sizeof(uint16_t));
+              } else {
+                // Otherwise, we must do it line by line.
+                for (uint16_t line = top; line <= bottom; ++line) {
+                  memcpy(cpuBuffer16 + line * cameraWidth + left, data16 + (line - top) * regionWidth, regionWidth * sizeof(uint16_t));
+                }
               }
             }
-          }
 
-          // Store the summary
-          MessageSummary summary;
-          summary.messageType = FRAME_DATA;
-          message->GetTime(summary.time);
-          summary.cameraID = cameraID;
-          summary.left = left;
-          summary.right = right;
-          summary.top = top;
-          summary.bottom = bottom;
-          messageSummaries.push_back(summary);
-        }
-        break;
-      case FRAME_END:
+            // Store the summary
+            MessageSummary summary;
+            summary.messageType = FRAME_DATA;
+            message->GetTime(summary.time);
+            summary.cameraID = cameraID;
+            summary.left = left;
+            summary.right = right;
+            summary.top = top;
+            summary.bottom = bottom;
+            messageSummaries.push_back(summary);
+          }
+          break;
+        case FRAME_END:
         {
           // Parse the message so we can make a summary.  We don't do anything else with it here.
           uint32_t cameraID;
@@ -493,40 +487,41 @@ static void ReceiveDataThread(ReceiverUDP& receiveSocket, size_t maxBytesPerPack
           messageSummaries.push_back(summary);
         }
         break;
-      default:
-        // Ignore other message types.
-        break;
+        default:
+          // Ignore other message types.
+          break;
+        }
+
+        status = streamPacket->GetNextMessage(message);
+        if (OKAY != status) {
+          done = true;
+          std::cerr << "ReceiveDataThread: GetNextMessage() failed: " << ErrorMessage(status) << std::endl;
+          return;
+        }
       }
 
-      status = streamPacket->GetNextMessage(message);
-      if (OKAY != status) {
+      // We're waiting for the frame begin message, so we ignore this packet that does not have one.
+      if (waitingForFrameBegin) {
+        continue;
+      }
+
+      // Make sure that we only have one message per packet.  If we get more, we will have to modify the
+      // pinned and GPU memory buffers to handle it.
+      if (messageSummaries.size() > 1) {
+        std::cerr << "Error: More than one message per packet." << std::endl;
         done = true;
-        std::cerr << "ReceiveDataThread: GetNextMessage() failed: " << ErrorMessage(status) << std::endl;
         return;
       }
-    }
 
-    // We're waiting for the frame begin message, so we ignore this packet that does not have one.
-    if (waitingForFrameBegin) {
-      continue;
-    }
-
-    // Make sure that we only have one message per packet.  If we get more, we will have to modify the
-    // pinned and GPU memory buffers to handle it.
-    if (messageSummaries.size() > 1) {
-      std::cerr << "Error: More than one message per packet." << std::endl;
-      done = true;
-      return;
-    }
-
-    // Enqueue the packet for processing.
-    data.messages = messageSummaries;
-    data.cpuImageBufferPtr = cpuImageBufferPtr;
-    data.gpuImageBufferPtr = gpuImageBufferPtr;
-    data.imageQueuePtr = imageQueue;
-    data.streamPtr = streamPtr;
-    outQueue->enqueue(std::make_shared<DataToSendToGPU>(data));
-  }
+      // Enqueue the packet for processing.
+      data.messages = messageSummaries;
+      data.cpuImageBufferPtr = cpuImageBufferPtr;
+      data.gpuImageBufferPtr = gpuImageBufferPtr;
+      data.imageQueuePtr = imageQueue;
+      data.streamPtr = streamPtr;
+      outQueue->enqueue(std::make_shared<DataToSendToGPU>(data));
+    } // End of processing ready packets.
+  } // End of while we are not done.
 
   // Release our out-queue pointer so it will be destroyed and release all its resources back to our
   // buffer pool.
