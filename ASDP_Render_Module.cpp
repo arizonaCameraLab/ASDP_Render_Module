@@ -628,6 +628,7 @@ void usage(std::string name)
   std::cerr << "  --frameStride <frame stride>        Read one out of every this many frames. Set to 1 for every frame." << std::endl;
   std::cerr << "  --width <width>                     The width of the window (default 1280)." << std::endl;
   std::cerr << "  --height <height>                   The height of the window (default 1024)." << std::endl;
+  std::cerr << "  --hFOV <horizontal field of view>   The horizontal field of view in degrees (default 40)." << std::endl;
   std::cerr << "  --fullScreen                        Run in full screen mode." << std::endl;
   std::cerr << "  --toneMap <tone map>                The tone map to use.  Options are: linear blackbody bluesky" << std::endl;
   std::cerr << "  --numDisplays <number of displays>  The number of display windows (default 1)" << std::endl;
@@ -639,6 +640,7 @@ int main(int argc, char** argv)
   uint32_t frameStride = 1;     ///< Read one out of every this many frames. Set to 1 for every frame.
   unsigned windowWidth = 1280;  ///< The width of the window.
   unsigned windowHeight = 1024;  ///< The height of the window.
+  float hFOV = 40.0f;           ///< The horizontal field of view in degrees.
   bool fullScreen = false;      ///< Run in full screen mode.
   ToneMap toneMap = ToneMap();  ///< The tone map to use, default linear.
   std::string ip_address;       ///< The IP address to listen on.
@@ -661,12 +663,19 @@ int main(int argc, char** argv)
         return 2;
       }
       windowWidth = std::stoi(argv[i]);
-    } else if (std::string("--height") == argv[i]) {
+    }
+    else if (std::string("--height") == argv[i]) {
       if (++i >= argc) {
         usage(argv[0]);
         return 2;
       }
       windowHeight = std::stoi(argv[i]);
+    } else if (std::string("--hFOV") == argv[i]) {
+      if (++i >= argc) {
+        usage(argv[0]);
+        return 2;
+      }
+      hFOV = std::stof(argv[i]);
     } else if (std::string("--fullScreen") == argv[i]) {
       fullScreen = true;
     } else if (std::string("--toneMap") == argv[i]) {
@@ -938,7 +947,7 @@ int main(int argc, char** argv)
       }
       displays.push_back(std::make_shared<DisplayWindow>("ASDP Render Module " + std::to_string(i),
         composite, client, 0, 0, 60.0f, 2500, windowWidth, windowHeight,
-        40.0f, "", displayTexture.get(), thisFullScreen, 0, false, handlers));
+        hFOV, "", displayTexture.get(), thisFullScreen, 0, false, handlers));
     }
 
     // Construct shared pointers to the data structures that we'll need to do rendering, with the
