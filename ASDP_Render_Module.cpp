@@ -606,6 +606,7 @@ Status HandleStreamPacket(std::shared_ptr<StreamPacket> packet, std::shared_ptr<
         }
         //std::cout << "XXX Replaying = " << (replaying ? "true" : "false") << std::endl;
       }
+      break;
     default:
       // Ignore other message types.
       break;
@@ -896,7 +897,7 @@ int main(int argc, char** argv)
           glBindTexture(GL_TEXTURE_2D, 0);
 
           imageData->texture = texture;
-          info.m_imageQueue->AddNewestImage(imageData);
+          info.m_imageQueue->InsertImage(imageData);
         }
 
         if (!displayTexture->ReturnContext()) {

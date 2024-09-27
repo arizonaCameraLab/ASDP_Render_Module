@@ -41,7 +41,7 @@ CPUDataToTextureHandler::CPUDataToTextureHandler(
   cudaError_t cudaStatus;
 
   // Get the texture ID to use for the image data and store it away for use in the destructor.
-  m_imageData = m_dataPtr->imageQueuePtr->PopOldestImage();
+  m_imageData = m_dataPtr->imageQueuePtr->GetOldestImage();
   if (m_imageData == nullptr) {
     m_status = "Error getting image data from image queue.";
     return;
@@ -120,7 +120,7 @@ CPUDataToTextureHandler::~CPUDataToTextureHandler()
   glFinish();
 
   // Put the texture back into the image queue as the newest image so the Composite will use it.
-  m_dataPtr->imageQueuePtr->AddNewestImage(m_imageData);
+  m_dataPtr->imageQueuePtr->InsertImage(m_imageData);
 }
 
 std::string CPUDataToTextureHandler::SetCenterTime(asdp::Time centerTime)

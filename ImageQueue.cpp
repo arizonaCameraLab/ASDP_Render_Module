@@ -12,16 +12,7 @@ ImageData::~ImageData()
   }
 }
 
-void ImageQueue::AddNewestImage(std::shared_ptr<ImageData> image)
-{
-  std::shared_ptr<ImageData> imagePtr = image;
-
-  // Add it to the front of the queue
-  std::lock_guard<std::mutex> lock(m_mutex);
-  m_images.push_front(imagePtr);
-}
-
-std::shared_ptr<ImageData> ImageQueue::PopOldestImage()
+std::shared_ptr<ImageData> ImageQueue::GetOldestImage()
 {
   std::lock_guard<std::mutex> lock(m_mutex);
   if (m_images.size() == 0) {
@@ -33,29 +24,30 @@ std::shared_ptr<ImageData> ImageQueue::PopOldestImage()
   }
 }
 
-std::shared_ptr<ImageData> ImageQueue::GetRenderImage()
+std::list< std::shared_ptr<ImageData> > ImageQueue::GetNewestImages(size_t count)
 {
+  std::list< std::shared_ptr<ImageData> > images;
   std::lock_guard<std::mutex> lock(m_mutex);
-  if (m_images.size() == 0) {
-    return nullptr;
-  } else {
-    std::shared_ptr<ImageData> image = m_images.front();
+  while (!m_images.empty() && (count > 0)) {
+    images.push_back(m_images.front());
     m_images.pop_front();
-    return image;
+    --count;
   }
+  return images;
 }
 
-void ImageQueue::ReturnRenderImage(std::shared_ptr<ImageData> image)
+void ImageQueue::InsertImage(std::shared_ptr<ImageData> image)
 {
   std::shared_ptr<ImageData> imagePtr = image;
 
-  // Add it to the front of the queue if it is newer than the image that is there, or the back of the queue otherwise
+  // Insert the image in time-sorted order, with the newest at the fron and the oldest
+  // at the back.
   std::lock_guard<std::mutex> lock(m_mutex);
-  if (m_images.empty() || (image->imageCenterTime > m_images.front()->imageCenterTime)) {
-    m_images.push_front(std::move(imagePtr));
-  } else {
-    m_images.push_back(std::move(imagePtr));
+  auto element = m_images.begin();
+  while (element != m_images.end() && (*element)->imageCenterTime > image->imageCenterTime) {
+    ++element;
   }
+  m_images.insert(element, std::move(imagePtr));
 }
 
 size_t ImageQueue::size() const
@@ -75,12 +67,12 @@ std::string ImageQueue::Test()
   }
 
   // Verify that we can't get the oldest and newest image from an empty queue
-  std::shared_ptr<ImageData> oldestImage = imageQueue.PopOldestImage();
+  std::shared_ptr<ImageData> oldestImage = imageQueue.GetOldestImage();
   if (oldestImage != nullptr) {
     return "Got oldest image from empty queue.";
   }
-  std::shared_ptr<ImageData> newestImage = imageQueue.GetRenderImage();
-  if (newestImage != nullptr) {
+  auto newestImages = imageQueue.GetNewestImages();
+  if (newestImages.size() != 0) {
     return "Got newest image from empty queue.";
   }
 
@@ -88,23 +80,23 @@ std::string ImageQueue::Test()
   std::shared_ptr<ImageData> image = std::make_shared<ImageData>();
 
   // Add the image to the queue
-  imageQueue.AddNewestImage(image);
+  imageQueue.InsertImage(image);
 
   // Get the newest image from the queue
-  newestImage = imageQueue.GetRenderImage();
-  if (newestImage == nullptr) {
+  newestImages = imageQueue.GetNewestImages();
+  if (newestImages.size() != 1) {
     return "Failed to get newest image from queue.";
   }
 
   // We should fail to get the oldest image from the queue because there is are no images in the queue
-  oldestImage = imageQueue.PopOldestImage();
+  oldestImage = imageQueue.GetOldestImage();
   if (oldestImage != nullptr) {
     return "Incorrectly able to get oldest image from queue.";
   }
 
   // Add two images to the queue
-  imageQueue.AddNewestImage(std::make_shared<ImageData>());
-  imageQueue.AddNewestImage(std::make_shared<ImageData>());
+  imageQueue.InsertImage(std::make_shared<ImageData>());
+  imageQueue.InsertImage(std::make_shared<ImageData>());
 
   // Verify that the queue size is 2
   if (imageQueue.size() != 2) {
@@ -113,13 +105,13 @@ std::string ImageQueue::Test()
 
   // Get the newest and oldest images from the queue.
   // Verify that the newest image is not the same as the oldest image
-  std::shared_ptr<ImageData> newestImage2 = imageQueue.GetRenderImage();
-  std::shared_ptr<ImageData> oldestImage2 = imageQueue.PopOldestImage();
+  auto newestImages2 = imageQueue.GetNewestImages();
+  std::shared_ptr<ImageData> oldestImage2 = imageQueue.GetOldestImage();
   if (oldestImage2 == nullptr) {
     return "Failed to get oldest image from queue with queue length 2.";
   }
-  if (newestImage2.get() == oldestImage2.get()) {
-    return "Newest image is the same as the oldest image.";
+  if (newestImages2.empty() || (newestImages2.front().get() == oldestImage2.get())) {
+    return "Newest image is empty or the same as the oldest image.";
   }
 
   // Push two images onto the queue whose times are different and then ensure that
@@ -132,16 +124,25 @@ std::string ImageQueue::Test()
   image2->imageCenterTime.seconds = 2;
   image3->imageCenterTime.seconds = 3;
 
-  imageQueue.AddNewestImage(image2);
-  imageQueue.AddNewestImage(image3);
-  std::shared_ptr<ImageData> renderImage = imageQueue.GetRenderImage();
-  imageQueue.ReturnRenderImage(renderImage);
+  imageQueue.InsertImage(image2);
+  imageQueue.InsertImage(image3);
+  auto renderImages = imageQueue.GetNewestImages();
+  if (renderImages.size() != 1) {
+    return "Failed to get newest image from queue with queue length 3.";
+  }
+  imageQueue.InsertImage(renderImages.front());
   if (imageQueue.m_images.front().get() != image3.get()) {
     return "Failed to put newer image in front of queue.";
   }
-  imageQueue.ReturnRenderImage(image1);
+  imageQueue.InsertImage(image1);
   if (imageQueue.m_images.back().get() != image1.get()) {
     return "Failed to put older image in back of queue.";
+  }
+
+  // Test getting multiple newest images from the queue
+  renderImages = imageQueue.GetNewestImages(3);
+  if (renderImages.size() != 3) {
+    return "Failed to get 3 newest images from queue.";
   }
 
   return "";

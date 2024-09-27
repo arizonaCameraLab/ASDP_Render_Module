@@ -115,7 +115,7 @@ int main()
       std::shared_ptr<asdp::render::ImageData> image = std::make_shared<asdp::render::ImageData>();
       image->texture = MakeTexture(width, height, minVal, maxVal);
       camera.m_imageQueue = std::make_shared<asdp::render::ImageQueue>();
-      camera.m_imageQueue->AddNewestImage(image);
+      camera.m_imageQueue->InsertImage(image);
 
       // Odd-numbered columns are rotated with X facing up, even with it facing down.
       // The transformations are complicated by the fact that our Euler order of operations

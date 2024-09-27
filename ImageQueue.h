@@ -45,13 +45,9 @@ namespace asdp {
 
     /// @brief Thread-safe access to pool of images along with times they were created.
     /// @details This class is used to store images and their creation times.  It is used
-    /// by a creator thread to store images and by a consumer thread to retrieve image pointers.
-    /// The consumer thread will get a pointer to the newest image without pulling it off
-    /// the queue and it releases the shared pointer when it is done with the image.
-    /// The creator thread pulls the oldest image off the queue
-    /// and replaces it with a new image, which becomes the one to be rendered.
-    /// This class will not pop the last image off the queue to avoid pulling the rug out
-    /// from under a consumer thread that is still using the image.
+    /// by a creator thread to store images and by a consumer thread to retrieve groups of
+    /// image pointers and return them when they are done using them.
+    /// The creator thread pulls the oldest image off the queue and replaces it with a new image.
     /// Remember to make a different OpenGL context for each thread that will be using
     /// this class and have them share texture resources.
     class ImageQueue {
@@ -60,28 +56,21 @@ namespace asdp {
       virtual ~ImageQueue() = default;
 
       /// @brief Add an image to the queue as the next to be rendered.
-      /// @details This function adds an image to the queue.  The image becomes the
-      /// newest image in the queue, the one that will be rendered next.
+      /// @details This function adds an image to the queue.  The image is inserted
+      /// in time order.
       /// @param[in] image Image to add to the queue.
-      void AddNewestImage(std::shared_ptr<ImageData> image);
+      void InsertImage(std::shared_ptr<ImageData> image);
 
       /// @brief Get the oldest image in the queue, to be overwritten with new data.
       /// @return Shared pointer to the oldest image in the queue.  Null pointer if the
       /// queue has less than two elements.  The entry is removed from the queue.  Returns
       /// a null pointer if the queue is empty.
-      std::shared_ptr<ImageData> PopOldestImage();
+      std::shared_ptr<ImageData> GetOldestImage();
 
-      /// @brief Get the newest image in the queue, to be rendered.
-      /// @return Shared pointer to the newest image in the queue.
+      /// @brief Get the newest images in the queue.
+      /// @return Shared pointers to the newest images in the queue.
       /// The entry is removed from the queue.  Returns a null pointer if the queue is empty.
-      std::shared_ptr<ImageData> GetRenderImage();
-
-      /// @brief Puts the just-rendered image back.  If it is still the newest, adds to the front
-      /// @details This function adds an image to the queue.  If it is newer than the newest image
-      /// in the queue, it adds it to the front to be re-used next time.  Otherwise, it adds it to
-      /// the back to be overwritten.
-      /// @param[in] image Image to add to the queue.
-      void ReturnRenderImage(std::shared_ptr<ImageData> image);
+      std::list< std::shared_ptr<ImageData> > GetNewestImages(size_t count = 1);
 
       /// @brief Test function to test the ImageQueue class.
       /// @return Empty string on success, string with error message on failure.
