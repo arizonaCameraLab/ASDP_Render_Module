@@ -45,7 +45,7 @@ using namespace asdp::render;
 using json = nlohmann::json;
 using json = nlohmann::json;
 
-static std::string VERSION = "1.0.0";
+static std::string VERSION = "1.1.0";
 
 /// @brief The path to the configuration file. Defined in the CMakeLists file.
 std::filesystem::path dirPath = CONFIG_FILE_PATH;
@@ -878,8 +878,9 @@ int main(int argc, char** argv)
         unsigned int height = info.m_resolutionPixels[1];
         std::vector<uint16_t> image(width * height, 32767);
 
-        // Create the textures for the camera.
-        for (size_t i = 0; i < 3; i++) {
+        // Create the textures for the camera. Make two for the Composite to pull when it is looking
+        // for the next image to render, one for the texture thread to write to, and one to lie fallow.
+        for (size_t i = 0; i < 4; i++) {
           std::shared_ptr<ImageData> imageData = std::make_shared<ImageData>();
 
           unsigned int texture;

@@ -799,15 +799,59 @@ void CompositeCameras::AddBufferObjects(CameraRenderInfo const& cameraRenderInfo
   m_numIndices.push_back(indices.size());
 }
 
+static double TimeDiffMagnitude(asdp::Time t1, asdp::Time t2) {
+  asdp::Time diff;
+  if (t1 > t2) {
+    diff = t1 - t2;
+  } else {
+    diff = t2 - t1;
+  }
+  return diff.seconds + diff.microseconds * 1.0e-6;
+}
+
 void CompositeCameras::SetupRenderFrame(asdp::Time scanOutTime)
 {
   glUseProgram(m_programId);
   glDisable(GL_CULL_FACE);
 
-  // Grab shared pointers to the camera textures to be used for all views in this frame.
+  // To ensure that the set of images from all cameras are synchronized, we pull the first
+  // two images from each queue and then select a set of consistent ones.  We do this by finding
+  // the time of the oldest image among the first (newest) image from all cameras and then
+  // selecting from each pair the one whose time is closest to the selected time.  We return
+  // the unused images to their queues and push the selected images into the m_images vector.
   // There will be one entry per camera with the same vector index as the cameraRenderInfo.
+
+  // Get the image pairs
+  std::vector< std::list< std::shared_ptr<ImageData> > > images;
   for (auto const& cameraRenderInfo : m_cameraRenderInfos) {
-    m_images.push_back(cameraRenderInfo.m_imageQueue->GetNewestImages().front());
+    images.push_back(cameraRenderInfo.m_imageQueue->GetNewestImages(2));
+    if (images.back().size() != 2) {
+      std::cerr << "Composite::SetupRenderFrame(): Could not get image pair, skipping frame" << std::endl;
+      return;
+    }
+  }
+
+  // Find the oldest time among the newest image from each pair.
+  asdp::Time oldestTime = images[0].front()->imageCenterTime;
+  for (size_t i = 1; i < images.size(); i++) {
+    if (images[i].front()->imageCenterTime < oldestTime) {
+      oldestTime = images[i].front()->imageCenterTime;
+    }
+  }
+
+  // Find the image from each pair that is closest to the oldest time.  Push it into the m_images
+  // array and return the other image to the queue.
+  for (size_t i = 0; i < images.size(); i++) {
+    double diff0 = TimeDiffMagnitude(images[i].front()->imageCenterTime, oldestTime);
+    double diff1 = TimeDiffMagnitude(images[i].back()->imageCenterTime, oldestTime);
+
+    if (diff0 < diff1) {
+      m_images.push_back(images[i].front());
+      m_cameraRenderInfos[i].m_imageQueue->InsertImage(images[i].back());
+    } else {
+      m_images.push_back(images[i].back());
+      m_cameraRenderInfos[i].m_imageQueue->InsertImage(images[i].front());
+    }
   }
 
   // Store the scan out time for use in rendering.
