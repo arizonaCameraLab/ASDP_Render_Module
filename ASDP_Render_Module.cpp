@@ -45,7 +45,7 @@ using namespace asdp::render;
 using json = nlohmann::json;
 using json = nlohmann::json;
 
-static std::string VERSION = "1.1.0";
+static std::string VERSION = "1.2.0";
 
 /// @brief The path to the configuration file. Defined in the CMakeLists file.
 std::filesystem::path dirPath = CONFIG_FILE_PATH;
@@ -630,7 +630,7 @@ void usage(std::string name)
   std::cerr << "  --width <width>                     The width of the window (default 1280)." << std::endl;
   std::cerr << "  --height <height>                   The height of the window (default 1024)." << std::endl;
   std::cerr << "  --hFOV <horizontal field of view>   The horizontal field of view in degrees (default 40)." << std::endl;
-  std::cerr << "  --fullScreen                        Run in full screen mode." << std::endl;
+  std::cerr << "  --fullScreen <display>              Run in full screen mode on the specified display (0+)." << std::endl;
   std::cerr << "  --toneMap <tone map>                The tone map to use.  Options are: linear blackbody bluesky" << std::endl;
   std::cerr << "  --numDisplays <number of displays>  The number of display windows (default 1)" << std::endl;
   std::cerr << "  --replay <stream id>                ID of the stream to replay (1+)." << std::endl;
@@ -643,6 +643,7 @@ int main(int argc, char** argv)
   unsigned windowHeight = 1024;  ///< The height of the window.
   float hFOV = 40.0f;           ///< The horizontal field of view in degrees.
   bool fullScreen = false;      ///< Run in full screen mode.
+  int fullScreenDisplay = 0;    ///< The display to run in full screen mode on.
   ToneMap toneMap = ToneMap();  ///< The tone map to use, default linear.
   std::string ip_address;       ///< The IP address to listen on.
   size_t numDisplays = 1;       ///< The number of display windows to create.
@@ -678,7 +679,12 @@ int main(int argc, char** argv)
       }
       hFOV = std::stof(argv[i]);
     } else if (std::string("--fullScreen") == argv[i]) {
+      if (++i >= argc) {
+        usage(argv[0]);
+        return 2;
+      }
       fullScreen = true;
+      fullScreenDisplay = std::stoi(argv[i]);
     } else if (std::string("--toneMap") == argv[i]) {
       if (++i >= argc) {
         usage(argv[0]);
@@ -949,7 +955,7 @@ int main(int argc, char** argv)
       }
       displays.push_back(std::make_shared<DisplayWindow>("ASDP Render Module " + std::to_string(i),
         composite, client, 0, 0, 60.0f, 2500, windowWidth, windowHeight,
-        hFOV, "", displayTexture.get(), thisFullScreen, 0, false, handlers));
+        hFOV, "", displayTexture.get(), thisFullScreen, fullScreenDisplay, false, handlers));
     }
 
     // Construct shared pointers to the data structures that we'll need to do rendering, with the
