@@ -151,6 +151,42 @@ install(TARGETS ASDP_Render_Module EXPORT ${PROJECT_NAME}
 install(DIRECTORY ${CMAKE_SOURCE_DIR}/ASDP_Render_Module_Configs DESTINATION ${CMAKE_BINARY_DIR})
 install(DIRECTORY ${CMAKE_SOURCE_DIR}/ASDP_Render_Module_Configs DESTINATION ${CMAKE_INSTALL_BINDIR})
 
+if(WIN32)
+  # Function to find an element in a list that contains a specified substring
+  function(find_element_with_substring result list substring)
+      set(found_element "")
+      foreach(element IN LISTS list)
+          string(FIND "${element}" "${substring}" pos)
+          if(NOT pos EQUAL -1)
+              set(found_element "${element}")
+              break()
+          endif()
+      endforeach()
+      set(${result} "${found_element}" PARENT_SCOPE)
+  endfunction()
+
+  # Assuming GLEW::glew is the imported target from find_package(GLEW REQUIRED)
+  # Use that to find all of the glew32.dll files in neighboring directories and then pick the one
+  # that has "x64" in the path.
+  get_target_property(GLEW_INCLUDE_DIRS GLEW::glew INTERFACE_INCLUDE_DIRECTORIES)
+  file(GLOB_RECURSE GLEW_DLL "${GLEW_INCLUDE_DIRS}/../*glew32.dll")
+  find_element_with_substring(GLEW_DLL2 "${GLEW_DLL}" "x64")
+
+  if(GLEW_DLL)
+    # Copy the GLEW DLL to the build directory after building the executable
+    add_custom_command(TARGET ASDP_Render_Module POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different
+      ${GLEW_DLL} $<TARGET_FILE_DIR:ASDP_Render_Module>
+      COMMENT "Copying ${GLEW_DLL} to build directory"
+    )
+
+    # Install the GLEW DLL to the install directory
+    install(FILES ${GLEW_DLL} DESTINATION ${CMAKE_INSTALL_BINDIR})
+  else()
+    message(WARNING "GLEW DLL not found. Make sure glew32.dll is in the same path as your GLEW include directory.")
+  endif()
+endif()
+
 #-----------------------------------------------------------------------------
 # Build utilities if we've been asked to.
 
