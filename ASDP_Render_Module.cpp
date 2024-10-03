@@ -45,7 +45,7 @@ using namespace asdp::render;
 using json = nlohmann::json;
 using json = nlohmann::json;
 
-static std::string VERSION = "1.3.0";
+static std::string VERSION = "1.4.0";
 
 /// @brief The path to the configuration file. Defined in the CMakeLists file.
 std::filesystem::path dirPath = CONFIG_FILE_PATH;
@@ -635,6 +635,7 @@ void usage(std::string name)
   std::cerr << "  --toneMap <tone map>                The tone map to use.  Options are: linear blackbody bluesky" << std::endl;
   std::cerr << "  --numDisplays <number of displays>  The number of display windows (default 1)" << std::endl;
   std::cerr << "  --replay <stream id>                ID of the stream to replay (1+)." << std::endl;
+  std::cerr << "  --lineBatchesPerGPUSend <int>       The number of batches of lines to group (default 16 Linux, 32 Windows)" << std::endl;
 };
 
 int main(int argc, char** argv)
@@ -650,6 +651,13 @@ int main(int argc, char** argv)
   std::string ip_address;       ///< The IP address to listen on.
   size_t numDisplays = 1;       ///< The number of display windows to create.
   uint32_t replayStreamID = 0;  ///< The stream ID to replay, 0 for live.
+#ifdef _WIN32
+  // On Windows, throughput tests when receiving data from the network show that we must have 32 batches
+  // to keep up.  Linux is more efficient here, and can handle 16 batches at a time.
+  int lineBatchesPerGPUSend = 32; ///< The number of batches of lines to group for sending to the GPU.
+#else
+  int lineBatchesPerGPUSend = 16; ///< The number of batches of lines to group for sending to the GPU.
+#endif
   size_t realParams = 0;        ///< The number of non-flag parameters we've seen.
 
   // Parse the command line arguments, with the first non-flag argument being the
@@ -693,6 +701,12 @@ int main(int argc, char** argv)
         return 2;
       }
       fps = std::stof(argv[i]);
+    } else if (std::string("--lineBatchesPerGPUSend") == argv[i]) {
+      if (++i >= argc) {
+        usage(argv[0]);
+        return 2;
+      }
+      lineBatchesPerGPUSend = std::stoi(argv[i]);
     } else if (std::string("--toneMap") == argv[i]) {
       if (++i >= argc) {
         usage(argv[0]);
@@ -1023,7 +1037,7 @@ int main(int argc, char** argv)
     std::vector<std::thread> copyDataToGPUThread;
     for (size_t i = 0; i < NUM_TEXTURE_THREADS; i++) {
       copyDataToGPUThread.push_back(std::thread(CopyDataToTextures, cameras[0].width, cameras[0].height, std::ref(done),
-        dataQueues[i], 16, displayTextures[i]));
+        dataQueues[i], lineBatchesPerGPUSend, displayTextures[i]));
     }
 
     // Launch the data receiving threads, hooking them together using the queues and passing the texture OpenGL
