@@ -31,7 +31,16 @@ Then run the following: `sudo systemctl mask sleep.target suspend.target hiberna
 to prevent the system from suspending or sleeping when inactive.
 
 On Windows it requires GLEW to be installed. Pre-built binaries are available for many systems at
-https://github.com/nigels-com/glew/releases/tag/glew-2.2.0
+https://github.com/nigels-com/glew/releases/tag/glew-2.2.0 and these can be unzipped anywhere on
+the system and the path to the include and lib directories specified in the CMakeLists.txt file
+by adding space-separated entries to the CMAKE_PREFIX_PATH on line 7. If there are spaces in the
+path, the entry must be enclosed in double quotes.  For example. if GLEW is unzipped to
+C:/glew-2.2.0, the line would be:
+
+    list(APPEND CMAKE_PREFIX_PATH "C:/glew-2.2.0" F:/Packages/GLEW/glew-2.2.0)
+
+Multiple entries are allowed in this line, so feel free to keep adding entries as needed
+on different machines and leave the existing ones in the file.
 
 **Build:** ASDP_Render_Module uses CMake to configure the builds (though other build
 systems could be used).  On Ubuntu Linux, this can be done as follows

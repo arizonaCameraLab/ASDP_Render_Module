@@ -917,7 +917,7 @@ int main(int argc, char** argv)
 
         // Create the textures for the camera. Make two for each Composite to pull when it is looking
         // for the next image to render, one for the texture thread to write to, and one to lie fallow.
-        for (size_t i = 0; i < 2 + displayInfos.size(); i++) {
+        for (size_t i = 0; i < 2 + 2*displayInfos.size(); i++) {
           std::shared_ptr<ImageData> imageData = std::make_shared<ImageData>();
 
           unsigned int texture;
