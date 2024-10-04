@@ -109,6 +109,10 @@ void TextureThread(int width, int height, std::atomic_bool& done,
     data->imageQueuePtr = imageQueue;
     data->streamPtr = stream;
     CPUDataToTextureHandler handler(texturesToCUDAMap, data, width, height, 16);
+    if (handler.GetStatus().size() > 0) {
+      std::cerr << "Error in CPUDataToTextureHandler constructor: " << handler.GetStatus() << std::endl;
+      return;
+    }
 
     // Get the next image from the image source and copy it into the pinned memory buffer
     // three lines at a time, then send to the GPU to be stored in the texture.

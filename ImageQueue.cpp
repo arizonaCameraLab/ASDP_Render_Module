@@ -18,11 +18,21 @@ std::shared_ptr<ImageData> ImageQueue::GetOldestImage()
   if (m_images.size() == 0) {
     return nullptr;
   } else {
-    if (m_images.back().refCount > 0) {
+    // Look from the end of the list for the oldest image that is not locked.
+    auto it = m_images.rbegin();
+    while ((it != m_images.rend()) && (it->refCount > 0)) {
+      ++it;
+    };
+    if ((it == m_images.rend()) || (it->refCount > 0)) {
       return nullptr;
     } else {
-      std::shared_ptr<ImageData> image = m_images.back().image;
-      m_images.pop_back();
+      std::shared_ptr<ImageData> image = it->image;
+      // Convert reverse iterator to a regular iterator
+      auto forwardIt = it.base();
+      // The base() method returns an iterator pointing to the element after the one pointed to by the reverse iterator
+      // So we need to decrement it to get the correct element
+      --forwardIt;
+      m_images.erase(forwardIt);
       return image;
     }
   }
@@ -203,6 +213,21 @@ std::string ImageQueue::Test()
     if (image.refCount != 1) {
       return "Failed to singe unlock images in queue.";
     }
+  }
+
+  // Unlock the second time
+  for (auto const & image : renderImages) {
+    if (!imageQueue.UnlockImage(image)) {
+      return "Failed to unlock image in queue.";
+    }
+  }
+
+  // Now hand-lock the last image and then ensure that we get the
+  // next-oldest from the queue.
+  imageQueue.m_images.back().refCount = 1;
+  renderImage = imageQueue.GetOldestImage();
+  if (renderImage.get() != image2.get()) {
+    return "Failed to get image from queue with hand-locked last element.";
   }
 
   return "";
