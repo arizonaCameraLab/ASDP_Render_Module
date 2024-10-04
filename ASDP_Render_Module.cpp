@@ -45,7 +45,7 @@ using namespace asdp::render;
 using json = nlohmann::json;
 using json = nlohmann::json;
 
-static std::string VERSION = "1.5.0";
+static std::string VERSION = "1.6.0";
 
 /// @brief The path to the configuration file. Defined in the CMakeLists file.
 std::filesystem::path dirPath = CONFIG_FILE_PATH;
@@ -621,6 +621,19 @@ Status HandleStreamPacket(std::shared_ptr<StreamPacket> packet, std::shared_ptr<
   return OKAY;
 }
 
+/// @brief Structure to hold display information
+struct DisplayInfo
+{
+  int width = 1280;  ///< The width of the display.
+  int height = 1024; ///< The height of the display.
+  float hFOV = 40.0f;     ///< The horizontal field of view in degrees.
+  ToneMap toneMap = ToneMap(); ///< The tone map to use.
+  std::string joystick = "";    ///< The joystick to use for input.
+  float fps = 60.0f;       ///< The frames per second to run at.
+  bool fullScreen = false; ///< Run in full screen mode.
+  int fullScreenDisplay = 0; ///< The display to run in full screen mode on.
+};
+
 void usage(std::string name)
 {
   std::cerr << "Usage: " << name << " [options] <ip_address>" << std::endl;
@@ -634,7 +647,7 @@ void usage(std::string name)
   std::cerr << "  --joystick <string>                 The joystick to use for input (e.g. GLFW::0)." << std::endl;
   std::cerr << "  --hFOV <horizontal field of view>   The horizontal field of view in degrees (default 40)." << std::endl;
   std::cerr << "  --toneMap <tone map>                The tone map to use.  Options are: linear blackbody bluesky" << std::endl;
-  std::cerr << "  --numDisplays <number of displays>  The number of display windows (default 1)" << std::endl;
+  std::cerr << "  --addDisplay                        Add another display with defaults that can be overridden" << std::endl;
   std::cerr << "  --replay <stream id>                ID of the stream to replay (1+)." << std::endl;
   std::cerr << "  --lineBatchesPerGPUSend <int>       The number of batches of lines to group (default 16 Linux, 32 Windows)" << std::endl;
 };
@@ -642,16 +655,8 @@ void usage(std::string name)
 int main(int argc, char** argv)
 {
   uint32_t frameStride = 1;     ///< Read one out of every this many frames. Set to 1 for every frame.
-  unsigned windowWidth = 1280;  ///< The width of the window.
-  unsigned windowHeight = 1024;  ///< The height of the window.
-  float hFOV = 40.0f;           ///< The horizontal field of view in degrees.
-  bool fullScreen = false;      ///< Run in full screen mode.
-  int fullScreenDisplay = 0;    ///< The display to run in full screen mode on.
-  float fps = 60.0f;            ///< The frames per second to run at.
-  std::string joystick;         ///< The joystick to use for input.
-  ToneMap toneMap = ToneMap();  ///< The tone map to use, default linear.
+  std::vector<DisplayInfo> displayInfos = { DisplayInfo() }; ///< Information for each display that is to be created.
   std::string ip_address;       ///< The IP address to listen on.
-  size_t numDisplays = 1;       ///< The number of display windows to create.
   uint32_t replayStreamID = 0;  ///< The stream ID to replay, 0 for live.
 #ifdef _WIN32
   // On Windows, throughput tests when receiving data from the network show that we must have 32 batches
@@ -676,39 +681,39 @@ int main(int argc, char** argv)
         usage(argv[0]);
         return 2;
       }
-      windowWidth = std::stoi(argv[i]);
+      displayInfos.back().width = std::stoi(argv[i]);
     }
     else if (std::string("--height") == argv[i]) {
       if (++i >= argc) {
         usage(argv[0]);
         return 2;
       }
-      windowHeight = std::stoi(argv[i]);
+      displayInfos.back().height = std::stoi(argv[i]);
     } else if (std::string("--hFOV") == argv[i]) {
       if (++i >= argc) {
         usage(argv[0]);
         return 2;
       }
-      hFOV = std::stof(argv[i]);
+      displayInfos.back().hFOV = std::stof(argv[i]);
     } else if (std::string("--fullScreen") == argv[i]) {
       if (++i >= argc) {
         usage(argv[0]);
         return 2;
       }
-      fullScreen = true;
-      fullScreenDisplay = std::stoi(argv[i]);
+      displayInfos.back().fullScreen = true;
+      displayInfos.back().fullScreenDisplay = std::stoi(argv[i]);
     } else if (std::string("--fps") == argv[i]) {
       if (++i >= argc) {
         usage(argv[0]);
         return 2;
       }
-      fps = std::stof(argv[i]);
+      displayInfos.back().fps = std::stof(argv[i]);
     } else if (std::string("--joystick") == argv[i]) {
       if (++i >= argc) {
         usage(argv[0]);
         return 2;
       }
-      joystick = argv[i];
+      displayInfos.back().joystick = argv[i];
     } else if (std::string("--lineBatchesPerGPUSend") == argv[i]) {
       if (++i >= argc) {
         usage(argv[0]);
@@ -721,21 +726,17 @@ int main(int argc, char** argv)
         return 2;
       }
       if (std::string("linear") == argv[i]) {
-        toneMap = ToneMap();
+        displayInfos.back().toneMap = ToneMap();
       } else if (std::string("blackbody") == argv[i]) {
-        toneMap = ToneMapBlackbody();
+        displayInfos.back().toneMap = ToneMapBlackbody();
       } else if (std::string("bluesky") == argv[i]) {
-        toneMap = ToneMapBlueSky();
+        displayInfos.back().toneMap = ToneMapBlueSky();
       } else {
         std::cerr << "Unknown tone map: " << argv[i] << std::endl;
         return 2;
       }
-    } else if (std::string("--numDisplays") == argv[i]) {
-      if (++i >= argc) {
-        usage(argv[0]);
-        return 2;
-      }
-      numDisplays = std::stoi(argv[i]);
+    } else if (std::string("--addDisplay") == argv[i]) {
+      displayInfos.push_back(DisplayInfo());
     } else if (std::string("--replay") == argv[i]) {
       if (++i >= argc) {
         usage(argv[0]);
@@ -952,40 +953,45 @@ int main(int argc, char** argv)
       return 19;
     }
 
-    // Construct a Tone Map texture to use for rendering the cameras.
-    if (!displayTexture->BorrowContext()) {
-      std::cerr << "Error borrowing context from displayTexture for ToneMap." << std::endl;
-      return 20;
-    }
-    GLuint toneMapTexture = toneMap.GenerateTexture();
-    if (toneMapTexture == 0) {
-      std::cerr << "Error generating texture for ToneMap." << std::endl;
-      return 21;
-    }
-    if (!displayTexture->ReturnContext()) {
-      std::cerr << "Error returning context to displayTexture for ToneMap." << std::endl;
-      return 21;
-    }
-
     // Configure an event structure to handle callbacks for the display windows.
     std::shared_ptr<EventHandlers> handlers = std::make_shared<EventHandlers>();
     handlers->TogglePlayPause = TogglePlayPause;
 
     // Construct one or more Display objects to render the cameras.  They all share objects with the texture Display.
     std::vector<std::shared_ptr<DisplayWindow>> displays;
-    for (size_t i = 0; i < numDisplays; i++) {
+    std::vector<GLuint> toneMapTextures;  ///< Stores these for later deletion.
+    for (size_t i = 0; i < displayInfos.size(); i++) {
+
+      // Construct a Tone Map texture to use for rendering the cameras.
+      if (!displayTexture->BorrowContext()) {
+        std::cerr << "Error borrowing context from displayTexture for ToneMap." << std::endl;
+        return 20;
+      }
+      GLuint toneMapTexture = displayInfos[i].toneMap.GenerateTexture();
+      toneMapTextures.push_back(toneMapTexture);
+      if (toneMapTexture == 0) {
+        std::cerr << "Error generating texture for ToneMap." << std::endl;
+        return 21;
+      }
+      if (!displayTexture->ReturnContext()) {
+        std::cerr << "Error returning context to displayTexture for ToneMap." << std::endl;
+        return 21;
+      }
+
       // Construct a Composite object to render the cameras.  We need a separate Composite per Display so that each
       // can cache consistent camera images for the whole frame while views are being rendered.
       // Two displays cannot share a SetupRenderFrame() call because they may have different frame rates.
       std::shared_ptr<Composite> composite = std::make_shared<CompositeCameras>(cameraRenderInfos, toneMapTexture);
 
-      bool thisFullScreen = fullScreen;
-      if (i > 0) {
-        thisFullScreen = false;
-      }
       displays.push_back(std::make_shared<DisplayWindow>("ASDP Render Module " + std::to_string(i),
-        composite, client, 0, 0, fps, 2500, windowWidth, windowHeight,
-        hFOV, joystick, displayTexture.get(), thisFullScreen, fullScreenDisplay, false, handlers));
+        composite, client, 0, 0, displayInfos[i].fps, 2500, displayInfos[i].width, displayInfos[i].height,
+        displayInfos[i].hFOV, displayInfos[i].joystick, displayTexture.get(),
+        displayInfos[i].fullScreen, displayInfos[i].fullScreenDisplay, false, handlers));
+      if (displays.back()->GetStatus() != "") {
+        std::cerr << "Error constructing DisplayWindow: " << displays.back()->GetStatus() << std::endl;
+        displays.clear();
+        return 22;
+      }
     }
 
     // Construct shared pointers to the data structures that we'll need to do rendering, with the
@@ -1212,7 +1218,8 @@ int main(int argc, char** argv)
       return 33;
     }
     cameraRenderInfos.clear();
-    glDeleteTextures(1, &toneMapTexture);
+
+    glDeleteTextures(toneMapTextures.size(), toneMapTextures.data());
     if (!displayTexture->ReturnContext()) {
       std::cerr << "Error returning context to displayTexture." << std::endl;
       return 34;

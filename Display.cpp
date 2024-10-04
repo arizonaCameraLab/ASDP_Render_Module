@@ -222,6 +222,12 @@ DisplayWindow::DisplayWindow(std::string windowName, std::shared_ptr<Composite> 
   : Display(composite, client, triggerID, triggerAheadMicroseconds, handlers, userData)
   , m_impl(new DisplayWindowImpl)
 {
+  // Check our parameters.
+  if ((desiredWidth <= 0) || (desiredHeight <= 0) || (horizontalFOVDegrees <= 0.0f)) {
+    m_status = "Invalid window size or field of view";
+    return;
+  }
+
   // Store info from the constructor.
   m_impl->m_horizontalFOVDegrees = horizontalFOVDegrees; 
 

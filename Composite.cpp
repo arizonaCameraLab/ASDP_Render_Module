@@ -664,8 +664,10 @@ bool CompositeCameras::SetupRendering()
 
 CompositeCameras::~CompositeCameras()
 {
-  for (size_t i = 0; i < m_cameraRenderInfos.size(); i++) {
+  for (size_t i = 0; i < m_vertexBufferObjects.size(); i++) {
     glDeleteBuffers(1, &m_vertexBufferObjects[i]);
+  }
+  for (size_t i = 0; i < m_indexBufferObjects.size(); i++) {
     glDeleteBuffers(1, &m_indexBufferObjects[i]);
   }
   glDeleteProgram(m_programId);
