@@ -45,8 +45,8 @@ namespace asdp {
 
     /// @brief Thread-safe access to pool of images along with times they were created.
     /// @details This class is used to store images and their creation times.  It is used
-    /// by a creator thread to store images and by a consumer thread to retrieve groups of
-    /// image pointers and return them when they are done using them.
+    /// by a creator thread to store images and by a consumer thread to lock groups of
+    /// image pointers and then unlock them when they are done using them.
     /// The creator thread pulls the oldest image off the queue and replaces it with a new image.
     /// Remember to make a different OpenGL context for each thread that will be using
     /// this class and have them share texture resources.
@@ -55,22 +55,26 @@ namespace asdp {
       ImageQueue() = default;
       virtual ~ImageQueue() = default;
 
-      /// @brief Add an image to the queue as the next to be rendered.
-      /// @details This function adds an image to the queue.  The image is inserted
-      /// in time order.
+      /// @brief Add an image to the queue in time-sorted order.
       /// @param[in] image Image to add to the queue.
       void InsertImage(std::shared_ptr<ImageData> image);
 
-      /// @brief Get the oldest image in the queue, to be overwritten with new data.
+      /// @brief Pop the oldest image off the queue, to be overwritten with new data.
       /// @return Shared pointer to the oldest image in the queue.  Null pointer if the
-      /// queue has less than two elements.  The entry is removed from the queue.  Returns
+      /// queue has no unlocked elements.  The entry is removed from the queue.  Returns
       /// a null pointer if the queue is empty.
       std::shared_ptr<ImageData> GetOldestImage();
 
-      /// @brief Get the newest images in the queue.
+      /// @brief Lock the newest images in the queue and return their pointers.
       /// @return Shared pointers to the newest images in the queue.
-      /// The entry is removed from the queue.  Returns a null pointer if the queue is empty.
-      std::list< std::shared_ptr<ImageData> > GetNewestImages(size_t count = 1);
+      /// Returns a short or empty list if there are not enough elements.
+      std::list< std::shared_ptr<ImageData> > LockNewestImages(size_t count = 1);
+
+      /// @brief Unlock an image that was previously locked.
+      /// @param[in] image Image to unlock.
+      /// @return True if the image was successfully unlocked, false if the image was not found
+      /// or is not locked.
+      bool UnlockImage(std::shared_ptr<ImageData> image);
 
       /// @brief Test function to test the ImageQueue class.
       /// @return Empty string on success, string with error message on failure.
@@ -83,8 +87,14 @@ namespace asdp {
       /// @brief Mutex to protect access to the image queue.
       mutable std::mutex m_mutex;
 
+      /// @brief Element in the image queue and its reference count.
+      struct ImageQueueElement {
+        std::shared_ptr<ImageData> image;     ///< Image data.
+        unsigned refCount = 0;                ///< Reference count for the image.
+      };
+
       /// @brief The images associated with this queue.
-      std::list< std::shared_ptr<ImageData> > m_images;
+      std::list<ImageQueueElement> m_images;
     };
 
   } // namespace render

@@ -826,7 +826,7 @@ void CompositeCameras::SetupRenderFrame(asdp::Time scanOutTime)
   // Get the image pairs
   std::vector< std::list< std::shared_ptr<ImageData> > > images;
   for (auto const& cameraRenderInfo : m_cameraRenderInfos) {
-    images.push_back(cameraRenderInfo.m_imageQueue->GetNewestImages(2));
+    images.push_back(cameraRenderInfo.m_imageQueue->LockNewestImages(2));
     if (images.back().size() != 2) {
       std::cerr << "Composite::SetupRenderFrame(): Could not get image pair, skipping frame" << std::endl;
       return;
@@ -849,10 +849,10 @@ void CompositeCameras::SetupRenderFrame(asdp::Time scanOutTime)
 
     if (diff0 < diff1) {
       m_images.push_back(images[i].front());
-      m_cameraRenderInfos[i].m_imageQueue->InsertImage(images[i].back());
+      m_cameraRenderInfos[i].m_imageQueue->UnlockImage(images[i].back());
     } else {
       m_images.push_back(images[i].back());
-      m_cameraRenderInfos[i].m_imageQueue->InsertImage(images[i].front());
+      m_cameraRenderInfos[i].m_imageQueue->UnlockImage(images[i].front());
     }
   }
 
@@ -915,7 +915,7 @@ void CompositeCameras::TearDownRenderFrame()
   for (size_t i = 0; i < m_cameraRenderInfos.size(); i++) {
     CameraRenderInfo const& CRI = m_cameraRenderInfos[i];
     if (m_images[i] != nullptr) {
-      CRI.m_imageQueue->InsertImage(m_images[i]);
+      CRI.m_imageQueue->UnlockImage(m_images[i]);
     }
   }
   m_images.clear();

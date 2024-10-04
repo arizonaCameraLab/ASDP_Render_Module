@@ -82,7 +82,7 @@ namespace asdp {
       /// @details This function does not return until the rendering is complete and written to the buffers.
       /// If initialization has not been done, it calls SetupRendering() to set up the rendering state.
       /// An OpenGL context must be active when this function is called.
-      /// It calls SetupFrenderFrame() once per frame.
+      /// It calls SetupRenderFrame() once per frame.
       /// It calls the RenderView() method to render each viewpoint after it has set up the frame buffer
       /// and cleared the color and depth textures.  It calls TearDownRenderFrame() after all views.
       /// @param scanOutTime The time that the scan out is occurring, in ASDP Core time.  This is the time of the middle of the frame.
