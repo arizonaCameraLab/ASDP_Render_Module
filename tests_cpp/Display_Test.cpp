@@ -37,8 +37,9 @@ int main()
     }
 
     // Create a Display window to show the CompositeCube object that shares objects with the texWindow.
+    // Control it using joystick 0.
     asdp::render::DisplayWindow window("Display_Test", composite, client, 0, 0, 60.0f, 2500, width, height,
-      90, "", &texWindow);
+      90, "GLFW::0", &texWindow);
     if (window.GetStatus() != "") {
       std::cerr << "Error opening first display: " << window.GetStatus() << std::endl;
       return 1;
@@ -46,9 +47,10 @@ int main()
 
     // Create a second Display window to show the same CompositeCube object that shares objects
     // with the texWindow (and therefore the first Display window).
+    // Control it using joystick 1.
     asdp::render::DisplayWindow window2("Display_Test2", composite, client, 0, 0, 60.0f, 2500,
       width, height,
-      90, "", &texWindow);
+      90, "GLFW::1", &texWindow);
     if (window2.GetStatus() != "") {
       std::cerr << "Error opening second display: " << window2.GetStatus() << std::endl;
       return 2;

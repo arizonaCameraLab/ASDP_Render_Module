@@ -207,6 +207,9 @@ public:
 
   /// Whether the space bar was pressed during the last loop, used to toggle play/pause.
   bool m_spacePressed = false;
+
+  /// Index of the joystick to use, or -1 if no joystick is to be used.
+  int m_glfwJoystickIndex = -1;
 };
 
 DisplayWindow::DisplayWindow(std::string windowName, std::shared_ptr<Composite> composite,
@@ -349,7 +352,16 @@ void DisplayWindow::DisplayThread(std::string windowName,
     glGetError();
 
     // Open the joystick if there is one asked for and there is one present.
-    /// @todo
+    // We currently only support GLFW-based joysticks, which are specified by the string
+    // "GLFW::#".  The # is the number of the joystick to open, starting with 0.  GLFW
+    // joysticks are alwasy open, so we just need to record which one to use if it is
+    // present.
+    if (!joystick.empty() && (joystick.substr(0, 6) == "GLFW::")) {
+      int joyNum = std::stoi(joystick.substr(6));
+      if (glfwJoystickPresent(joyNum)) {
+        m_impl->m_glfwJoystickIndex = joyNum;
+      }
+    }
 
     // Add hooks for mouse input.
     /// @todo
@@ -364,6 +376,7 @@ void DisplayWindow::DisplayThread(std::string windowName,
 
   // Loop until the display is done.
   bool frameCompleted = false;
+  auto lastJoystickCheck = std::chrono::steady_clock::now();
   while (!m_done) {
     // Wait until it is time to render the next frame.  We must busy-wait here to avoid having our
     // thread swapped out for longer than we want.
@@ -386,7 +399,23 @@ void DisplayWindow::DisplayThread(std::string windowName,
 
     // Process keyboard/mouse/joystick input events and update the viewpoint
     HandleKeyboard();
-    /// @todo
+    if (m_impl->m_glfwJoystickIndex >= 0) {
+      auto now = std::chrono::steady_clock::now();
+      std::chrono::duration<double> elapsed = now - lastJoystickCheck;
+      lastJoystickCheck = now;
+
+      int axisCount;
+      const float* axes = glfwGetJoystickAxes(m_impl->m_glfwJoystickIndex, &axisCount);
+      if (axisCount >= 2) {
+        if (fabs(axes[0]) > 0.15) {
+          m_impl->m_rotationZDegrees -= 90.0f * elapsed.count() * axes[0];
+        }
+        if (fabs(axes[1]) > 0.15) {
+          m_impl->m_rotationXDegrees -= 90.0f * elapsed.count() * axes[1];
+        }
+      }
+    }
+    /// @todo mouse input
 
     // Ensure that the view orientation stays within bounds.
     ComputeAndClampViewOrientation();

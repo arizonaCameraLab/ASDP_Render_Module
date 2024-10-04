@@ -45,7 +45,7 @@ using namespace asdp::render;
 using json = nlohmann::json;
 using json = nlohmann::json;
 
-static std::string VERSION = "1.4.0";
+static std::string VERSION = "1.5.0";
 
 /// @brief The path to the configuration file. Defined in the CMakeLists file.
 std::filesystem::path dirPath = CONFIG_FILE_PATH;
@@ -631,6 +631,7 @@ void usage(std::string name)
   std::cerr << "  --height <height>                   The height of the window (default 1024)." << std::endl;
   std::cerr << "  --fullScreen <display>              Run in full screen mode on the specified display (0+)." << std::endl;
   std::cerr << "  --fps <frames per second>           The frames per second to run at (default 60)." << std::endl;
+  std::cerr << "  --joystick <string>                 The joystick to use for input (e.g. GLFW::0)." << std::endl;
   std::cerr << "  --hFOV <horizontal field of view>   The horizontal field of view in degrees (default 40)." << std::endl;
   std::cerr << "  --toneMap <tone map>                The tone map to use.  Options are: linear blackbody bluesky" << std::endl;
   std::cerr << "  --numDisplays <number of displays>  The number of display windows (default 1)" << std::endl;
@@ -647,6 +648,7 @@ int main(int argc, char** argv)
   bool fullScreen = false;      ///< Run in full screen mode.
   int fullScreenDisplay = 0;    ///< The display to run in full screen mode on.
   float fps = 60.0f;            ///< The frames per second to run at.
+  std::string joystick;         ///< The joystick to use for input.
   ToneMap toneMap = ToneMap();  ///< The tone map to use, default linear.
   std::string ip_address;       ///< The IP address to listen on.
   size_t numDisplays = 1;       ///< The number of display windows to create.
@@ -701,6 +703,12 @@ int main(int argc, char** argv)
         return 2;
       }
       fps = std::stof(argv[i]);
+    } else if (std::string("--joystick") == argv[i]) {
+      if (++i >= argc) {
+        usage(argv[0]);
+        return 2;
+      }
+      joystick = argv[i];
     } else if (std::string("--lineBatchesPerGPUSend") == argv[i]) {
       if (++i >= argc) {
         usage(argv[0]);
@@ -967,8 +975,8 @@ int main(int argc, char** argv)
     std::vector<std::shared_ptr<DisplayWindow>> displays;
     for (size_t i = 0; i < numDisplays; i++) {
       // Construct a Composite object to render the cameras.  We need a separate Composite per Display so that each
-      // can cache consistent camera images for the whole frame while views are being rendered.  Multiple Display
-      // objects may run at different frame rates, so no consistent state would work for both.
+      // can cache consistent camera images for the whole frame while views are being rendered.
+      // Two displays cannot share a SetupRenderFrame() call because they may have different frame rates.
       std::shared_ptr<Composite> composite = std::make_shared<CompositeCameras>(cameraRenderInfos, toneMapTexture);
 
       bool thisFullScreen = fullScreen;
@@ -977,7 +985,7 @@ int main(int argc, char** argv)
       }
       displays.push_back(std::make_shared<DisplayWindow>("ASDP Render Module " + std::to_string(i),
         composite, client, 0, 0, fps, 2500, windowWidth, windowHeight,
-        hFOV, "", displayTexture.get(), thisFullScreen, fullScreenDisplay, false, handlers));
+        hFOV, joystick, displayTexture.get(), thisFullScreen, fullScreenDisplay, false, handlers));
     }
 
     // Construct shared pointers to the data structures that we'll need to do rendering, with the
