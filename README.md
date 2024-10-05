@@ -30,6 +30,9 @@ and then reboot.
 Then run the following: `sudo systemctl mask sleep.target suspend.target hibernate.target hybrid-sleep.target`
 to prevent the system from suspending or sleeping when inactive.
 
+**Note:** On Linux, joysticks must be plugged into the USB ports at the top back of the Render
+Server to be recognized by the system.  This is also true of the keyboard and mouse.
+
 On Windows it requires GLEW to be installed. Pre-built binaries are available for many systems at
 https://github.com/nigels-com/glew/releases/tag/glew-2.2.0 and these can be unzipped anywhere on
 the system and the path to the include and lib directories specified in the CMakeLists.txt file
