@@ -112,11 +112,14 @@ void Composite::Render(asdp::Time scanOutTime, std::vector<ViewRenderInfo> views
   // Unset things
   glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
+  // Ensure that we're done with the rendering for this frame before we free up our
+  // resources.  This is necessary because we're sharing textures with OpenGL contexts
+  // on other threads and they could re-use the texture resources and start writing to
+  // them before we're done using them for rendering.
+  glFinish();
+
   // Done with the data for a render frame
   TearDownRenderFrame();
-
-  // Wait until the rendering has finished.
-  glFinish();
 }
 
 void Composite::checkShaderError(GLuint shaderId, const std::string& exceptionMsg) {
