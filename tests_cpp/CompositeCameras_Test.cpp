@@ -115,6 +115,8 @@ int main()
       std::shared_ptr<asdp::render::ImageData> image = std::make_shared<asdp::render::ImageData>();
       image->texture = MakeTexture(width, height, minVal, maxVal);
       camera.m_imageQueue = std::make_shared<asdp::render::ImageQueue>();
+      // We must insert two images because the renderer will grab the newest two images.
+      camera.m_imageQueue->InsertImage(image);
       camera.m_imageQueue->InsertImage(image);
 
       // Odd-numbered columns are rotated with X facing up, even with it facing down.

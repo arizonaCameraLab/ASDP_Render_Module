@@ -390,7 +390,7 @@ void DisplayWindow::DisplayThread(std::string windowName,
     }
 
     // Grab the context mutex for the duration of the loop.  Once we have it, we know
-    // that the context is not active in another context.
+    // that the context is not active in another thread.
     std::lock_guard<std::mutex> lock(Display::m_impl->m_contextMutex);
 
     // Make the window's context current

@@ -119,7 +119,7 @@ CPUDataToTextureHandler::~CPUDataToTextureHandler()
   // Adding this call fixed a misalignment between cameras where neighbors had different-timed images.
   glFinish();
 
-  // Put the texture back into the image queue as the newest image so the Composite will use it.
+  // Put the texture back into the image queue so the Composite can use it.
   m_dataPtr->imageQueuePtr->InsertImage(m_imageData);
 }
 

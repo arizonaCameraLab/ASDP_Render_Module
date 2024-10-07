@@ -114,6 +114,10 @@ namespace asdp {
       virtual void SetupRenderFrame(asdp::Time scanOutTime) = 0;
 
       /// @brief Tear down state needed for rendering.
+      /// @details This function is called after all views have been rendered for the frame.  If this
+      /// method requires all of the objects/textures to no longer be needed, it must call
+      /// glFinish() or use another synchronization method to ensure that the GPU has finished
+      /// rendering before releasing the objects.
       virtual void TearDownRenderFrame() = 0;
 
       /// @brief Helper function to check for errors.

@@ -112,7 +112,9 @@ void Composite::Render(asdp::Time scanOutTime, std::vector<ViewRenderInfo> views
   // Unset things
   glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-  // Done with the data for a render frame
+  // Done with the data for a render frame.  If the code in this method requires the
+  // frame rendering to have completed before it returns, it must call glFinish() or
+  // use a synchronization object to ensure this.
   TearDownRenderFrame();
 
   // Wait until the rendering has finished.
