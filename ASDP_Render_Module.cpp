@@ -45,7 +45,7 @@ using namespace asdp::render;
 using json = nlohmann::json;
 using json = nlohmann::json;
 
-static std::string VERSION = "1.8.1";
+static std::string VERSION = "1.9.0";
 
 /// @brief The path to the configuration file. Defined in the CMakeLists file.
 std::filesystem::path dirPath = CONFIG_FILE_PATH;
@@ -238,7 +238,7 @@ static void CopyDataToTextures(uint16_t width, uint16_t height,
               return;
             }
             if (handlers[message.cameraID] == nullptr) {
-              std::cerr << "CopyDataToGPU: FRAME_DATA: Warning: Camera ID " << message.cameraID << " frame data without begin data." << std::endl;
+              std::cerr << "CopyDataToGPU: FRAME_DATA: Warning: Camera ID " << message.cameraID << " frame data without begin." << std::endl;
               break;
             }
             std::string ret = handlers[message.cameraID]->ProcessImageSubset(message.left, message.top, message.right, message.bottom);
@@ -274,9 +274,8 @@ static void CopyDataToTextures(uint16_t width, uint16_t height,
             // up and push the data to the texture before returning.
             /// @todo Consider putting these into a completion list and polling for done rather than hanging here.
             if (message.cameraID >= handlers.size()) {
-              std::cerr << "CopyDataToGPU: FRAME_END: Error: Camera ID " << message.cameraID << " not found in handlers." << std::endl;
-              done = true;
-              return;
+              std::cerr << "CopyDataToGPU: FRAME_END: Warning: Camera ID " << message.cameraID << " frame end without begin." << std::endl;
+              break;
             }
             handlers[message.cameraID].reset();
           }
@@ -388,44 +387,44 @@ static void ReceiveDataThread(ReceiverUDP& receiveSocket, size_t maxBytesPerPack
         }
         switch (messageType) {
         case FRAME_BEGIN:
-        {
-          // We found a begin frame message, so we can start processing the data.
-          waitingForFrameBegin = false;
+          {
+            // We found a begin frame message, so we can start processing the data.
+            waitingForFrameBegin = false;
 
-          // Pull the information from the frame so that we can store the width data for this
-          // camera.
-          uint32_t cameraID;
-          uint16_t width, height;
-          status = ParseFrameBeginMessage(*message, cameraID, width, height);
-          if (OKAY != status) {
-            std::cerr << "ReceiveDataThread: ParseFrameBeginMessage() failed: " << ErrorMessage(status) << std::endl;
-            done = true;
-            return;
+            // Pull the information from the frame so that we can store the width data for this
+            // camera.
+            uint32_t cameraID;
+            uint16_t width, height;
+            status = ParseFrameBeginMessage(*message, cameraID, width, height);
+            if (OKAY != status) {
+              std::cerr << "ReceiveDataThread: ParseFrameBeginMessage() failed: " << ErrorMessage(status) << std::endl;
+              done = true;
+              return;
+            }
+            cameraWidth = width;
+
+            // Get a new pinned CPU memory and GPU memory buffer to hold the image data.
+            // The old ones will be returned to the pool when the shared pointers are reset.
+            try {
+              // Do not allocate new buffers if they are depleted -- wait for them to be returned.
+              cpuImageBufferPtr = cpuImageBuffers->GetBuffer(false);
+              gpuImageBufferPtr = gpuImageBuffers->GetBuffer(false);
+            } catch (std::exception& e) {
+              std::cerr << "Error getting buffers: " << e.what() << std::endl;
+              done = true;
+              return;
+            }
+
+            // Store the summary
+            MessageSummary summary;
+            summary.messageType = FRAME_BEGIN;
+            message->GetTime(summary.time);
+            summary.cameraID = cameraID;
+            summary.width = width;
+            summary.height = height;
+            messageSummaries.push_back(summary);
           }
-          cameraWidth = width;
-
-          // Get a new pinned CPU memory and GPU memory buffer to hold the image data.
-          // The old ones will be returned to the pool when the shared pointers are reset.
-          try {
-            // Do not allocate new buffers if they are depleted -- wait for them to be returned.
-            cpuImageBufferPtr = cpuImageBuffers->GetBuffer(false);
-            gpuImageBufferPtr = gpuImageBuffers->GetBuffer(false);
-          } catch (std::exception& e) {
-            std::cerr << "Error getting buffers: " << e.what() << std::endl;
-            done = true;
-            return;
-          }
-
-          // Store the summary
-          MessageSummary summary;
-          summary.messageType = FRAME_BEGIN;
-          message->GetTime(summary.time);
-          summary.cameraID = cameraID;
-          summary.width = width;
-          summary.height = height;
-          messageSummaries.push_back(summary);
-        }
-        break;
+          break;
         case FRAME_DATA:
           // We're waiting for the frame begin message, so we ignore this packet that does not have one.
           if (!waitingForFrameBegin) {
@@ -470,24 +469,28 @@ static void ReceiveDataThread(ReceiverUDP& receiveSocket, size_t maxBytesPerPack
           }
           break;
         case FRAME_END:
-        {
-          // Parse the message so we can make a summary.  We don't do anything else with it here.
-          uint32_t cameraID;
-          status = ParseFrameEndMessage(*message, cameraID);
-          if (OKAY != status) {
-            std::cerr << "ReceiveDataThread: ParseFrameEndMessage() failed: " << ErrorMessage(status) << std::endl;
-            done = true;
-            return;
-          }
+          // We're waiting for the frame begin message, so we ignore this packet that does not have one.
+          if (!waitingForFrameBegin) {
+            // Parse the message so we can make a summary.  We don't do anything else with it here.
+            uint32_t cameraID;
+            status = ParseFrameEndMessage(*message, cameraID);
+            if (OKAY != status) {
+              std::cerr << "ReceiveDataThread: ParseFrameEndMessage() failed: " << ErrorMessage(status) << std::endl;
+              done = true;
+              return;
+            }
 
-          // Store the summary
-          MessageSummary summary;
-          summary.messageType = FRAME_END;
-          message->GetTime(summary.time);
-          summary.cameraID = cameraID;
-          messageSummaries.push_back(summary);
-        }
-        break;
+            // Store the summary
+            MessageSummary summary;
+            summary.messageType = FRAME_END;
+            message->GetTime(summary.time);
+            summary.cameraID = cameraID;
+            messageSummaries.push_back(summary);
+
+            // We're at the end of a frame, so we need to get a begin-frame message next.
+            waitingForFrameBegin = true;
+          }
+          break;
         default:
           // Ignore other message types.
           break;
@@ -501,8 +504,8 @@ static void ReceiveDataThread(ReceiverUDP& receiveSocket, size_t maxBytesPerPack
         }
       }
 
-      // We're waiting for the frame begin message, so we ignore this packet that does not have one.
-      if (waitingForFrameBegin) {
+      // Don't queue if we have no messages.
+      if (messageSummaries.size() == 0) {
         continue;
       }
 
