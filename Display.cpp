@@ -210,6 +210,12 @@ public:
 
   /// Index of the joystick to use, or -1 if no joystick is to be used.
   int m_glfwJoystickIndex = -1;
+
+  /// Name of joysticks that should be flipping in the Y axis.
+  std::vector<std::string> m_flipYJoysticks = { "Logitech Extreme 3D" };
+
+  /// Scale of the joystick input in Y axis, flipped if the joystick is on the list above.
+  float m_joystickScaleY = 1.0f;
 };
 
 DisplayWindow::DisplayWindow(std::string windowName, std::shared_ptr<Composite> composite,
@@ -366,6 +372,12 @@ void DisplayWindow::DisplayThread(std::string windowName,
       int joyNum = std::stoi(joystick.substr(6));
       if (glfwJoystickPresent(joyNum)) {
         m_impl->m_glfwJoystickIndex = joyNum;
+        // See if we should flip the Y-axis value.
+        const char* joystickName = glfwGetJoystickName(joyNum);
+        if (std::find(m_impl->m_flipYJoysticks.begin(), m_impl->m_flipYJoysticks.end(),
+            glfwGetJoystickName(joyNum)) != m_impl->m_flipYJoysticks.end()) {
+          m_impl->m_joystickScaleY = -1.0f;
+        }
       }
     }
 
@@ -417,7 +429,7 @@ void DisplayWindow::DisplayThread(std::string windowName,
           m_impl->m_rotationZDegrees -= 90.0f * elapsed.count() * axes[0];
         }
         if (fabs(axes[1]) > 0.15) {
-          m_impl->m_rotationXDegrees -= 90.0f * elapsed.count() * axes[1];
+          m_impl->m_rotationXDegrees -= 90.0f * elapsed.count() * axes[1] * m_impl->m_joystickScaleY;
         }
       }
     }
