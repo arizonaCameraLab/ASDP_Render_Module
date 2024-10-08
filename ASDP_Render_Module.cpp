@@ -45,7 +45,7 @@ using namespace asdp::render;
 using json = nlohmann::json;
 using json = nlohmann::json;
 
-static std::string VERSION = "1.6.0";
+static std::string VERSION = "1.7.0";
 
 /// @brief The path to the configuration file. Defined in the CMakeLists file.
 std::filesystem::path dirPath = CONFIG_FILE_PATH;
@@ -649,7 +649,7 @@ void usage(std::string name)
   std::cerr << "  --toneMap <tone map>                The tone map to use.  Options are: linear blackbody bluesky" << std::endl;
   std::cerr << "  --addDisplay                        Add another display with defaults that can be overridden" << std::endl;
   std::cerr << "  --replay <stream id>                ID of the stream to replay (1+)." << std::endl;
-  std::cerr << "  --lineBatchesPerGPUSend <int>       The number of batches of lines to group (default 16 Linux, 32 Windows)" << std::endl;
+  std::cerr << "  --lineBatchesPerGPUSend <int>       The number of batches of lines to group (default 16 Linux, 110 Windows)" << std::endl;
 };
 
 int main(int argc, char** argv)
@@ -659,9 +659,9 @@ int main(int argc, char** argv)
   std::string ip_address;       ///< The IP address to listen on.
   uint32_t replayStreamID = 0;  ///< The stream ID to replay, 0 for live.
 #ifdef _WIN32
-  // On Windows, throughput tests when receiving data from the network show that we must have 32 batches
+  // On Windows, throughput tests when receiving data from the network show that we must be larger
   // to keep up.  Linux is more efficient here, and can handle 16 batches at a time.
-  int lineBatchesPerGPUSend = 32; ///< The number of batches of lines to group for sending to the GPU.
+  int lineBatchesPerGPUSend = 110; ///< The number of batches of lines to group for sending to the GPU.
 #else
   int lineBatchesPerGPUSend = 16; ///< The number of batches of lines to group for sending to the GPU.
 #endif
