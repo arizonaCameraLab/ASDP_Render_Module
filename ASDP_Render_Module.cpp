@@ -45,7 +45,7 @@ using namespace asdp::render;
 using json = nlohmann::json;
 using json = nlohmann::json;
 
-static std::string VERSION = "1.7.0";
+static std::string VERSION = "1.8.0";
 
 /// @brief The path to the configuration file. Defined in the CMakeLists file.
 std::filesystem::path dirPath = CONFIG_FILE_PATH;
@@ -1030,10 +1030,21 @@ int main(int argc, char** argv)
     }
 
     // Make additional OpenGL contexts for all but the first texture thread -- re-use the original for
-    // the first one.  Testing shows that we can handle up to 13 cameras on a single texture thread,
-    // testing shows that 2 threads can handle 21 cameras but we need 3 threads to handle all 25.
+    // the first one.
     int NUM_TEXTURE_THREADS = 2;
-    if (cameras.size() > 21) { NUM_TEXTURE_THREADS = 3; }
+    if (cameras.size() > 21) {
+#ifdef _WIN32
+      // On Windows, we need larger batches of lines to keep up with more than 21 cameras. The jump from
+      // default 110 to 330 has both cases ending at 990, which is just below the 1024 limit so will make
+      // a small final batch, reducing the latency from the end of the frame receipt to texture upload.
+      lineBatchesPerGPUSend *= 3;
+#else
+      // On Linux, we need an extra thread to keep up with the data rate when we get more than 21 cameras.
+      // It may be that we could increase the lineBatchesPerGPUSend and get by with two threads.
+      NUM_TEXTURE_THREADS = 3;
+#endif
+    }
+
     std::vector< std::shared_ptr<DisplayTexture> > displayTextures = { displayTexture };
     for (size_t i = 1; i < NUM_TEXTURE_THREADS; i++) {
       std::shared_ptr<DisplayTexture> dt = std::make_shared<DisplayTexture>(displayTexture.get());
