@@ -36,7 +36,7 @@ void Composite::Render(asdp::Time scanOutTime, std::vector<ViewRenderInfo> views
     }
   }
 
-  // Set up the geometry for multiple renders
+  // Set up the geometry for all of the views so the world is consistent across views.
   SetupRenderFrame(scanOutTime);
 
   // Render each view
