@@ -28,6 +28,7 @@
 #include <ASDP_SpinFreeQueue.hpp>
 #include <ASDP_BufferPool.h>
 #include <ASDP_StreamPacketSortedQueue.h>
+#include <ASDP_ClockSynchronizer.h>
 #include "PinnedBufferPool.h"
 #include "GPUBufferPool.h"
 #include <nlohmann/json.hpp>
@@ -45,7 +46,7 @@ using namespace asdp::render;
 using json = nlohmann::json;
 using json = nlohmann::json;
 
-static std::string VERSION = "1.9.0";
+static std::string VERSION = "1.10.0";
 
 /// @brief The path to the configuration file. Defined in the CMakeLists file.
 std::filesystem::path dirPath = CONFIG_FILE_PATH;
@@ -272,7 +273,6 @@ static void CopyDataToTextures(uint16_t width, uint16_t height,
 
             // Done with this frame, so we reset the pointer to delete the handler, which will clean
             // up and push the data to the texture before returning.
-            /// @todo Consider putting these into a completion list and polling for done rather than hanging here.
             if (message.cameraID >= handlers.size()) {
               std::cerr << "CopyDataToGPU: FRAME_END: Warning: Camera ID " << message.cameraID << " frame end without begin." << std::endl;
               break;
@@ -570,7 +570,7 @@ std::shared_ptr<Message> WaitForMessageType(std::shared_ptr<Receiver> receiver, 
   return empty;
 }
 
-Status HandleStreamPacket(std::shared_ptr<StreamPacket> packet, std::shared_ptr<Timer> timer)
+Status HandleStreamPacket(std::shared_ptr<StreamPacket> packet, std::shared_ptr<ClockSynchronizer> clockSync)
 {
   // Parse all of the messages in the stream packet, handling each of them in turn.
   std::shared_ptr<Message> message;
@@ -586,13 +586,44 @@ Status HandleStreamPacket(std::shared_ptr<StreamPacket> packet, std::shared_ptr<
     }
 
     switch (messageType) {
-    case CLOCK_SYNC:
+    case EVENT:
       {
-          // Adjust the timer offset based on clock-sync messages.  The first message (or the first one
-          // after replay resumes, or the first one after replay stops), sets the estimated offset based
-          // on that single number and the relative rate to 1.0. Later ones adjust based on an average of
-          // the previous ones as described in the render implementation document.
-          /// @todo
+        // Find the event type and handle it.
+        MessageEvent event(*message);
+        if (event.GetConstructorStatus() != OKAY) {
+          return event.GetConstructorStatus();
+        }
+        EventID eventType;
+        status = event.GetType(eventType);
+        if (status != OKAY) {
+          return status;
+        }
+        switch (eventType) {
+          case START_OF_REPLAY:
+          case END_OF_REPLAY:
+          case REPLAY_RESUMED:
+            {
+              // Reset the clock-sync estimates when we start or stop replay.
+              clockSync->ClearHistory();
+            }
+            break;
+          case CLOCK_SYNC:
+            {
+              // Adjust the timer offset based on clock-sync messages.  The first message (or the first one
+              // after replay resumes, or the first one after replay stops), sets the estimated offset based
+              // on that single number and the relative rate to 1.0. Later ones adjust based on an average of
+              // the previous ones as described in the render implementation document.
+              Time messageTime;
+              status = message->GetTime(messageTime);
+              if (status != OKAY) {
+                return status;
+              }
+              clockSync->AddDataPoint(messageTime, std::chrono::steady_clock::now());
+            }
+            break;
+          default:
+            break;
+        }
       }
       break;
     case STATE:
@@ -1155,6 +1186,9 @@ int main(int argc, char** argv)
       return 33;
     }
 
+    // Create a ClockSynchronizer that will manage adjusting the timer based on clock-sync messages.
+    std::shared_ptr<ClockSynchronizer> clockSync = std::make_shared<ClockSynchronizer>(timer);
+
     // Render frames until someone has marked us to be done.
     bool nowPaused = false;
     start = std::chrono::steady_clock::now();
@@ -1166,7 +1200,7 @@ int main(int argc, char** argv)
       size_t offset = 0;
       Status status = receiver->ReceiveStreamPacket(0.1, response, offset);
       if (status == OKAY) {
-        status = HandleStreamPacket(response, timer);
+        status = HandleStreamPacket(response, clockSync);
         if (status != OKAY) {
           std::cerr << "Error handling stream packet: " << ErrorMessage(status) << std::endl;
           done = true;
