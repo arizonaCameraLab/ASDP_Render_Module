@@ -8,7 +8,7 @@ for the Apache Strap-Down Pilotage program.
 This module must be cloned recursively so that it pulls in all of its submodules.
 
 **Summary:** Quick instructions to get set up on Linux for Storage and Render Server systems
-(Replace X with the serial number of the systems being used [1-4] in the IP addresses):
+(replace X with the serial number of the systems being used [1-4] in the IP addresses):
 
 - Storage Server:
     - Build and install ASDP_Core_API, ASDP_Core_Module, and ASDP_Camera_Simulator (in that order).
