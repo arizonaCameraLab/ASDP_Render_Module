@@ -18,12 +18,6 @@ This module must be cloned recursively so that it pulls in all of its submodules
     - cd /usr/local/bin/ASDP_Render_Module_Configs; sudo cp 0_21cam.json 0.json
     - ASDP_Render_Module 10.10.10.X2
 
-You should then be able to control the viewpoint using the arrow keys on the keyboard when the display window has focus.
-Once you have the 8K display connected and running as a second display, you can use the following to show on it full
-screen with a super wide field of view:
-
-- ASDP_Render_Module 10.10.10.32 --width 7680 --height 4320 --hFOV 150 --fps 60 --fullScreen 1
-
 **Detailed requirements:** The ASDP_Render_Module requires the ASDP_Core_API library to have been
 installed before it is built.  This installs by default in a known system location that can
 be found automatically.  The library source can be obtained using:
