@@ -7,7 +7,24 @@ for the Apache Strap-Down Pilotage program.
 
 This module must be cloned recursively so that it pulls in all of its submodules.
 
-**Required:** The ASDP_Render_Module requires the ASDP_Core_API library to have been
+**Summary:** Quick instructions to get set up on Linux for Storage and Render Server systems
+(Replace X with the serial number of the systems being used [1-4] in the IP addresses):
+
+- Storage Server:
+    - Build and install ASDP_Core_API, ASDP_Core_Module, and ASDP_Camera_Simulator (in that order).
+    - ASDP_Core_Module 10.10.10.X1 --verbosity 100
+- Render Server:
+    - Build and install ASDP_Core_API and ASDP_Render_Module (in that order).
+    - cd /usr/local/bin/ASDP_Render_Module_Configs; sudo cp 0_21cam.json 0.json
+    - ASDP_Render_Module 10.10.10.X2
+
+You should then be able to control the viewpoint using the arrow keys on the keyboard when the display window has focus.
+Once you have the 8K display connected and running as a second display, you can use the following to show on it full
+screen with a super wide field of view:
+
+- ASDP_Render_Module 10.10.10.32 --width 7680 --height 4320 --hFOV 150 --fps 60 --fullScreen 1
+
+**Detailed requirements:** The ASDP_Render_Module requires the ASDP_Core_API library to have been
 installed before it is built.  This installs by default in a known system location that can
 be found automatically.  The library source can be obtained using:
 `git clone --recursive https://github.com/arizonaCameraLab/ASDP_Core_API` and instructions in the
@@ -33,7 +50,7 @@ to prevent the system from suspending or sleeping when inactive.
 **Note:** On Linux, joysticks must be plugged into the USB ports at the top back of the Render
 Server to be recognized by the system.  This is also true of the keyboard and mouse.
 
-On Windows it requires GLEW to be installed. Pre-built binaries are available for many systems at
+On Windows this module requires GLEW to be installed. Pre-built binaries are available for many systems at
 https://github.com/nigels-com/glew/releases/tag/glew-2.2.0 and these can be unzipped anywhere on
 the system and the path to the include and lib directories specified in the CMakeLists.txt file
 by adding space-separated entries to the CMAKE_PREFIX_PATH on line 7. If there are spaces in the
