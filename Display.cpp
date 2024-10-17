@@ -829,12 +829,6 @@ void asdp::render::DisplayOpenXR::DisplayOpenXRImpl::OpenGLInitializeDevice(Disp
   XrGraphicsRequirementsOpenGLKHR graphicsRequirements{ XR_TYPE_GRAPHICS_REQUIREMENTS_OPENGL_KHR };
   CHECK_XRCMD(pfnGetOpenGLGraphicsRequirementsKHR(instance, systemId, &graphicsRequirements));
 
-  // Determine the OpenGL version.
-  GLint major = 0;
-  GLint minor = 0;
-  glGetIntegerv(GL_MAJOR_VERSION, &major);
-  glGetIntegerv(GL_MINOR_VERSION, &minor);
-
   // Create a windowed mode window and its OpenGL context.
   // This must be done in the same thread that will do the rendering so that the window events will
   // be handled properly on all architectures.
@@ -845,7 +839,7 @@ void asdp::render::DisplayOpenXR::DisplayOpenXRImpl::OpenGLInitializeDevice(Disp
   if (sharedWindow) {
     windowToShare = sharedWindow->m_impl->m_window;
     if (!sharedWindow->BorrowContext()) {
-      THROW("OpenGLInitializeDevice(): Failed to borrow context from shared window");
+      THROW("DisplayOpenXR::DisplayOpenXRImpl::OpenGLInitializeDevice(): Failed to borrow context from shared window");
       return;
     }
   }
@@ -857,26 +851,32 @@ void asdp::render::DisplayOpenXR::DisplayOpenXRImpl::OpenGLInitializeDevice(Disp
   glfwWindowHint(GLFW_VISIBLE, false);
   m_contextWindow = glfwCreateWindow(100, 100, "OpenXR OpenGL Window to get context", nullptr, windowToShare);
   // Verify that the window was created.
-  if (!static_cast<Display*>(m_display)->m_impl->m_window) {
-    THROW("OpenGLInitializeDevice(): Failed to create GLFW window");
+  if (!m_contextWindow) {
+    THROW("DisplayOpenXR::DisplayOpenXRImpl::OpenGLInitializeDevice(): Failed to create GLFW window");
     return;
   }
   glfwMakeContextCurrent(m_contextWindow);
 
+  // Determine the OpenGL version.
+  GLint major = 0;
+  GLint minor = 0;
+  glGetIntegerv(GL_MAJOR_VERSION, &major);
+  glGetIntegerv(GL_MINOR_VERSION, &minor);
+
   const XrVersion desiredApiVersion = XR_MAKE_VERSION(major, minor, 0);
   if (graphicsRequirements.minApiVersionSupported > desiredApiVersion) {
-    THROW("Runtime does not support desired Graphics API and/or version");
+    THROW("DisplayOpenXR::DisplayOpenXRImpl::OpenGLInitializeDevice(): Runtime does not support desired Graphics API and/or version");
   }
 #ifdef XR_USE_PLATFORM_WIN32
   /// @todo Consider doing this (and opening the window above) once we know the desired display window size from OpenXR
   g_graphicsBinding.hDC = wglGetCurrentDC();
   g_graphicsBinding.hGLRC = wglGetCurrentContext();
 #elif defined(XR_USE_PLATFORM_XLIB)
-  THROW("OpenGLInitializeDevice():Xlib not implemented here");
+  THROW("DisplayOpenXR::DisplayOpenXRImpl::OpenGLInitializeDevice(): Xlib not implemented here");
 #elif defined(XR_USE_PLATFORM_XCB)
-  THROW("OpenGLInitializeDevice():XCB not implemented here");
+  THROW("DisplayOpenXR::DisplayOpenXRImpl::OpenGLInitializeDevice(): XCB not implemented here");
 #elif defined(XR_USE_PLATFORM_WAYLAND)
-  THROW("OpenGLInitializeDevice():Wayland not implemented here");
+  THROW("DisplayOpenXR::DisplayOpenXRImpl::OpenGLInitializeDevice(): Wayland not implemented here");
 #endif
 
   if (sharedWindow) {
@@ -1700,6 +1700,8 @@ DisplayOpenXR::~DisplayOpenXR()
 
 void DisplayOpenXR::DisplayThread(Display* sharedWindow, uint32_t renderAheadMicroseconds)
 {
+  std::lock_guard<std::mutex> windowLock(m_windowMutex);
+
   bool requestRestart = false;
   do {
 
@@ -1710,7 +1712,7 @@ void DisplayOpenXR::DisplayThread(Display* sharedWindow, uint32_t renderAheadMic
       m_impl->OpenXRInitializeSession();
       m_impl->OpenXRCreateSwapchains();
     } catch (const std::exception& e) {
-      m_status = e.what();
+      m_status = "DisplayOpenXR::DisplayThread(): " + std::string(e.what());
     }
 
     // After we're done with the context for set-up and have released it, indicate that the context is available
@@ -1722,7 +1724,7 @@ void DisplayOpenXR::DisplayThread(Display* sharedWindow, uint32_t renderAheadMic
       try {
         m_impl->OpenXRPollEvents(&exitRenderLoop, &requestRestart);
       } catch (const std::exception& e) {
-        m_status = e.what();
+        m_status = "DisplayOpenXR::DisplayThread(): " + std::string(e.what());
         continue;
       }
       if (exitRenderLoop) {
@@ -1736,7 +1738,7 @@ void DisplayOpenXR::DisplayThread(Display* sharedWindow, uint32_t renderAheadMic
           m_impl->OpenXRPollActions();
           m_impl->OpenXRRenderFrame();
         } catch (const std::exception& e) {
-          m_status = e.what();
+          m_status = "DisplayOpenXR::DisplayThread(): " + std::string(e.what());
         }
       } else {
         // Throttle loop since xrWaitFrame won't be called.
@@ -1748,7 +1750,7 @@ void DisplayOpenXR::DisplayThread(Display* sharedWindow, uint32_t renderAheadMic
     try {
       m_impl->OpenXRTearDown();
     } catch (const std::exception& e) {
-      m_status = e.what();
+      m_status = "DisplayOpenXR::DisplayThread(): " + std::string(e.what());
     }
 
   } while (m_status.empty() && requestRestart);

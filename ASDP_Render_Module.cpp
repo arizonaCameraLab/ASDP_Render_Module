@@ -1034,7 +1034,7 @@ int main(int argc, char** argv)
           displayInfos[i].fullScreen, displayInfos[i].fullScreenDisplay, false, handlers));
       }
       if (displays.back()->GetStatus() != "") {
-        std::cerr << "Error constructing DisplayWindow: " << displays.back()->GetStatus() << std::endl;
+        std::cerr << "Error constructing Display " << i << ": " << displays.back()->GetStatus() << std::endl;
         displays.clear();
         return 22;
       }
