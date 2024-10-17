@@ -121,6 +121,7 @@ protected:
 
       friend class DisplayWindow;
       friend class DisplayTexture;
+      friend class DisplayOpenXR;
     };
 
     /// @brief Display class that displays to a window, perhaps full-screen.
@@ -213,6 +214,44 @@ protected:
       /// Instance of the implementation class used to store data.  Filled in by the constructor.
       std::unique_ptr<DisplayTextureImpl> m_impl;
     };
+
+#ifdef USE_OPENXR
+
+    /// @brief Display class that displays using OpenXR.
+    class DisplayOpenXR : public Display {
+    public:
+      /// @brief Constructor
+      /// @param client The CoreClient used to communicate with the Core to cause software triggers,
+      /// a null pointer for none.
+      /// @param triggerID The ID of the trigger to use to trigger the cameras.
+      /// @param triggerAheadMicroseconds The offset in microseconds to subtract from the time of frame swapping.
+      /// This is to ensure that the frames make it all the way through the Composite object before being needed.
+      /// It is expected to be read from a configuration file and tuned for the specific hardware and software.
+      /// @param composite The Composite used to generate textured geometry.
+      /// @param sharedWindow A pointer to a DisplayWindow to share the OpenGL objects with, or nullptr if none.
+      /// @param renderAheadMicroseconds The number of microseconds ahead of the next swap time to begin
+      /// rendering.  This is to ensure that the rendering is done in time for the swap to happen while
+      /// providing the minimum prediction interval and delaying as long as possible to enable new frames
+      /// to arrive before rendering.  If this value is larger than 1 million / fps, the frames will not
+      /// wait before rendering.
+      /// @param verbosity The level of verbosity to use in the OpenXR API, 0 for none.
+      DisplayOpenXR(std::shared_ptr<Composite> composite, Display* sharedWindow,
+        std::shared_ptr<CoreClient> client, uint8_t triggerID, uint32_t triggerAheadMicroseconds,
+        uint32_t renderAheadMicroseconds = 2500, int verbosity = 0);
+
+      ~DisplayOpenXR();
+
+    private:
+      /// @brief Method to implement the display thread.
+      void DisplayThread(Display* sharedWindow, uint32_t renderAheadMicroseconds);
+
+      /// Opaque class used to enable not requiring the application to #include all headers.
+      class DisplayOpenXRImpl;
+      /// Instance of the implementation class used to store data.  Filled in by the constructor.
+      std::unique_ptr<DisplayOpenXRImpl> m_impl;
+    };
+
+#endif  // USE_OPENXR
 
   } // namespace render
 } // namespace asdp

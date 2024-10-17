@@ -60,6 +60,7 @@ if(OPENMP_FOUND)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${OpenMP_EXE_LINKER_FLAGS}")
 endif()
+find_package(OpenXR)
 
 #-----------------------------------------------------------------------------
 # Define build options.
@@ -123,6 +124,24 @@ target_link_libraries(Render_Module PUBLIC
   ASDP_Core_API::ASDP_Core_API glfw GLEW::glew OpenGL::GL
 )
 set_property(TARGET Render_Module PROPERTY CUDA_ARCHITECTURES 60 75 80)
+if(OPENXR_FOUND)
+  target_compile_definitions(Render_Module PRIVATE USE_OPENXR=1 XR_USE_GRAPHICS_API_OPENGL)
+  if(WIN32)
+      target_compile_definitions(Render_Module PRIVATE XR_USE_PLATFORM_WIN32)
+  elseif(PRESENTATION_BACKEND MATCHES "xlib")
+      target_compile_definitions(Render_Module PRIVATE XR_USE_PLATFORM_XLIB)
+  elseif(PRESENTATION_BACKEND MATCHES "xcb")
+      target_compile_definitions(Render_Module PRIVATE XR_USE_PLATFORM_XCB)
+  elseif(PRESENTATION_BACKEND MATCHES "wayland")
+      target_compile_definitions(Render_Module PRIVATE XR_USE_PLATFORM_WAYLAND)
+  endif()
+  target_include_directories(Render_Module PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/openxr-sdk-files"
+  )
+  target_link_libraries(Render_Module PRIVATE
+    OpenXR::openxr_loader
+  )
+endif()
 
 #-----------------------------------------------------------------------------
 # Build the Render module application.
