@@ -658,14 +658,15 @@ Status HandleStreamPacket(std::shared_ptr<StreamPacket> packet, std::shared_ptr<
 /// @brief Structure to hold display information
 struct DisplayInfo
 {
-  int width = 1280;  ///< The width of the display.
-  int height = 1024; ///< The height of the display.
-  float hFOV = 40.0f;     ///< The horizontal field of view in degrees.
-  ToneMap toneMap = ToneMap(); ///< The tone map to use.
+  ToneMap toneMap = ToneMap();  ///< The tone map to use.
+  bool useOpenXR = false;       ///< Use OpenXR for rendering? If so, overrides all of the following.
+  int width = 1280;             ///< The width of the display.
+  int height = 1024;            ///< The height of the display.
+  float hFOV = 40.0f;           ///< The horizontal field of view in degrees.
   std::string joystick = "";    ///< The joystick to use for input.
-  float fps = 60.0f;       ///< The frames per second to run at.
-  bool fullScreen = false; ///< Run in full screen mode.
-  int fullScreenDisplay = 0; ///< The display to run in full screen mode on.
+  float fps = 60.0f;            ///< The frames per second to run at.
+  bool fullScreen = false;      ///< Run in full screen mode.
+  int fullScreenDisplay = 0;    ///< The display to run in full screen mode on.
 };
 
 void usage(std::string name)
@@ -674,16 +675,17 @@ void usage(std::string name)
   std::cerr << "  <ip_address>                        The IP address to listen for servers on." << std::endl;
   std::cerr << "  Options:" << std::endl;
   std::cerr << "  --frameStride <frame stride>        Read one out of every this many frames. Set to 1 for every frame." << std::endl;
+  std::cerr << "  --toneMap <tone map>                The tone map to use.  Options are: linear blackbody bluesky" << std::endl;
+  std::cerr << "  --addDisplay                        Add another display with defaults that can be overridden" << std::endl;
+  std::cerr << "  --replay <stream id>                ID of the stream to replay (1+)." << std::endl;
+  std::cerr << "  --lineBatchesPerGPUSend <int>       The number of batches of lines to group (default 16 Linux, 110 Windows)" << std::endl;
+  std::cerr << "  --openXR                            Use OpenXR for rendering. If set, overrides the following." << std::endl;
   std::cerr << "  --width <width>                     The width of the window (default 1280)." << std::endl;
   std::cerr << "  --height <height>                   The height of the window (default 1024)." << std::endl;
   std::cerr << "  --fullScreen <display>              Run in full screen mode on the specified display (0+)." << std::endl;
   std::cerr << "  --fps <frames per second>           The frames per second to run at (default 60)." << std::endl;
   std::cerr << "  --joystick <string>                 The joystick to use for input (e.g. GLFW::0)." << std::endl;
   std::cerr << "  --hFOV <horizontal field of view>   The horizontal field of view in degrees (default 40)." << std::endl;
-  std::cerr << "  --toneMap <tone map>                The tone map to use.  Options are: linear blackbody bluesky" << std::endl;
-  std::cerr << "  --addDisplay                        Add another display with defaults that can be overridden" << std::endl;
-  std::cerr << "  --replay <stream id>                ID of the stream to replay (1+)." << std::endl;
-  std::cerr << "  --lineBatchesPerGPUSend <int>       The number of batches of lines to group (default 16 Linux, 110 Windows)" << std::endl;
 };
 
 int main(int argc, char** argv)
@@ -710,7 +712,8 @@ int main(int argc, char** argv)
         return 2;
       }
       frameStride = std::stoi(argv[i]);
-    } else if (std::string("--width") == argv[i]) {
+    }
+    else if (std::string("--width") == argv[i]) {
       if (++i >= argc) {
         usage(argv[0]);
         return 2;
@@ -723,13 +726,18 @@ int main(int argc, char** argv)
         return 2;
       }
       displayInfos.back().height = std::stoi(argv[i]);
-    } else if (std::string("--hFOV") == argv[i]) {
+    }
+    else if (std::string("--hFOV") == argv[i]) {
       if (++i >= argc) {
         usage(argv[0]);
         return 2;
       }
       displayInfos.back().hFOV = std::stof(argv[i]);
-    } else if (std::string("--fullScreen") == argv[i]) {
+    }
+    else if (std::string("--openXR") == argv[i]) {
+      displayInfos.back().useOpenXR = true;
+    }
+    else if (std::string("--fullScreen") == argv[i]) {
       if (++i >= argc) {
         usage(argv[0]);
         return 2;
@@ -992,7 +1000,7 @@ int main(int argc, char** argv)
     handlers->TogglePlayPause = TogglePlayPause;
 
     // Construct one or more Display objects to render the cameras.  They all share objects with the texture Display.
-    std::vector<std::shared_ptr<DisplayWindow>> displays;
+    std::vector<std::shared_ptr<Display>> displays;
     std::vector<GLuint> toneMapTextures;  ///< Stores these for later deletion.
     for (size_t i = 0; i < displayInfos.size(); i++) {
 
@@ -1017,10 +1025,14 @@ int main(int argc, char** argv)
       // Two displays cannot share a SetupRenderFrame() call because they may have different frame rates.
       std::shared_ptr<Composite> composite = std::make_shared<CompositeCameras>(cameraRenderInfos, toneMapTexture);
 
-      displays.push_back(std::make_shared<DisplayWindow>("ASDP Render Module " + std::to_string(i),
-        composite, client, 0, 0, displayInfos[i].fps, 2500, displayInfos[i].width, displayInfos[i].height,
-        displayInfos[i].hFOV, displayInfos[i].joystick, displayTexture.get(),
-        displayInfos[i].fullScreen, displayInfos[i].fullScreenDisplay, false, handlers));
+      if (displayInfos[i].useOpenXR) {
+        displays.push_back(std::make_shared<DisplayOpenXR>(composite, displayTexture.get(), client, 0, 0, 2500, 1));
+      } else {
+        displays.push_back(std::make_shared<DisplayWindow>("ASDP Render Module " + std::to_string(i),
+          composite, client, 0, 0, displayInfos[i].fps, 2500, displayInfos[i].width, displayInfos[i].height,
+          displayInfos[i].hFOV, displayInfos[i].joystick, displayTexture.get(),
+          displayInfos[i].fullScreen, displayInfos[i].fullScreenDisplay, false, handlers));
+      }
       if (displays.back()->GetStatus() != "") {
         std::cerr << "Error constructing DisplayWindow: " << displays.back()->GetStatus() << std::endl;
         displays.clear();
@@ -1210,7 +1222,7 @@ int main(int argc, char** argv)
         done = true;
       }
 
-      // If all of our DisplayWindows have been closed (or are broken), then we're done.
+      // If all of our Displays have been closed (or are broken), then we're done.
       bool allClosed = true;
       for (auto& display : displays) {
         if (display->GetStatus() == "") {

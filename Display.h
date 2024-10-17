@@ -215,8 +215,6 @@ protected:
       std::unique_ptr<DisplayTextureImpl> m_impl;
     };
 
-#ifdef USE_OPENXR
-
     /// @brief Display class that displays using OpenXR.
     class DisplayOpenXR : public Display {
     public:
@@ -250,8 +248,6 @@ protected:
       /// Instance of the implementation class used to store data.  Filled in by the constructor.
       std::unique_ptr<DisplayOpenXRImpl> m_impl;
     };
-
-#endif  // USE_OPENXR
 
   } // namespace render
 } // namespace asdp

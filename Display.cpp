@@ -11,6 +11,7 @@
 #include <atomic>
 #include <mutex>
 #include <chrono>
+#include <map>
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -738,11 +739,13 @@ public:
   std::vector<Swapchain> g_swapchains;
   std::map<XrSwapchain, std::vector<XrSwapchainImageBaseHeader*>> g_swapchainImages;
   std::vector<XrView> g_views;
-  std::list<std::vector<XrSwapchainImageOpenGLKHR>> g_swapchainImageBuffers;
   int64_t g_colorSwapchainFormat{ -1 };
 
-  // This is in case we generate additional spaces for visualization.
-  std::vector<XrSpace> g_visualizedSpaces;
+  std::list<std::vector<XrSwapchainImageOpenGLKHR>> g_swapchainImageBuffers;
+  GLuint g_swapchainFramebuffer{ 0 };
+
+  // Map color buffer to associated depth buffer. This map is populated on demand.
+  std::map<uint32_t, uint32_t> g_colorToDepthMap;
 
   void OpenXRCreateInstance();
   void OpenXRInitializeSystem(Display* sharedWindow);
@@ -760,6 +763,13 @@ public:
     bool* requestRestart);
   void OpenXRPollEvents(bool* exitRenderLoop, bool* requestRestart);
   void OpenXRPollActions();
+  bool OpenXRRenderLayer(XrTime predictedDisplayTime,
+    std::vector<XrCompositionLayerProjectionView>& projectionLayerViews,
+    XrCompositionLayerProjection& layer);
+  void OpenXRRenderFrame();
+  void OpenGLInitializeResources();
+  uint32_t OpenGLGetDepthTexture(uint32_t colorTexture);
+  void OpenGLTearDown();
   void OpenXRTearDown();
 };
 
@@ -1435,8 +1445,206 @@ void asdp::render::DisplayOpenXR::DisplayOpenXRImpl::OpenXRPollActions()
   }
 }
 
+// Function to convert a quaternion to Euler angles (X, Y, Z)
+/// @todo Test this function.
+static void QuaternionToEulerXYZDegrees(const XrQuaternionf& q, float& roll, float& pitch, float& yaw) {
+  // Calculate the Euler angles
+  float sinr_cosp = 2 * (q.w * q.x + q.y * q.z);
+  float cosr_cosp = 1 - 2 * (q.x * q.x + q.y * q.y);
+  roll = std::atan2(sinr_cosp, cosr_cosp);
+
+  float sinp = 2 * (q.w * q.y - q.z * q.x);
+  if (std::abs(sinp) >= 1)
+    pitch = std::copysign(M_PI / 2, sinp); // Use 90 degrees if out of range
+  else
+    pitch = std::asin(sinp);
+
+  float siny_cosp = 2 * (q.w * q.z + q.x * q.y);
+  float cosy_cosp = 1 - 2 * (q.y * q.y + q.z * q.z);
+  yaw = std::atan2(siny_cosp, cosy_cosp);
+  roll = glm::degrees(roll);
+  pitch = glm::degrees(pitch);
+  yaw = glm::degrees(yaw);
+}
+
+bool asdp::render::DisplayOpenXR::DisplayOpenXRImpl::OpenXRRenderLayer(XrTime predictedDisplayTime,
+  std::vector<XrCompositionLayerProjectionView>& projectionLayerViews, XrCompositionLayerProjection& layer)
+{
+  XrResult res;
+
+  XrViewState viewState{ XR_TYPE_VIEW_STATE };
+  uint32_t viewCapacityInput = (uint32_t)g_views.size();
+  uint32_t viewCountOutput;
+
+  XrViewLocateInfo viewLocateInfo{ XR_TYPE_VIEW_LOCATE_INFO };
+  viewLocateInfo.viewConfigurationType = g_viewConfigType;
+  viewLocateInfo.displayTime = predictedDisplayTime;
+  viewLocateInfo.space = g_appSpace;
+
+  res = xrLocateViews(g_session, &viewLocateInfo, &viewState, viewCapacityInput, &viewCountOutput, g_views.data());
+  CHECK_XRRESULT(res, "xrLocateViews");
+  if ((viewState.viewStateFlags & XR_VIEW_STATE_POSITION_VALID_BIT) == 0 ||
+    (viewState.viewStateFlags & XR_VIEW_STATE_ORIENTATION_VALID_BIT) == 0) {
+    return false;  // There is no valid tracking poses for the views.
+  }
+
+  CHECK(viewCountOutput == viewCapacityInput);
+  CHECK(viewCountOutput == g_configViews.size());
+  CHECK(viewCountOutput == g_swapchains.size());
+
+  projectionLayerViews.resize(viewCountOutput);
+
+  // Describe all of the views and then render them.  This replaces the OpenXRRenderView() function
+  // from the original sample with using the Composite to render.
+  std::vector<ViewRenderInfo> viewRenderInfos;
+
+  // Grab the swapchains and fill in the viewRenderInfos.
+  for (uint32_t i = 0; i < viewCountOutput; i++) {
+    // Fill in the information on the projection layer views.
+    projectionLayerViews[i] = { XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW };
+    projectionLayerViews[i].pose = g_views[i].pose;
+    projectionLayerViews[i].fov = g_views[i].fov;
+    projectionLayerViews[i].subImage.swapchain = g_swapchains[i].handle;
+    projectionLayerViews[i].subImage.imageRect.offset = { 0, 0 };
+    projectionLayerViews[i].subImage.imageRect.extent = { g_swapchains[i].width, g_swapchains[i].height };
+
+    // Acquire a swapchain image for the current view.
+    XrSwapchainImageAcquireInfo acquireInfo{ XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO };
+    uint32_t swapchainImageIndex;
+    CHECK_XRCMD(xrAcquireSwapchainImage(g_swapchains[i].handle, &acquireInfo, &swapchainImageIndex));
+    XrSwapchainImageWaitInfo waitInfo{ XR_TYPE_SWAPCHAIN_IMAGE_WAIT_INFO };
+    waitInfo.timeout = XR_INFINITE_DURATION;
+    CHECK_XRCMD(xrWaitSwapchainImage(g_swapchains[i].handle, &waitInfo));
+
+    // Construct the ViewRenderInfo for the current view and push it onto the vector.
+    ViewRenderInfo vri;
+    vri.viewpoint[0] = g_views[i].pose.position.x;
+    vri.viewpoint[1] = g_views[i].pose.position.y;
+    vri.viewpoint[2] = g_views[i].pose.position.z;
+    QuaternionToEulerXYZDegrees(g_views[i].pose.orientation, vri.orientation[0], vri.orientation[1], vri.orientation[2]);
+    vri.leftHalfFOV = glm::degrees(g_views[i].fov.angleLeft);
+    vri.rightHalfFOV = glm::degrees(g_views[i].fov.angleRight);
+    vri.topHalfFOV = glm::degrees(g_views[i].fov.angleUp);
+    vri.bottomHalfFOV = glm::degrees(g_views[i].fov.angleDown);
+    vri.nearClip = 0.5;         /// @todo See if we get this from somewhere
+    vri.farClip = 1000.0;       /// @todo See if we get this from somewhere
+    vri.frameBuffer = g_swapchainFramebuffer;
+    vri.colorBuffer = reinterpret_cast<const XrSwapchainImageOpenGLKHR*>(
+      g_swapchainImages[g_swapchains[i].handle][swapchainImageIndex])->image;
+    vri.depthBuffer = OpenGLGetDepthTexture(vri.colorBuffer);
+    vri.x = projectionLayerViews[i].subImage.imageRect.offset.x;
+    vri.y = projectionLayerViews[i].subImage.imageRect.offset.y;
+    vri.width = projectionLayerViews[i].subImage.imageRect.extent.width;
+    vri.height = projectionLayerViews[i].subImage.imageRect.extent.height;
+    
+    viewRenderInfos.push_back(vri);
+  }
+
+  /// @todo Render the requested views at the predicted scan-out time.
+  std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
+  std::shared_ptr<Timer> timer;
+  Status status = m_display->m_client->GetTimer(timer);
+  if (status != OKAY) {
+    return false;
+  }
+  Time time;
+  status = timer->GetCoreTime(time);
+  if (status != OKAY) {
+    return false;
+  }
+  m_display->m_composite->Render(time, viewRenderInfos);
+
+  /// Release the swapchain images after rendering.
+  for (uint32_t i = 0; i < viewCountOutput; i++) {
+    XrSwapchainImageReleaseInfo releaseInfo{ XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO };
+    CHECK_XRCMD(xrReleaseSwapchainImage(g_swapchains[i].handle, &releaseInfo));
+  }
+
+  layer.space = g_appSpace;
+  layer.viewCount = (uint32_t)projectionLayerViews.size();
+  layer.views = projectionLayerViews.data();
+  return true;
+}
+
+void asdp::render::DisplayOpenXR::DisplayOpenXRImpl::OpenXRRenderFrame()
+{
+  CHECK(g_session != XR_NULL_HANDLE);
+
+  XrFrameWaitInfo frameWaitInfo{ XR_TYPE_FRAME_WAIT_INFO };
+  XrFrameState frameState{ XR_TYPE_FRAME_STATE };
+  CHECK_XRCMD(xrWaitFrame(g_session, &frameWaitInfo, &frameState));
+
+  XrFrameBeginInfo frameBeginInfo{ XR_TYPE_FRAME_BEGIN_INFO };
+  CHECK_XRCMD(xrBeginFrame(g_session, &frameBeginInfo));
+
+  std::vector<XrCompositionLayerBaseHeader*> layers;
+  XrCompositionLayerProjection layer{ XR_TYPE_COMPOSITION_LAYER_PROJECTION };
+  std::vector<XrCompositionLayerProjectionView> projectionLayerViews;
+  if (frameState.shouldRender == XR_TRUE) {
+    if (OpenXRRenderLayer(frameState.predictedDisplayTime, projectionLayerViews, layer)) {
+      layers.push_back(reinterpret_cast<XrCompositionLayerBaseHeader*>(&layer));
+    }
+  }
+
+  XrFrameEndInfo frameEndInfo{ XR_TYPE_FRAME_END_INFO };
+  frameEndInfo.displayTime = frameState.predictedDisplayTime;
+  frameEndInfo.environmentBlendMode = g_environmentBlendMode;
+  frameEndInfo.layerCount = (uint32_t)layers.size();
+  frameEndInfo.layers = layers.data();
+  CHECK_XRCMD(xrEndFrame(g_session, &frameEndInfo));
+}
+void asdp::render::DisplayOpenXR::DisplayOpenXRImpl::OpenGLInitializeResources()
+{
+  glGenFramebuffers(1, &g_swapchainFramebuffer);
+}
+
+uint32_t asdp::render::DisplayOpenXR::DisplayOpenXRImpl::OpenGLGetDepthTexture(uint32_t colorTexture)
+{
+  // If a depth-stencil view has already been created for this back-buffer, use it.
+  auto depthBufferIt = g_colorToDepthMap.find(colorTexture);
+  if (depthBufferIt != g_colorToDepthMap.end()) {
+    return depthBufferIt->second;
+  }
+
+  // This back-buffer has no corresponding depth-stencil texture, so create one with matching dimensions.
+
+  GLint width;
+  GLint height;
+  glBindTexture(GL_TEXTURE_2D, colorTexture);
+  glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_WIDTH, &width);
+  glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_HEIGHT, &height);
+
+  uint32_t depthTexture;
+  glGenTextures(1, &depthTexture);
+  glBindTexture(GL_TEXTURE_2D, depthTexture);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+  glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT32, width, height, 0, GL_DEPTH_COMPONENT, GL_FLOAT, nullptr);
+
+  g_colorToDepthMap.insert(std::make_pair(colorTexture, depthTexture));
+
+  return depthTexture;
+}
+
+void asdp::render::DisplayOpenXR::DisplayOpenXRImpl::OpenGLTearDown()
+{
+  if (g_swapchainFramebuffer != 0) {
+    glDeleteFramebuffers(1, &g_swapchainFramebuffer);
+  }
+
+  for (auto& colorToDepth : g_colorToDepthMap) {
+    if (colorToDepth.second != 0) {
+      glDeleteTextures(1, &colorToDepth.second);
+    }
+  }
+}
+
 void asdp::render::DisplayOpenXR::DisplayOpenXRImpl::OpenXRTearDown()
 {
+  OpenGLTearDown();
+
   if (g_input.actionSet != XR_NULL_HANDLE) {
     for (auto hand : { Side::LEFT, Side::RIGHT }) {
       xrDestroySpace(g_input.handSpace[hand]);
@@ -1446,10 +1654,6 @@ void asdp::render::DisplayOpenXR::DisplayOpenXRImpl::OpenXRTearDown()
 
   for (Swapchain swapchain : g_swapchains) {
     xrDestroySwapchain(swapchain.handle);
-  }
-
-  for (XrSpace visualizedSpace : g_visualizedSpaces) {
-    xrDestroySpace(visualizedSpace);
   }
 
   if (g_appSpace != XR_NULL_HANDLE) {
@@ -1530,7 +1734,7 @@ void DisplayOpenXR::DisplayThread(Display* sharedWindow, uint32_t renderAheadMic
       if (m_impl->g_sessionRunning) {
         try {
           m_impl->OpenXRPollActions();
-          /// @todo m_impl->OpenXRRenderFrame();
+          m_impl->OpenXRRenderFrame();
         } catch (const std::exception& e) {
           m_status = e.what();
         }
@@ -1548,6 +1752,28 @@ void DisplayOpenXR::DisplayThread(Display* sharedWindow, uint32_t renderAheadMic
     }
 
   } while (m_status.empty() && requestRestart);
+}
+
+#else // USE_OPENXR
+
+class asdp::render::DisplayOpenXR::DisplayOpenXRImpl {
+public:
+}
+
+DisplayOpenXR::DisplayOpenXR(std::shared_ptr<Composite> composite, Display* sharedWindow,
+    std::shared_ptr<CoreClient> client, uint8_t triggerID, uint32_t triggerAheadMicroseconds,
+    uint32_t renderAheadMicroseconds, int verbosity)
+  : Display(composite, client, triggerID, triggerAheadMicroseconds)
+{
+  m_status = "OpenXR is not compiled in.";
+}
+
+DisplayOpenXR::~DisplayOpenXR()
+{
+}
+
+void DisplayOpenXR::DisplayThread(Display* sharedWindow, uint32_t renderAheadMicroseconds)
+{
 }
 
 #endif // USE_OPENXR

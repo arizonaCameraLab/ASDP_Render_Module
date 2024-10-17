@@ -85,6 +85,7 @@ following optional arguments:
 - **--replay** Rather than running live, replay the specified stored stream ID (1+).
 - **--lineBatchesPerGPUSend** The number of line batches to send to the GPU at a time, default 16
   under Linux and 32 under Windows. This trades throughput for latency.
+- **--openXR** Display using an OpenXR device, using its specified resolution and field of view.
 
 For example, to run the program on interface 10.10.10.22 with two windows, one full-screen on
 display 1 and the other having default parameters with both using different joysticks,
