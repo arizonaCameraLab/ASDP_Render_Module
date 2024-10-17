@@ -39,6 +39,7 @@ class GLFWInitializer {
 };
 static GLFWInitializer initGLFW;
 
+/// Ensure that we only create one window at a time.
 std::mutex Display::m_windowMutex;
 
 //==============================================================================
@@ -294,33 +295,35 @@ void DisplayWindow::DisplayThread(std::string windowName,
   std::string joystick, Display* sharedWindow,
   bool fullScreen, int desiredDisplay, bool hidden)
 {
-  // Hold the window mutex so that only one window can be created at a time.
   {
-    std::lock_guard<std::mutex> windowLock(m_windowMutex);
+    {
+      // Hold the window mutex so that only one window can be created at a time.
+      std::lock_guard<std::mutex> windowLock(m_windowMutex);
 
-    // Set the window visibility.
-    glfwWindowHint(GLFW_VISIBLE, !hidden);
+      // Set the window visibility.
+      glfwWindowHint(GLFW_VISIBLE, !hidden);
 
-    // Create a windowed mode window and its OpenGL context.
-    // This must be done in the same thread that will do the rendering so that the window events will
-    // be handled properly on all architectures.
-    // We must make the OpenGL context of the window we want to share current on this thread
-    // if we are sharing it by borrowing it and then returning it once the window is open because
-    // Windows requires it to be current.
-    GLFWwindow* windowToShare = nullptr;
-    if (sharedWindow) {
-      windowToShare = sharedWindow->m_impl->m_window;
-      if (!sharedWindow->BorrowContext()) {
-        m_status = "Failed to borrow context from shared window";
-        return;
+      // Create a windowed mode window and its OpenGL context.
+      // This must be done in the same thread that will do the rendering so that the window events will
+      // be handled properly on all architectures.
+      // We must make the OpenGL context of the window we want to share current on this thread
+      // if we are sharing it by borrowing it and then returning it once the window is open because
+      // Windows requires it to be current.
+      GLFWwindow* windowToShare = nullptr;
+      if (sharedWindow) {
+        windowToShare = sharedWindow->m_impl->m_window;
+        if (!sharedWindow->BorrowContext()) {
+          m_status = "Failed to borrow context from shared window";
+          return;
+        }
       }
-    }
-    Display::m_impl->m_window = glfwCreateWindow(desiredWidth, desiredHeight, windowName.c_str(), nullptr,
-      windowToShare);
-    if (sharedWindow) {
-      if (!sharedWindow->ReturnContext()) {
-        m_status = "Failed to return context to shared window";
-        return;
+      Display::m_impl->m_window = glfwCreateWindow(desiredWidth, desiredHeight, windowName.c_str(), nullptr,
+        windowToShare);
+      if (sharedWindow) {
+        if (!sharedWindow->ReturnContext()) {
+          m_status = "Failed to return context to shared window";
+          return;
+        }
       }
     }
 
@@ -567,27 +570,29 @@ DisplayTexture::DisplayTexture(Display* sharedWindow)
   : Display(std::shared_ptr<CompositeCube>(), std::shared_ptr<CoreClient>(), 0, 0)
   , m_impl(new DisplayTextureImpl)
 {
-  // Hold the window mutex so that only one window can be created at a time.
-  std::lock_guard<std::mutex> windowLock(m_windowMutex);
+  {
+    // Hold the window mutex so that only one window can be created at a time.
+    std::lock_guard<std::mutex> windowLock(m_windowMutex);
 
-  // Set the window to be hidden.
-  glfwWindowHint(GLFW_VISIBLE, false);
+    // Set the window to be hidden.
+    glfwWindowHint(GLFW_VISIBLE, false);
 
-  // Construct our context, borrowing the context of the shared window so that it will be
-  // active on our context (required for Windows).
-  GLFWwindow* windowToShare = nullptr;
-  if (sharedWindow != nullptr) {
-    if (!sharedWindow->BorrowContext()) {
-      m_status = "Failed to borrow context from shared window";
-      return;
+    // Construct our context, borrowing the context of the shared window so that it will be
+    // active on our context (required for Windows).
+    GLFWwindow* windowToShare = nullptr;
+    if (sharedWindow != nullptr) {
+      if (!sharedWindow->BorrowContext()) {
+        m_status = "Failed to borrow context from shared window";
+        return;
+      }
+      windowToShare = sharedWindow->m_impl->m_window;
     }
-    windowToShare = sharedWindow->m_impl->m_window;
-  }
-  Display::m_impl->m_window = glfwCreateWindow(100, 100, "", nullptr, windowToShare);
-  if (sharedWindow != nullptr) {
-    if (!sharedWindow->ReturnContext()) {
-      m_status = "Failed to return context to shared window";
-      return;
+    Display::m_impl->m_window = glfwCreateWindow(100, 100, "", nullptr, windowToShare);
+    if (sharedWindow != nullptr) {
+      if (!sharedWindow->ReturnContext()) {
+        m_status = "Failed to return context to shared window";
+        return;
+      }
     }
   }
 
@@ -830,33 +835,44 @@ void asdp::render::DisplayOpenXR::DisplayOpenXRImpl::OpenGLInitializeDevice(Disp
   XrGraphicsRequirementsOpenGLKHR graphicsRequirements{ XR_TYPE_GRAPHICS_REQUIREMENTS_OPENGL_KHR };
   CHECK_XRCMD(pfnGetOpenGLGraphicsRequirementsKHR(instance, systemId, &graphicsRequirements));
 
-  // Create a windowed mode window and its OpenGL context.
-  // This must be done in the same thread that will do the rendering so that the window events will
-  // be handled properly on all architectures.
-  // We must make the OpenGL context of the window we want to share current on this thread
-  // if we are sharing it by borrowing it and then returning it once the window is open because
-  // Windows requires it to be current.
-  GLFWwindow* windowToShare = nullptr;
-  if (sharedWindow) {
-    windowToShare = sharedWindow->m_impl->m_window;
-    if (!sharedWindow->BorrowContext()) {
-      THROW("DisplayOpenXR::DisplayOpenXRImpl::OpenGLInitializeDevice(): Failed to borrow context from shared window");
+  {
+    // Hold the window mutex so that only one window can be created at a time.
+    std::lock_guard<std::mutex> windowLock(m_windowMutex);
+
+    // Create a windowed mode window and its OpenGL context.
+    // This must be done in the same thread that will do the rendering so that the window events will
+    // be handled properly on all architectures.
+    // We must make the OpenGL context of the window we want to share current on this thread
+    // if we are sharing it by borrowing it and then returning it once the window is open because
+    // Windows requires it to be current.
+    GLFWwindow* windowToShare = nullptr;
+    if (sharedWindow) {
+      windowToShare = sharedWindow->m_impl->m_window;
+      if (!sharedWindow->BorrowContext()) {
+        THROW("DisplayOpenXR::DisplayOpenXRImpl::OpenGLInitializeDevice(): Failed to borrow context from shared window");
+        return;
+      }
+    }
+
+    // Open a window that we will use to get a context that we will use to hand to OpenXR as needed.
+    // This is a bit of a hack, but it is the only way to get a context that we can use with OpenXR.
+    // We will use the context from this window to create the OpenXR session.
+    // Set the window to be hidden.
+    glfwWindowHint(GLFW_VISIBLE, false);
+    m_contextWindow = glfwCreateWindow(100, 100, "ASDP_Render_Module OpenXR OpenGL Window to get context", nullptr, windowToShare);
+    if (sharedWindow) {
+      if (!sharedWindow->ReturnContext()) {
+        THROW("OpenGLInitializeDevice(): Failed to return context to shared window");
+        return;
+      }
+    }
+    // Verify that the window was created.
+    if (!m_contextWindow) {
+      THROW("DisplayOpenXR::DisplayOpenXRImpl::OpenGLInitializeDevice(): Failed to create GLFW window");
       return;
     }
+    glfwMakeContextCurrent(m_contextWindow);
   }
-
-  // Open a window that we will use to get a context that we will use to hand to OpenXR as needed.
-  // This is a bit of a hack, but it is the only way to get a context that we can use with OpenXR.
-  // We will use the context from this window to create the OpenXR session.
-  // Set the window to be hidden.
-  glfwWindowHint(GLFW_VISIBLE, false);
-  m_contextWindow = glfwCreateWindow(100, 100, "ASDP_Render_Module OpenXR OpenGL Window to get context", nullptr, windowToShare);
-  // Verify that the window was created.
-  if (!m_contextWindow) {
-    THROW("DisplayOpenXR::DisplayOpenXRImpl::OpenGLInitializeDevice(): Failed to create GLFW window");
-    return;
-  }
-  glfwMakeContextCurrent(m_contextWindow);
 
   // Determine the OpenGL version.
   GLint major = 0;
@@ -869,7 +885,6 @@ void asdp::render::DisplayOpenXR::DisplayOpenXRImpl::OpenGLInitializeDevice(Disp
     THROW("DisplayOpenXR::DisplayOpenXRImpl::OpenGLInitializeDevice(): Runtime does not support desired Graphics API and/or version");
   }
 #ifdef XR_USE_PLATFORM_WIN32
-  /// @todo Consider doing this (and opening the window above) once we know the desired display window size from OpenXR
   g_graphicsBinding.hDC = GetDC(glfwGetWin32Window(m_contextWindow));
   g_graphicsBinding.hGLRC = glfwGetWGLContext(m_contextWindow);
 #elif defined(XR_USE_PLATFORM_XLIB)
@@ -879,13 +894,6 @@ void asdp::render::DisplayOpenXR::DisplayOpenXRImpl::OpenGLInitializeDevice(Disp
 #elif defined(XR_USE_PLATFORM_WAYLAND)
   THROW("DisplayOpenXR::DisplayOpenXRImpl::OpenGLInitializeDevice(): Wayland not implemented here");
 #endif
-
-  if (sharedWindow) {
-    if (!sharedWindow->ReturnContext()) {
-      THROW("OpenGLInitializeDevice(): Failed to return context to shared window");
-      return;
-    }
-  }
 
   /** @todo Can enable this for debugging
   glEnable(GL_DEBUG_OUTPUT);
@@ -1701,12 +1709,10 @@ DisplayOpenXR::~DisplayOpenXR()
 
 void DisplayOpenXR::DisplayThread(Display* sharedWindow, uint32_t renderAheadMicroseconds)
 {
-  std::lock_guard<std::mutex> windowLock(m_windowMutex);
-
   bool requestRestart = false;
   do {
 
-    /// @todo Create things that we need
+    /// Create things that we need for rendering.
     try {
       m_impl->OpenXRCreateInstance();
       m_impl->OpenXRInitializeSystem(sharedWindow);
