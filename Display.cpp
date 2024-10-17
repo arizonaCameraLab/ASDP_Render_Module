@@ -631,6 +631,7 @@ DisplayTexture::~DisplayTexture()
 #include "check.h"
 #ifdef _WIN32
 #define GLFW_EXPOSE_NATIVE_WIN32
+#define GLFW_EXPOSE_NATIVE_WGL
 #include <GLFW/glfw3native.h>
 #endif
 
@@ -849,7 +850,7 @@ void asdp::render::DisplayOpenXR::DisplayOpenXRImpl::OpenGLInitializeDevice(Disp
   // We will use the context from this window to create the OpenXR session.
   // Set the window to be hidden.
   glfwWindowHint(GLFW_VISIBLE, false);
-  m_contextWindow = glfwCreateWindow(100, 100, "OpenXR OpenGL Window to get context", nullptr, windowToShare);
+  m_contextWindow = glfwCreateWindow(100, 100, "ASDP_Render_Module OpenXR OpenGL Window to get context", nullptr, windowToShare);
   // Verify that the window was created.
   if (!m_contextWindow) {
     THROW("DisplayOpenXR::DisplayOpenXRImpl::OpenGLInitializeDevice(): Failed to create GLFW window");
@@ -869,8 +870,8 @@ void asdp::render::DisplayOpenXR::DisplayOpenXRImpl::OpenGLInitializeDevice(Disp
   }
 #ifdef XR_USE_PLATFORM_WIN32
   /// @todo Consider doing this (and opening the window above) once we know the desired display window size from OpenXR
-  g_graphicsBinding.hDC = wglGetCurrentDC();
-  g_graphicsBinding.hGLRC = wglGetCurrentContext();
+  g_graphicsBinding.hDC = GetDC(glfwGetWin32Window(m_contextWindow));
+  g_graphicsBinding.hGLRC = glfwGetWGLContext(m_contextWindow);
 #elif defined(XR_USE_PLATFORM_XLIB)
   THROW("DisplayOpenXR::DisplayOpenXRImpl::OpenGLInitializeDevice(): Xlib not implemented here");
 #elif defined(XR_USE_PLATFORM_XCB)
@@ -886,7 +887,7 @@ void asdp::render::DisplayOpenXR::DisplayOpenXRImpl::OpenGLInitializeDevice(Disp
     }
   }
 
-  /* @todo Can enable this for debugging
+  /** @todo Can enable this for debugging
   glEnable(GL_DEBUG_OUTPUT);
   glDebugMessageCallback(
     [](GLenum source, GLenum type, GLuint id, GLenum severity, GLsizei length, const GLchar* message,
