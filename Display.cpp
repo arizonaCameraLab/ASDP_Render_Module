@@ -904,6 +904,7 @@ void asdp::render::DisplayOpenXR::DisplayOpenXRImpl::OpenGLInitializeDevice(Disp
     },
     nullptr);
   */
+  OpenGLInitializeResources();
 }
 
 XrReferenceSpaceCreateInfo asdp::render::DisplayOpenXR::DisplayOpenXRImpl::GetXrReferenceSpaceCreateInfo(const std::string& referenceSpaceTypeStr)
@@ -1562,6 +1563,15 @@ bool asdp::render::DisplayOpenXR::DisplayOpenXRImpl::OpenXRRenderLayer(XrTime pr
     return false;
   }
   m_display->m_composite->Render(time, viewRenderInfos);
+
+  /*
+  // Swap our window every other eye for RenderDoc
+  /// @todo Is this needed? We're not drawing into that window...
+  static int everyOther = 0;
+  if ((everyOther++ & 1) != 0) {
+    glfwSwapBuffers(m_display->m_impl->m_contextWindow);
+  }
+  */
 
   /// Release the swapchain images after rendering.
   for (uint32_t i = 0; i < viewCountOutput; i++) {
