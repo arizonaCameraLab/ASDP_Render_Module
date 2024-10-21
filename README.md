@@ -5,7 +5,8 @@ for the Apache Strap-Down Pilotage program.
 
 ## Getting Started
 
-This module must be cloned recursively so that it pulls in all of its submodules.
+This Render module must be cloned recursively so that it pulls in all of its submodules:
+`git clone --recursive https://github.com/arizonaCameraLab/ASDP_Render_Module`
 
 **Summary:** Quick instructions to get set up on Linux for Storage and Render Server systems
 (replace X with the serial number of the systems being used [1-4] in the IP addresses):
@@ -21,8 +22,8 @@ This module must be cloned recursively so that it pulls in all of its submodules
 **Detailed requirements:** The ASDP_Render_Module requires the ASDP_Core_API library to have been
 installed before it is built.  This installs by default in a known system location that can
 be found automatically.  The library source can be obtained using:
-`git clone --recursive https://github.com/arizonaCameraLab/ASDP_Core_API` and instructions in the
-repository tell how to install it.  The --recursive flag is important to get the submodules.
+`git clone https://github.com/arizonaCameraLab/ASDP_Core_API` and instructions in the
+repository tell how to install it.
 
 The following packages are required (apt install) to build on Linux:
 - libglfw3-dev
