@@ -44,8 +44,8 @@ void Composite::Render(asdp::Time scanOutTime, std::vector<ViewRenderInfo> views
     const ViewRenderInfo& view = views[eye];
 
     // Only set up the frame buffer and clear the buffers if we're the first eye or if the
-    // eyes use different frame buffers.
-    if ((eye == 0) || (views[eye].frameBuffer != views[0].frameBuffer)) {
+    // eyes use different frame buffers or different color buffers.
+    if ((eye == 0) || (views[eye].frameBuffer != views[0].frameBuffer) || (views[eye].colorBuffer != views[0].colorBuffer)) {
       // Bind the frame buffer and assign the appropriate textures.
       glBindFramebuffer(GL_FRAMEBUFFER, view.frameBuffer);
       if (view.frameBuffer != 0) {
