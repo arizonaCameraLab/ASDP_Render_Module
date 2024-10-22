@@ -30,9 +30,14 @@ The following packages are required (apt install) to build on Linux:
 - libglew-dev
 
 To upgrade a server-only Mint distribution (with added nVidia drivers) on a Render Server to a
-desktop environment that uses the light-weight XFCE desktop, use the following command:
-`sudo apt install xfce4` and then make (as root) the file */etc/lightdm/lightdm.conf* with the
-following contents:
+desktop environment that uses the light-weight XFCE desktop but does not include the printer daemon,
+use the following commands:
+
+    sudo apt install xfce4
+    sudo apt remove cups
+    sudo apt autoremove
+
+and then make (as root) the file */etc/lightdm/lightdm.conf* with the following contents:
 
     [SeatDefaults]
     user-session=xfce
