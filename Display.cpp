@@ -1455,26 +1455,41 @@ void asdp::render::DisplayOpenXR::DisplayOpenXRImpl::OpenXRPollActions()
   }
 }
 
-// Function to convert a quaternion to Euler angles (X, Y, Z)
+// Function to convert a quaternion to Euler angles in order (X, Y, Z)
 /// @todo Test this function.
-static void QuaternionToEulerXYZDegrees(const XrQuaternionf& q, float& roll, float& pitch, float& yaw) {
-  // Calculate the Euler angles
-  float sinr_cosp = 2 * (q.w * q.x + q.y * q.z);
-  float cosr_cosp = 1 - 2 * (q.x * q.x + q.y * q.y);
-  roll = std::atan2(sinr_cosp, cosr_cosp);
+static void QuaternionToEulerXYZDegrees(const XrQuaternionf& q, float& rx, float& ry, float& rz)
+{
+  // GLM gives us rotations in the order Z, Y, X but we want X, Y, Z.  We make use of
+  // the fact that an inverse rotation matrix is the same as doing three individual
+  // rotations in the opposite directions and order.  So we find the inverse of the matrix
+  // that we want, then ask for Euler angles from that and then negate them.
 
-  float sinp = 2 * (q.w * q.y - q.z * q.x);
-  if (std::abs(sinp) >= 1)
-    pitch = std::copysign(M_PI / 2, sinp); // Use 90 degrees if out of range
-  else
-    pitch = std::asin(sinp);
+  // Store the Quaternion into a glm::quat, in order W, X, Y, Z.
+  glm::quat quat(q.w, q.x, q.y, q.z);
 
-  float siny_cosp = 2 * (q.w * q.z + q.x * q.y);
-  float cosy_cosp = 1 - 2 * (q.y * q.y + q.z * q.z);
-  yaw = std::atan2(siny_cosp, cosy_cosp);
-  roll = glm::degrees(roll);
-  pitch = glm::degrees(pitch);
-  yaw = glm::degrees(yaw);
+  // Convert the orientation to helicopter space by rotating 90 degrees around the x-axis,
+  // doing the inverse rotation on the other side.
+  float angle = glm::radians(-90.0f);
+  glm::vec3 axis = glm::vec3(1.0f, 0.0f, 0.0f);
+  glm::quat rotationQuat = glm::angleAxis(angle, axis);
+  glm::quat inverseRotationQuat = glm::angleAxis(-angle, axis);
+  quat = inverseRotationQuat * quat * rotationQuat;
+
+  // Find the inverse rotation
+  quat = glm::inverse(quat);
+
+  // Convert to Euler angles
+  glm::vec3 euler = glm::eulerAngles(quat);
+
+  // Convert radians to degrees
+  euler = glm::degrees(euler);
+
+  // Store the negative of the Euler angles in the view, completing the inverse.
+  rx = -euler.x;
+  ry = -euler.y;
+  rz = -euler.z;
+
+  /// @todo Somewhere, we need to convert to Helicopter space
 }
 
 bool asdp::render::DisplayOpenXR::DisplayOpenXRImpl::OpenXRRenderLayer(XrTime predictedDisplayTime,
