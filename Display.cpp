@@ -1792,7 +1792,7 @@ void DisplayOpenXR::DisplayThread(Display* sharedWindow, uint32_t renderAheadMic
 
 class asdp::render::DisplayOpenXR::DisplayOpenXRImpl {
 public:
-}
+};
 
 DisplayOpenXR::DisplayOpenXR(std::shared_ptr<Composite> composite, Display* sharedWindow,
     std::shared_ptr<CoreClient> client, uint8_t triggerID, uint32_t triggerAheadMicroseconds,
