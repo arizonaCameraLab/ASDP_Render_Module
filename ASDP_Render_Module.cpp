@@ -46,7 +46,7 @@ using namespace asdp::render;
 using json = nlohmann::json;
 using json = nlohmann::json;
 
-static std::string VERSION = "1.11.1";
+static std::string VERSION = "1.11.2";
 
 /// @brief The path to the configuration file. Defined in the CMakeLists file.
 std::filesystem::path dirPath = CONFIG_FILE_PATH;
@@ -890,11 +890,6 @@ int main(int argc, char** argv)
       return 13;
     }
 
-    std::set<uint32_t> cameraIDs; ///< The camera IDs to render.
-    for (uint32_t ID = 1; ID <= cameras.size(); ID++) {
-      cameraIDs.insert(ID);
-    }
-
     // Read the configuration file associated with the serial number for the server. Verify that
     // it has a matching serial number and number of cameras.
     std::filesystem::path configPath = dirPath / (std::to_string(serialNumber) + ".json");
@@ -993,6 +988,11 @@ int main(int argc, char** argv)
     }  catch (const std::exception& e) {
       std::cerr << "Error parsing configuration file: " << e.what() << std::endl;
       return 19;
+    }
+
+    std::vector<uint32_t> cameraIDs; ///< The camera IDs to render, in the same order as the records in the configuration file.
+    for (uint32_t i = 0; i < cameraRenderInfos.size(); i++) {
+      cameraIDs.push_back(cameraRenderInfos[i].m_ID);
     }
 
     // Configure an event structure to handle callbacks for the display windows.
