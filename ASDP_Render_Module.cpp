@@ -46,7 +46,7 @@ using namespace asdp::render;
 using json = nlohmann::json;
 using json = nlohmann::json;
 
-static std::string VERSION = "1.11.3";
+static std::string VERSION = "1.11.4";
 
 /// @brief The path to the configuration file. Defined in the CMakeLists file.
 std::filesystem::path dirPath = CONFIG_FILE_PATH;
@@ -1120,15 +1120,18 @@ int main(int argc, char** argv)
         dataQueues[i % NUM_TEXTURE_THREADS]));
     }
 
-    // Request streaming on the cameras at their maximum rates.
+    // Request streaming on the cameras at their maximum rates from their associated ID.
     std::cout << "Streaming every " << frameStride << " frames from " << cameraIDs.size() << " cameras" << std::endl;
-    for (auto& camID : cameraIDs) {
+    for (size_t i = 0; i < cameras.size(); i++) {
+      uint32_t camID = cameraIDs[i];
+      CameraInfo &camera = cameras[i];
+
       // Find the minimum period for the camera and which internal trigger ID it uses, then
       // configure the trigger to run at that rate.
       TriggerInfo ti;
-      ti.ID = cameras[camID - 1].trigger;
+      ti.ID = camera.trigger;
       ti.mode = 1;
-      ti.period = cameras[camID - 1].minTriggerPeriod;
+      ti.period = camera.minTriggerPeriod;
       ti.offset = 0;
       ti.trackingFactor = 0.5;
       status = client->SendCommandPacket(CommandPacketConfigureTrigger(ti));
@@ -1140,7 +1143,7 @@ int main(int argc, char** argv)
 
       // Request the camera to stream full-frame images once every frameStride frames.
       uint16_t port;
-      status = UDPReceivers[camID - 1]->GetPort(port);
+      status = UDPReceivers[i]->GetPort(port);
       if (status != OKAY) {
         std::cerr << "Failed to get port: " << ErrorMessage(status) << std::endl;
         return 30;
@@ -1153,8 +1156,8 @@ int main(int argc, char** argv)
       region.startTimeMicroseconds = 0;
       region.left = 0;
       region.top = 0;
-      region.right = cameras[camID - 1].width - 1;
-      region.bottom = cameras[camID - 1].height - 1;
+      region.right = camera.width - 1;
+      region.bottom = camera.height - 1;
       status = client->SendCommandPacket(CommandPacketStreamSubregion(endpoint, region));
       if (status != OKAY) {
         std::cerr << "Failed to stream images: " << ErrorMessage(status) << std::endl;
