@@ -46,7 +46,7 @@ using namespace asdp::render;
 using json = nlohmann::json;
 using json = nlohmann::json;
 
-static std::string VERSION = "1.11.4";
+static std::string VERSION = "1.11.5";
 
 /// @brief The path to the configuration file. Defined in the CMakeLists file.
 std::filesystem::path dirPath = CONFIG_FILE_PATH;

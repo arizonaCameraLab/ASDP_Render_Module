@@ -446,6 +446,7 @@ void DisplayWindow::DisplayThread(std::string windowName,
     SetViewportSizeAndFOVs(m_impl->m_views[0]);
 
     // Render here
+    /// @todo Determine the scan-out time of the frame (center of the image) and pass it in.
     m_composite->Render(asdp::Time(), m_impl->m_views);
 
     // Swap front and back buffers and compute the next frame time.
@@ -631,14 +632,15 @@ DisplayTexture::~DisplayTexture()
 }
 
 #ifdef USE_OPENXR
-#include "pch.h"
-#include "common.h"
-#include "check.h"
-#ifdef _WIN32
-#define GLFW_EXPOSE_NATIVE_WIN32
-#define GLFW_EXPOSE_NATIVE_WGL
-#include <GLFW/glfw3native.h>
-#endif
+ #define XR_EXTENSION_PROTOTYPES
+ #include "pch.h"
+ #include "common.h"
+ #include "check.h"
+ #ifdef _WIN32
+  #define GLFW_EXPOSE_NATIVE_WIN32
+  #define GLFW_EXPOSE_NATIVE_WGL
+  #include <GLFW/glfw3native.h>
+ #endif
 
 //==============================================================================
 // Structures and methods for DisplayOpenXR class.
@@ -753,6 +755,8 @@ public:
   // Map color buffer to associated depth buffer. This map is populated on demand.
   std::map<uint32_t, uint32_t> g_colorToDepthMap;
 
+  PFN_xrConvertTimeToWin32PerformanceCounterKHR m_xrConvertTimeToWin32PerformanceCounterKHR = nullptr;
+
   void OpenXRCreateInstance();
   void OpenXRInitializeSystem(Display* sharedWindow);
   void OpenGLInitializeDevice(Display* sharedWindow, XrInstance instance, XrSystemId systemId);
@@ -789,17 +793,27 @@ void asdp::render::DisplayOpenXR::DisplayOpenXRImpl::OpenXRCreateInstance()
 
   // Create union of extensions required by OpenGL.
   std::vector<const char*> extensions = { XR_KHR_OPENGL_ENABLE_EXTENSION_NAME };
+#ifdef XR_USE_PLATFORM_WIN32
+  extensions.push_back(XR_KHR_WIN32_CONVERT_PERFORMANCE_COUNTER_TIME_EXTENSION_NAME);
+#endif
 
   XrInstanceCreateInfo createInfo{ XR_TYPE_INSTANCE_CREATE_INFO };
   createInfo.next = nullptr;  // Needs to be set on Android.
   createInfo.enabledExtensionCount = (uint32_t)extensions.size();
   createInfo.enabledExtensionNames = extensions.data();
 
-  /// @todo Change the application name here.
-  strcpy(createInfo.applicationInfo.applicationName, "OpenXR-OpenGL-Example");
+  strcpy(createInfo.applicationInfo.applicationName, "asdp::render::DisplayOpenXR");
   createInfo.applicationInfo.apiVersion = XR_CURRENT_API_VERSION;
 
   CHECK_XRCMD(xrCreateInstance(&createInfo, &g_instance));
+
+  // Load the Windows performance timer extension function
+  xrGetInstanceProcAddr(g_instance, "xrConvertTimeToWin32PerformanceCounterKHR",
+    reinterpret_cast<PFN_xrVoidFunction*>(&m_xrConvertTimeToWin32PerformanceCounterKHR));
+
+  if (!m_xrConvertTimeToWin32PerformanceCounterKHR) {
+    std::cerr << "Warning: DisplayOpenXR() Failed to load xrConvertTimeToWin32PerformanceCounterKHR function." << std::endl;
+  }
 }
 
 void asdp::render::DisplayOpenXR::DisplayOpenXRImpl::OpenXRInitializeSystem(Display* sharedWindow)
@@ -1198,7 +1212,7 @@ std::vector<XrSwapchainImageBaseHeader*> asdp::render::DisplayOpenXR::DisplayOpe
 void asdp::render::DisplayOpenXR::DisplayOpenXRImpl::OpenXRCreateSwapchains()
 {
   // Create the swapchains for the views.
-  // @todo Implement this.  CHECK(g_session != XR_NULL_HANDLE);
+  CHECK(g_session != XR_NULL_HANDLE);
   CHECK(g_swapchains.empty());
   CHECK(g_configViews.empty());
 
@@ -1456,7 +1470,6 @@ void asdp::render::DisplayOpenXR::DisplayOpenXRImpl::OpenXRPollActions()
 }
 
 // Function to convert a quaternion to Euler angles in order (X, Y, Z)
-/// @todo Test this function.
 static void QuaternionToEulerXYZDegrees(const XrQuaternionf& q, float& rx, float& ry, float& rz)
 {
   // GLM gives us rotations in the order Z, Y, X but we want X, Y, Z.  We make use of
@@ -1488,8 +1501,6 @@ static void QuaternionToEulerXYZDegrees(const XrQuaternionf& q, float& rx, float
   rx = -euler.x;
   ry = -euler.y;
   rz = -euler.z;
-
-  /// @todo Somewhere, we need to convert to Helicopter space
 }
 
 bool asdp::render::DisplayOpenXR::DisplayOpenXRImpl::OpenXRRenderLayer(XrTime predictedDisplayTime,
@@ -1565,15 +1576,63 @@ bool asdp::render::DisplayOpenXR::DisplayOpenXRImpl::OpenXRRenderLayer(XrTime pr
     viewRenderInfos.push_back(vri);
   }
 
-  /// @todo Render the requested views at the predicted scan-out time.
-  std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
+  // Find out the delay from now until the predicted display time for the center of the frame.
+  // Do this by converting the predicted display time to a Windows performance counter time and then
+  // subtracting the current time.
+  Time time;
   std::shared_ptr<Timer> timer;
   Status status = m_display->m_client->GetTimer(timer);
+  status = timer->GetCoreTime(time);
   if (status != OKAY) {
     return false;
   }
-  Time time;
-  status = timer->GetCoreTime(time);
+#ifdef _WIN32
+  // Check that the extension is available before calling it.
+  // then figure out how far into the future we are and add that to the present time.
+  if (m_xrConvertTimeToWin32PerformanceCounterKHR) {
+    LARGE_INTEGER counterNow;
+    if (!QueryPerformanceCounter(&counterNow)) {
+      std::cerr << "OpenXRRenderLayer(): Failed to read performance counter" << std::endl;
+      return false;
+    }
+    LARGE_INTEGER counterThen;
+    XrResult result = m_xrConvertTimeToWin32PerformanceCounterKHR(g_instance, predictedDisplayTime, &counterThen);
+    if (result != XR_SUCCESS) {
+      std::cerr << "OpenXRRenderLayer(): Failed to convert OpenXR time to Windows performance counter: " << result << std::endl;
+      return false;
+    }
+    size_t nanoseconds = 0;
+    if (counterThen.QuadPart > counterNow.QuadPart) {
+      LONGLONG diff = counterThen.QuadPart - counterNow.QuadPart;
+      LARGE_INTEGER frequency;
+      if (!QueryPerformanceFrequency(&frequency)) {
+        std::cerr << "OpenXRRenderLayer(): Failed to read performance frequency" << std::endl;
+        return false;
+      }
+      double seconds = static_cast<double>(diff) / static_cast<double>(frequency.QuadPart);
+      Time dt;
+      dt.seconds = static_cast<uint64_t>(seconds);
+      dt.microseconds = static_cast<uint32_t>((seconds - dt.seconds) * 1e6);
+      // On the HTC Vive OpenXR implementation, this returns a time many seconds into the future, it is probably returning
+      // the time since the epoch rather than the time since the start of the performance timer (boot).
+      if (dt.seconds == 0) {
+        time += dt;
+        //std::cout << "XXX dt = " << dt.seconds << "s " << dt.microseconds << "us" << std::endl;
+      } else {
+        static bool warned = false;
+        if (!warned) {
+          std::cerr << "OpenXRRenderLayer(): Time prediction more than a second ahead, probably a bug in the OpenXR runtime; not predicting." << std::endl;
+          warned = true;
+        }
+      }
+    }
+  }
+#else
+  std::cerr << "Time prediction not implemented for this platform" << std::endl;
+#endif
+
+  /// Render the requested views at the predicted scan-out time.
+  std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
   if (status != OKAY) {
     return false;
   }
@@ -1581,7 +1640,7 @@ bool asdp::render::DisplayOpenXR::DisplayOpenXRImpl::OpenXRRenderLayer(XrTime pr
 
   /*
   // Swap our window every other eye for RenderDoc
-  /// @todo Is this needed? We're not drawing into that window...
+  /// @todo Not needed until we're drawing into that window...
   static int everyOther = 0;
   if ((everyOther++ & 1) != 0) {
     glfwSwapBuffers(m_display->m_impl->m_contextWindow);
