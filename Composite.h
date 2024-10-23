@@ -234,8 +234,6 @@ namespace asdp {
       void AddBufferObjects(const CameraRenderInfo& cameraRenderInfo, size_t nx = 100, size_t ny = 100,
         GLfloat depth = 10);
 
-      asdp::Time m_scanOutTime; ///< The time of the scan out stored for use by RenderView.
-
       // Overridden methods
       bool SetupRendering() override;
       void RenderView(const float* modelViewProjection) override;

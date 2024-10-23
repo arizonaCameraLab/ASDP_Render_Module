@@ -857,9 +857,6 @@ void CompositeCameras::SetupRenderFrame(asdp::Time scanOutTime)
       m_cameraRenderInfos[i].m_imageQueue->UnlockImage(images[i].front());
     }
   }
-
-  // Store the scan out time for use in rendering.
-  m_scanOutTime = scanOutTime;
 }
 
 void CompositeCameras::RenderView(const float* modelViewProjection)
