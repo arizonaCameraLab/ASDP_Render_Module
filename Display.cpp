@@ -635,7 +635,6 @@ DisplayTexture::~DisplayTexture()
 }
 
 #ifdef USE_OPENXR
- #define XR_EXTENSION_PROTOTYPES
  #include "pch.h"
  #include "common.h"
  #include "check.h"
