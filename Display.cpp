@@ -303,6 +303,9 @@ void DisplayWindow::DisplayThread(std::string windowName,
       // Set the window visibility.
       glfwWindowHint(GLFW_VISIBLE, !hidden);
 
+      // Tell it not to iconify full-screen windows that lose focus.
+      glfwWindowHint(GLFW_AUTO_ICONIFY, GLFW_FALSE);
+
       // Create a windowed mode window and its OpenGL context.
       // This must be done in the same thread that will do the rendering so that the window events will
       // be handled properly on all architectures.
