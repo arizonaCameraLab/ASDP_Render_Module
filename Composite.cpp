@@ -727,7 +727,7 @@ void CompositeCameras::AddBufferObjects(CameraRenderInfo const& cameraRenderInfo
       double yc = distPoint[1];
       double zc = distPoint[2];
 
-      // Translate and rotate the X, Y, Z coordinates to match the camera center of projection
+      // Rotate the X, Y, Z coordinates to match the camera center of projection
       // and viewing direction of this camera in the coordinate system of the camera cluster.
       // This will be the local helicopter coordinate system that maps +X helicopter from +X,
       // +Y helicopter from -Z, and +Z helicopter from +Y.
@@ -735,7 +735,8 @@ void CompositeCameras::AddBufferObjects(CameraRenderInfo const& cameraRenderInfo
       double yh = -zc;
       double zh = yc;
 
-      // Rotate the points in the helicopter view space by the specified orientation change.
+      // Rotate the points in the helicopter view space by the specified orientation change
+      // to point them in the direction that the camera is looking.
       glm::vec3 point(xh, yh, zh);
       glm::mat4 rotationX = glm::rotate(glm::mat4(1.0f),
         glm::radians(static_cast<GLfloat>(cameraRenderInfo.m_orientationDegrees[0])),
@@ -746,10 +747,12 @@ void CompositeCameras::AddBufferObjects(CameraRenderInfo const& cameraRenderInfo
       glm::mat4 rotation = glm::rotate(rotationY,
         glm::radians(static_cast<GLfloat>(cameraRenderInfo.m_orientationDegrees[2])),
         glm::vec3(0.0f, 0.0f, 1.0f));
+      glm::vec3 transformedPoint = glm::vec3(rotation * glm::vec4(point, 1.0f));
+
       // Offset the points by the camera position in the helicopter view space.
-      glm::mat4 total = glm::translate(rotation, glm::vec3(
-        cameraRenderInfo.m_positionMeters[0], cameraRenderInfo.m_positionMeters[1], cameraRenderInfo.m_positionMeters[2]));
-      glm::vec3 transformedPoint = glm::vec3(total  *glm::vec4(point, 1.0f));
+      point[0] += cameraRenderInfo.m_positionMeters[0];
+      point[1] += cameraRenderInfo.m_positionMeters[1];
+      point[2] += cameraRenderInfo.m_positionMeters[2];
 
       // Add the vertex
       vertices.push_back(transformedPoint[0]);
