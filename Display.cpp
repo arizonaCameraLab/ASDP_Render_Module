@@ -408,6 +408,15 @@ void DisplayWindow::DisplayThread(std::string windowName,
     while (std::chrono::steady_clock::now() < m_impl->m_nextFrameTime) {
     }
 
+    // Determine the scan-out time of the frame (center of the image).
+    double frameTime = 1.0 / fps;
+    double middleOfNextFrameOffset = frameTime / 2.0 + renderAheadMicroseconds / 1e6;
+    Time renderTime;
+    m_timer->GetCoreTime(renderTime, std::chrono::steady_clock::now());
+    uint32_t seconds = static_cast<uint32_t>(middleOfNextFrameOffset);
+    uint32_t microseconds = (middleOfNextFrameOffset - seconds) * 1e6;
+    renderTime += Time(seconds, microseconds);
+
     // Grab the context mutex for the duration of the loop.  Once we have it, we know
     // that the context is not active in another thread.
     std::lock_guard<std::mutex> lock(Display::m_impl->m_contextMutex);
@@ -449,8 +458,7 @@ void DisplayWindow::DisplayThread(std::string windowName,
     SetViewportSizeAndFOVs(m_impl->m_views[0]);
 
     // Render here
-    /// @todo Determine the scan-out time of the frame (center of the image) and pass it in.
-    m_composite->Render(asdp::Time(), m_impl->m_views);
+    m_composite->Render(renderTime, m_impl->m_views);
 
     // Swap front and back buffers and compute the next frame time.
     glfwSwapBuffers(Display::m_impl->m_window);
