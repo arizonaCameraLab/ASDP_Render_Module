@@ -1,0 +1,805 @@
+{
+  "serialNumber": 65004,
+  "cameras": [
+    {
+      "id": 1,
+      "fieldOfViewDegrees": [
+        40.0,
+        32.5
+      ],
+      "resolutionPixels": [
+        1280,
+        1024
+      ],
+      "orientationDegrees": [
+        90.0,
+        -144.0,
+        142.5
+      ],
+      "positionMeters": [
+        0.06894976782232465,
+        0.050094938619014436,
+        -0.11106946764077294
+      ],
+      "distortion": {
+        "type": "radial",
+        "parameters": {
+          "COP": [
+            0.0,
+            0.0
+          ],
+          "map": [
+            [
+              0,
+              0
+            ],
+            [
+              5,
+              5
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "id": 2,
+      "fieldOfViewDegrees": [
+        40.0,
+        32.5
+      ],
+      "resolutionPixels": [
+        1280,
+        1024
+      ],
+      "orientationDegrees": [
+        90.0,
+        63.0,
+        -142.5
+      ],
+      "positionMeters": [
+        0.03869206675289616,
+        0.07593745668894059,
+        -0.11106946764077294
+      ],
+      "distortion": {
+        "type": "radial",
+        "parameters": {
+          "COP": [
+            0.0,
+            0.0
+          ],
+          "map": [
+            [
+              0,
+              0
+            ],
+            [
+              5,
+              5
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "id": 3,
+      "fieldOfViewDegrees": [
+        40.0,
+        32.5
+      ],
+      "resolutionPixels": [
+        1280,
+        1024
+      ],
+      "orientationDegrees": [
+        90.0,
+        -90.0,
+        142.5
+      ],
+      "positionMeters": [
+        0.0,
+        0.0852266000612209,
+        -0.11106946764077294
+      ],
+      "distortion": {
+        "type": "radial",
+        "parameters": {
+          "COP": [
+            0.0,
+            0.0
+          ],
+          "map": [
+            [
+              0,
+              0
+            ],
+            [
+              5,
+              5
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "id": 4,
+      "fieldOfViewDegrees": [
+        40.0,
+        32.5
+      ],
+      "resolutionPixels": [
+        1280,
+        1024
+      ],
+      "orientationDegrees": [
+        90.0,
+        117.0,
+        -142.5
+      ],
+      "positionMeters": [
+        -0.03869206675289616,
+        0.07593745668894059,
+        -0.11106946764077294
+      ],
+      "distortion": {
+        "type": "radial",
+        "parameters": {
+          "COP": [
+            0.0,
+            0.0
+          ],
+          "map": [
+            [
+              0,
+              0
+            ],
+            [
+              5,
+              5
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "id": 5,
+      "fieldOfViewDegrees": [
+        40.0,
+        32.5
+      ],
+      "resolutionPixels": [
+        1280,
+        1024
+      ],
+      "orientationDegrees": [
+        90.0,
+        -36.0,
+        142.5
+      ],
+      "positionMeters": [
+        -0.06894976782232465,
+        0.050094938619014436,
+        -0.11106946764077294
+      ],
+      "distortion": {
+        "type": "radial",
+        "parameters": {
+          "COP": [
+            0.0,
+            0.0
+          ],
+          "map": [
+            [
+              0,
+              0
+            ],
+            [
+              5,
+              5
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "id": 6,
+      "fieldOfViewDegrees": [
+        40.0,
+        32.5
+      ],
+      "resolutionPixels": [
+        1280,
+        1024
+      ],
+      "orientationDegrees": [
+        90.0,
+        -144.0,
+        107.5
+      ],
+      "positionMeters": [
+        0.10802025093702786,
+        0.07848130619156167,
+        -0.04209881193059824
+      ],
+      "distortion": {
+        "type": "radial",
+        "parameters": {
+          "COP": [
+            0.0,
+            0.0
+          ],
+          "map": [
+            [
+              0,
+              0
+            ],
+            [
+              5,
+              5
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "id": 7,
+      "fieldOfViewDegrees": [
+        40.0,
+        32.5
+      ],
+      "resolutionPixels": [
+        1280,
+        1024
+      ],
+      "orientationDegrees": [
+        90.0,
+        63.0,
+        -107.5
+      ],
+      "positionMeters": [
+        0.060616980911236996,
+        0.11896752354839892,
+        -0.04209881193059824
+      ],
+      "distortion": {
+        "type": "radial",
+        "parameters": {
+          "COP": [
+            0.0,
+            0.0
+          ],
+          "map": [
+            [
+              0,
+              0
+            ],
+            [
+              5,
+              5
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "id": 8,
+      "fieldOfViewDegrees": [
+        40.0,
+        32.5
+      ],
+      "resolutionPixels": [
+        1280,
+        1024
+      ],
+      "orientationDegrees": [
+        90.0,
+        -90.0,
+        107.5
+      ],
+      "positionMeters": [
+        0.0,
+        0.1335203731047518,
+        -0.04209881193059824
+      ],
+      "distortion": {
+        "type": "radial",
+        "parameters": {
+          "COP": [
+            0.0,
+            0.0
+          ],
+          "map": [
+            [
+              0,
+              0
+            ],
+            [
+              5,
+              5
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "id": 9,
+      "fieldOfViewDegrees": [
+        40.0,
+        32.5
+      ],
+      "resolutionPixels": [
+        1280,
+        1024
+      ],
+      "orientationDegrees": [
+        90.0,
+        117.0,
+        -107.5
+      ],
+      "positionMeters": [
+        -0.060616980911236996,
+        0.11896752354839892,
+        -0.04209881193059824
+      ],
+      "distortion": {
+        "type": "radial",
+        "parameters": {
+          "COP": [
+            0.0,
+            0.0
+          ],
+          "map": [
+            [
+              0,
+              0
+            ],
+            [
+              5,
+              5
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "id": 10,
+      "fieldOfViewDegrees": [
+        40.0,
+        32.5
+      ],
+      "resolutionPixels": [
+        1280,
+        1024
+      ],
+      "orientationDegrees": [
+        90.0,
+        -36.0,
+        107.5
+      ],
+      "positionMeters": [
+        -0.10802025093702786,
+        0.07848130619156167,
+        -0.04209881193059824
+      ],
+      "distortion": {
+        "type": "radial",
+        "parameters": {
+          "COP": [
+            0.0,
+            0.0
+          ],
+          "map": [
+            [
+              0,
+              0
+            ],
+            [
+              5,
+              5
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "id": 11,
+      "fieldOfViewDegrees": [
+        40.0,
+        32.5
+      ],
+      "resolutionPixels": [
+        1280,
+        1024
+      ],
+      "orientationDegrees": [
+        90.0,
+        -144.0,
+        72.5
+      ],
+      "positionMeters": [
+        0.10802025093702786,
+        0.07848130619156167,
+        0.04209881193059824
+      ],
+      "distortion": {
+        "type": "radial",
+        "parameters": {
+          "COP": [
+            0.0,
+            0.0
+          ],
+          "map": [
+            [
+              0,
+              0
+            ],
+            [
+              5,
+              5
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "id": 12,
+      "fieldOfViewDegrees": [
+        40.0,
+        32.5
+      ],
+      "resolutionPixels": [
+        1280,
+        1024
+      ],
+      "orientationDegrees": [
+        90.0,
+        63.0,
+        -72.5
+      ],
+      "positionMeters": [
+        0.060616980911236996,
+        0.11896752354839892,
+        0.04209881193059824
+      ],
+      "distortion": {
+        "type": "radial",
+        "parameters": {
+          "COP": [
+            0.0,
+            0.0
+          ],
+          "map": [
+            [
+              0,
+              0
+            ],
+            [
+              5,
+              5
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "id": 13,
+      "fieldOfViewDegrees": [
+        40.0,
+        32.5
+      ],
+      "resolutionPixels": [
+        1280,
+        1024
+      ],
+      "orientationDegrees": [
+        90.0,
+        -90.0,
+        72.5
+      ],
+      "positionMeters": [
+        0.0,
+        0.1335203731047518,
+        0.04209881193059824
+      ],
+      "distortion": {
+        "type": "radial",
+        "parameters": {
+          "COP": [
+            0.0,
+            0.0
+          ],
+          "map": [
+            [
+              0,
+              0
+            ],
+            [
+              5,
+              5
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "id": 14,
+      "fieldOfViewDegrees": [
+        40.0,
+        32.5
+      ],
+      "resolutionPixels": [
+        1280,
+        1024
+      ],
+      "orientationDegrees": [
+        90.0,
+        117.0,
+        -72.5
+      ],
+      "positionMeters": [
+        -0.060616980911236996,
+        0.11896752354839892,
+        0.04209881193059824
+      ],
+      "distortion": {
+        "type": "radial",
+        "parameters": {
+          "COP": [
+            0.0,
+            0.0
+          ],
+          "map": [
+            [
+              0,
+              0
+            ],
+            [
+              5,
+              5
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "id": 15,
+      "fieldOfViewDegrees": [
+        40.0,
+        32.5
+      ],
+      "resolutionPixels": [
+        1280,
+        1024
+      ],
+      "orientationDegrees": [
+        90.0,
+        -36.0,
+        72.5
+      ],
+      "positionMeters": [
+        -0.10802025093702786,
+        0.07848130619156167,
+        0.04209881193059824
+      ],
+      "distortion": {
+        "type": "radial",
+        "parameters": {
+          "COP": [
+            0.0,
+            0.0
+          ],
+          "map": [
+            [
+              0,
+              0
+            ],
+            [
+              5,
+              5
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "id": 16,
+      "fieldOfViewDegrees": [
+        40.0,
+        32.5
+      ],
+      "resolutionPixels": [
+        1280,
+        1024
+      ],
+      "orientationDegrees": [
+        90.0,
+        -144.0,
+        37.5
+      ],
+      "positionMeters": [
+        0.06894976782232465,
+        0.050094938619014436,
+        0.11106946764077294
+      ],
+      "distortion": {
+        "type": "radial",
+        "parameters": {
+          "COP": [
+            0.0,
+            0.0
+          ],
+          "map": [
+            [
+              0,
+              0
+            ],
+            [
+              5,
+              5
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "id": 17,
+      "fieldOfViewDegrees": [
+        40.0,
+        32.5
+      ],
+      "resolutionPixels": [
+        1280,
+        1024
+      ],
+      "orientationDegrees": [
+        90.0,
+        63.0,
+        -37.5
+      ],
+      "positionMeters": [
+        0.03869206675289616,
+        0.07593745668894059,
+        0.11106946764077294
+      ],
+      "distortion": {
+        "type": "radial",
+        "parameters": {
+          "COP": [
+            0.0,
+            0.0
+          ],
+          "map": [
+            [
+              0,
+              0
+            ],
+            [
+              5,
+              5
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "id": 18,
+      "fieldOfViewDegrees": [
+        40.0,
+        32.5
+      ],
+      "resolutionPixels": [
+        1280,
+        1024
+      ],
+      "orientationDegrees": [
+        90.0,
+        -90.0,
+        37.5
+      ],
+      "positionMeters": [
+        0.0,
+        0.0852266000612209,
+        0.11106946764077294
+      ],
+      "distortion": {
+        "type": "radial",
+        "parameters": {
+          "COP": [
+            0.0,
+            0.0
+          ],
+          "map": [
+            [
+              0,
+              0
+            ],
+            [
+              5,
+              5
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "id": 19,
+      "fieldOfViewDegrees": [
+        40.0,
+        32.5
+      ],
+      "resolutionPixels": [
+        1280,
+        1024
+      ],
+      "orientationDegrees": [
+        90.0,
+        117.0,
+        -37.5
+      ],
+      "positionMeters": [
+        -0.03869206675289616,
+        0.07593745668894059,
+        0.11106946764077294
+      ],
+      "distortion": {
+        "type": "radial",
+        "parameters": {
+          "COP": [
+            0.0,
+            0.0
+          ],
+          "map": [
+            [
+              0,
+              0
+            ],
+            [
+              5,
+              5
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "id": 20,
+      "fieldOfViewDegrees": [
+        40.0,
+        32.5
+      ],
+      "resolutionPixels": [
+        1280,
+        1024
+      ],
+      "orientationDegrees": [
+        90.0,
+        -36.0,
+        37.5
+      ],
+      "positionMeters": [
+        -0.06894976782232465,
+        0.050094938619014436,
+        0.11106946764077294
+      ],
+      "distortion": {
+        "type": "radial",
+        "parameters": {
+          "COP": [
+            0.0,
+            0.0
+          ],
+          "map": [
+            [
+              0,
+              0
+            ],
+            [
+              5,
+              5
+            ]
+          ]
+        }
+      }
+    }
+  ]
+}
