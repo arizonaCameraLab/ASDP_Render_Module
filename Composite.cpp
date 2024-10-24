@@ -750,9 +750,9 @@ void CompositeCameras::AddBufferObjects(CameraRenderInfo const& cameraRenderInfo
       glm::vec3 transformedPoint = glm::vec3(rotation * glm::vec4(point, 1.0f));
 
       // Offset the points by the camera position in the helicopter view space.
-      point[0] += cameraRenderInfo.m_positionMeters[0];
-      point[1] += cameraRenderInfo.m_positionMeters[1];
-      point[2] += cameraRenderInfo.m_positionMeters[2];
+      transformedPoint[0] += cameraRenderInfo.m_positionMeters[0];
+      transformedPoint[1] += cameraRenderInfo.m_positionMeters[1];
+      transformedPoint[2] += cameraRenderInfo.m_positionMeters[2];
 
       // Add the vertex
       vertices.push_back(transformedPoint[0]);
