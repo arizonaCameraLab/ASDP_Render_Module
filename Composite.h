@@ -232,7 +232,7 @@ namespace asdp {
       /// @param ny The number of vertices in the Y direction.
       /// @param depth The distance from the camera to the quadrilateral displaying the image.
       void AddBufferObjects(const CameraRenderInfo& cameraRenderInfo, size_t nx = 100, size_t ny = 100,
-        GLfloat depth = 10);
+        GLfloat depth = 900);
 
       // Overridden methods
       bool SetupRendering() override;
