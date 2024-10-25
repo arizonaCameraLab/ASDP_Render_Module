@@ -1491,7 +1491,7 @@ static void QuaternionToEulerXYZDegrees(const XrQuaternionf& q, float& rx, float
 
   // Convert the orientation to helicopter space by rotating 90 degrees around the x-axis,
   // doing the inverse rotation on the other side.
-  float angle = glm::radians(-90.0f);
+  float constexpr angle = glm::radians(-90.0f);
   glm::vec3 axis = glm::vec3(1.0f, 0.0f, 0.0f);
   glm::quat rotationQuat = glm::angleAxis(angle, axis);
   glm::quat inverseRotationQuat = glm::angleAxis(-angle, axis);

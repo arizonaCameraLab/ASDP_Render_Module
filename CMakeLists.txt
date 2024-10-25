@@ -274,6 +274,7 @@ if(BUILD_TESTS)
     CPUDataToTextureHandler_Test
     PinnedBufferPool_Test
     GPUBufferPool_Test
+    PoseAdjuster_Test
   )
   foreach (BASE ${CPP_TESTS})
     set (APP ${BASE})
