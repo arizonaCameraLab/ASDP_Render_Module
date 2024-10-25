@@ -101,12 +101,8 @@ void Composite::Render(asdp::Time scanOutTime, std::vector<ViewRenderInfo> views
       view.nearClip, view.farClip);
     glm::mat4 VP = Projection * ViewTranslate;
 
-    /// @todo Adjust for helicopter motion changes from image acquisition to scan-out.
-
-    /// @todo Adjust for shear and stretch due to head motion during scan-out.
-
     // Call the derived-class method to render the geometry into this viewpoint.
-    RenderView(glm::value_ptr(VP));
+    RenderView(scanOutTime, glm::value_ptr(VP));
   }
 
   // Unset things
@@ -562,7 +558,7 @@ void CompositeCube::SetupRenderFrame(asdp::Time scanOutTime)
   glDisable(GL_CULL_FACE);
 }
 
-void CompositeCube::RenderView(const float* modelViewProjection)
+void CompositeCube::RenderView(asdp::Time scanOutTime, const float* modelViewProjection)
 {
   // Set the model-view-projection matrix and draw the cube.
   glUniformMatrix4fv(m_modelViewProjectionUniformId, 1, GL_FALSE, modelViewProjection);
@@ -862,7 +858,7 @@ void CompositeCameras::SetupRenderFrame(asdp::Time scanOutTime)
   }
 }
 
-void CompositeCameras::RenderView(const float* modelViewProjection)
+void CompositeCameras::RenderView(asdp::Time scanOutTime, const float* modelViewProjection)
 {
   // Set the model-view-projection matrix
   glUniformMatrix4fv(m_modelViewProjectionUniformId, 1, GL_FALSE, modelViewProjection);
@@ -894,6 +890,13 @@ void CompositeCameras::RenderView(const float* modelViewProjection)
     // Enable the vertex attribute arrays we are going to use
     glEnableVertexAttribArray(0);
     glEnableVertexAttribArray(1);
+
+    /// @todo Adjust for helicopter motion changes from image acquisition to scan-out.
+    // The camera points are in the helicopter coordinate system, so we need to adjust
+    // from where they are (canonical position at render time) to where they were at
+    // image acquisition.
+
+    /// @todo Adjust for shear and stretch due to head motion during scan-out.
 
     // Draw the camera view using its vertex buffer objects.
     glBindBuffer(GL_ARRAY_BUFFER, m_vertexBufferObjects[i]);

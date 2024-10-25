@@ -100,6 +100,7 @@ set (Render_Module_HEADERS
   CPUDataToTextureHandler.h
   PinnedBufferPool.h
   GPUBufferPool.h
+  PoseAdjuster.h
 )
 set (Render_Module_SOURCES
   Composite.cpp
@@ -110,6 +111,7 @@ set (Render_Module_SOURCES
   CPUDataToTextureHandler.cu
   PinnedBufferPool.cpp
   GPUBufferPool.cpp
+  PoseAdjuster.cpp
 )
 add_library(Render_Module STATIC ${Render_Module_SOURCES} ${Render_Module_HEADERS})
 target_include_directories(Render_Module PUBLIC

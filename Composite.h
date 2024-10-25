@@ -102,8 +102,9 @@ namespace asdp {
       /// The Render() method calls it after setting up and clearing the frame buffer color and
       /// depth textures and binding the frame buffer.  RenderView() is responsible for setting
       /// the program and the matrix parameter for it.
+      /// @param scanOutTime The time that the scan out is occurring, in ASDP Core time.  This is the time of the middle of the frame.
       /// @param modelViewProjection The matrix specifying the entire viewing transformation to use.
-      virtual void RenderView(const float* modelViewProjection) = 0;
+      virtual void RenderView(asdp::Time scanOutTime, const float* modelViewProjection) = 0;
 
       /// @brief Set up state needed for rendering, perhaps including the shader program and geometry/textures.
       /// @details This function is called during the first call to Render().  If it fails, rendering is not
@@ -153,7 +154,7 @@ namespace asdp {
       std::shared_ptr<MeshCube> m_roomCube;
 
       bool SetupRendering() override;
-      void RenderView(const float* modelViewProjection) override;
+      void RenderView(asdp::Time scanOutTime, const float* modelViewProjection) override;
       void SetupRenderFrame(asdp::Time scanOutTime) override;
       void TearDownRenderFrame() override;
     };
@@ -236,7 +237,7 @@ namespace asdp {
 
       // Overridden methods
       bool SetupRendering() override;
-      void RenderView(const float* modelViewProjection) override;
+      void RenderView(asdp::Time scanOutTime, const float* modelViewProjection) override;
       void SetupRenderFrame(asdp::Time scanOutTime) override;
       void TearDownRenderFrame() override;
     };

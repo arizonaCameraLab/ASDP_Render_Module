@@ -184,7 +184,7 @@ position of the helicopter.  The local orientation is reported with respect to a
 that has +X pointing East, +Y pointing North, and +Z pointing up.
 (This coordinate system fails at the North and South poles.)
 
-The velocity, rotation, and rotational velocity are reported in the local helicopter coordinate system.
+The velocity and rotational velocity are reported in the local helicopter coordinate system.
 This means that translation in +Y is always straight ahead and a positive rotation around X is always
 tipping backwards no matter the orientation of the helicopter.
 
@@ -211,11 +211,11 @@ pan the camera's view left.
 The camera is looking out the front of the helicopter (along the +Y axis) with its "up" vector
 pointing above the helicopter (along the +Z axis) when the orientation is (0,0,0).
 
-**PoseEstimator:** The pose estimator is a class that estimates the differential pose of the helicopter
-between two times.  It provides a description of how the helicopter has moved and rotated between
+**PoseAdjuster:** This class estimates the differential motion points in helicopter space
+between two times.  It moves points according to how the helicopter has moved and rotated between
 these times in its own local coordinate system.  It provides a transformation describing how to
-transform points in the space of the first time parameter into the space of the second time parameter.
-If the first time parameter is the expected time of scan-out and the second is the time an image was
+transform points in the space of the earlier time parameter into the space of the later time parameter.
+If the second time parameter is the expected time of scan-out and the first is the time an image was
 acquired (an earlier time), then this transformation can be used to transform the vertices of the
 image representation to remove the effects of the helicopter motion.
 
