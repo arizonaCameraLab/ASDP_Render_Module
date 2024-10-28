@@ -32,8 +32,18 @@ namespace asdp {
       /// @brief Destructor, virtual so that derived classes can have their destructors called from pointers.
       virtual ~PoseAdjuster();
 
-      /// @brief Records pose messages for the helicopter.
+      /// @brief Records pose messages for the helicopter after unpacking entries from a MessagePose.
       /// @param poseMessage The pose message to be recorded.  These are used to determine the pose of the helicopter at different times.
+      void AddPose(const MessagePose& poseMessage);
+
+      /// @brief Records pose messages for the helicopter using already-unpacked entries.
+      /// @param longitude The longitude of the helicopter in degrees.
+      /// @param latitude The latitude of the helicopter in degrees.
+      /// @param altitude The altitude of the helicopter in meters.
+      /// @param rot The rotation of the helicopter as a 3D vector (roll, pitch, yaw).
+      /// @param vel The velocity of the helicopter as a 3D vector (vx, vy, vz).
+      /// @param rotVel The angular velocity of the helicopter as a 3D vector (roll rate, pitch rate, yaw rate).
+      /// @param time The time of the pose.
       void AddPose(double longitude, double latitude, double altitude,
         std::array<float, 3> const &rot,
         std::array<float, 3> const &vel,
@@ -55,25 +65,28 @@ namespace asdp {
       // Structure describing a helicopter pose, including the position, orientation, and velocities.
       struct Pose {
         glm::vec3 position;         ///< Position of the helicopter in 3D space w.r.t. Earth center with Z north spin axis and X towards (0,0) lat/long.
-        glm::quat orientation;      ///< Orientation of the helicopter in Earth-centered coordinates of position.
+                                    /// Takes point in helicopter space to Earth space.
+        glm::quat orientation;      ///< Orientation of the helicopter in the same Earth-centric coordinate system as position.
+                                    /// Takes vectors in helicopter space to Earth space.
         glm::vec3 velocity;         ///< Velocity of the helicopter in meters per second in Helicopter space.
         glm::quat angularVelocity;  ///< Angular velocity of the helicopter in Helicopter space, rotation per dt.
-        float dt = 0.01;            ///< Delta time related to angular velocity (allows faster rotation than half a rotation per second).
+        float dt = 0.1;             ///< Delta time related to angular velocity (allows faster rotation than half a rotation per second).
+                                    /// NOTE: This should not be less than 0.1 to avoid numerical instability.
         asdp::Time time;            ///< Time of the pose.
       };
 
       size_t m_maxCount;            ///< Maximum number of poses to store.
       std::list<Pose> m_poses;      ///< Vector to store recorded poses, sorted in time with earliest first.
 
-      /// @brief Get the pose at a specific time.  Identity pose if there are no stored poses.
-      /// @param time The time for which to get the pose.
-      /// @return The pose of the helicopter at the specified time.
-      Pose GetPose(asdp::Time time) const;
-
       /// @brief Extrapolate the pose at a specific time based on a recent pose.
       /// @param pose The recent pose to use for extrapolation.
       /// @param time The time to extrapolate to.
-      Pose ExtrapolatePose(const Pose& pose, Time time) const;
+      static Pose ExtrapolatePose(const Pose& pose, Time time);
+
+      /// @brief Get the pose at a specific time, either interpolating between poses or extrapolating from the nearest.
+      /// @param time The time for which to get the pose.
+      /// @return The pose of the helicopter at the specified time.  Return the identity pose if there are no stored poses.
+      Pose GetPose(asdp::Time time) const;
     };
 
   } // namespace render
