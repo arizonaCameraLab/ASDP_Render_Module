@@ -53,8 +53,8 @@ namespace asdp {
       /// @brief Provide a transform that moves points in helicopter space from one time to another based on helicopter pose change.
       /// @param endTime The end time for the transform (probably the time of scan out for the center of the rendered image).
       /// @param startTime The start time for the transform (probably the time of the center of image capture).
-      /// @return A 4x4 transformation matrix that can be used to transform points from their current location at endTime
-      /// to their previous location at startTime.  If there are no poses available, the identity matrix is returned.
+      /// @return A 4x4 transformation matrix that can be used to transform points from their location at endTime
+      /// to their location at startTime.  If there are no poses available, the identity matrix is returned.
       glm::mat4 GetTransform(asdp::Time endTime, asdp::Time startTime) const;
 
       /// @brief Test function for the PoseAdjuster class.

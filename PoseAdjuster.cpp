@@ -296,7 +296,13 @@ std::string PoseAdjuster::Test()
       return "PoseAdjuster Test: O3 Expected +X to be pointing in +X, got " + std::to_string(rotatedX[0]) + ", " + std::to_string(rotatedX[1]) + ", " + std::to_string(rotatedX[2]);
     }
 
-    /// @todo Test a three-way rotation to ensure order is correct
+    // Test both world and helicopter local rotation to ensure order is correct
+    adjuster.AddPose(90, 0, 0, { 0, -90, 0 }, { 0, 0, 0 }, { 0, 0, 0 }, time);
+    it = adjuster.m_poses.begin();
+    rotatedX = it->orientation * glm::vec3(1, 0, 0);
+    if (!isNear(rotatedX[0], 0) || !isNear(rotatedX[1], 1) || !isNear(rotatedX[2], 0)) {
+      return "PoseAdjuster Test: O4 Expected +X to be pointing in +Y, got " + std::to_string(rotatedX[0]) + ", " + std::to_string(rotatedX[1]) + ", " + std::to_string(rotatedX[2]);
+    }
   }
 
   // Test the ExtrapolatePose method for a time after the pose and a time before the pose.
@@ -344,7 +350,7 @@ std::string PoseAdjuster::Test()
       return "PoseAdjuster Test: Extrapolated position before is incorrect.";
     }
 
-    // Check that the orientation is updated correctly by rotating the +Y helicopter axis and seeing it point just towards -X from +Z.
+    // Check that the orientation is updated correctly by rotating the +Y helicopter axis and seeing it point just towards +X from +Z.
     rotatedY = extrapolated.orientation * glm::vec3(0, 1, 0);
     if (!isNear(rotatedY[0], std::sin(glm::radians(rotDegrees)), 0.02)
       || !isNear(rotatedY[1], 0, 0.01) || !isNear(rotatedY[2], std::cos(glm::radians(rotDegrees)), 0.02)) {
@@ -385,7 +391,52 @@ std::string PoseAdjuster::Test()
     }
   }
 
-  /// @todo
+  // Check GetTransform() to be sure that the differential transform matches what is expected.
+  // Use times that exactly match two entries in the pose list for angle testing, and use one
+  // that is extrapolated past the end with a velocity by no rotational velocity to test the
+  // translation case.
+  {
+    PoseAdjuster adjuster(3);
+    asdp::Time time1{ 1, 0 };
+    asdp::Time time2{ 2, 0 };
+    asdp::Time time3{ 3, 0 };
+
+    {
+      // Verify that we get the identity transform when there are no poses.
+      glm::mat4 transform = adjuster.GetTransform(time1, time2);
+      glm::mat4 identity = glm::identity<glm::mat4>();
+      for (int i = 0; i < 16; ++i) {
+        if (!isNear(transform[i / 4][i % 4], identity[i / 4][i % 4])) {
+          return "PoseAdjuster Test: GetTransform() with no poses does not return identity.";
+        }
+      }
+    }
+
+    // Add poses that rotate 90 degrees around the X axis from the first to the last and have velocities of +1/second in X
+    // and rotations by 2 degrees per second around y.
+    adjuster.AddPose(0, 0, 0, { 0, 0, 0 }, { 1, 0, 0 }, { 0, 2, 0 }, time1);
+    adjuster.AddPose(0, 0, 0, {30, 0, 0 }, { 1, 0, 0 }, { 0, 2, 0 }, time2);
+    adjuster.AddPose(0, 0, 0, {90, 0, 0 }, { 1, 0, 0 }, { 0, 2, 0 }, time3);
+
+    // The Y axis should spin to point at the -Z axis.
+    glm::mat4 transform = adjuster.GetTransform(time3, time1);
+    glm::vec4 pos1 = transform * glm::vec4(0, 1, 0, 1);
+    if (!isNear(pos1[0], 0) || !isNear(pos1[1], 0) || !isNear(pos1[2], -1)) {
+      return "PoseAdjuster Test: GetTransform() rotation from time3 to time1 is incorrect.";
+    }
+
+    glm::vec4 pos2 = transform * glm::vec4(1, 1, 1, 1);
+    if (!isNear(pos2[0], 1) || !isNear(pos2[1], 1) || !isNear(pos2[2], 1)) {
+      return "PoseAdjuster Test: GetTransform() translation from time1 to time2 is incorrect.";
+    }
+
+    transform = adjuster.GetTransform(time3, time2);
+    pos1 = transform * glm::vec4(0, 0, 0, 1);
+    if (!isNear(pos1[0], 0) || !isNear(pos1[1], 0) || !isNear(pos1[2], 0)) {
+      return "PoseAdjuster Test: GetTransform() translation from time2 to time3 is incorrect.";
+    }
+
+  }
 
   return "PoseAdjuster Test: @todo Implement tests";
 }
