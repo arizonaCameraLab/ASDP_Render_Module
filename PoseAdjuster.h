@@ -37,14 +37,14 @@ namespace asdp {
       void AddPose(const MessagePose& poseMessage);
 
       /// @brief Records pose messages for the helicopter using already-unpacked entries.
-      /// @param longitude The longitude of the helicopter in degrees.
       /// @param latitude The latitude of the helicopter in degrees.
+      /// @param longitude The longitude of the helicopter in degrees.
       /// @param altitude The altitude of the helicopter in meters.
       /// @param rot The rotation of the helicopter as a 3D vector (roll, pitch, yaw).
       /// @param vel The velocity of the helicopter as a 3D vector (vx, vy, vz).
       /// @param rotVel The angular velocity of the helicopter as a 3D vector (roll rate, pitch rate, yaw rate).
       /// @param time The time of the pose.
-      void AddPose(double longitude, double latitude, double altitude,
+      void AddPose(double latitude, double longitude, double altitude,
         std::array<float, 3> const &rot,
         std::array<float, 3> const &vel,
         std::array<float, 3> const &rotVel,
@@ -53,26 +53,27 @@ namespace asdp {
       /// @brief Provide a transform that moves points in helicopter space from one time to another based on helicopter pose change.
       /// @param endTime The end time for the transform (probably the time of scan out for the center of the rendered image).
       /// @param startTime The start time for the transform (probably the time of the center of image capture).
-      /// @return A 4x4 transformation matrix that can be used to transform points from their location at endTime
-      /// to their location at startTime.  If there are no poses available, the identity matrix is returned.
-      glm::mat4 GetTransform(asdp::Time endTime, asdp::Time startTime) const;
+      /// @return A 4x4 transformation matrix that can be used to transform points in helicopter coordinates for the
+      /// pose at startTime to helicopter coordinates for the pose at endTime.
+      /// If there are no poses available, the identity matrix is returned.
+      glm::dmat4 GetTransform(asdp::Time endTime, asdp::Time startTime) const;
 
       /// @brief Test function for the PoseAdjuster class.
       /// @return A string indicating the result of the test, empty on success and message describing the problem on failure.
       static std::string Test();
 
     protected:
-      // Structure describing a helicopter pose, including the position, orientation, and velocities.
+      /// Structure describing a helicopter pose, including the position, orientation, and velocities.
+      /// Its entries must be double precision to avoid numerical instability with the large Earth radius included in position.
       struct Pose {
-        glm::vec3 position;         ///< Position of the helicopter in 3D space w.r.t. Earth center with Z north spin axis and X towards (0,0) lat/long.
-                                    /// Takes point in helicopter space to Earth space.
-        glm::quat orientation;      ///< Orientation of the helicopter in the same Earth-centric coordinate system as position.
-                                    /// Takes vectors in helicopter space to Earth space.
-        glm::vec3 velocity;         ///< Velocity of the helicopter in meters per second in Helicopter space.
-        glm::quat angularVelocity;  ///< Angular velocity of the helicopter in Helicopter space, rotation per dt.
-        float dt = 0.1;             ///< Delta time related to angular velocity (allows faster rotation than half a rotation per second).
-                                    /// NOTE: This should not be less than 0.1 to avoid numerical instability.
-        asdp::Time time;            ///< Time of the pose.
+        glm::dvec3 position = { 0, 0, 0 };            ///< Position of the helicopter in 3D space w.r.t. Earth center with Z north spin axis and X towards (0,0) lat/long.
+                                                      /// Takes point in helicopter space to Earth space.
+        glm::dquat orientation = { 1, 0, 0, 0 };      ///< Orientation of the helicopter in the same Earth-centric coordinate system as position.
+                                                      /// Takes vectors in helicopter space to Earth space.
+        glm::dvec3 velocity = { 0, 0, 0 };            ///< Velocity of the helicopter in meters per second in Helicopter space.
+        glm::dquat angularVelocity = { 1, 0, 0, 0 };  ///< Angular velocity of the helicopter in Helicopter space, rotation per dt.
+        double dt = 0.01;                             ///< Delta time related to angular velocity (allows faster rotation than half a rotation per second).
+        asdp::Time time = { 0, 0 };                   ///< Time of the pose.
       };
 
       size_t m_maxCount;            ///< Maximum number of poses to store.
