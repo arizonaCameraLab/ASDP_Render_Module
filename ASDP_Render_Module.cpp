@@ -1162,6 +1162,19 @@ int main(int argc, char** argv)
         dataQueues[i % NUM_TEXTURE_THREADS]));
     }
 
+    // Ask for streaming pose and temperature data.
+    std::cout << "Requesting pose and temperature data." << std::endl;
+    status = client->SendCommandPacket(CommandPacketStreamPoses());
+    if (status != OKAY) {
+      std::cerr << "Failed to request pose data: " << ErrorMessage(status) << std::endl;
+      return 26;
+    }
+    status = client->SendCommandPacket(CommandPacketStreamTemperatures());
+    if (status != OKAY) {
+      std::cerr << "Failed to request temperature data: " << ErrorMessage(status) << std::endl;
+      return 27;
+    }
+
     // Request streaming on the cameras at their maximum rates from their associated ID.
     std::cout << "Streaming every " << frameStride << " frames from " << cameraIDs.size() << " cameras" << std::endl;
     for (size_t i = 0; i < cameras.size(); i++) {
@@ -1264,7 +1277,7 @@ int main(int argc, char** argv)
           done = true;
         }
       } else if (status != TIMEOUT) {
-        std::cerr << "Error receiving data: " << ErrorMessage(status) << std::endl;
+        std::cerr << "Error receiving stream packet: " << ErrorMessage(status) << std::endl;
         done = true;
       }
 

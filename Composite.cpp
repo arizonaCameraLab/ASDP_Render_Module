@@ -903,7 +903,7 @@ void CompositeCameras::RenderView(asdp::Time scanOutTime, const float* modelView
     for (size_t i = 0; i < 16; i++) {
       dMVP[i] = modelViewProjection[i];
     }
-    glm::dmat4 modelViewProjectionMatrix = shiftPoints * glm::make_mat4(dMVP);
+    glm::dmat4 modelViewProjectionMatrix = glm::make_mat4(dMVP) * shiftPoints;
     const double *data = glm::value_ptr(modelViewProjectionMatrix);
     float adjustedMVP[16];
     for (size_t i = 0; i < 16; i++) {
