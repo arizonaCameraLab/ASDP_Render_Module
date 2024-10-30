@@ -49,11 +49,11 @@ PoseAdjuster::~PoseAdjuster()
 
 void PoseAdjuster::AddPose(const MessagePose& poseMessage)
 {
-  double longitude, latitude, altitude;
+  double latitude, longitude, altitude;
   std::array<float, 3> rot, vel, rotVel;
   asdp::Time time;
-  poseMessage.GetLongitude(longitude);
   poseMessage.GetLatitude(latitude);
+  poseMessage.GetLongitude(longitude);
   poseMessage.GetAltitude(altitude);
   poseMessage.GetRot(rot);
   poseMessage.GetVel(vel);
@@ -85,7 +85,6 @@ void PoseAdjuster::AddPose(double latitude, double longitude, double altitude,
     //   Rotate around X by 90 degrees, then around Y by 90 degrees.
     // Then apply the specified rotation from canonical space to helicopter space.
     // The resulting transformation specifies the helicopter orientation in Earth-centered space.
-    /// @todo Do this mathematics in double precision
     glm::dquat rotationLong = glm::angleAxis(glm::radians(longitude), glm::dvec3(0, 0, 1));
     glm::dquat rotationLat = glm::angleAxis(glm::radians(latitude), glm::dvec3(0, 1, 0));
     glm::dquat HeliX = glm::angleAxis(glm::radians(90.0), glm::dvec3(1, 0, 0));
@@ -93,9 +92,7 @@ void PoseAdjuster::AddPose(double latitude, double longitude, double altitude,
     glm::dquat rotationX = glm::angleAxis(glm::radians(double(rot[0])), glm::dvec3(1, 0, 0));
     glm::dquat rotationY = glm::angleAxis(glm::radians(double(rot[1])), glm::dvec3(0, 1, 0));
     glm::dquat rotationZ = glm::angleAxis(glm::radians(double(rot[2])), glm::dvec3(0, 0, 1));
-    //newPose.orientation = rotationZ * rotationY * rotationX * HeliY * HeliX * rotationLat * rotationLong;
     newPose.orientation =  rotationLong * rotationLat * HeliX * HeliY * rotationX * rotationY * rotationZ;
-    //newPose.orientation = rotationX * rotationY * rotationZ * HeliX * HeliY * rotationLong * rotationLat;
   }
 
   // Velocity in local coordinates in meters per second
@@ -221,11 +218,14 @@ glm::dmat4 PoseAdjuster::GetTransform(asdp::Time endTime, asdp::Time startTime) 
   // The transformation matrix is computed by constructing the inverse of the end pose and then
   // multiplying it by the start pose.  This takes points from the original helicopter space into
   // Earth space and then back into the new helicopter space.
-  glm::mat4 startTransform = glm::translate(glm::mat4_cast(startPose.orientation), startPose.position);
-  glm::mat4 endTransform = glm::translate(glm::mat4_cast(endPose.orientation), endPose.position);
+  // Do rotation in local space and then translation in global space.
+  glm::dmat4 startRot = glm::mat4_cast(startPose.orientation);
+  glm::dmat4 startTrans = glm::translate(glm::dmat4(1.0), startPose.position);
+  glm::dmat4 startTransform = startTrans * startRot;
+  glm::dmat4 endRot = glm::mat4_cast(endPose.orientation);
+  glm::dmat4 endTrans = glm::translate(glm::dmat4(1.0), endPose.position);
+  glm::dmat4 endTransform = endTrans * endRot;
   glm::mat4 transform = glm::inverse(endTransform) * startTransform;
-
-  glm::mat4 XXX = glm::inverse(endTransform);
 
   return transform;
 }
@@ -429,20 +429,24 @@ std::string PoseAdjuster::Test()
       return "PoseAdjuster Test: GetTransform() rotation from time3 to time1 is incorrect.";
     }
 
-    /// @todo Fix and add tests below here
-    // Translation should be -1 meters in the X direction a second after time3.
+    // Relative translation should be -1 meters in the X direction a second after time3 because the
+    // helicopter would have moved 1 meter forwards, making the earlier origin be 1 meter behind it.
     transform = adjuster.GetTransform(Time(4, 0), time3);
     glm::vec4 pos2 = transform * glm::vec4(0, 0, 0, 1);
     if (!isNear(pos2[0], -1) || !isNear(pos2[1], 0) || !isNear(pos2[2], 0)) {
       return "PoseAdjuster Test: GetTransform() translation after time3 is incorrect.";
     }
 
-    transform = adjuster.GetTransform(time3, time2);
-    pos1 = transform * glm::vec4(0, 0, 0, 1);
-    if (!isNear(pos1[0], 0) || !isNear(pos1[1], 0) || !isNear(pos1[2], 0)) {
-      return "PoseAdjuster Test: GetTransform() translation from time2 to time3 is incorrect.";
+    // The Z axis should spin to point in the +X direction when we extrapolate before the first entry.
+    // This is because the helicopter will be rotated -2 degrees around Y at the earlier time, which
+    // means that the Z axis from the original time will be +2 degrees.
+    transform = adjuster.GetTransform(Time(0,0), time1);
+    glm::dvec4 rotatedZ = transform * glm::vec4(0, 0, 1, 1);
+    if (!isNear(rotatedZ[0], std::sin(glm::radians(2.0f)), 0.02)
+        || !isNear(rotatedZ[1], 0, 0.01) || !isNear(rotatedZ[2], std::cos(glm::radians(2.0f)), 0.02)) {
+      return "PoseAdjuster Test: GetTransform() rotation before time1 is incorrect.";
     }
   }
 
-  return "PoseAdjuster Test: @todo Implement tests";
+  return "";
 }
