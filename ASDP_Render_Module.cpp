@@ -570,8 +570,12 @@ std::shared_ptr<Message> WaitForMessageType(std::shared_ptr<Receiver> receiver, 
   return empty;
 }
 
-Status HandleStreamPacket(std::shared_ptr<StreamPacket> packet, std::shared_ptr<ClockSynchronizer> clockSync)
+/// @param [out] replayDone Set to true if we are at the end of replay, set to false otherwise.
+Status HandleStreamPacket(std::shared_ptr<StreamPacket> packet, std::shared_ptr<ClockSynchronizer> clockSync, bool &replayDone)
 {
+  // Not done replaying unless we get a message telling us that we are.
+  replayDone = false;
+
   // Parse all of the messages in the stream packet, handling each of them in turn.
   std::shared_ptr<Message> message;
   Status status = packet->GetNextMessage(message);
@@ -639,6 +643,18 @@ Status HandleStreamPacket(std::shared_ptr<StreamPacket> packet, std::shared_ptr<
           return status;
         }
         //std::cout << "XXX Replaying = " << (replaying ? "true" : "false") << std::endl;
+
+        // If we're replaying and we're at the end of replay, indicate this.
+        if (replaying) {
+          uint8_t endOfReplay;
+          status = state.GetReplayAtEnd(endOfReplay);
+          if (status != OKAY) {
+            return status;
+          }
+          if (endOfReplay) {
+            replayDone = true;
+          }
+        }
       }
       break;
     default:
@@ -678,6 +694,7 @@ void usage(std::string name)
   std::cerr << "  --toneMap <tone map>                The tone map to use.  Options are: linear blackbody bluesky" << std::endl;
   std::cerr << "  --addDisplay                        Add another display with defaults that can be overridden" << std::endl;
   std::cerr << "  --replay <stream id>                ID of the stream to replay (1+)." << std::endl;
+  std::cerr << "  --loopReplay                        Loop the replay (default not)." << std::endl;
   std::cerr << "  --lineBatchesPerGPUSend <int>       The number of batches of lines to group (default 16 Linux, 110 Windows)" << std::endl;
   std::cerr << "  --openXR                            Use OpenXR for rendering. If set, overrides the following." << std::endl;
   std::cerr << "  --width <width>                     The width of the window (default 1280)." << std::endl;
@@ -694,6 +711,7 @@ int main(int argc, char** argv)
   std::vector<DisplayInfo> displayInfos = { DisplayInfo() }; ///< Information for each display that is to be created.
   std::string ip_address;       ///< The IP address to listen on.
   uint32_t replayStreamID = 0;  ///< The stream ID to replay, 0 for live.
+  bool loopReplay = false;      ///< Loop the replay when it reaches the end if this is true.
 #ifdef _WIN32
   // On Windows, throughput tests when receiving data from the network show that we must be larger
   // to keep up.  Linux is more efficient here, and can handle 16 batches at a time.
@@ -785,6 +803,8 @@ int main(int argc, char** argv)
         return 2;
       }
       replayStreamID = std::stoi(argv[i]);
+    } else if (std::string("--loopReplay") == argv[i]) {
+      loopReplay = true;
     } else if (argv[i][0] == '-') {
       usage(argv[0]);
       return 1;
@@ -1206,6 +1226,7 @@ int main(int argc, char** argv)
 
     // Render frames until someone has marked us to be done.
     bool nowPaused = false;
+    bool replayDone = false;
     start = std::chrono::steady_clock::now();
     while (!done) {
 
@@ -1215,7 +1236,7 @@ int main(int argc, char** argv)
       size_t offset = 0;
       Status status = receiver->ReceiveStreamPacket(0.1, response, offset);
       if (status == OKAY) {
-        status = HandleStreamPacket(response, clockSync);
+        status = HandleStreamPacket(response, clockSync, replayDone);
         if (status != OKAY) {
           std::cerr << "Error handling stream packet: " << ErrorMessage(status) << std::endl;
           done = true;
@@ -1223,6 +1244,18 @@ int main(int argc, char** argv)
       } else if (status != TIMEOUT) {
         std::cerr << "Error receiving data: " << ErrorMessage(status) << std::endl;
         done = true;
+      }
+
+      // If we've been asked to loop replays and replay is done, request a new replay with the offset
+      // at the current time.
+      if (replayDone && loopReplay) {
+        std::cout << "Replay done, requesting new replay." << std::endl;
+        status = client->SendCommandPacket(CommandPacketStartReplay(replayStreamID, Time()));
+        if (status != OKAY) {
+          std::cerr << "Failed to start replay: " << ErrorMessage(status) << std::endl;
+          done = true;
+        }
+        replayDone = false;
       }
 
       // If all of our Displays have been closed (or are broken), then we're done.
