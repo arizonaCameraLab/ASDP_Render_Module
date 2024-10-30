@@ -179,7 +179,7 @@ The **util** directory contains a number of utilities.
 ## Coordinate systems
 
 **Helicopter:** The figure below shows the coordinate system of the helicopter and how it relates to the
-position and orientation reported by the API.  The longitude, latitude, and altitude determine the
+position and orientation reported by the API.  The latitude, longitude, and altitude determine the
 position of the helicopter.  The local orientation is reported with respect to a coordinate system
 that has +X pointing East, +Y pointing North, and +Z pointing up.
 (This coordinate system fails at the North and South poles.)
