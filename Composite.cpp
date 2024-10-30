@@ -598,10 +598,12 @@ R"(#version 330 core
       FragColor = texture(toneMapTexture, intensity);
    })";
 
-CompositeCameras::CompositeCameras(std::vector<CameraRenderInfo>& cameraRenderInfo, GLuint toneMaptexture)
+CompositeCameras::CompositeCameras(std::vector<CameraRenderInfo>& cameraRenderInfo, GLuint toneMaptexture,
+  std::shared_ptr<PoseAdjuster> poseAdjuster)
   : Composite()
   , m_cameraRenderInfos(cameraRenderInfo)
   , m_toneMapTexture(toneMaptexture)
+  , m_poseAdjuster(poseAdjuster)
   , m_programId(0)
   , m_modelViewProjectionUniformId(0)
   , m_imageTextureId(0)
@@ -860,9 +862,6 @@ void CompositeCameras::SetupRenderFrame(asdp::Time scanOutTime)
 
 void CompositeCameras::RenderView(asdp::Time scanOutTime, const float* modelViewProjection)
 {
-  // Set the model-view-projection matrix
-  glUniformMatrix4fv(m_modelViewProjectionUniformId, 1, GL_FALSE, modelViewProjection);
-
   // Draw each camera, using the appropriate texture.
   for (size_t i = 0; i < m_cameraRenderInfos.size(); i++) {
 
@@ -895,8 +894,26 @@ void CompositeCameras::RenderView(asdp::Time scanOutTime, const float* modelView
     // The camera points are in the helicopter coordinate system, so we need to adjust
     // from where they are (canonical position at render time) to where they were at
     // image acquisition.
+    glm::dmat4 shiftPoints = m_poseAdjuster->GetTransform(scanOutTime, m_images[i]->imageCenterTime);
 
-    /// @todo Adjust for shear and stretch due to head motion during scan-out.
+    // Apply the shift in the local helicopter coordinate system within the model-view-projection
+    // matrix (which is really a view-projection matrix).
+    /// @todo
+    double dMVP[16];
+    for (size_t i = 0; i < 16; i++) {
+      dMVP[i] = modelViewProjection[i];
+    }
+    glm::dmat4 modelViewProjectionMatrix = shiftPoints * glm::make_mat4(dMVP);
+    const double *data = glm::value_ptr(modelViewProjectionMatrix);
+    float adjustedMVP[16];
+    for (size_t i = 0; i < 16; i++) {
+      adjustedMVP[i] = static_cast<float>(data[i]);
+    }
+
+    /// @todo Adjust for shear and stretch due to helicopter motion during capture.
+
+    // Set the model-view-projection matrix for this camera including the appropriate shift
+    glUniformMatrix4fv(m_modelViewProjectionUniformId, 1, GL_FALSE, adjustedMVP);
 
     // Draw the camera view using its vertex buffer objects.
     glBindBuffer(GL_ARRAY_BUFFER, m_vertexBufferObjects[i]);

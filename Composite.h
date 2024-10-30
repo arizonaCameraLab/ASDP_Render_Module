@@ -26,6 +26,7 @@
 #include <ASDP_Core_API.h>
 #include <ImageQueue.h>
 #include <Distortion.h>
+#include <PoseAdjuster.h>
 
 namespace asdp {
   namespace render {
@@ -189,7 +190,9 @@ namespace asdp {
       /// @brief Constructor
       /// @param cameraRenderInfo The configuration of the cameras needed to generate textured geometry.
       /// @param toneMapTexture The OpenGL texture ID of the tone map to use.
-      CompositeCameras(std::vector<CameraRenderInfo>& cameraRenderInfo, GLuint toneMapTexture);
+      /// @param poseAdjuster A shared pointer to the pose adjuster to use for transforming points.
+      CompositeCameras(std::vector<CameraRenderInfo>& cameraRenderInfo, GLuint toneMapTexture,
+        std::shared_ptr<PoseAdjuster> poseAdjuster);
 
       /// @brief Destructor
       ~CompositeCameras();
@@ -198,6 +201,7 @@ namespace asdp {
       /// Information about the cameras, filled in by the constructor.
       std::vector<CameraRenderInfo> m_cameraRenderInfos;
       GLuint m_toneMapTexture; ///< The OpenGL texture ID of the tone map to use.
+      std::shared_ptr<PoseAdjuster> m_poseAdjuster; ///< A shared pointer to the pose adjuster to use for transforming points.
 
       /// @brief The OpenGL program ID.
       GLuint m_programId;

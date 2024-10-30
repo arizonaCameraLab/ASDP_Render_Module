@@ -37,6 +37,7 @@
 #include <Composite.h>
 #include <Display.h>
 #include <CPUDataToTextureHandler.h>
+#include <PoseAdjuster.h>
 #include <cuda.h>
 #include <cuda_runtime.h>
 #include <cuda_gl_interop.h>
@@ -46,7 +47,7 @@ using namespace asdp::render;
 using json = nlohmann::json;
 using json = nlohmann::json;
 
-static std::string VERSION = "1.15.0";
+static std::string VERSION = "1.16.0";
 
 /// @brief The path to the configuration file. Defined in the CMakeLists file.
 std::filesystem::path dirPath = CONFIG_FILE_PATH;
@@ -571,7 +572,8 @@ std::shared_ptr<Message> WaitForMessageType(std::shared_ptr<Receiver> receiver, 
 }
 
 /// @param [out] replayDone Set to true if we are at the end of replay, set to false otherwise.
-Status HandleStreamPacket(std::shared_ptr<StreamPacket> packet, std::shared_ptr<ClockSynchronizer> clockSync, bool &replayDone)
+Status HandleStreamPacket(std::shared_ptr<StreamPacket> packet, std::shared_ptr<ClockSynchronizer> clockSync,
+  std::shared_ptr<PoseAdjuster> poseAdjuster, bool &replayDone)
 {
   // Not done replaying unless we get a message telling us that we are.
   replayDone = false;
@@ -655,6 +657,16 @@ Status HandleStreamPacket(std::shared_ptr<StreamPacket> packet, std::shared_ptr<
             replayDone = true;
           }
         }
+      }
+      break;
+    case POSE:
+      {
+        // Parse the pose message and add the pose to the adjuster.
+        MessagePose pose(*message);
+        if (pose.GetConstructorStatus() != OKAY) {
+          return pose.GetConstructorStatus();
+        }
+        poseAdjuster->AddPose(pose);
       }
       break;
     default:
@@ -825,6 +837,9 @@ int main(int argc, char** argv)
   // Run inside a block so that the destructors will be called for all objects before we exit.
   {
     std::cout << "ASDP Render Module version " << VERSION << std::endl;
+
+    // Create a PoseAdjuster to handle helicopter motion.
+    std::shared_ptr<PoseAdjuster> poseAdjuster = std::make_shared<PoseAdjuster>();
 
     // Open a client, specifying the IP address to listen on.
     std::shared_ptr<CoreClient> client = std::make_shared<CoreClient>(ip_address);
@@ -1042,8 +1057,15 @@ int main(int argc, char** argv)
 
       // Construct a Composite object to render the cameras.  We need a separate Composite per Display so that each
       // can cache consistent camera images for the whole frame while views are being rendered.
-      // Two displays cannot share a SetupRenderFrame() call because they may have different frame rates.
-      std::shared_ptr<Composite> composite = std::make_shared<CompositeCameras>(cameraRenderInfos, toneMapTexture);
+      // Two displays cannot share a SetupRenderFramfe() call because they may have different frame rates.
+      std::shared_ptr<Timer> timer;
+      status = client->GetTimer(timer);
+      if (status != OKAY) {
+        std::cerr << "Failed to get timer: " << ErrorMessage(status) << std::endl;
+        return 22;
+      }
+      std::shared_ptr<Composite> composite = std::make_shared<CompositeCameras>(
+        cameraRenderInfos, toneMapTexture, poseAdjuster);
 
       if (displayInfos[i].useOpenXR) {
         displays.push_back(std::make_shared<DisplayOpenXR>(composite, displayTexture.get(), client, 0, 0, 2500, 1));
@@ -1236,7 +1258,7 @@ int main(int argc, char** argv)
       size_t offset = 0;
       Status status = receiver->ReceiveStreamPacket(0.1, response, offset);
       if (status == OKAY) {
-        status = HandleStreamPacket(response, clockSync, replayDone);
+        status = HandleStreamPacket(response, clockSync, poseAdjuster, replayDone);
         if (status != OKAY) {
           std::cerr << "Error handling stream packet: " << ErrorMessage(status) << std::endl;
           done = true;

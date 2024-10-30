@@ -118,6 +118,7 @@ target_include_directories(Render_Module PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
   $<INSTALL_INTERFACE:include>
   "${CMAKE_CURRENT_BINARY_DIR}/Install/include"
+  "${CMAKE_CURRENT_SOURCE_DIR}/dependencies/glm"
 )
 target_include_directories(Render_Module PRIVATE
   "${CMAKE_CURRENT_SOURCE_DIR}/dependencies/glm"
