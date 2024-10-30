@@ -1250,7 +1250,13 @@ int main(int argc, char** argv)
       // at the current time.
       if (replayDone && loopReplay) {
         std::cout << "Replay done, requesting new replay." << std::endl;
-        status = client->SendCommandPacket(CommandPacketStartReplay(replayStreamID, Time()));
+        Time nowTime;
+        status = timer->GetCoreTime(nowTime);
+        if (status != OKAY) {
+          std::cerr << "Failed to get time: " << ErrorMessage(status) << std::endl;
+          done = true;
+        }
+        status = client->SendCommandPacket(CommandPacketStartReplay(replayStreamID, nowTime));
         if (status != OKAY) {
           std::cerr << "Failed to start replay: " << ErrorMessage(status) << std::endl;
           done = true;
