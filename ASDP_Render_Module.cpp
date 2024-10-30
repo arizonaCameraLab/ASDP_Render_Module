@@ -715,6 +715,7 @@ void usage(std::string name)
   std::cerr << "  --fps <frames per second>           The frames per second to run at (default 60)." << std::endl;
   std::cerr << "  --joystick <string>                 The joystick to use for input (e.g. GLFW::0)." << std::endl;
   std::cerr << "  --hFOV <horizontal field of view>   The horizontal field of view in degrees (default 40)." << std::endl;
+  std::cerr << "  --noPoses                           Do not stream poses from the server, so no latency adjustment." << std::endl;
 };
 
 int main(int argc, char** argv)
@@ -731,6 +732,7 @@ int main(int argc, char** argv)
 #else
   int lineBatchesPerGPUSend = 16; ///< The number of batches of lines to group for sending to the GPU.
 #endif
+  bool doStreamPoses = true;     ///< Stream poses from the server, so we can adjust for latency.
   size_t realParams = 0;        ///< The number of non-flag parameters we've seen.
 
   // Parse the command line arguments, with the first non-flag argument being the
@@ -817,6 +819,8 @@ int main(int argc, char** argv)
       replayStreamID = std::stoi(argv[i]);
     } else if (std::string("--loopReplay") == argv[i]) {
       loopReplay = true;
+    } else if (std::string("--noPoses") == argv[i]) {
+      doStreamPoses = false;
     } else if (argv[i][0] == '-') {
       usage(argv[0]);
       return 1;
@@ -1163,12 +1167,15 @@ int main(int argc, char** argv)
     }
 
     // Ask for streaming pose and temperature data.
-    std::cout << "Requesting pose and temperature data." << std::endl;
-    status = client->SendCommandPacket(CommandPacketStreamPoses());
-    if (status != OKAY) {
-      std::cerr << "Failed to request pose data: " << ErrorMessage(status) << std::endl;
-      return 26;
+    if (doStreamPoses) {
+      std::cout << "Requesting pose data." << std::endl;
+      status = client->SendCommandPacket(CommandPacketStreamPoses());
+      if (status != OKAY) {
+        std::cerr << "Failed to request pose data: " << ErrorMessage(status) << std::endl;
+        return 26;
+      }
     }
+    std::cout << "Requesting temperature data." << std::endl;
     status = client->SendCommandPacket(CommandPacketStreamTemperatures());
     if (status != OKAY) {
       std::cerr << "Failed to request temperature data: " << ErrorMessage(status) << std::endl;
