@@ -214,7 +214,7 @@ public:
   int m_glfwJoystickIndex = -1;
 
   /// Name of joysticks that should be flipping in the Y axis.
-  std::vector<std::string> m_flipYJoysticks = { "Logitech Extreme 3D" };
+  std::vector<std::string> m_flipYJoysticks = { "Logitech Extreme 3D", "Logitech Logitech Extreme 3D" };
 
   /// Scale of the joystick input in Y axis, flipped if the joystick is on the list above.
   float m_joystickScaleY = 1.0f;
