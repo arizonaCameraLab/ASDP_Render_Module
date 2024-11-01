@@ -47,7 +47,7 @@ using namespace asdp::render;
 using json = nlohmann::json;
 using json = nlohmann::json;
 
-static std::string VERSION = "1.16.0";
+static std::string VERSION = "1.17.0";
 
 /// @brief The path to the configuration file. Defined in the CMakeLists file.
 std::filesystem::path dirPath = CONFIG_FILE_PATH;
@@ -56,9 +56,9 @@ std::filesystem::path dirPath = CONFIG_FILE_PATH;
 std::atomic<bool> g_paused(false);
 
 /// @brief Callback handler to toggle play and pause.
-static void TogglePlayPause(void* /* unused */)
+static void ChangePlayPause(bool nowPlaying, void* /* unused */)
 {
-  g_paused = !g_paused;
+  g_paused = !nowPlaying;
   std::cout << "Toggled play/pause to: " << (g_paused ? "paused" : "playing") << std::endl;
 }
 
@@ -1036,7 +1036,7 @@ int main(int argc, char** argv)
 
     // Configure an event structure to handle callbacks for the display windows.
     std::shared_ptr<EventHandlers> handlers = std::make_shared<EventHandlers>();
-    handlers->TogglePlayPause = TogglePlayPause;
+    handlers->ChangePlayPause = ChangePlayPause;
 
     // Construct one or more Display objects to render the cameras.  They all share objects with the texture Display.
     std::vector<std::shared_ptr<Display>> displays;

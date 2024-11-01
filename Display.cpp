@@ -76,6 +76,7 @@ Display::Display(std::shared_ptr<Composite> composite,
   : m_composite(composite)
   , m_eventHandlers(handlers)
   , m_userData(userData)
+  , m_nowPlaying(true)
   , m_client(client)
   , m_triggerID(triggerID)
   , m_offsetMicroseconds(triggerAheadMicroseconds)
@@ -457,7 +458,10 @@ void DisplayWindow::DisplayThread(std::string windowName,
     // Handle any window resizing
     SetViewportSizeAndFOVs(m_impl->m_views[0]);
 
-    // Render here
+    // Render here, pausing if we're paused.
+    if (m_pauseTime) {
+      renderTime = *m_pauseTime;
+    }
     m_composite->Render(renderTime, m_impl->m_views);
 
     // Swap front and back buffers and compute the next frame time.
@@ -506,11 +510,19 @@ void DisplayWindow::HandleKeyboard()
   if (glfwGetKey(Display::m_impl->m_window, GLFW_KEY_LEFT) == GLFW_PRESS) {
     m_impl->m_rotationZDegrees += DegreesPerSecond * elapsed.count();
   }
-  // Toggle play/pause when the space key is pressed (once per press/release cycle)
+  // Toggle play/pause when the space key is pressed (once per press/release cycle).
+  // Also set or reset our internal pause time so we won't extrapolate poses forward in time.
   bool spacePressed = (glfwGetKey(Display::m_impl->m_window, GLFW_KEY_SPACE) == GLFW_PRESS);
   if (spacePressed && !m_impl->m_spacePressed) {
-    if (m_eventHandlers && m_eventHandlers->TogglePlayPause) {
-      m_eventHandlers->TogglePlayPause(m_userData);
+    m_nowPlaying = !m_nowPlaying;
+    if (m_eventHandlers && m_eventHandlers->ChangePlayPause) {
+      m_eventHandlers->ChangePlayPause(m_nowPlaying, m_userData);
+    }
+    if (!m_nowPlaying) {
+      m_pauseTime = std::make_unique<Time>();
+      m_timer->GetCoreTime(*m_pauseTime, std::chrono::steady_clock::now());
+    } else {
+      m_pauseTime.reset();
     }
   }
   m_impl->m_spacePressed = spacePressed;
@@ -1641,10 +1653,6 @@ bool asdp::render::DisplayOpenXR::DisplayOpenXRImpl::OpenXRRenderLayer(XrTime pr
 #endif
 
   /// Render the requested views at the predicted scan-out time.
-  std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
-  if (status != OKAY) {
-    return false;
-  }
   m_display->m_composite->Render(time, viewRenderInfos);
 
   /*

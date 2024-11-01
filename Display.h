@@ -18,6 +18,7 @@
 #include <chrono>
 #include <string>
 #include <mutex>
+#include <memory>
 #include <ASDP_Core_API.h>
 #include <Composite.h>
 
@@ -26,7 +27,7 @@ namespace asdp {
 
     /// @brief Event-handling class that passes asynchronous events to the caller.
     struct EventHandlers {
-      void (*TogglePlayPause)(void *userData) = nullptr; ///< Toggle the play/pause behavior.
+      void (*ChangePlayPause)(bool nowPlaying, void *userData) = nullptr; ///< Change the play/pause behavior.
     };
 
     /// @brief Display base class that defines the interface that all Displays use.
@@ -84,6 +85,9 @@ protected:
       /// Event handlers, if any.
       std::shared_ptr<EventHandlers> m_eventHandlers;
       void* m_userData;
+
+      /// @brief Flag to indicate whether the display is currently playing.
+      bool m_nowPlaying;
 
       std::shared_ptr<CoreClient> m_client; ///< CoreClient to use, filled in by the constructor.
       uint8_t m_triggerID; ///< Trigger ID to use, filled in by the constructor.
@@ -165,6 +169,9 @@ protected:
       ~DisplayWindow();
 
     private:
+      /// Pointer to time when we started pausing, nullptr if not pausing.
+      std::unique_ptr<Time> m_pauseTime;
+
       /// @brief Method to implement the display thread.
       void DisplayThread(std::string windowName,
         float fps, uint32_t renderAheadMicroseconds,
@@ -211,6 +218,7 @@ protected:
 
       /// Opaque class used to enable not requiring the application to #include all headers.
       class DisplayTextureImpl;
+
       /// Instance of the implementation class used to store data.  Filled in by the constructor.
       std::unique_ptr<DisplayTextureImpl> m_impl;
     };
@@ -245,6 +253,7 @@ protected:
 
       /// Opaque class used to enable not requiring the application to #include all headers.
       class DisplayOpenXRImpl;
+
       /// Instance of the implementation class used to store data.  Filled in by the constructor.
       std::unique_ptr<DisplayOpenXRImpl> m_impl;
     };
