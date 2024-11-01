@@ -37,6 +37,7 @@
 #include <Composite.h>
 #include <Display.h>
 #include <CPUDataToTextureHandler.h>
+#include <PoseAdjuster.h>
 #include <cuda.h>
 #include <cuda_runtime.h>
 #include <cuda_gl_interop.h>
@@ -46,7 +47,7 @@ using namespace asdp::render;
 using json = nlohmann::json;
 using json = nlohmann::json;
 
-static std::string VERSION = "1.15.0";
+static std::string VERSION = "1.16.0";
 
 /// @brief The path to the configuration file. Defined in the CMakeLists file.
 std::filesystem::path dirPath = CONFIG_FILE_PATH;
@@ -571,7 +572,8 @@ std::shared_ptr<Message> WaitForMessageType(std::shared_ptr<Receiver> receiver, 
 }
 
 /// @param [out] replayDone Set to true if we are at the end of replay, set to false otherwise.
-Status HandleStreamPacket(std::shared_ptr<StreamPacket> packet, std::shared_ptr<ClockSynchronizer> clockSync, bool &replayDone)
+Status HandleStreamPacket(std::shared_ptr<StreamPacket> packet, std::shared_ptr<ClockSynchronizer> clockSync,
+  std::shared_ptr<PoseAdjuster> poseAdjuster, bool &replayDone)
 {
   // Not done replaying unless we get a message telling us that we are.
   replayDone = false;
@@ -657,6 +659,16 @@ Status HandleStreamPacket(std::shared_ptr<StreamPacket> packet, std::shared_ptr<
         }
       }
       break;
+    case POSE:
+      {
+        // Parse the pose message and add the pose to the adjuster.
+        MessagePose pose(*message);
+        if (pose.GetConstructorStatus() != OKAY) {
+          return pose.GetConstructorStatus();
+        }
+        poseAdjuster->AddPose(pose);
+      }
+      break;
     default:
       // Ignore other message types.
       break;
@@ -703,6 +715,7 @@ void usage(std::string name)
   std::cerr << "  --fps <frames per second>           The frames per second to run at (default 60)." << std::endl;
   std::cerr << "  --joystick <string>                 The joystick to use for input (e.g. GLFW::0)." << std::endl;
   std::cerr << "  --hFOV <horizontal field of view>   The horizontal field of view in degrees (default 40)." << std::endl;
+  std::cerr << "  --noPoses                           Do not stream poses from the server, so no latency adjustment." << std::endl;
 };
 
 int main(int argc, char** argv)
@@ -719,6 +732,7 @@ int main(int argc, char** argv)
 #else
   int lineBatchesPerGPUSend = 16; ///< The number of batches of lines to group for sending to the GPU.
 #endif
+  bool doStreamPoses = true;     ///< Stream poses from the server, so we can adjust for latency.
   size_t realParams = 0;        ///< The number of non-flag parameters we've seen.
 
   // Parse the command line arguments, with the first non-flag argument being the
@@ -805,6 +819,8 @@ int main(int argc, char** argv)
       replayStreamID = std::stoi(argv[i]);
     } else if (std::string("--loopReplay") == argv[i]) {
       loopReplay = true;
+    } else if (std::string("--noPoses") == argv[i]) {
+      doStreamPoses = false;
     } else if (argv[i][0] == '-') {
       usage(argv[0]);
       return 1;
@@ -825,6 +841,9 @@ int main(int argc, char** argv)
   // Run inside a block so that the destructors will be called for all objects before we exit.
   {
     std::cout << "ASDP Render Module version " << VERSION << std::endl;
+
+    // Create a PoseAdjuster to handle helicopter motion.
+    std::shared_ptr<PoseAdjuster> poseAdjuster = std::make_shared<PoseAdjuster>();
 
     // Open a client, specifying the IP address to listen on.
     std::shared_ptr<CoreClient> client = std::make_shared<CoreClient>(ip_address);
@@ -1042,8 +1061,15 @@ int main(int argc, char** argv)
 
       // Construct a Composite object to render the cameras.  We need a separate Composite per Display so that each
       // can cache consistent camera images for the whole frame while views are being rendered.
-      // Two displays cannot share a SetupRenderFrame() call because they may have different frame rates.
-      std::shared_ptr<Composite> composite = std::make_shared<CompositeCameras>(cameraRenderInfos, toneMapTexture);
+      // Two displays cannot share a SetupRenderFramfe() call because they may have different frame rates.
+      std::shared_ptr<Timer> timer;
+      status = client->GetTimer(timer);
+      if (status != OKAY) {
+        std::cerr << "Failed to get timer: " << ErrorMessage(status) << std::endl;
+        return 22;
+      }
+      std::shared_ptr<Composite> composite = std::make_shared<CompositeCameras>(
+        cameraRenderInfos, toneMapTexture, poseAdjuster);
 
       if (displayInfos[i].useOpenXR) {
         displays.push_back(std::make_shared<DisplayOpenXR>(composite, displayTexture.get(), client, 0, 0, 2500, 1));
@@ -1138,6 +1164,22 @@ int main(int argc, char** argv)
       receiveDataThreads.push_back(std::thread(ReceiveDataThread, std::ref(*UDPReceivers[i]), 9000,
         std::ref(done), cpuPinnedImageBuffers[i], gpuImageBuffers[i], streams[i], cameraRenderInfos[i].m_imageQueue,
         dataQueues[i % NUM_TEXTURE_THREADS]));
+    }
+
+    // Ask for streaming pose and temperature data.
+    if (doStreamPoses) {
+      std::cout << "Requesting pose data." << std::endl;
+      status = client->SendCommandPacket(CommandPacketStreamPoses());
+      if (status != OKAY) {
+        std::cerr << "Failed to request pose data: " << ErrorMessage(status) << std::endl;
+        return 26;
+      }
+    }
+    std::cout << "Requesting temperature data." << std::endl;
+    status = client->SendCommandPacket(CommandPacketStreamTemperatures());
+    if (status != OKAY) {
+      std::cerr << "Failed to request temperature data: " << ErrorMessage(status) << std::endl;
+      return 27;
     }
 
     // Request streaming on the cameras at their maximum rates from their associated ID.
@@ -1236,13 +1278,13 @@ int main(int argc, char** argv)
       size_t offset = 0;
       Status status = receiver->ReceiveStreamPacket(0.1, response, offset);
       if (status == OKAY) {
-        status = HandleStreamPacket(response, clockSync, replayDone);
+        status = HandleStreamPacket(response, clockSync, poseAdjuster, replayDone);
         if (status != OKAY) {
           std::cerr << "Error handling stream packet: " << ErrorMessage(status) << std::endl;
           done = true;
         }
       } else if (status != TIMEOUT) {
-        std::cerr << "Error receiving data: " << ErrorMessage(status) << std::endl;
+        std::cerr << "Error receiving stream packet: " << ErrorMessage(status) << std::endl;
         done = true;
       }
 

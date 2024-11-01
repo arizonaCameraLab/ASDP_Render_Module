@@ -146,7 +146,8 @@ int main()
   GLuint toneMapTexture = toneMap.GenerateTexture();
 
   // Create a CompositeCameras object to render once the window is open and the context is active.
-  asdp::render::CompositeCameras composite(cameras, toneMapTexture);
+  std::shared_ptr<asdp::render::PoseAdjuster> poseAdjuster = std::make_shared<asdp::render::PoseAdjuster>();
+  asdp::render::CompositeCameras composite(cameras, toneMapTexture, poseAdjuster);
 
   // Loop until the user closes the window.
   std::cout << "You should see a row of three distorted dark boxes horizontally across" << std::endl;
