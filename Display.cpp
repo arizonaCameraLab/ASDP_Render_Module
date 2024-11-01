@@ -441,10 +441,10 @@ void DisplayWindow::DisplayThread(std::string windowName,
       int axisCount;
       const float* axes = glfwGetJoystickAxes(m_impl->m_glfwJoystickIndex, &axisCount);
       if (axisCount >= 2) {
-        if (fabs(axes[0]) > 0.15) {
+        if (fabs(axes[0]) > 0.2) {
           m_impl->m_rotationZDegrees -= 90.0f * elapsed.count() * axes[0];
         }
-        if (fabs(axes[1]) > 0.15) {
+        if (fabs(axes[1]) > 0.2) {
           m_impl->m_rotationXDegrees -= 90.0f * elapsed.count() * axes[1] * m_impl->m_joystickScaleY;
         }
       }
