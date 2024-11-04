@@ -66,14 +66,17 @@ namespace asdp {
       /// Structure describing a helicopter pose, including the position, orientation, and velocities.
       /// Its entries must be double precision to avoid numerical instability with the large Earth radius included in position.
       struct Pose {
-        glm::dvec3 position = { 0, 0, 0 };            ///< Position of the helicopter in 3D space w.r.t. Earth center with Z north spin axis and X towards (0,0) lat/long.
-                                                      /// Takes point in helicopter space to Earth space.
-        glm::dquat orientation = { 1, 0, 0, 0 };      ///< Orientation of the helicopter in the same Earth-centric coordinate system as position.
-                                                      /// Takes vectors in helicopter space to Earth space.
-        glm::dvec3 velocity = { 0, 0, 0 };            ///< Velocity of the helicopter in meters per second in Helicopter space.
-        glm::dquat angularVelocity = { 1, 0, 0, 0 };  ///< Angular velocity of the helicopter in Helicopter space, rotation per dt.
-        double dt = 0.01;                             ///< Delta time related to angular velocity (allows faster rotation than half a rotation per second).
-        asdp::Time time = { 0, 0 };                   ///< Time of the pose.
+        glm::dvec3 position;        ///< Position of the helicopter in 3D space w.r.t. Earth center with Z north spin axis and X towards (0,0) lat/long.
+                                    /// Takes point in helicopter space to Earth space.
+        glm::dquat orientation;     ///< Orientation of the helicopter in the same Earth-centric coordinate system as position.
+                                    /// Takes vectors in helicopter space to Earth space.
+        glm::dvec3 velocity;        ///< Velocity of the helicopter in meters per second in Helicopter space.
+        glm::dquat angularVelocity; ///< Angular velocity of the helicopter in Helicopter space, rotation per dt.
+        double dt;                  ///< Delta time related to angular velocity (allows faster rotation than half a rotation per second).
+        asdp::Time time;            ///< Time of the pose.
+
+        // Default constructor zeroes position velocity, makes identity orientation and angular velocity, makes dt 0.01.
+        Pose();
       };
 
       size_t m_maxCount;            ///< Maximum number of poses to store.

@@ -37,6 +37,17 @@ static ECEF convertLLAtoECEF(double latitude, double longitude, double altitude)
 using namespace asdp::render;
 using namespace asdp;
 
+
+PoseAdjuster::Pose::Pose()
+  : position(0, 0, 0)
+  , orientation(1, 0, 0, 0)
+  , velocity(0, 0, 0)
+  , angularVelocity(1, 0, 0, 0)
+  , dt(0.01)
+  , time(0, 0)
+{
+}
+
 PoseAdjuster::PoseAdjuster(size_t maxCount)
   : m_maxCount(maxCount)
 {
