@@ -47,7 +47,7 @@ using namespace asdp::render;
 using json = nlohmann::json;
 using json = nlohmann::json;
 
-static std::string VERSION = "1.17.0";
+static std::string VERSION = "1.18.0";
 
 /// @brief The path to the configuration file. Defined in the CMakeLists file.
 std::filesystem::path dirPath = CONFIG_FILE_PATH;
@@ -1072,7 +1072,7 @@ int main(int argc, char** argv)
         cameraRenderInfos, toneMapTexture, poseAdjuster);
 
       if (displayInfos[i].useOpenXR) {
-        displays.push_back(std::make_shared<DisplayOpenXR>(composite, displayTexture.get(), client, 0, 0, 2500, 1));
+        displays.push_back(std::make_shared<DisplayOpenXR>(composite, displayTexture.get(), client, 0, 0, 2500, 1, handlers));
       } else {
         displays.push_back(std::make_shared<DisplayWindow>("ASDP Render Module " + std::to_string(i),
           composite, client, 0, 0, displayInfos[i].fps, 2500, displayInfos[i].width, displayInfos[i].height,

@@ -706,6 +706,7 @@ class asdp::render::DisplayOpenXR::DisplayOpenXRImpl {
 public:
   DisplayOpenXRImpl(asdp::render::DisplayOpenXR* display)
     : m_display(display)
+    , m_lastGrabbedState(false)
   {
   }
   DisplayOpenXR* m_display = nullptr;
@@ -777,6 +778,12 @@ public:
   std::map<uint32_t, uint32_t> m_colorToDepthMap;
 
   PFN_xrConvertTimeToWin32PerformanceCounterKHR m_xrConvertTimeToWin32PerformanceCounterKHR = nullptr;
+
+  /// Keep track of the last grabbed state so that we can toggle the play/pause state when it is triggered.
+  bool m_lastGrabbedState;
+
+  /// Pointer to time when we started pausing, nullptr if not pausing.
+  std::unique_ptr<Time> m_pauseTime;
 
   void OpenXRCreateInstance();
   void OpenXRInitializeSystem(Display* sharedWindow);
@@ -892,8 +899,9 @@ void asdp::render::DisplayOpenXR::DisplayOpenXRImpl::OpenGLInitializeDevice(Disp
     // Open a window that we will use to get a context that we will use to hand to OpenXR as needed.
     // This is a bit of a hack, but it is the only way to get a context that we can use with OpenXR.
     // We will use the context from this window to create the OpenXR session.
-    // Set the window to be hidden.
-    glfwWindowHint(GLFW_VISIBLE, false);
+    // Set the window to be not hidden so that it will always be cleaned up and won't leave a zombie
+    // GL object that keeps us from opening new OpenXR apps.
+    glfwWindowHint(GLFW_VISIBLE, true);
     m_contextWindow = glfwCreateWindow(100, 100, "ASDP_Render_Module OpenXR OpenGL Window to get context", nullptr, windowToShare);
     if (sharedWindow) {
       if (!sharedWindow->ReturnContext()) {
@@ -1452,6 +1460,7 @@ void asdp::render::DisplayOpenXR::DisplayOpenXRImpl::OpenXRPollActions()
   CHECK_XRCMD(xrSyncActions(m_session, &syncInfo));
 
   // Get pose and grab action state and start haptic vibrate when hand is 90% squeezed.
+  bool isGrabbed = false;
   for (auto hand : { Side::LEFT, Side::RIGHT }) {
     XrActionStateGetInfo getInfo{ XR_TYPE_ACTION_STATE_GET_INFO };
     getInfo.action = m_input.grabAction;
@@ -1472,6 +1481,23 @@ void asdp::render::DisplayOpenXR::DisplayOpenXRImpl::OpenXRPollActions()
         hapticActionInfo.action = m_input.vibrateAction;
         hapticActionInfo.subactionPath = m_input.handSubactionPath[hand];
         CHECK_XRCMD(xrApplyHapticFeedback(m_session, &hapticActionInfo, (XrHapticBaseHeader*)&vibration));
+
+        isGrabbed = true;
+        if (!m_lastGrabbedState) {
+          // Toggle the play/pause state.
+          // Also set or reset our internal pause time so we won't extrapolate poses forward in time.
+          m_display->m_nowPlaying = !m_display->m_nowPlaying;
+          if (m_display->m_eventHandlers && m_display->m_eventHandlers->ChangePlayPause) {
+            m_display->m_eventHandlers->ChangePlayPause(m_display->m_nowPlaying, m_display->m_userData);
+          }
+          if (!m_display->m_nowPlaying) {
+            m_pauseTime = std::make_unique<Time>();
+            m_display->m_timer->GetCoreTime(*m_pauseTime, std::chrono::steady_clock::now());
+          }
+          else {
+            m_pauseTime.reset();
+          }
+        }
       }
     }
 
@@ -1480,6 +1506,7 @@ void asdp::render::DisplayOpenXR::DisplayOpenXRImpl::OpenXRPollActions()
     CHECK_XRCMD(xrGetActionStatePose(m_session, &getInfo, &poseState));
     m_input.handActive[hand] = poseState.isActive;
   }
+  m_lastGrabbedState = isGrabbed;
 
   // There were no subaction paths specified for the quit action, because we don't care which hand did it.
   XrActionStateGetInfo getInfo{ XR_TYPE_ACTION_STATE_GET_INFO, nullptr, m_input.quitAction, XR_NULL_PATH };
@@ -1652,7 +1679,10 @@ bool asdp::render::DisplayOpenXR::DisplayOpenXRImpl::OpenXRRenderLayer(XrTime pr
   std::cerr << "Time prediction not implemented for this platform" << std::endl;
 #endif
 
-  /// Render the requested views at the predicted scan-out time.
+  /// Render the requested views at the predicted scan-out time, pausing if we're paused.
+  if (m_pauseTime) {
+    time = *m_pauseTime;
+  }
   m_display->m_composite->Render(time, viewRenderInfos);
 
   /*
@@ -1785,8 +1815,9 @@ void asdp::render::DisplayOpenXR::DisplayOpenXRImpl::OpenXRTearDown()
 
 DisplayOpenXR::DisplayOpenXR(std::shared_ptr<Composite> composite, Display* sharedWindow,
     std::shared_ptr<CoreClient> client, uint8_t triggerID, uint32_t triggerAheadMicroseconds,
-    uint32_t renderAheadMicroseconds, int verbosity)
-  : Display(composite, client, triggerID, triggerAheadMicroseconds)
+    uint32_t renderAheadMicroseconds, int verbosity,
+    std::shared_ptr<EventHandlers> handlers, void* userData)
+  : Display(composite, client, triggerID, triggerAheadMicroseconds, handlers, userData)
 {
   m_impl = std::make_unique<DisplayOpenXRImpl>(this);
   m_impl->m_verbosity = verbosity;
@@ -1872,8 +1903,9 @@ public:
 
 DisplayOpenXR::DisplayOpenXR(std::shared_ptr<Composite> composite, Display* sharedWindow,
     std::shared_ptr<CoreClient> client, uint8_t triggerID, uint32_t triggerAheadMicroseconds,
-    uint32_t renderAheadMicroseconds, int verbosity)
-  : Display(composite, client, triggerID, triggerAheadMicroseconds)
+    uint32_t renderAheadMicroseconds, int verbosity,
+    std::shared_ptr<EventHandlers> handlers, void* userData)
+  : Display(composite, client, triggerID, triggerAheadMicroseconds, handlers, userData)
 {
   m_status = "OpenXR is not compiled in.";
 }

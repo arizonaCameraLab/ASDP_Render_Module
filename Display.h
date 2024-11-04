@@ -243,7 +243,8 @@ protected:
       /// @param verbosity The level of verbosity to use in the OpenXR API, 0 for none.
       DisplayOpenXR(std::shared_ptr<Composite> composite, Display* sharedWindow,
         std::shared_ptr<CoreClient> client, uint8_t triggerID, uint32_t triggerAheadMicroseconds,
-        uint32_t renderAheadMicroseconds = 2500, int verbosity = 0);
+        uint32_t renderAheadMicroseconds = 2500, int verbosity = 0,
+        std::shared_ptr<EventHandlers> handlers = nullptr, void* userData = nullptr);
 
       ~DisplayOpenXR();
 
