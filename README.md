@@ -66,7 +66,7 @@ on different machines and leave the existing ones in the file.
 systems could be used).  On Ubuntu Linux, this can be done as follows
 
     sudo apt install cmake
-    cd; mkdir src; cd src; git clone https://github.com/arizonaCameraLab/ASDP_Render_Module
+    cd; mkdir src; cd src; git clone --recursive https://github.com/arizonaCameraLab/ASDP_Render_Module
     cd; mkdir -p build/ASDP_Render_Module; cd build/ASDP_Render_Module
     cmake ../../src/ASDP_Render_Module
     make
