@@ -164,7 +164,7 @@ namespace asdp {
     /// @brief Information about a single camera needed to produce a renderable view from it.
     struct CameraRenderInfo {
       uint16_t m_ID = 0;                              ///< ID of the camera.
-      /// Position of the cameras center of projection in meters from the camera device origin.
+      /// Position of the camera's center of projection in meters from the camera device origin.
       /// The canonical orientation is in the local helicopter coordinate system, with +X pointing
       /// right, +Y pointing forwards, and +Z pointing up.  The camera is translated in the
       /// helicopter frame of reference and then rotated around its new center.
