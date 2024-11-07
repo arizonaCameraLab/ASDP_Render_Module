@@ -890,7 +890,7 @@ void CompositeCameras::RenderView(asdp::Time scanOutTime, const float* modelView
     glEnableVertexAttribArray(0);
     glEnableVertexAttribArray(1);
 
-    /// @todo Adjust for helicopter motion changes from image acquisition to scan-out.
+    // Adjust for helicopter motion changes from image acquisition to scan-out.
     // The camera points are in the helicopter coordinate system, so we need to adjust
     // from where they are (canonical position at render time) to where they were at
     // image acquisition.
@@ -898,7 +898,6 @@ void CompositeCameras::RenderView(asdp::Time scanOutTime, const float* modelView
 
     // Apply the shift in the local helicopter coordinate system within the model-view-projection
     // matrix (which is really a view-projection matrix).
-    /// @todo
     double dMVP[16];
     for (size_t i = 0; i < 16; i++) {
       dMVP[i] = modelViewProjection[i];
