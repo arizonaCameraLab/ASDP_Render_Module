@@ -47,7 +47,7 @@ namespace asdp {
       /// helicopter frame of reference and then rotated around its new center.
       /// The camera is looking out the front of the helicopter (along the +Y axis) with its "up" vector
       /// pointing above the helicopter (along the +Z axis) when the orientation is (0,0,0).
-      std::array<float, 4> orientation = {};
+      std::array<float, 4> orientation = {1, 0, 0, 0};
       /// Left edge of the view in degrees from the principal ray (this will be half the horizontal FOV).
       /// Left and right are different for off-center projection.
       float leftHalfFOV = -45;
@@ -60,8 +60,8 @@ namespace asdp {
       /// Bottom edge of the view in degrees from the principal ray (this will be half the vertical FOV).
       /// Top and bottom are different for off-center projection.
       float bottomHalfFOV = -45;
-      float nearClip = 0.1;                 ///< Near clipping plane in meters.
-      float farClip = 1000;                 ///< Far clipping plane in meters.
+      float nearClip = 2.0;                 ///< Near clipping plane in meters.
+      float farClip = 1500;                 ///< Far clipping plane in meters. Must be > max Composite depth
       GLuint frameBuffer = 0;               ///< Frame buffer to render into.  Set to 0 for the default frame buffer.
       GLuint colorBuffer = 0;               ///< Texture for color to be rendered into (will be bound to the frameBuffer). Ignored for frameBuffer 0.
       GLuint depthBuffer = 0;               ///< Depth buffer to be rendered into, 0 for no depth buffer (will be bound to the frameBuffer). Ignored for frameBuffer 0.
