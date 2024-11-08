@@ -1502,8 +1502,8 @@
         2048
       ],
       "oversizedFieldOfViewDegrees": [
-        107.25,
-        87.80000000000001
+        204.5,
+        165.60000000000002
       ],
       "distortion": {
         "type": "radial",
@@ -1572,8 +1572,8 @@
         2048
       ],
       "oversizedFieldOfViewDegrees": [
-        107.25,
-        87.80000000000001
+        204.5,
+        165.60000000000002
       ],
       "distortion": {
         "type": "radial",
@@ -1642,8 +1642,8 @@
         2048
       ],
       "oversizedFieldOfViewDegrees": [
-        107.25,
-        87.80000000000001
+        204.5,
+        165.60000000000002
       ],
       "distortion": {
         "type": "radial",
@@ -1712,8 +1712,8 @@
         2048
       ],
       "oversizedFieldOfViewDegrees": [
-        107.25,
-        87.80000000000001
+        204.5,
+        165.60000000000002
       ],
       "distortion": {
         "type": "radial",
