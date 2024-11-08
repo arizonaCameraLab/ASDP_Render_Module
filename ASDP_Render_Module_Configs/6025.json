@@ -1474,8 +1474,8 @@
     {
       "id": 22,
       "fieldOfViewDegrees": [
-        97.25,
-        77.80000000000001
+        137.5,
+        110.0
       ],
       "resolutionPixels": [
         1280,
@@ -1490,11 +1490,11 @@
       "orientationDegrees": [
         0,
         0,
-        -48.625
+        -68.75
       ],
       "positionMeters": [
-        0.05878702166539093,
-        0.14506579915236004,
+        0.10511043901973267,
+        0.11598187620951414,
         0.14
       ],
       "oversizedResolutionPixels": [
@@ -1502,8 +1502,8 @@
         2048
       ],
       "oversizedFieldOfViewDegrees": [
-        204.5,
-        165.60000000000002
+        147.5,
+        120.0
       ],
       "distortion": {
         "type": "radial",
@@ -1544,8 +1544,8 @@
     {
       "id": 23,
       "fieldOfViewDegrees": [
-        97.25,
-        77.80000000000001
+        137.5,
+        110.0
       ],
       "resolutionPixels": [
         1280,
@@ -1560,11 +1560,11 @@
       "orientationDegrees": [
         0,
         0,
-        -48.625
+        -68.75
       ],
       "positionMeters": [
-        0.15132485232112258,
-        0.04000986215910327,
+        0.15585176437945092,
+        -0.014499225490077657,
         0.14
       ],
       "oversizedResolutionPixels": [
@@ -1572,8 +1572,8 @@
         2048
       ],
       "oversizedFieldOfViewDegrees": [
-        204.5,
-        165.60000000000002
+        147.5,
+        120.0
       ],
       "distortion": {
         "type": "radial",
@@ -1614,8 +1614,8 @@
     {
       "id": 24,
       "fieldOfViewDegrees": [
-        97.25,
-        77.80000000000001
+        137.5,
+        110.0
       ],
       "resolutionPixels": [
         1280,
@@ -1630,11 +1630,11 @@
       "orientationDegrees": [
         0,
         0,
-        48.625
+        68.75
       ],
       "positionMeters": [
-        -0.15132485232112258,
-        0.04000986215910327,
+        -0.15585176437945092,
+        -0.014499225490077657,
         0.14
       ],
       "oversizedResolutionPixels": [
@@ -1642,8 +1642,8 @@
         2048
       ],
       "oversizedFieldOfViewDegrees": [
-        204.5,
-        165.60000000000002
+        147.5,
+        120.0
       ],
       "distortion": {
         "type": "radial",
@@ -1684,8 +1684,8 @@
     {
       "id": 25,
       "fieldOfViewDegrees": [
-        97.25,
-        77.80000000000001
+        137.5,
+        110.0
       ],
       "resolutionPixels": [
         1280,
@@ -1700,11 +1700,11 @@
       "orientationDegrees": [
         0,
         0,
-        48.625
+        68.75
       ],
       "positionMeters": [
-        -0.05878702166539093,
-        0.14506579915236004,
+        -0.10511043901973267,
+        0.11598187620951414,
         0.14
       ],
       "oversizedResolutionPixels": [
@@ -1712,8 +1712,8 @@
         2048
       ],
       "oversizedFieldOfViewDegrees": [
-        204.5,
-        165.60000000000002
+        147.5,
+        120.0
       ],
       "distortion": {
         "type": "radial",

@@ -1583,8 +1583,8 @@ bool asdp::render::DisplayOpenXR::DisplayOpenXRImpl::OpenXRRenderLayer(XrTime pr
     vri.rightHalfFOV = glm::degrees(m_views[i].fov.angleRight);
     vri.topHalfFOV = glm::degrees(m_views[i].fov.angleUp);
     vri.bottomHalfFOV = glm::degrees(m_views[i].fov.angleDown);
-    vri.nearClip = 0.5;         /// @todo See if we get this from somewhere
-    vri.farClip = 1000.0;       /// @todo See if we get this from somewhere
+    vri.nearClip = 2.0;         /// @todo See if we get this from somewhere
+    vri.farClip = 1500.0;       /// @todo See if we get this from somewhere, >> 900 max Composite depth
     vri.frameBuffer = m_swapchainFramebuffer;
     vri.colorBuffer = reinterpret_cast<const XrSwapchainImageOpenGLKHR*>(
       m_swapchainImages[m_swapchains[i].handle][swapchainImageIndex])->image;
