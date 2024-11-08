@@ -41,14 +41,13 @@ namespace asdp {
       /// the +X axis will tip the camera's view up, and a rotation around the +Y axis will pan the
       /// camera's view left.
       std::array<float, 3> viewpoint = {};
-      /// Orientation of the viewpoint in degrees, Euler rotation around X, then Y around the
-      /// new Y, then around the new Z.
+      /// Orientation of the viewpoint in degrees, Quaternion in (W,X,Y,Z) order.
       /// The canonical orientation is in the local helicopter coordinate system, with +X pointing
       /// right, +Y pointing forwards, and +Z pointing up.  The camera is translated in the
       /// helicopter frame of reference and then rotated around its new center.
       /// The camera is looking out the front of the helicopter (along the +Y axis) with its "up" vector
       /// pointing above the helicopter (along the +Z axis) when the orientation is (0,0,0).
-      std::array<float, 3> orientation = {};
+      std::array<float, 4> orientation = {};
       /// Left edge of the view in degrees from the principal ray (this will be half the horizontal FOV).
       /// Left and right are different for off-center projection.
       float leftHalfFOV = -45;
@@ -86,7 +85,8 @@ namespace asdp {
       /// It calls SetupRenderFrame() once per frame.
       /// It calls the RenderView() method to render each viewpoint after it has set up the frame buffer
       /// and cleared the color and depth textures.  It calls TearDownRenderFrame() after all views.
-      /// @param scanOutTime The time that the scan out is occurring, in ASDP Core time.  This is the time of the middle of the frame.
+      /// @param scanOutTime The time that the scan out is occurring, in ASDP Core time.
+      /// This is the time of the middle of the frame.
       /// @param views A vector of RenderInfo structures that contain the information about the views to render.
       virtual void Render(asdp::Time scanOutTime, std::vector<ViewRenderInfo> views);
 

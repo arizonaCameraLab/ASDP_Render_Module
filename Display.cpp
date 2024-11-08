@@ -544,42 +544,33 @@ void DisplayWindow::ComputeAndClampViewOrientation()
     m_impl->m_rotationZDegrees = -120.0;
   }
 
-  // Compute the orientation in Euler angles by building two different rotation
+  // Compute the orientation Quarternion by building two different rotation
   // matrices and applying them in the correct order.
   float rotationZRadians = glm::radians(m_impl->m_rotationZDegrees);
   float rotationXRadians = glm::radians(m_impl->m_rotationXDegrees);
 
-  // GLM gives us rotations in order Z, Y, X but we want X, Y, Z.  We make use of
-  // the fact that an inverse rotation matrix is the same as doing three individual
-  // rotations in the opposite directions and order.  So we find the inverse matrix
-  // that we want, then ask for Euler angles from that and then negate them.
-
   // Create rotation matrices
-  glm::mat4 rotationZ = glm::rotate(glm::mat4(1.0f), rotationZRadians, glm::vec3(0.0f, 0.0f, 1.0f));
-  glm::mat4 rotationX = glm::rotate(rotationZ, rotationXRadians, glm::vec3(1.0f, 0.0f, 0.0f));
+  /// @todo Consider doing this with just quaternions and axis-angles.
+  glm::mat4 rotationX = glm::rotate(glm::mat4(1.0f), rotationXRadians, glm::vec3(1.0f, 0.0f, 0.0f));
+  glm::mat4 rotationZ = glm::rotate(rotationX, rotationZRadians, glm::vec3(0.0f, 0.0f, 1.0f));
 
   // Combine the rotations: first X, then Z
-  glm::mat4 combinedRotation = rotationX;
+  glm::mat4 combinedRotation = rotationZ;
 
   // Find the inverse matrix
   glm::mat4 inverseRotation = glm::inverse(combinedRotation);
 
-  // Decompose the combined rotation matrix to get the Euler angles
+  // Decompose the combined rotation matrix to get the quaternion.
   glm::vec3 scale, translation, skew;
   glm::vec4 perspective;
   glm::quat orientation;
   glm::decompose(inverseRotation, scale, orientation, translation, skew, perspective);
 
-  // Convert quaternion to Euler angles (X, Y, Z)
-  glm::vec3 eulerAngles = glm::eulerAngles(orientation);
-
-  // Convert radians to degrees
-  eulerAngles = glm::degrees(eulerAngles);
-
-  // Store the negative of the Euler angles in the view, completing the inverse.
-  m_impl->m_views[0].orientation[0] = -eulerAngles[0];
-  m_impl->m_views[0].orientation[1] = -eulerAngles[1];
-  m_impl->m_views[0].orientation[2] = -eulerAngles[2];
+  // Store the quaternion.
+  m_impl->m_views[0].orientation[0] = orientation.w;
+  m_impl->m_views[0].orientation[1] = orientation.x;
+  m_impl->m_views[0].orientation[2] = orientation.y;
+  m_impl->m_views[0].orientation[3] = orientation.z;
 }
 
 //==============================================================================
@@ -1517,40 +1508,6 @@ void asdp::render::DisplayOpenXR::DisplayOpenXRImpl::OpenXRPollActions()
   }
 }
 
-// Function to convert a quaternion to Euler angles in order (X, Y, Z)
-static void QuaternionToEulerXYZDegrees(const XrQuaternionf& q, float& rx, float& ry, float& rz)
-{
-  // GLM gives us rotations in the order Z, Y, X but we want X, Y, Z.  We make use of
-  // the fact that an inverse rotation matrix is the same as doing three individual
-  // rotations in the opposite directions and order.  So we find the inverse of the matrix
-  // that we want, then ask for Euler angles from that and then negate them.
-
-  // Store the Quaternion into a glm::quat, in order W, X, Y, Z.
-  glm::quat quat(q.w, q.x, q.y, q.z);
-
-  // Convert the orientation to helicopter space by rotating 90 degrees around the x-axis,
-  // doing the inverse rotation on the other side.
-  float constexpr angle = glm::radians(-90.0f);
-  glm::vec3 axis = glm::vec3(1.0f, 0.0f, 0.0f);
-  glm::quat rotationQuat = glm::angleAxis(angle, axis);
-  glm::quat inverseRotationQuat = glm::angleAxis(-angle, axis);
-  quat = inverseRotationQuat * quat * rotationQuat;
-
-  // Find the inverse rotation
-  quat = glm::inverse(quat);
-
-  // Convert to Euler angles
-  glm::vec3 euler = glm::eulerAngles(quat);
-
-  // Convert radians to degrees
-  euler = glm::degrees(euler);
-
-  // Store the negative of the Euler angles in the view, completing the inverse.
-  rx = -euler.x;
-  ry = -euler.y;
-  rz = -euler.z;
-}
-
 bool asdp::render::DisplayOpenXR::DisplayOpenXRImpl::OpenXRRenderLayer(XrTime predictedDisplayTime,
   std::vector<XrCompositionLayerProjectionView>& projectionLayerViews, XrCompositionLayerProjection& layer)
 {
@@ -1600,12 +1557,28 @@ bool asdp::render::DisplayOpenXR::DisplayOpenXRImpl::OpenXRRenderLayer(XrTime pr
     waitInfo.timeout = XR_INFINITE_DURATION;
     CHECK_XRCMD(xrWaitSwapchainImage(m_swapchains[i].handle, &waitInfo));
 
+    // Convert the orientation to helicopter space by rotating -90 degrees around the x-axis,
+    // doing the inverse rotation on the other side.
+    glm::quat quat(m_views[i].pose.orientation.w, m_views[i].pose.orientation.x,
+      m_views[i].pose.orientation.y, m_views[i].pose.orientation.z);
+    float constexpr angle = glm::radians(-90.0f);
+    glm::vec3 axis = glm::vec3(1.0f, 0.0f, 0.0f);
+    glm::quat rotationQuat = glm::angleAxis(angle, axis);
+    glm::quat inverseRotationQuat = glm::angleAxis(-angle, axis);
+    quat = inverseRotationQuat * quat * rotationQuat;
+
+    // Find the inverse rotation
+    quat = glm::inverse(quat);
+
     // Construct the ViewRenderInfo for the current view and push it onto the vector.
     ViewRenderInfo vri;
     vri.viewpoint[0] = m_views[i].pose.position.x;
     vri.viewpoint[1] = m_views[i].pose.position.y;
     vri.viewpoint[2] = m_views[i].pose.position.z;
-    QuaternionToEulerXYZDegrees(m_views[i].pose.orientation, vri.orientation[0], vri.orientation[1], vri.orientation[2]);
+    vri.orientation[0] = quat.w;
+    vri.orientation[1] = quat.x;
+    vri.orientation[2] = quat.y;
+    vri.orientation[3] = quat.z;
     vri.leftHalfFOV = glm::degrees(m_views[i].fov.angleLeft);
     vri.rightHalfFOV = glm::degrees(m_views[i].fov.angleRight);
     vri.topHalfFOV = glm::degrees(m_views[i].fov.angleUp);

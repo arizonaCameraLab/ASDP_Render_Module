@@ -11,6 +11,8 @@
 #include <GL/glew.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+#define GLM_ENABLE_EXPERIMENTAL
+#include <glm/gtx/quaternion.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include "Composite.h"
 
@@ -81,15 +83,15 @@ void Composite::Render(asdp::Time scanOutTime, std::vector<ViewRenderInfo> views
     // than the camera but the offset and orientation are specified for camera movement.
     // NOTE: We also do the order of operations in reverse because we're moving the world rather
     // than the camera.
-    glm::mat4 ViewRotateZ = glm::rotate(HelicopterRotateX,
-      glm::radians(-view.orientation[2]), glm::vec3(0.0f, 0.0f, 1.0f));
-    glm::mat4 ViewRotateY = glm::rotate(ViewRotateZ,
-      glm::radians(-view.orientation[1]), glm::vec3(0.0f, 1.0f, 0.0f));
-    glm::mat4 ViewRotateX = glm::rotate(ViewRotateY,
-      glm::radians(-view.orientation[0]), glm::vec3(1.0f, 0.0f, 0.0f));
+    glm::quat rotQuat;
+    rotQuat.w = -view.orientation[0];
+    rotQuat.x = -view.orientation[1];
+    rotQuat.y = -view.orientation[2];
+    rotQuat.z = -view.orientation[3];
+    glm::mat4 ViewRotate = HelicopterRotateX * glm::toMat4(rotQuat);
 
     // Translate the view based on the specified viewpoint (negative due to world vs. camera).
-    glm::mat4 ViewTranslate = glm::translate(ViewRotateX,
+    glm::mat4 ViewTranslate = glm::translate(ViewRotate,
       glm::vec3(-view.viewpoint[0], -view.viewpoint[1], -view.viewpoint[2]));
 
     // Compute the projection matrix from the ViewRenderInfo.
@@ -910,6 +912,9 @@ void CompositeCameras::RenderView(asdp::Time scanOutTime, const float* modelView
     }
 
     /// @todo Adjust for shear and stretch due to helicopter motion during capture.
+    /// To handle depth-based velocity changes, this must include adjusting the model
+    /// matrix within the vertex shader to support translation and rotation based on the
+    /// scanning time (Y texture coordinate?).
 
     // Set the model-view-projection matrix for this camera including the appropriate shift
     glUniformMatrix4fv(m_modelViewProjectionUniformId, 1, GL_FALSE, adjustedMVP);
