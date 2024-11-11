@@ -1034,6 +1034,18 @@ int main(int argc, char** argv)
       cameraIDs.push_back(cameraRenderInfos[i].m_ID);
     }
 
+    // Separate the cameras into two groups: those with IDs less than 22 are visible cameras and those
+    // with larger ones are depth-estimation cameras.
+    std::vector<asdp::render::CameraRenderInfo> visibleCameras, depthCameras;
+    for (size_t j = 0; j < cameraRenderInfos.size(); j++) {
+      if (cameraRenderInfos[j].m_ID < 22) {
+        visibleCameras.push_back(cameraRenderInfos[j]);
+      }
+      else {
+        depthCameras.push_back(cameraRenderInfos[j]);
+      }
+    }
+
     // Configure an event structure to handle callbacks for the display windows.
     std::shared_ptr<EventHandlers> handlers = std::make_shared<EventHandlers>();
     handlers->ChangePlayPause = ChangePlayPause;
@@ -1059,7 +1071,7 @@ int main(int argc, char** argv)
         return 21;
       }
 
-      // Construct a Composite object to render the cameras.  We need a separate Composite per Display so that each
+      // Construct a Composite object to render the visible cameras.  We need a separate Composite per Display so that each
       // can cache consistent camera images for the whole frame while views are being rendered.
       // Two displays cannot share a SetupRenderFramfe() call because they may have different frame rates.
       std::shared_ptr<Timer> timer;
@@ -1069,7 +1081,7 @@ int main(int argc, char** argv)
         return 22;
       }
       std::shared_ptr<Composite> composite = std::make_shared<CompositeCameras>(
-        cameraRenderInfos, toneMapTexture, poseAdjuster);
+        visibleCameras, toneMapTexture, poseAdjuster);
 
       if (displayInfos[i].useOpenXR) {
         displays.push_back(std::make_shared<DisplayOpenXR>(composite, displayTexture.get(), client, 0, 0, 2500, 1, handlers));
