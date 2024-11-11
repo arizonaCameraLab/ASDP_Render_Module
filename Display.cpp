@@ -550,12 +550,12 @@ void DisplayWindow::ComputeAndClampViewOrientation()
   float rotationXRadians = glm::radians(m_impl->m_rotationXDegrees);
 
   // Create rotation matrices
+  // Combine the rotations: first Z, then X
   /// @todo Consider doing this with just quaternions and axis-angles.
-  glm::mat4 rotationX = glm::rotate(glm::mat4(1.0f), rotationXRadians, glm::vec3(1.0f, 0.0f, 0.0f));
-  glm::mat4 rotationZ = glm::rotate(rotationX, rotationZRadians, glm::vec3(0.0f, 0.0f, 1.0f));
+  glm::mat4 rotationZ = glm::rotate(glm::mat4(1.0f), rotationZRadians, glm::vec3(0.0f, 0.0f, 1.0f));
+  glm::mat4 rotationX = glm::rotate(rotationZ, rotationXRadians, glm::vec3(1.0f, 0.0f, 0.0f));
 
-  // Combine the rotations: first X, then Z
-  glm::mat4 combinedRotation = rotationZ;
+  glm::mat4 combinedRotation = rotationX;
 
   // Find the inverse matrix
   glm::mat4 inverseRotation = glm::inverse(combinedRotation);
