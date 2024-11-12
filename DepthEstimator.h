@@ -28,15 +28,19 @@ namespace asdp {
 
       /// A manifold surface representing the world in Helicopter space.  Its outer index
       /// is in X (surrounding the helicopter from left to right), its inner index is in Y (lower
-      /// to higher), and the vec3 is the mesh coordinate.
+      /// to higher), and the vec3 is the mesh coordinate, so mesh[x][y] holds the point for (x,y).
       std::vector<std::vector<glm::vec3>> mesh;
 
-      /// Average time for all images used to generate the mesh.
+      /// Time for which the mesh was generated.
       asdp::Time time = {};
     };
 
     /// @brief Constructs a manifold surface representing the world in Helicopter space from image pairs.
-    /// @todo
+    /// @details The depth estimator uses a list of cameras to estimate the depth of the world in Helicopter
+    /// space.  The cameras are grouped into pairs and the depth is estimated by comparing the images from
+    /// the two cameras.  This is used to produce a manifold surface mesh whose directions are in field
+    /// coordinate angles, producing a subset of a sphere around the point that is the closest intersection
+    /// of the primary rays from the viewpoints halfway between each camera pair.
     class DepthEstimator {
     public:
       /// brief Construct the estimator with a list of cameras.
@@ -44,8 +48,22 @@ namespace asdp {
       /// pairs of cameras to estimate depth.
       /// @param[in] nx Number of points to create in the X direction.
       /// @param[in] ny Number of points to create in the Y direction.
+      /// @param[in] minZRotDeg Minimum Z rotation in degrees for the manifold representing depth.
+      ///            Rotation is around helicopter Z first (mesh X axis), then around the new X
+      ///            axis (mesh Y axis).
+      /// @param[in] maxZRotDeg Maximum Z rotation in degrees for the manifold representing depth.
+      ///            Rotation is around helicopter Z first (mesh X axis), then around the new X
+      ///            axis (mesh Y axis).
+      /// @param[in] minXRotDeg Minimum X rotation in degrees for the manifold representing depth.
+      ///            Rotation is around helicopter Z first (mesh X axis), then around the new X
+      ///            axis (mesh Y axis).
+      /// @param[in] maxXRotDeg Maximum X rotation in degrees for the manifold representing depth.
+      ///            Rotation is around helicopter Z first (mesh X axis), then around the new X
+      ///            axis (mesh Y axis).
       /// @param[in] depths List of depths to check in meters in increasing distance order.
       DepthEstimator(std::vector<CameraRenderInfo> cameras, unsigned nx, unsigned ny,
+        float minZRotDeg = -115, float maxZRotDeg = 115,
+        float minXRotDeg = -55, float maxXRotDeg = 55,
         std::vector<float> depths = {10, 20, 50, 100, 200, 500, 1000});
 
       virtual ~DepthEstimator() = default;
@@ -64,17 +82,6 @@ namespace asdp {
       static std::string Test();
 
     protected:
-      /// Cameras to use to estimate depth.
-      std::vector<CameraRenderInfo> m_cameras;
-
-      /// Number of points to create in the X direction.
-      unsigned m_nx;
-
-      /// Number of points to create in the Y direction.
-      unsigned m_ny;
-
-      /// Depths to check in meters.
-      std::vector<float> m_depths;
 
       /// Used to hide the implementation details and avoid the need for client code to #include
       /// all of the files needed to implement the class.
