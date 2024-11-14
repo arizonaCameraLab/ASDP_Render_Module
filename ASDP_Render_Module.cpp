@@ -14,6 +14,7 @@
 
 #include <iostream>
 #include <fstream>
+#include <sstream>
 #include <chrono>
 #include <map>
 #include <set>
@@ -34,6 +35,7 @@
 #include <nlohmann/json.hpp>
 #include <GL/glew.h>
 #include <ToneMap.h>
+#include <RenderTimingInfo.h>
 #include <Composite.h>
 #include <Display.h>
 #include <CPUDataToTextureHandler.h>
@@ -47,13 +49,16 @@ using namespace asdp::render;
 using json = nlohmann::json;
 using json = nlohmann::json;
 
-static std::string VERSION = "2.0.0";
+static std::string VERSION = "2.1.0";
 
 /// @brief The path to the configuration file. Defined in the CMakeLists file.
-std::filesystem::path dirPath = CONFIG_FILE_PATH;
+std::filesystem::path g_dirPath = CONFIG_FILE_PATH;
 
 /// @brief Global variable set by callback handlers to tell when we're playing and pausing.
 std::atomic<bool> g_paused(false);
+
+/// @brief Global variable to hold the timing information for the program.
+asdp::render::RenderTimingInfo g_timingInfo;
 
 /// @brief Callback handler to toggle play and pause.
 static void ChangePlayPause(bool nowPlaying, void* /* unused */)
@@ -163,10 +168,12 @@ asdp::Status ParseFrameEndMessage(Message &message, uint32_t &cameraID)
 /// for throughput, and it should be set to a value that is large enough to amortize the cost of sending
 /// data to the GPU, but small enough to keep latency low.  The value of 16 is a good starting point.
 /// @param sharedContext The Display object that shares the OpenGL context with the rendering Display.
+/// @param cameraTimings The timing information for each camera, fill in the texture time for the appropriate camera.
 static void CopyDataToTextures(uint16_t width, uint16_t height,
   std::atomic<bool>& done,
   std::shared_ptr< SpinFreeQueue< std::shared_ptr<DataToSendToGPU> > > inQueue,
-  size_t batchSize, std::shared_ptr<Display> sharedContext)
+  size_t batchSize, std::shared_ptr<Display> sharedContext,
+  std::vector<RenderTimingInfo::camera>& cameraTimings)
 {
   // Borrow the context from the shared context so that we can use it to map textures.
   if (!sharedContext->BorrowContext()) {
@@ -279,6 +286,7 @@ static void CopyDataToTextures(uint16_t width, uint16_t height,
               break;
             }
             handlers[message.cameraID].reset();
+            cameraTimings[message.cameraID - 1].textureTimes.push_back(std::chrono::steady_clock::now());
           }
           break;
 
@@ -313,11 +321,15 @@ static void CopyDataToTextures(uint16_t width, uint16_t height,
 /// @param streamPtr The stream to use for copy and kernel calls.
 /// @param imageQueue The image queue to store the textures in.
 /// @param outQueue The queue to send the data to the GPU-feeding thread.
+/// @param frameBeginTimes Store the times for the begin frame message receipts.
+/// @param frameEndTimes Store the times for the end frame message receipts.
 static void ReceiveDataThread(ReceiverUDP& receiveSocket, size_t maxBytesPerPacket, std::atomic<bool>& done,
   std::shared_ptr<PinnedBufferPool> cpuImageBuffers, std::shared_ptr<GPUBufferPool> gpuImageBuffers,
   std::shared_ptr<cudaStream_t> streamPtr,
   std::shared_ptr<asdp::render::ImageQueue> imageQueue,
-  std::shared_ptr< SpinFreeQueue< std::shared_ptr<DataToSendToGPU> > > outQueue)
+  std::shared_ptr< SpinFreeQueue< std::shared_ptr<DataToSendToGPU> > > outQueue,
+  std::vector<std::chrono::steady_clock::time_point> &frameBeginTimes,
+  std::vector<std::chrono::steady_clock::time_point> &frameEndTimes)
 {
   // Generate a buffer pool to use to get pre-allocated buffers for reading the data from
   // the network.  Initially fill it with 100 buffers to give us enough to handle buffering a fraction
@@ -389,6 +401,9 @@ static void ReceiveDataThread(ReceiverUDP& receiveSocket, size_t maxBytesPerPack
         switch (messageType) {
         case FRAME_BEGIN:
           {
+            // Log our timing data.
+            frameBeginTimes.push_back(std::chrono::steady_clock::now());
+
             // We found a begin frame message, so we can start processing the data.
             waitingForFrameBegin = false;
 
@@ -407,7 +422,7 @@ static void ReceiveDataThread(ReceiverUDP& receiveSocket, size_t maxBytesPerPack
             // Get a new pinned CPU memory and GPU memory buffer to hold the image data.
             // The old ones will be returned to the pool when the shared pointers are reset.
             try {
-              // Do not allocate new buffers if they are depleted -- wait for them to be returned.
+              // Do not allocate new buffers if they are depleted; wait for them to be returned.
               cpuImageBufferPtr = cpuImageBuffers->GetBuffer(false);
               gpuImageBufferPtr = gpuImageBuffers->GetBuffer(false);
             } catch (std::exception& e) {
@@ -472,6 +487,10 @@ static void ReceiveDataThread(ReceiverUDP& receiveSocket, size_t maxBytesPerPack
         case FRAME_END:
           // We're waiting for the frame begin message, so we ignore this packet that does not have one.
           if (!waitingForFrameBegin) {
+
+            // Log our timing data.
+            frameEndTimes.push_back(std::chrono::steady_clock::now());
+
             // Parse the message so we can make a summary.  We don't do anything else with it here.
             uint32_t cameraID;
             status = ParseFrameEndMessage(*message, cameraID);
@@ -604,6 +623,12 @@ Status HandleStreamPacket(std::shared_ptr<StreamPacket> packet, std::shared_ptr<
         if (status != OKAY) {
           return status;
         }
+        // Get the string message.
+        std::string messageString;
+        status = event.GetParam(messageString);
+        if (status != OKAY) {
+          return status;
+        }
         switch (eventType) {
           case START_OF_REPLAY:
           case END_OF_REPLAY:
@@ -613,6 +638,7 @@ Status HandleStreamPacket(std::shared_ptr<StreamPacket> packet, std::shared_ptr<
               clockSync->ClearHistory();
             }
             break;
+
           case CLOCK_SYNC:
             {
               // Adjust the timer offset based on clock-sync messages.  The first message (or the first one
@@ -627,6 +653,28 @@ Status HandleStreamPacket(std::shared_ptr<StreamPacket> packet, std::shared_ptr<
               clockSync->AddDataPoint(messageTime, std::chrono::steady_clock::now());
             }
             break;
+
+          case INVALID_OPERATION:
+            {
+              // If we get an invalid operation message, say so
+              std::cerr << "Invalid operation message received from server: " << messageString << std::endl;
+            }
+            break;
+
+          case INTERNAL_ERROR:
+          {
+            // If we get an internal error message, say so
+            std::cerr << "Internal error message received from server: " << messageString << std::endl;
+          }
+          break;
+
+          case UNRECOGNIZED_OPCODE:
+          {
+            // If we get an unrecognized opcode message, say so
+            std::cerr << "Unrecognized opcode message received from server: " << messageString << std::endl;
+          }
+          break;
+
           default:
             break;
         }
@@ -697,6 +745,25 @@ struct DisplayInfo
   int fullScreenDisplay = 0;    ///< The display to run in full screen mode on.
 };
 
+static std::string TimeIntervalToStringMilliseconds(std::chrono::duration<float> interval)
+{
+  std::ostringstream oss;
+  oss << std::fixed << std::setprecision(3) << interval.count() * 1000;
+  return oss.str();
+}
+
+static std::chrono::steady_clock::time_point LargestTimeLessThan(std::chrono::steady_clock::time_point time,
+  const std::vector<std::chrono::steady_clock::time_point>& times)
+{
+  std::chrono::steady_clock::time_point largest = std::chrono::steady_clock::time_point::min();
+  for (auto &t : times) {
+    if (t < time) {
+      largest = std::max(largest, t);
+    }
+  }
+  return largest;
+}
+
 void usage(std::string name)
 {
   std::cerr << "Usage: " << name << " [options] <ip_address>" << std::endl;
@@ -716,6 +783,8 @@ void usage(std::string name)
   std::cerr << "  --joystick <string>                 The joystick to use for input (e.g. GLFW::0)." << std::endl;
   std::cerr << "  --hFOV <horizontal field of view>   The horizontal field of view in degrees (default 40)." << std::endl;
   std::cerr << "  --noPoses                           Do not stream poses from the server, so no latency adjustment." << std::endl;
+  std::cerr << "  --dumpTiming <file name base>       Write timing on quit to CSV files with the specified base name." << std::endl;
+  std::cerr << "  --triggerAheadMicroseconds <int>    Microseconds ahead of render to trigger camera (default 21000)." << std::endl;
 };
 
 int main(int argc, char** argv)
@@ -732,8 +801,10 @@ int main(int argc, char** argv)
 #else
   int lineBatchesPerGPUSend = 16; ///< The number of batches of lines to group for sending to the GPU.
 #endif
-  bool doStreamPoses = true;     ///< Stream poses from the server, so we can adjust for latency.
-  size_t realParams = 0;        ///< The number of non-flag parameters we've seen.
+  bool doStreamPoses = true;      ///< Stream poses from the server, so we can adjust for latency.
+  std::string dumpTimingFileName; ///< The base name for the timing files.
+  unsigned triggerAheadMicroseconds = 21000; ///< Microseconds ahead of render to trigger camera.
+  size_t realParams = 0;          ///< The number of non-flag parameters we've seen.
 
   // Parse the command line arguments, with the first non-flag argument being the
   // name of the IP address to listen on.
@@ -821,6 +892,18 @@ int main(int argc, char** argv)
       loopReplay = true;
     } else if (std::string("--noPoses") == argv[i]) {
       doStreamPoses = false;
+    } else if (std::string("--dumpTiming") == argv[i]) {
+      if (++i >= argc) {
+        usage(argv[0]);
+        return 2;
+      }
+      dumpTimingFileName = argv[i];
+    } else if (std::string("--triggerAheadMicroseconds") == argv[i]) {
+      if (++i >= argc) {
+        usage(argv[0]);
+        return 2;
+      }
+      triggerAheadMicroseconds = std::stoi(argv[i]);
     } else if (argv[i][0] == '-') {
       usage(argv[0]);
       return 1;
@@ -929,9 +1012,16 @@ int main(int argc, char** argv)
       return 13;
     }
 
+    // Find the trigger for the first camera, which we will use to synchronize to the display.  We assume that
+    // they are all using the same trigger.
+    uint8_t triggerID = 0;
+    if (cameras.size() > 0) {
+      triggerID = cameras[0].trigger;
+    }
+
     // Read the configuration file associated with the serial number for the server. Verify that
     // it has a matching serial number and number of cameras.
-    std::filesystem::path configPath = dirPath / (std::to_string(serialNumber) + ".json");
+    std::filesystem::path configPath = g_dirPath / (std::to_string(serialNumber) + ".json");
     if (!std::filesystem::exists(configPath)) {
       std::cerr << "Configuration file not found: " << configPath << std::endl;
       return 14;
@@ -1034,6 +1124,16 @@ int main(int argc, char** argv)
       cameraIDs.push_back(cameraRenderInfos[i].m_ID);
     }
 
+    // Initialize the timing information, making an entry for each camera.  We make sure that there is
+    // the maximum camera ID so that we can use the camera ID as an index.
+    uint32_t maxID = 0;
+    for (auto ID: cameraIDs) {
+      if (ID > maxID) {
+        maxID = ID;
+      }
+    }
+    g_timingInfo.SetNumCameras(maxID);
+
     // Separate the cameras into two groups: those with IDs less than 22 are visible cameras and those
     // with larger ones are depth-estimation cameras.
     std::vector<asdp::render::CameraRenderInfo> visibleCameras, depthCameras;
@@ -1084,12 +1184,15 @@ int main(int argc, char** argv)
         visibleCameras, toneMapTexture, poseAdjuster);
 
       if (displayInfos[i].useOpenXR) {
-        displays.push_back(std::make_shared<DisplayOpenXR>(composite, displayTexture.get(), client, 0, 0, 2500, 1, handlers));
+        displays.push_back(std::make_shared<DisplayOpenXR>(composite, displayTexture.get(),
+          client, triggerID, triggerAheadMicroseconds, 2500, 1, handlers, nullptr, &g_timingInfo));
       } else {
         displays.push_back(std::make_shared<DisplayWindow>("ASDP Render Module " + std::to_string(i),
-          composite, client, 0, 0, displayInfos[i].fps, 2500, displayInfos[i].width, displayInfos[i].height,
+          composite, client, triggerID, triggerAheadMicroseconds, displayInfos[i].fps, 2500,
+          displayInfos[i].width, displayInfos[i].height,
           displayInfos[i].hFOV, displayInfos[i].joystick, displayTexture.get(),
-          displayInfos[i].fullScreen, displayInfos[i].fullScreenDisplay, false, handlers));
+          displayInfos[i].fullScreen, displayInfos[i].fullScreenDisplay, false, handlers, nullptr,
+          &g_timingInfo));
       }
       if (displays.back()->GetStatus() != "") {
         std::cerr << "Error constructing Display " << i << ": " << displays.back()->GetStatus() << std::endl;
@@ -1166,7 +1269,7 @@ int main(int argc, char** argv)
     std::vector<std::thread> copyDataToGPUThread;
     for (size_t i = 0; i < NUM_TEXTURE_THREADS; i++) {
       copyDataToGPUThread.push_back(std::thread(CopyDataToTextures, cameras[0].width, cameras[0].height, std::ref(done),
-        dataQueues[i], lineBatchesPerGPUSend, displayTextures[i]));
+        dataQueues[i], lineBatchesPerGPUSend, displayTextures[i], std::ref(g_timingInfo.cameras)));
     }
 
     // Launch the data receiving threads, hooking them together using the queues and passing the texture OpenGL
@@ -1175,7 +1278,8 @@ int main(int argc, char** argv)
     for (size_t i = 0; i < cameras.size(); i++) {
       receiveDataThreads.push_back(std::thread(ReceiveDataThread, std::ref(*UDPReceivers[i]), 9000,
         std::ref(done), cpuPinnedImageBuffers[i], gpuImageBuffers[i], streams[i], cameraRenderInfos[i].m_imageQueue,
-        dataQueues[i % NUM_TEXTURE_THREADS]));
+        dataQueues[i % NUM_TEXTURE_THREADS],
+        std::ref(g_timingInfo.cameras[i].frameBeginTimes), std::ref(g_timingInfo.cameras[i].frameEndTimes)));
     }
 
     // Ask for streaming pose and temperature data.
@@ -1379,6 +1483,154 @@ int main(int argc, char** argv)
     if (!displayTexture->ReturnContext()) {
       std::cerr << "Error returning context to displayTexture." << std::endl;
       return 34;
+    }
+
+    // If we've been asked to dump the timing information, do so.
+    if (!dumpTimingFileName.empty()) {
+
+      // Find the maximum number of entries in any of the timing vectors.
+      size_t maxEntries = 0;
+      if (g_timingInfo.renderStartTimes.size() > maxEntries) {
+        maxEntries = g_timingInfo.renderStartTimes.size();
+      }
+      if (g_timingInfo.renderSubmitTimes.size() > maxEntries) {
+        maxEntries = g_timingInfo.renderSubmitTimes.size();
+      }
+      for (size_t i = 0; i < g_timingInfo.cameras.size(); i++) {
+        if (g_timingInfo.cameras[i].frameBeginTimes.size() > maxEntries) {
+          maxEntries = g_timingInfo.cameras[i].frameBeginTimes.size();
+        }
+        if (g_timingInfo.cameras[i].frameEndTimes.size() > maxEntries) {
+          maxEntries = g_timingInfo.cameras[i].frameEndTimes.size();
+        }
+        if (g_timingInfo.cameras[i].textureTimes.size() > maxEntries) {
+          maxEntries = g_timingInfo.cameras[i].textureTimes.size();
+        }
+      }
+
+      //==================================================================================================
+      // Write the raw file.
+      std::string rawTimingFileName = dumpTimingFileName + ".csv";
+      std::ofstream dumpTimingFile(rawTimingFileName);
+      std::cout << "Dumping " << maxEntries << " raw timing information to " << rawTimingFileName << std::endl;
+      dumpTimingFile << "Render start,Render submit";
+      for (size_t i = 0; i < g_timingInfo.cameras.size(); i++) {
+        dumpTimingFile << ",Camera " << i+1 << " frame begin,Camera " << i+1
+          << " frame end,Camera " << i+1 << " texture complete";
+      }
+      dumpTimingFile << std::endl;
+      for (size_t i = 0; i < maxEntries; i++) {
+        if (i < g_timingInfo.renderStartTimes.size()) {
+          dumpTimingFile << TimeIntervalToStringMilliseconds(g_timingInfo.renderStartTimes[i] - g_timingInfo.startTime);
+        }
+        dumpTimingFile << ",";
+        if (i < g_timingInfo.renderSubmitTimes.size()) {
+          dumpTimingFile << TimeIntervalToStringMilliseconds(g_timingInfo.renderSubmitTimes[i] - g_timingInfo.startTime);
+        }
+        // No comma here; we'll append them with the following
+        for (size_t j = 0; j < g_timingInfo.cameras.size(); j++) {
+          dumpTimingFile << ",";
+          if (i < g_timingInfo.cameras[j].frameBeginTimes.size()) {
+            dumpTimingFile << TimeIntervalToStringMilliseconds(g_timingInfo.cameras[j].frameBeginTimes[i] - g_timingInfo.startTime);
+          }
+          dumpTimingFile << ",";
+          if (i < g_timingInfo.cameras[j].frameEndTimes.size()) {
+            dumpTimingFile << TimeIntervalToStringMilliseconds(g_timingInfo.cameras[j].frameEndTimes[i] - g_timingInfo.startTime);
+          }
+          dumpTimingFile << ",";
+          if (i < g_timingInfo.cameras[j].textureTimes.size()) {
+            dumpTimingFile << TimeIntervalToStringMilliseconds(g_timingInfo.cameras[j].textureTimes[i] - g_timingInfo.startTime);
+          }
+        }
+        dumpTimingFile << std::endl;
+      }
+      dumpTimingFile.close();
+
+      //==================================================================================================
+      // Write the intervals file.
+      std::string intervalTimingFileName = dumpTimingFileName + "_intervals.csv";
+      std::ofstream intervalTimingFile(intervalTimingFileName);
+      std::cout << "Dumping " << maxEntries-1 << " interval timing information to " << intervalTimingFileName << std::endl;
+      intervalTimingFile << "Render start interval,Render submit interval";
+      for (size_t i = 0; i < g_timingInfo.cameras.size(); i++) {
+        intervalTimingFile << ",Camera " << i+1 << " frame begin interval, " << i+1 << " frame end interval,Camera"
+          << i+1 << " texture complete interval";
+      }
+      intervalTimingFile << std::endl;
+      for (size_t i = 1; i < maxEntries; i++) {
+        if (i < g_timingInfo.renderStartTimes.size()) {
+          intervalTimingFile << TimeIntervalToStringMilliseconds(g_timingInfo.renderStartTimes[i] - g_timingInfo.renderStartTimes[i - 1]);
+        }
+        intervalTimingFile << ",";
+        if (i < g_timingInfo.renderSubmitTimes.size()) {
+          intervalTimingFile << TimeIntervalToStringMilliseconds(g_timingInfo.renderSubmitTimes[i] - g_timingInfo.renderSubmitTimes[i - 1]);
+        }
+        // No comma here; we'll append them with the following
+        for (size_t j = 0; j < g_timingInfo.cameras.size(); j++) {
+          intervalTimingFile << ",";
+          if (i < g_timingInfo.cameras[j].frameBeginTimes.size()) {
+            intervalTimingFile << TimeIntervalToStringMilliseconds(g_timingInfo.cameras[j].frameBeginTimes[i] - g_timingInfo.cameras[j].frameBeginTimes[i - 1]);
+          }
+          intervalTimingFile << ",";
+          if (i < g_timingInfo.cameras[j].frameEndTimes.size()) {
+            intervalTimingFile << TimeIntervalToStringMilliseconds(g_timingInfo.cameras[j].frameEndTimes[i] - g_timingInfo.cameras[j].frameEndTimes[i - 1]);
+          }
+          intervalTimingFile << ",";
+          if (i < g_timingInfo.cameras[j].textureTimes.size()) {
+            intervalTimingFile << TimeIntervalToStringMilliseconds(g_timingInfo.cameras[j].textureTimes[i] - g_timingInfo.cameras[j].textureTimes[i - 1]);
+          }
+        }
+        intervalTimingFile << std::endl;
+      }
+      intervalTimingFile.close();
+
+      //==================================================================================================
+      // Write a summary file that describes the min and max behavior for each frame that has camera timing info.
+      std::string summaryTimingFileName = dumpTimingFileName + "_summary.csv";
+      std::ofstream summaryTimingFile(summaryTimingFileName);
+      std::cout << "Dumping summary timing information to " << summaryTimingFileName << std::endl;
+      summaryTimingFile << "Render start to submit,Render start interval,Min camera end to render,Max camera end to render,Min camera texture to render,Max camera texture to render" << std::endl;
+      for (size_t i = 1; i < g_timingInfo.renderStartTimes.size(); i++) {
+        if (i < g_timingInfo.renderSubmitTimes.size()) {
+          summaryTimingFile << TimeIntervalToStringMilliseconds(g_timingInfo.renderSubmitTimes[i] - g_timingInfo.renderStartTimes[i]);
+        }
+        summaryTimingFile << ",";
+        summaryTimingFile << TimeIntervalToStringMilliseconds(g_timingInfo.renderStartTimes[i] - g_timingInfo.renderStartTimes[i - 1]);
+        summaryTimingFile << ",";
+
+        // Find the largest camera end-frame time less than the render start time for each camera, and then find the
+        // minimum and maximum of these.
+        std::chrono::steady_clock::time_point minTime = std::chrono::steady_clock::time_point::max();
+        std::chrono::steady_clock::time_point maxTime = std::chrono::steady_clock::time_point::min();
+        for (size_t j = 0; j < g_timingInfo.cameras.size(); j++) {
+          std::chrono::steady_clock::time_point t = LargestTimeLessThan(g_timingInfo.renderStartTimes[i], g_timingInfo.cameras[j].frameEndTimes);
+          minTime = std::min(minTime, t);
+          maxTime = std::max(maxTime, t);
+        }
+        if (minTime == std::chrono::steady_clock::time_point::min()) {
+          summaryTimingFile << ",,";
+        } else {
+          summaryTimingFile << TimeIntervalToStringMilliseconds(g_timingInfo.renderStartTimes[i] - maxTime) << ",";
+          summaryTimingFile << TimeIntervalToStringMilliseconds(g_timingInfo.renderStartTimes[i] - minTime) << ",";
+        }
+
+        // Find the largest texture time less than the render start time for each camera, and then find the
+        // minimum and maximum of these.
+        minTime = std::chrono::steady_clock::time_point::max();
+        maxTime = std::chrono::steady_clock::time_point::min();
+        for (size_t j = 0; j < g_timingInfo.cameras.size(); j++) {
+          std::chrono::steady_clock::time_point t = LargestTimeLessThan(g_timingInfo.renderStartTimes[i], g_timingInfo.cameras[j].textureTimes);
+          minTime = std::min(minTime, t);
+          maxTime = std::max(maxTime, t);
+        }
+        if (minTime == std::chrono::steady_clock::time_point::min()) {
+          summaryTimingFile << "," << std::endl;
+        } else {
+          summaryTimingFile << TimeIntervalToStringMilliseconds(g_timingInfo.renderStartTimes[i] - maxTime) << ",";
+          summaryTimingFile << TimeIntervalToStringMilliseconds(g_timingInfo.renderStartTimes[i] - minTime) << std::endl;
+        }
+      }
+      summaryTimingFile.close();
     }
   }
 

@@ -227,9 +227,12 @@ DisplayWindow::DisplayWindow(std::string windowName, std::shared_ptr<Composite> 
     int desiredWidth, int desiredHeight, float horizontalFOVDegrees,
     std::string joystick, Display* sharedWindow,
     bool fullScreen, int desiredDisplay, bool hidden,
-    std::shared_ptr<EventHandlers> handlers, void* userData)
+    std::shared_ptr<EventHandlers> handlers, void* userData,
+    RenderTimingInfo* timingInfo)
   : Display(composite, client, triggerID, triggerAheadMicroseconds, handlers, userData)
+  , m_timingInfo(timingInfo)
   , m_impl(new DisplayWindowImpl)
+
 {
   // Check our parameters.
   if ((desiredWidth <= 0) || (desiredHeight <= 0) || (horizontalFOVDegrees <= 0.0f)) {
@@ -238,7 +241,7 @@ DisplayWindow::DisplayWindow(std::string windowName, std::shared_ptr<Composite> 
   }
 
   // Store info from the constructor.
-  m_impl->m_horizontalFOVDegrees = horizontalFOVDegrees; 
+  m_impl->m_horizontalFOVDegrees = horizontalFOVDegrees;
 
   // Construct a single view to be used.  We base is on the requested window size and we compute a
   // field of view that is 40 degrees total horizontal and the correct aspect ratio vertical.
@@ -458,11 +461,25 @@ void DisplayWindow::DisplayThread(std::string windowName,
     // Handle any window resizing
     SetViewportSizeAndFOVs(m_impl->m_views[0]);
 
+    // Trigger the cameras, saying that we need the data now. The base class will handle offsetting
+    // by the specified transmission/processing time as passed to its constructor by the client.
+    TriggerCameras(std::chrono::steady_clock::now());
+
+    // Record the render start time if we have a place to put it.
+    if (m_timingInfo) {
+      m_timingInfo->renderStartTimes.push_back(std::chrono::steady_clock::now());
+    }
+
     // Render here, pausing if we're paused.
     if (m_pauseTime) {
       renderTime = *m_pauseTime;
     }
     m_composite->Render(renderTime, m_impl->m_views);
+
+    // Record the render submit time if we have a place to put it.
+    if (m_timingInfo) {
+      m_timingInfo->renderSubmitTimes.push_back(std::chrono::steady_clock::now());
+    }
 
     // Swap front and back buffers and compute the next frame time.
     glfwSwapBuffers(Display::m_impl->m_window);
@@ -1651,6 +1668,15 @@ bool asdp::render::DisplayOpenXR::DisplayOpenXRImpl::OpenXRRenderLayer(XrTime pr
   std::cerr << "Time prediction not implemented for this platform" << std::endl;
 #endif
 
+  // Trigger the cameras, saying that we need the data now. The base class will handle offsetting
+  // by the specified transmission/processing time as passed to its constructor by the client.
+  m_display->TriggerCameras(std::chrono::steady_clock::now());
+
+  // Record the render start time, if we have a place to put it.
+  if (m_display->m_timingInfo) {
+    m_display->m_timingInfo->renderStartTimes.push_back(std::chrono::steady_clock::now());
+  }
+
   /// Render the requested views at the predicted scan-out time, pausing if we're paused.
   if (m_pauseTime) {
     time = *m_pauseTime;
@@ -1696,6 +1722,11 @@ void asdp::render::DisplayOpenXR::DisplayOpenXRImpl::OpenXRRenderFrame()
     if (OpenXRRenderLayer(frameState.predictedDisplayTime, projectionLayerViews, layer)) {
       layers.push_back(reinterpret_cast<XrCompositionLayerBaseHeader*>(&layer));
     }
+  }
+
+  // Record the render submission time, if we have a place to put it.
+  if (m_display->m_timingInfo) {
+    m_display->m_timingInfo->renderSubmitTimes.push_back(std::chrono::steady_clock::now());
   }
 
   XrFrameEndInfo frameEndInfo{ XR_TYPE_FRAME_END_INFO };
@@ -1788,8 +1819,10 @@ void asdp::render::DisplayOpenXR::DisplayOpenXRImpl::OpenXRTearDown()
 DisplayOpenXR::DisplayOpenXR(std::shared_ptr<Composite> composite, Display* sharedWindow,
     std::shared_ptr<CoreClient> client, uint8_t triggerID, uint32_t triggerAheadMicroseconds,
     uint32_t renderAheadMicroseconds, int verbosity,
-    std::shared_ptr<EventHandlers> handlers, void* userData)
+    std::shared_ptr<EventHandlers> handlers, void* userData,
+    RenderTimingInfo* timingInfo)
   : Display(composite, client, triggerID, triggerAheadMicroseconds, handlers, userData)
+  , m_timingInfo(timingInfo)
 {
   m_impl = std::make_unique<DisplayOpenXRImpl>(this);
   m_impl->m_verbosity = verbosity;

@@ -21,6 +21,7 @@
 #include <memory>
 #include <ASDP_Core_API.h>
 #include <Composite.h>
+#include <RenderTimingInfo.h>
 
 namespace asdp {
   namespace render {
@@ -39,7 +40,7 @@ namespace asdp {
       /// Composite passed in to generate the textured geometry.
       /// @param client The CoreClient used to communicate with the Core to cause software triggers,
       /// a null pointer for none.
-      /// @param triggerID The ID of the trigger to use to trigger the cameras.
+      /// @param triggerID The ID of the trigger to use to trigger the cameras, 1 or higher.
       /// @param triggerAheadMicroseconds The offset in microseconds to subtract from the time of frame swapping.
       /// This is to ensure that the frames make it all the way through the Composite object before being needed.
       /// It is expected to be read from a configuration file and tuned for the specific hardware and software.
@@ -110,7 +111,7 @@ protected:
       /// @brief Trigger the cameras to take a picture at the given time.
       /// @details This function is called by the derived class to trigger the cameras to take a picture.
       /// It handles conversion from the time_point to the time format expected by the Core.
-      /// The caller sets the time of frame swapping and the base class handles making adjustments
+      /// The caller sets the time when the textures are needed and the base class handles making adjustments
       /// to ensure that there is enough offset for the frames to make it all the way through to
       /// the Composite object before being needed.  It is not expected to be overriden
       /// by derived classes, but it can be if needed.
@@ -158,17 +159,24 @@ protected:
       /// @param fullScreen True if the display should be full-screen.
       /// @param desiredDisplay The index of the desired display to use if full-screen.
       /// @param hidden True if the window should be hidden.
+      /// @param handlers Event handlers to use, if any.
+      /// @param userData User data to pass to the event handlers.
+      /// @param timingInfo Timing information on display operations should be stored here, if it is not null.
       DisplayWindow(std::string windowName, std::shared_ptr<Composite> composite,
         std::shared_ptr<CoreClient> client, uint8_t triggerID, uint32_t triggerAheadMicroseconds,
         float fps = 60, uint32_t renderAheadMicroseconds = 2500,
         int desiredWidth = 1280, int desiredHeight = 1024, float horizontalFOVDegrees = 90.0,
         std::string joystick = "", Display *sharedWindow = nullptr,
         bool fullScreen = false, int desiredDisplay = 0, bool hidden = false,
-        std::shared_ptr<EventHandlers> handlers = nullptr, void* userData = nullptr);
+        std::shared_ptr<EventHandlers> handlers = nullptr, void* userData = nullptr,
+        RenderTimingInfo* timingInfo = nullptr);
 
       ~DisplayWindow();
 
     private:
+      /// Where to store render timing info, if not nullptr.
+      RenderTimingInfo* m_timingInfo;
+
       /// Pointer to time when we started pausing, nullptr if not pausing.
       std::unique_ptr<Time> m_pauseTime;
 
@@ -241,14 +249,21 @@ protected:
       /// to arrive before rendering.  If this value is larger than 1 million / fps, the frames will not
       /// wait before rendering.
       /// @param verbosity The level of verbosity to use in the OpenXR API, 0 for none.
+      /// @param handlers Event handlers to use, if any.
+      /// @param userData User data to pass to the event handlers.
+      /// @param timingInfo Timing information on display operations should be stored here, if it is not null.
       DisplayOpenXR(std::shared_ptr<Composite> composite, Display* sharedWindow,
         std::shared_ptr<CoreClient> client, uint8_t triggerID, uint32_t triggerAheadMicroseconds,
         uint32_t renderAheadMicroseconds = 2500, int verbosity = 0,
-        std::shared_ptr<EventHandlers> handlers = nullptr, void* userData = nullptr);
+        std::shared_ptr<EventHandlers> handlers = nullptr, void* userData = nullptr,
+        RenderTimingInfo* timingInfo = nullptr);
 
       ~DisplayOpenXR();
 
     private:
+      /// Where to store render timing info, if not nullptr.
+      RenderTimingInfo* m_timingInfo;
+
       /// @brief Method to implement the display thread.
       void DisplayThread(Display* sharedWindow, uint32_t renderAheadMicroseconds);
 
