@@ -1909,7 +1909,8 @@ public:
 DisplayOpenXR::DisplayOpenXR(std::shared_ptr<Composite> composite, Display* sharedWindow,
     std::shared_ptr<CoreClient> client, uint8_t triggerID, uint32_t triggerAheadMicroseconds,
     uint32_t renderAheadMicroseconds, int verbosity,
-    std::shared_ptr<EventHandlers> handlers, void* userData)
+    std::shared_ptr<EventHandlers> handlers, void* userData,
+    RenderTimingInfo* timingInfo)
   : Display(composite, client, triggerID, triggerAheadMicroseconds, handlers, userData)
 {
   m_status = "OpenXR is not compiled in.";
