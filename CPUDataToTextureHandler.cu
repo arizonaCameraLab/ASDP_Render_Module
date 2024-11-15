@@ -8,7 +8,7 @@
 using namespace asdp;
 using namespace asdp::render;
 
-/// @brief CUDA kernel to write an offset and scaled copy of a uint16 image to a surface (OpenGL texture).
+/// @brief CUDA kernel to write a uint16 image to a surface (OpenGL texture).
 /// @param surface The surface to write to.
 /// @param buffer The buffer containing the uint16 data.  This is a pointer to the beginning of the whole-frame data.
 /// @param offy The y offset to apply to the coordinate (added to the y coordinate in pixels).
@@ -17,7 +17,7 @@ using namespace asdp::render;
 /// @param offset The offset to apply to the data (added to the data before scaling, normally negative in the range
 /// 0 to -65535).
 /// @param scale The scale to apply to the data (multiplied by the data after offsetting, should be positive).
-__global__ void WriteScaledOffsetKernel(cudaSurfaceObject_t surface, uint16_t* buffer,
+__global__ void WriteSurfaceKernel(cudaSurfaceObject_t surface, uint16_t* buffer,
   uint16_t offy, uint16_t nx, uint16_t ny)
 {
   uint16_t x = blockIdx.x * blockDim.x + threadIdx.x;
@@ -147,11 +147,11 @@ std::string CPUDataToTextureHandler::SendToGPU()
     return "CopyDataToGPU: cudaMemcpyAsync() failed: " + std::string(cudaGetErrorString(ret));
   }
 
-  // Run the kernel to write this subset of the data to the texture, adding offset and scale.
+  // Run the kernel to write this subset of the data to the texture.
   // Run it on the same stream so that it will wait for the copy to complete before running.
   dim3 dimBlock(128, 8); ///< Using a kernel that is wide but not tall because our batch sizes may be small
   dim3 dimGrid((m_width + dimBlock.x - 1) / dimBlock.x, (linesToSend + dimBlock.y - 1) / dimBlock.y);
-  WriteScaledOffsetKernel << <dimGrid, dimBlock, 0, *(m_dataPtr->streamPtr) >> > (
+  WriteSurfaceKernel << <dimGrid, dimBlock, 0, *(m_dataPtr->streamPtr) >> > (
     m_surfObj, reinterpret_cast<uint16_t*>(m_dataPtr->gpuImageBufferPtr.get()),
     offsetY, m_width, m_height);
 

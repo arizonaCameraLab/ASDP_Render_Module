@@ -59,8 +59,6 @@ public:
   ~CPUDataToTextureHandler();
 
   /// @brief Process the image subset, sending to GPU memory and then running the kernel to store into texture.
-  /// @param offset The offset to add to each pixel value before scaling it during copy (total range 0-65535),
-  /// negative values to reduce the pixel count.
   /// @param left The left edge of the region to process.
   /// @param top The top edge of the region to process.
   /// @param right The right edge of the region to process.
