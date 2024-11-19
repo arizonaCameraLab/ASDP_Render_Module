@@ -748,7 +748,7 @@ struct DisplayInfo
 static std::string TimeIntervalToStringMilliseconds(std::chrono::duration<float> interval)
 {
   std::ostringstream oss;
-  oss << std::fixed << std::setprecision(3) << interval.count() * 1000;
+  oss << std::fixed << std::setprecision(9) << interval.count() * 1000;
   return oss.str();
 }
 
@@ -1519,6 +1519,7 @@ int main(int argc, char** argv)
           << " frame end,Camera " << i+1 << " texture complete";
       }
       dumpTimingFile << std::endl;
+      dumpTimingFile << std::setprecision(20);
       for (size_t i = 0; i < maxEntries; i++) {
         if (i < g_timingInfo.renderStartTimes.size()) {
           dumpTimingFile << TimeIntervalToStringMilliseconds(g_timingInfo.renderStartTimes[i] - g_timingInfo.startTime);
@@ -1557,6 +1558,7 @@ int main(int argc, char** argv)
           << i+1 << " texture complete interval";
       }
       intervalTimingFile << std::endl;
+      intervalTimingFile << std::setprecision(20);
       for (size_t i = 1; i < maxEntries; i++) {
         if (i < g_timingInfo.renderStartTimes.size()) {
           intervalTimingFile << TimeIntervalToStringMilliseconds(g_timingInfo.renderStartTimes[i] - g_timingInfo.renderStartTimes[i - 1]);
@@ -1590,6 +1592,7 @@ int main(int argc, char** argv)
       std::ofstream summaryTimingFile(summaryTimingFileName);
       std::cout << "Dumping summary timing information to " << summaryTimingFileName << std::endl;
       summaryTimingFile << "Render start to submit,Render start interval,Min camera end to render,Max camera end to render,Min camera texture to render,Max camera texture to render" << std::endl;
+      summaryTimingFile << std::setprecision(20);
       for (size_t i = 1; i < g_timingInfo.renderStartTimes.size(); i++) {
         if (i < g_timingInfo.renderSubmitTimes.size()) {
           summaryTimingFile << TimeIntervalToStringMilliseconds(g_timingInfo.renderSubmitTimes[i] - g_timingInfo.renderStartTimes[i]);
