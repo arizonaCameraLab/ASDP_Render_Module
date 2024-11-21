@@ -49,7 +49,7 @@ using namespace asdp::render;
 using json = nlohmann::json;
 using json = nlohmann::json;
 
-static std::string VERSION = "2.2.0";
+static std::string VERSION = "2.3.0";
 
 /// @brief The path to the configuration file. Defined in the CMakeLists file.
 std::filesystem::path g_dirPath = CONFIG_FILE_PATH;
@@ -784,7 +784,7 @@ void usage(std::string name)
   std::cerr << "  --hFOV <horizontal field of view>   The horizontal field of view in degrees (default 40)." << std::endl;
   std::cerr << "  --noPoses                           Do not stream poses from the server, so no latency adjustment." << std::endl;
   std::cerr << "  --dumpTiming <file name base>       Write timing on quit to CSV files with the specified base name." << std::endl;
-  std::cerr << "  --triggerAheadMicroseconds <int>    Microseconds ahead of render to trigger camera (default 21000)." << std::endl;
+  std::cerr << "  --triggerAheadMicroseconds <int>    Microseconds ahead of render to trigger camera (default 22000)." << std::endl;
 };
 
 int main(int argc, char** argv)
@@ -803,7 +803,7 @@ int main(int argc, char** argv)
 #endif
   bool doStreamPoses = true;      ///< Stream poses from the server, so we can adjust for latency.
   std::string dumpTimingFileName; ///< The base name for the timing files.
-  unsigned triggerAheadMicroseconds = 21000; ///< Microseconds ahead of render to trigger camera.
+  unsigned triggerAheadMicroseconds = 22000; ///< Microseconds ahead of render to trigger camera.
   size_t realParams = 0;          ///< The number of non-flag parameters we've seen.
 
   // Parse the command line arguments, with the first non-flag argument being the
