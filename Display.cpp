@@ -480,8 +480,9 @@ void DisplayWindow::DisplayThread(std::string windowName,
       m_timingInfo->renderSubmitTimes.push_back(std::chrono::steady_clock::now());
     }
 
-    // Swap front and back buffers and compute the next frame time.
+    // Swap front and back buffers and wait for it to complete, then compute the next frame time.
     glfwSwapBuffers(Display::m_impl->m_window);
+    glFinish();
     m_impl->m_nextFrameTime = std::chrono::steady_clock::now() +
       std::chrono::microseconds(static_cast<long long>(1e6/fps) - renderAheadMicroseconds);
 
