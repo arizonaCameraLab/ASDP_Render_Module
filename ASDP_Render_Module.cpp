@@ -49,7 +49,7 @@ using namespace asdp::render;
 using json = nlohmann::json;
 using json = nlohmann::json;
 
-static std::string VERSION = "2.1.0";
+static std::string VERSION = "2.2.0";
 
 /// @brief The path to the configuration file. Defined in the CMakeLists file.
 std::filesystem::path g_dirPath = CONFIG_FILE_PATH;
@@ -1305,19 +1305,21 @@ int main(int argc, char** argv)
       CameraInfo &camera = cameras[i];
 
       // Find the minimum period for the camera and which internal trigger ID it uses, then
-      // configure the trigger to run at that rate.
+      // configure the trigger to run at that rate. Configure it as a periodic software trigger
+      // using the same software trigger ID, which we'll also send to the Display object constructor.
       TriggerInfo ti;
       ti.ID = camera.trigger;
-      ti.mode = 1;
+      ti.mode = 3;
       ti.period = camera.minTriggerPeriod;
       ti.offset = 0;
-      ti.trackingFactor = 0.5;
+      ti.trackingFactor = 0.005;
+      ti.externalID = camera.trigger;
       status = client->SendCommandPacket(CommandPacketConfigureTrigger(ti));
       if (status != OKAY) {
         std::cerr << "Failed to configure trigger: " << ErrorMessage(status) << std::endl;
         return 29;
       }
-      std::cout << "  Configured trigger for camera " << camID << " with period " << ti.period << " seconds" << std::endl;
+      std::cout << std::setprecision(10) << "  Configured trigger for camera " << camID << " with period " << ti.period << " seconds" << std::endl;
 
       // Request the camera to stream full-frame images once every frameStride frames.
       uint16_t port;

@@ -129,8 +129,7 @@ bool Display::TriggerCameras(std::chrono::steady_clock::time_point when)
 
   // Determine the time to trigger the cameras by subtracting the microseconds
   // offset from the time to trigger the cameras and then converting to Core time.
-  auto sysTime = std::chrono::time_point_cast<std::chrono::microseconds>(when -
-    std::chrono::microseconds(m_offsetMicroseconds));
+  std::chrono::steady_clock::time_point sysTime = when - std::chrono::microseconds(m_offsetMicroseconds);
   Time coreTime;
   Status status = m_timer->GetCoreTime(coreTime, sysTime);
   if (status != OKAY) {
