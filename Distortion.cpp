@@ -33,7 +33,8 @@ std::array<double, 3> DistortionRadialLERP::MapPoint(std::array<double, 3> point
   // Calculate the vector from the center of projection to the point.
   // Project the vector onto the Z = -1 plane (scales it to Z = -1)
   double scale = -1 / point[2];
-  std::array<double, 2> vec = {point[0] - m_COP[0]/scale, point[1] - m_COP[1]/scale};
+  double invScale = 1 / scale;
+  std::array<double, 2> vec = {point[0] - m_COP[0]*invScale, point[1] - m_COP[1]*invScale};
   vec[0] *= scale;
   vec[1] *= scale;
   double dist = std::sqrt(vec[0] * vec[0] + vec[1] * vec[1]);
@@ -55,12 +56,12 @@ std::array<double, 3> DistortionRadialLERP::MapPoint(std::array<double, 3> point
 
   // Scale the vector by both the inverse of the original scaling and the ratio of the interpolated distance to the
   // original and add it to the center of projection.  Handle the case where the point is right at the center of projection.
-  double reScale = (1 / scale);
+  double reScale = invScale;
   if (dist > 0) {
     reScale *= (d / dist);
   }
 
-  return {m_COP[0]/scale + vec[0] * reScale, m_COP[1]/scale + vec[1] * reScale, point[2]};
+  return {m_COP[0]*invScale + vec[0] * reScale, m_COP[1]*invScale + vec[1] * reScale, point[2]};
 }
 
 
