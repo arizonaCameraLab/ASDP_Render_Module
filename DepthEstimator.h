@@ -13,34 +13,18 @@
 #pragma once
 #include <vector>
 #include <memory>
+#include <string>
 #include <Composite.h>
 
 namespace asdp {
   namespace render {
 
-    /// @brief Stores a surface mesh surrounding the helicopter and time at which it was estimated.
-    /// @details The mesh is a manifold surface representing the world in Helicopter space.  There are
-    /// the same number of points in each row and column of the mesh.  The outer index is in X (surrounding
-    /// the helicopter from left to right), the inner index is in Y (lower to higher), and the value is the
-    /// mesh coordinate.  This can be used to form a vertex array and then indices can be used to generate
-    /// a triangle mesh.
-    struct DepthEstimate {
-
-      /// A manifold surface representing the world in Helicopter space.  Its outer index
-      /// is in X (surrounding the helicopter from left to right), its inner index is in Y (lower
-      /// to higher), and the vec3 is the mesh coordinate, so mesh[x][y] holds the point for (x,y).
-      std::vector<std::vector<glm::vec3>> mesh;
-
-      /// Time for which the mesh was generated.
-      asdp::Time time = {};
-    };
-
-    /// @brief Constructs a manifold surface representing the world in Helicopter space from image pairs.
+    /// @brief Constructs a queryable depth estimate in Helicopter space from image pairs at specified times.
     /// @details The depth estimator uses a list of cameras to estimate the depth of the world in Helicopter
-    /// space.  The cameras are grouped into pairs and the depth is estimated by comparing the images from
-    /// the two cameras.  This is used to produce a manifold surface mesh whose directions are in field
-    /// coordinate angles, producing a subset of a sphere around the point that is the closest intersection
-    /// of the primary rays from the viewpoints halfway between each camera pair.
+    /// space.  Cameras are grouped into pairs and the depth is estimated by comparing the images from
+    /// each pair.  This is used to produce an internal representation of depths around the helicopter that
+    /// can then be queried based on rays to determine the distance from the ray start to an object in the
+    /// world.
     class DepthEstimator {
     public:
       /// brief Construct the estimator with a list of cameras.
@@ -68,14 +52,22 @@ namespace asdp {
 
       virtual ~DepthEstimator() = default;
 
-      /// @brief Estimate the depth manifold in Helicopter space to project our images onto.
+      /// @brief Estimate the depth manifold in Helicopter space to project images onto.
+      /// @details This function estimates the depth manifold in Helicopter space to project images onto.
+      /// It fills in internal data structures for a specified time.  The actual depths should be
+      /// queried using EstimateDepth() after this function is called.
       /// @param[in] time Time to estimate the depth at.
-      /// @return A manifold surface representing the world in Helicopter space.  Its outer index
-      /// is in X (surrounding the helicopter from left to right), its inner index is in Y (lower
-      /// to higher), and the vec3 is the mesh coordinate.  Returns an empty mesh on failure.
-      /// Each point defaults to the furthest value when there is insufficient local image evidence
-      /// for the appropriate depth.
-      DepthEstimate EstimateDepth(Time time);
+      /// @return Empty string on success, string describing the error on failure.
+      std::string ComputeDepthEstimate(Time time);
+
+      /// @brief Estimate the depth of a camera ray in Helicopter space.
+      /// @details This function estimates the depth of a camera ray in Helicopter space.  It uses the
+      /// depth manifold that was estimated with ComputeDepthEstimate() to estimate the depth of the ray.
+      /// A successfull call to ComputeDepthEstimate() must be made before calling this function.
+      /// @param[in] point The starting point of the ray in Helicopter space.
+      /// @param[in] direction The direction of the ray in Helicopter space.
+      /// @return The estimated distance from ray start in Helicopter space to an object, -1 if there is an error.
+      float EstimateDepth(const glm::vec3 &point, const glm::vec3 &direction) const;
 
       /// @brief Test function to test the class.
       /// @return Empty string on success, string with error message on failure.
@@ -87,6 +79,8 @@ namespace asdp {
       /// all of the files needed to implement the class.
       class DepthEstimatorImpl;
       std::unique_ptr<DepthEstimatorImpl> m_impl;
+
+      std::string m_constructorStatus;  ///< Status of the constructor, empty if successful, error message if not.
     };
 
   } // namespace render
