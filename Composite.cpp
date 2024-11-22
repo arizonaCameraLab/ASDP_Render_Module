@@ -659,9 +659,8 @@ bool CompositeCameras::SetupRendering()
   m_imageTextureId = glGetUniformLocation(m_programId, "imageTexture");
   m_toneMapTextureId = glGetUniformLocation(m_programId, "toneMapTexture");
 
-  // Construct a Vertex Array Object for each camera that describes the positions and
-  // texture coordinates along with the indices.  We'll also keep two vertex buffer objects,
-  // one per camera, for the vertices and indices.
+  // Construct a vertex and index buffer object for each camera that describes the positions and
+  // texture coordinates along with the indices, along with a count of index buffer entries.
   for (auto const& cameraRenderInfo : m_cameraRenderInfos) {
     AddBufferObjects(cameraRenderInfo);
   }
@@ -683,11 +682,30 @@ static double radians(double degrees) {
   return degrees * M_PI / 180.0;
 }
 
+// NOTE: This must be called in order, once for each camera, to produce the required buffers in order.
 void CompositeCameras::AddBufferObjects(CameraRenderInfo const& cameraRenderInfo, size_t nx, size_t ny,
   GLfloat depth)
 {
-  double fnx = static_cast<GLfloat>(nx);
-  double fny = static_cast<GLfloat>(ny);
+  double fnxInv = 1 / static_cast<GLfloat>(nx);
+  double fnyInv = 1 / static_cast<GLfloat>(ny);
+
+  // Compute the scaled X, Y coordinates for the four corners of the quad that place them
+  // for a correctly-sized quad given the camera info to get them to scaled space.
+  // The Z coordinate is along the negative Z axis at the specified depth.
+  double xHalfWidth = tan(radians(cameraRenderInfo.m_fovDegrees[0]) * 0.5) * depth;
+  double yHalfWidth = tan(radians(cameraRenderInfo.m_fovDegrees[1]) * 0.5) * depth;
+
+  // Rotate the points in the helicopter view space by the specified orientation change
+  // to point them in the direction that the camera is looking.
+  glm::mat4 rotationX = glm::rotate(glm::mat4(1.0f),
+    glm::radians(static_cast<GLfloat>(cameraRenderInfo.m_orientationDegrees[0])),
+    glm::vec3(1.0f, 0.0f, 0.0f));
+  glm::mat4 rotationY = glm::rotate(rotationX,
+    glm::radians(static_cast<GLfloat>(cameraRenderInfo.m_orientationDegrees[1])),
+    glm::vec3(0.0f, 1.0f, 0.0f));
+  glm::mat4 rotation = glm::rotate(rotationY,
+    glm::radians(static_cast<GLfloat>(cameraRenderInfo.m_orientationDegrees[2])),
+    glm::vec3(0.0f, 0.0f, 1.0f));
 
   // Create the vertices including the texture coordinates.  Each entry will have
   // 5 floats: X, Y, Z, U, V.  We add entries that span the entire range, with one
@@ -695,26 +713,32 @@ void CompositeCameras::AddBufferObjects(CameraRenderInfo const& cameraRenderInfo
   // left, move right, then move up at the end of each line.
   std::vector<GLfloat> vertices;
   for (size_t j = 0; j <= ny; j++) {
+    // Compute the U and V normalized texture coordinates for the vertex in the range 0 to 1.
+    // Because standard image textures have the origin at the upper left and OpenGL has it
+    // at the lower right, we must invert the v texture coordinate.
+    /// @todo The triangles go past the edges of the pixels, so we need to adjust the texture
+    // coordinates to land correctly, with the edges of the far triangles going half a pixel
+    // into the bordering pixels. The range will be from slightly negative to slightly greater
+    // than 1.0 for each axis, depending on the number of pixels in X and Y.
+    GLfloat v = 1.0f - j * fnyInv;
+
+    // Compute the normalized X, Y, coordinates in the range -1 to 1.
+    double yn = -1.0f + 2.0f * j * fnyInv;
+
     for (size_t i = 0; i <= nx; i++) {
       // Compute the U and V normalized texture coordinates for the vertex in the range 0 to 1.
-      // Because standard image textures have the origin at the upper left and OpenGL has it
-      // at the lower right, we must invert the v texture coordinate.
       /// @todo The triangles go past the edges of the pixels, so we need to adjust the texture
       // coordinates to land correctly, with the edges of the far triangles going half a pixel
       // into the bordering pixels. The range will be from slightly negative to slightly greater
       // than 1.0 for each axis, depending on the number of pixels in X and Y.
-      GLfloat u = i / fnx;
-      GLfloat v = 1.0f - j / fny;
+      GLfloat u = i * fnxInv;
 
       // Compute the normalized X, Y, coordinates in the range -1 to 1.
-      double xn = -1.0f + 2.0f * i / fnx;
-      double yn = -1.0f + 2.0f * j / fny;
+      double xn = -1.0f + 2.0f * i * fnxInv;
 
       // Compute the scaled X, Y coordinates for the four corners of the quad that place them
       // for a correctly-sized quad given the camera info to get them to scaled space.
       // The Z coordinate it along the negative Z axis at the specified depth.
-      double xHalfWidth = tan(radians(cameraRenderInfo.m_fovDegrees[0]) / 2.0) * depth;
-      double yHalfWidth = tan(radians(cameraRenderInfo.m_fovDegrees[1]) / 2.0) * depth;
       double xs = xn * xHalfWidth;
       double ys = yn * yHalfWidth;
       double zs = -depth;
@@ -727,9 +751,9 @@ void CompositeCameras::AddBufferObjects(CameraRenderInfo const& cameraRenderInfo
       if (cameraRenderInfo.m_distortion != nullptr) {
         distPoint = cameraRenderInfo.m_distortion->MapPoint(distPoint);
       }
-      double xc = distPoint[0];
-      double yc = distPoint[1];
-      double zc = distPoint[2];
+      double &xc = distPoint[0];
+      double &yc = distPoint[1];
+      double &zc = distPoint[2];
 
       // Rotate the X, Y, Z coordinates to match the camera center of projection
       // and viewing direction of this camera in the coordinate system of the camera cluster.
@@ -742,15 +766,6 @@ void CompositeCameras::AddBufferObjects(CameraRenderInfo const& cameraRenderInfo
       // Rotate the points in the helicopter view space by the specified orientation change
       // to point them in the direction that the camera is looking.
       glm::vec3 point(xh, yh, zh);
-      glm::mat4 rotationX = glm::rotate(glm::mat4(1.0f),
-        glm::radians(static_cast<GLfloat>(cameraRenderInfo.m_orientationDegrees[0])),
-        glm::vec3(1.0f, 0.0f, 0.0f));
-      glm::mat4 rotationY = glm::rotate(rotationX,
-        glm::radians(static_cast<GLfloat>(cameraRenderInfo.m_orientationDegrees[1])),
-        glm::vec3(0.0f, 1.0f, 0.0f));
-      glm::mat4 rotation = glm::rotate(rotationY,
-        glm::radians(static_cast<GLfloat>(cameraRenderInfo.m_orientationDegrees[2])),
-        glm::vec3(0.0f, 0.0f, 1.0f));
       glm::vec3 transformedPoint = glm::vec3(rotation * glm::vec4(point, 1.0f));
 
       // Offset the points by the camera position in the helicopter view space.
@@ -758,7 +773,7 @@ void CompositeCameras::AddBufferObjects(CameraRenderInfo const& cameraRenderInfo
       transformedPoint[1] += cameraRenderInfo.m_positionMeters[1];
       transformedPoint[2] += cameraRenderInfo.m_positionMeters[2];
 
-      // Add the vertex
+      // Add the vertex description
       vertices.push_back(transformedPoint[0]);
       vertices.push_back(transformedPoint[1]);
       vertices.push_back(transformedPoint[2]);
@@ -783,7 +798,7 @@ void CompositeCameras::AddBufferObjects(CameraRenderInfo const& cameraRenderInfo
     }
   }
 
-  // Unbind any vertex array object.
+  // Unbind any vertex array object, we won't be using these because they are not shared between contexts.
   glBindVertexArray(0);
 
   // Create a vertex buffer object for the vertices.
@@ -804,7 +819,7 @@ void CompositeCameras::AddBufferObjects(CameraRenderInfo const& cameraRenderInfo
   glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(GLfloat), (GLvoid*)(3 * sizeof(GLfloat)));
   glEnableVertexAttribArray(1);
 
-  // Save the vertex array object and the number of elements in the index buffer.
+  // Save the vertex and index buffer objects and the number of elements in the index buffer.
   m_vertexBufferObjects.push_back(vertexBufferObject);
   m_indexBufferObjects.push_back(indexBufferObject);
   m_numIndices.push_back(indices.size());
@@ -898,13 +913,13 @@ void CompositeCameras::SetupRenderFrame(asdp::Time scanOutTime)
 void CompositeCameras::RenderView(asdp::Time scanOutTime, const float* modelViewProjection)
 {
   // Draw each camera, using the appropriate texture.
-  for (size_t i = 0; i < m_cameraRenderInfos.size(); i++) {
+  for (size_t c = 0; c < m_cameraRenderInfos.size(); c++) {
 
     // If there is no texture, bind the default texture for the image to texture unit 0.
     // Otherwise, bind the stored texture.
     GLuint texture = 0;
-    if (m_images[i] != nullptr) {
-      texture = m_images[i]->texture;
+    if (m_images[c] != nullptr) {
+      texture = m_images[c]->texture;
     }
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, texture);
@@ -930,7 +945,7 @@ void CompositeCameras::RenderView(asdp::Time scanOutTime, const float* modelView
     // from where they are (canonical position at render time) to where they were at
     // image acquisition.
     glm::dmat4 shiftPoints = m_poseAdjuster->GetTransform(scanOutTime - Time(0, m_renderOffsetMicroseconds),
-      m_images[i]->imageCenterTime);
+      m_images[c]->imageCenterTime);
 
     // Apply the shift in the local helicopter coordinate system within the model-view-projection
     // matrix (which is really a view-projection matrix).
@@ -955,11 +970,11 @@ void CompositeCameras::RenderView(asdp::Time scanOutTime, const float* modelView
     glUniformMatrix4fv(m_modelViewProjectionUniformId, 1, GL_FALSE, adjustedMVP);
 
     // Draw the camera view using its vertex buffer objects.
-    glBindBuffer(GL_ARRAY_BUFFER, m_vertexBufferObjects[i]);
+    glBindBuffer(GL_ARRAY_BUFFER, m_vertexBufferObjects[c]);
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(GLfloat), (GLvoid*)0);
     glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(GLfloat), (GLvoid*)(3 * sizeof(GLfloat)));
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_indexBufferObjects[i]);
-    glDrawElements(GL_TRIANGLES, m_numIndices[i], GL_UNSIGNED_INT, 0);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_indexBufferObjects[c]);
+    glDrawElements(GL_TRIANGLES, m_numIndices[c], GL_UNSIGNED_INT, 0);
 
     // Unbind the textures from their respective texture units
     glActiveTexture(GL_TEXTURE1);
