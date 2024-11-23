@@ -49,7 +49,7 @@ using namespace asdp::render;
 using json = nlohmann::json;
 using json = nlohmann::json;
 
-static std::string VERSION = "2.4.0";
+static std::string VERSION = "2.5.0";
 
 /// @brief The path to the configuration file. Defined in the CMakeLists file.
 std::filesystem::path g_dirPath = CONFIG_FILE_PATH;
@@ -592,7 +592,8 @@ std::shared_ptr<Message> WaitForMessageType(std::shared_ptr<Receiver> receiver, 
 
 /// @param [out] replayDone Set to true if we are at the end of replay, set to false otherwise.
 Status HandleStreamPacket(std::shared_ptr<StreamPacket> packet, std::shared_ptr<ClockSynchronizer> clockSync,
-  std::shared_ptr<PoseAdjuster> poseAdjuster, bool &replayDone, std::vector<std::shared_ptr<Display>> &displays)
+  std::shared_ptr<PoseAdjuster> poseAdjuster, bool &replayDone, std::vector<std::shared_ptr<Display>> &displays,
+  std::shared_ptr<Timer> timer, Time &pausedTime)
 {
   // Not done replaying unless we get a message telling us that we are.
   replayDone = false;
@@ -644,6 +645,13 @@ Status HandleStreamPacket(std::shared_ptr<StreamPacket> packet, std::shared_ptr<
             break;
           case REPLAY_PAUSED:
             {
+              // Store the time that we're paused at so that we can reset our clock-sync estimates
+              // when we resume.
+              status = timer->GetCoreTime(pausedTime);
+              if (status != OKAY) {
+                return status;
+              }
+
               // Tell all of our Displays that we're paused.
               for (auto &display : displays) {
                 display->SetNowPlaying(false);
@@ -653,6 +661,14 @@ Status HandleStreamPacket(std::shared_ptr<StreamPacket> packet, std::shared_ptr<
           case REPLAY_RESUMED:
             {
               // Reset the clock-sync estimates when we start, stop, or resume replay.
+              clockSync->ClearHistory();
+
+              // Add an entry to the clock-sync estimates based on the time we were paused,
+              // making the current time match it.  Then reset the history again so that this
+              // phantom entry doesn't affect the estimates.
+              if (!clockSync->AddDataPoint(pausedTime, std::chrono::steady_clock::now())) {
+                return UNEXPECTED_INTERNAL_STATE;
+              }
               clockSync->ClearHistory();
 
               // Tell all of our Displays that we're no longer paused.
@@ -1407,6 +1423,9 @@ int main(int argc, char** argv)
     // Create a ClockSynchronizer that will manage adjusting the timer based on clock-sync messages.
     std::shared_ptr<ClockSynchronizer> clockSync = std::make_shared<ClockSynchronizer>(timer);
 
+    // Keeps track of when we were paused so we can adjust our clock synchronization when resumed.
+    Time pausedTime = {};
+
     // Render frames until someone has marked us to be done.
     bool nowPaused = false;
     bool replayDone = false;
@@ -1419,7 +1438,7 @@ int main(int argc, char** argv)
       size_t offset = 0;
       Status status = receiver->ReceiveStreamPacket(0.1, response, offset);
       if (status == OKAY) {
-        status = HandleStreamPacket(response, clockSync, poseAdjuster, replayDone, displays);
+        status = HandleStreamPacket(response, clockSync, poseAdjuster, replayDone, displays, timer, pausedTime);
         if (status != OKAY) {
           std::cerr << "Error handling stream packet: " << ErrorMessage(status) << std::endl;
           done = true;
