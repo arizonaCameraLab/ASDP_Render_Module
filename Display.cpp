@@ -1943,6 +1943,10 @@ DisplayOpenXR::DisplayOpenXR(std::shared_ptr<Composite> composite, Display* shar
   m_status = "OpenXR is not compiled in.";
 }
 
+void DisplayOpenXR::SetNowPlaying(bool nowPlaying)
+{
+}
+
 DisplayOpenXR::~DisplayOpenXR()
 {
 }
