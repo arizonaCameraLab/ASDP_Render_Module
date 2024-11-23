@@ -115,6 +115,11 @@ bool Display::Quit()
   return true;
 }
 
+void Display::SetNowPlaying(bool nowPlaying)
+{
+  m_nowPlaying = nowPlaying;
+}
+
 std::string Display::GetStatus() const
 {
   return m_status;
@@ -497,6 +502,21 @@ void DisplayWindow::DisplayThread(std::string windowName,
   glfwDestroyWindow(Display::m_impl->m_window);
 }
 
+void DisplayWindow::SetNowPlaying(bool nowPlaying)
+{
+  // Call the parent-calss method to set the now-playing state.
+  Display::SetNowPlaying(nowPlaying);
+
+  // Set the pause time based on whether we are now playing so that
+  // we don't extrapolate forward in time while paused.
+  if (!m_nowPlaying) {
+    m_pauseTime = std::make_unique<Time>();
+    m_timer->GetCoreTime(*m_pauseTime, std::chrono::steady_clock::now());
+  } else {
+    m_pauseTime.reset();
+  }
+}
+
 void DisplayWindow::HandleKeyboard()
 {
   // See how long it has been since the last keyboard check.  If there has not been one,
@@ -528,18 +548,10 @@ void DisplayWindow::HandleKeyboard()
     m_impl->m_rotationZDegrees += DegreesPerSecond * elapsed.count();
   }
   // Toggle play/pause when the space key is pressed (once per press/release cycle).
-  // Also set or reset our internal pause time so we won't extrapolate poses forward in time.
   bool spacePressed = (glfwGetKey(Display::m_impl->m_window, GLFW_KEY_SPACE) == GLFW_PRESS);
   if (spacePressed && !m_impl->m_spacePressed) {
-    m_nowPlaying = !m_nowPlaying;
     if (m_eventHandlers && m_eventHandlers->ChangePlayPause) {
-      m_eventHandlers->ChangePlayPause(m_nowPlaying, m_userData);
-    }
-    if (!m_nowPlaying) {
-      m_pauseTime = std::make_unique<Time>();
-      m_timer->GetCoreTime(*m_pauseTime, std::chrono::steady_clock::now());
-    } else {
-      m_pauseTime.reset();
+      m_eventHandlers->ChangePlayPause(!m_nowPlaying, m_userData);
     }
   }
   m_impl->m_spacePressed = spacePressed;
@@ -752,7 +764,7 @@ public:
   XrSessionState m_sessionState{ XR_SESSION_STATE_UNKNOWN };
   bool m_sessionRunning{ false };
 
-  XrEventDataBuffer m_eventDataBuffer;
+  XrEventDataBuffer m_eventDataBuffer{};
 
   struct InputState {
     XrActionSet actionSet{ XR_NULL_HANDLE };
@@ -1834,6 +1846,21 @@ DisplayOpenXR::DisplayOpenXR(std::shared_ptr<Composite> composite, Display* shar
   // constructor does not return before the rendering thread is ready.
   while (!Display::m_impl->m_contextAvailable && (m_status == "")) {
     std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+}
+
+void DisplayOpenXR::SetNowPlaying(bool nowPlaying)
+{
+  // Call the parent-calss method to set the now-playing state.
+  Display::SetNowPlaying(nowPlaying);
+
+  // Set the pause time based on whether we are now playing so that
+  // we don't extrapolate forward in time while paused.
+  if (!m_nowPlaying) {
+    m_impl->m_pauseTime = std::make_unique<Time>();
+    m_timer->GetCoreTime(*m_impl->m_pauseTime, std::chrono::steady_clock::now());
+  } else {
+    m_impl->m_pauseTime.reset();
   }
 }
 

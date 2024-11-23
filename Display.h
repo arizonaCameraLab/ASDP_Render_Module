@@ -28,7 +28,9 @@ namespace asdp {
 
     /// @brief Event-handling class that passes asynchronous events to the caller.
     struct EventHandlers {
-      void (*ChangePlayPause)(bool nowPlaying, void *userData) = nullptr; ///< Change the play/pause behavior.
+      /// Request that the play/pause state be changed to match nowPlaying.
+      /// (See SetNowPlaying() comments for details of pause/replay implementation.)
+      void (*ChangePlayPause)(bool nowPlaying, void *userData) = nullptr;
     };
 
     /// @brief Display base class that defines the interface that all Displays use.
@@ -58,6 +60,15 @@ namespace asdp {
       /// Derived classes should override this function to release any resources they have allocated.
       /// @return True on success, false on failure (threads may still be running).
       virtual bool Quit();
+
+      /// @brief Pause or resume replay.
+      /// @details The play/pause mechanism is fairly involved.  When a Display class wants to pause
+      /// or resume replay, it calls teh ChangePlayPause() event handler, if any, to notify the caller.
+      /// The caller than tells a connected Storage Server (if any) to pause or resume the replay.
+      /// The Storage Server then sends a message to the Core to pause or resume the replay.  The
+      /// caller then calls this function, SetNowPlaying(), to let all Displays know their new state.
+      /// @param nowPlaying True to play/resume, false to pause.
+      virtual void SetNowPlaying(bool nowPlaying);
 
       /// @brief Get the status of the Display.
       /// @return A string describing the status of the Display.  It is empty when the diplay is
@@ -171,6 +182,8 @@ protected:
         std::shared_ptr<EventHandlers> handlers = nullptr, void* userData = nullptr,
         RenderTimingInfo* timingInfo = nullptr);
 
+      void SetNowPlaying(bool nowPlaying) override;
+
       ~DisplayWindow();
 
     private:
@@ -257,6 +270,8 @@ protected:
         uint32_t renderAheadMicroseconds = 2500, int verbosity = 0,
         std::shared_ptr<EventHandlers> handlers = nullptr, void* userData = nullptr,
         RenderTimingInfo* timingInfo = nullptr);
+
+      void SetNowPlaying(bool nowPlaying) override;
 
       ~DisplayOpenXR();
 

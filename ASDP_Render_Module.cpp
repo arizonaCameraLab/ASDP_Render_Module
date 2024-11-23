@@ -49,7 +49,7 @@ using namespace asdp::render;
 using json = nlohmann::json;
 using json = nlohmann::json;
 
-static std::string VERSION = "2.3.0";
+static std::string VERSION = "2.4.0";
 
 /// @brief The path to the configuration file. Defined in the CMakeLists file.
 std::filesystem::path g_dirPath = CONFIG_FILE_PATH;
@@ -592,7 +592,7 @@ std::shared_ptr<Message> WaitForMessageType(std::shared_ptr<Receiver> receiver, 
 
 /// @param [out] replayDone Set to true if we are at the end of replay, set to false otherwise.
 Status HandleStreamPacket(std::shared_ptr<StreamPacket> packet, std::shared_ptr<ClockSynchronizer> clockSync,
-  std::shared_ptr<PoseAdjuster> poseAdjuster, bool &replayDone)
+  std::shared_ptr<PoseAdjuster> poseAdjuster, bool &replayDone, std::vector<std::shared_ptr<Display>> &displays)
 {
   // Not done replaying unless we get a message telling us that we are.
   replayDone = false;
@@ -631,11 +631,34 @@ Status HandleStreamPacket(std::shared_ptr<StreamPacket> packet, std::shared_ptr<
         }
         switch (eventType) {
           case START_OF_REPLAY:
+            {
+              // Reset the clock-sync estimates when we start, stop, or resume replay.
+              clockSync->ClearHistory();
+            }
+            break;
           case END_OF_REPLAY:
+            {
+              // Reset the clock-sync estimates when we start, stop, or resume replay.
+              clockSync->ClearHistory();
+            }
+            break;
+          case REPLAY_PAUSED:
+            {
+              // Tell all of our Displays that we're paused.
+              for (auto &display : displays) {
+                display->SetNowPlaying(false);
+              }
+            }
+            break;
           case REPLAY_RESUMED:
             {
-              // Reset the clock-sync estimates when we start or stop replay.
+              // Reset the clock-sync estimates when we start, stop, or resume replay.
               clockSync->ClearHistory();
+
+              // Tell all of our Displays that we're no longer paused.
+              for (auto& display : displays) {
+                display->SetNowPlaying(true);
+              }
             }
             break;
 
@@ -1396,7 +1419,7 @@ int main(int argc, char** argv)
       size_t offset = 0;
       Status status = receiver->ReceiveStreamPacket(0.1, response, offset);
       if (status == OKAY) {
-        status = HandleStreamPacket(response, clockSync, poseAdjuster, replayDone);
+        status = HandleStreamPacket(response, clockSync, poseAdjuster, replayDone, displays);
         if (status != OKAY) {
           std::cerr << "Error handling stream packet: " << ErrorMessage(status) << std::endl;
           done = true;
@@ -1436,7 +1459,7 @@ int main(int argc, char** argv)
         done = true;
       }
 
-      // If our state of play/pause has switched and we're replaying, send a command to the server.
+      // If our state of play/pause has switched and we're pausing or replaying, send a command to the server.
       if (replayStreamID) {
         if (nowPaused != g_paused) {
           if (g_paused) {
