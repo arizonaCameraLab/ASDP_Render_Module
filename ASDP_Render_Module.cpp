@@ -665,7 +665,8 @@ Status HandleStreamPacket(std::shared_ptr<StreamPacket> packet, std::shared_ptr<
 
               // Add an entry to the clock-sync estimates based on the time we were paused,
               // making the current time match it.  Then reset the history again so that this
-              // phantom entry doesn't affect the estimates.
+              // phantom entry doesn't affect the estimates.  We needed to reset the history
+              // before doing this so that our single entry causes the shift that we want.
               if (!clockSync->AddDataPoint(pausedTime, std::chrono::steady_clock::now())) {
                 return UNEXPECTED_INTERNAL_STATE;
               }

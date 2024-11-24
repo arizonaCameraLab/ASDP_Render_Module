@@ -504,7 +504,7 @@ void DisplayWindow::DisplayThread(std::string windowName,
 
 void DisplayWindow::SetNowPlaying(bool nowPlaying)
 {
-  // Call the parent-calss method to set the now-playing state.
+  // Call the parent-class method to set the now-playing state.
   Display::SetNowPlaying(nowPlaying);
 
   // Set the pause time based on whether we are now playing so that
@@ -1505,17 +1505,8 @@ void asdp::render::DisplayOpenXR::DisplayOpenXRImpl::OpenXRPollActions()
         isGrabbed = true;
         if (!m_lastGrabbedState) {
           // Toggle the play/pause state.
-          // Also set or reset our internal pause time so we won't extrapolate poses forward in time.
-          m_display->m_nowPlaying = !m_display->m_nowPlaying;
           if (m_display->m_eventHandlers && m_display->m_eventHandlers->ChangePlayPause) {
             m_display->m_eventHandlers->ChangePlayPause(m_display->m_nowPlaying, m_display->m_userData);
-          }
-          if (!m_display->m_nowPlaying) {
-            m_pauseTime = std::make_unique<Time>();
-            m_display->m_timer->GetCoreTime(*m_pauseTime, std::chrono::steady_clock::now());
-          }
-          else {
-            m_pauseTime.reset();
           }
         }
       }
@@ -1851,7 +1842,7 @@ DisplayOpenXR::DisplayOpenXR(std::shared_ptr<Composite> composite, Display* shar
 
 void DisplayOpenXR::SetNowPlaying(bool nowPlaying)
 {
-  // Call the parent-calss method to set the now-playing state.
+  // Call the parent-class method to set the now-playing state.
   Display::SetNowPlaying(nowPlaying);
 
   // Set the pause time based on whether we are now playing so that
