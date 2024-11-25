@@ -49,7 +49,7 @@ using namespace asdp::render;
 using json = nlohmann::json;
 using json = nlohmann::json;
 
-static std::string VERSION = "2.6.0";
+static std::string VERSION = "2.7.0";
 
 /// @brief The path to the configuration file. Defined in the CMakeLists file.
 std::filesystem::path g_dirPath = CONFIG_FILE_PATH;
@@ -1063,13 +1063,10 @@ int main(int argc, char** argv)
     for (const auto& feature : features) {
       if (feature == STORAGE_API_AVAILABLE) {
         hasStorage = true;
-        break;
       } else if (feature == TEMPERATURE_API_AVAILABLE) {
         hasTemperatures = true;
-        break;
       } else if (feature == POSE_API_POSITION_AVAILABLE || feature == POSE_API_ORIENTATION_AVAILABLE) {
         hasPoses = true;
-        break;
       }
     }
 
