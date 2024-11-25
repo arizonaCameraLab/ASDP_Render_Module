@@ -116,6 +116,7 @@ void PoseAdjuster::AddPose(double latitude, double longitude, double altitude,
 
   // Put the pose into the list and keep it sorted.  We find the first entry that is before the new pose and
   // place it after that entry.
+  std::lock_guard<std::mutex> lock(m_poseMutex);
   auto it = m_poses.rbegin();
   while (it != m_poses.rend()) {
     if (it->time <= newPose.time) {
@@ -165,6 +166,8 @@ PoseAdjuster::Pose PoseAdjuster::ExtrapolatePose(const Pose& pose, Time time)
 
 PoseAdjuster::Pose PoseAdjuster::GetPose(asdp::Time time) const
 {
+  std::lock_guard<std::mutex> lock(m_poseMutex);
+
   // Find the poses that are just before and just after the requested time.
   Pose beforePose, afterPose;
   bool foundBefore = false, foundAfter = false;

@@ -14,6 +14,7 @@
 
 #include <string>
 #include <list>
+#include <mutex>
 #include <glm/glm.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <ASDP_Core_API.h>
@@ -33,10 +34,12 @@ namespace asdp {
       virtual ~PoseAdjuster();
 
       /// @brief Records pose messages for the helicopter after unpacking entries from a MessagePose.
+      /// @details This method and GetTransform can be called by separate threads.
       /// @param poseMessage The pose message to be recorded.  These are used to determine the pose of the helicopter at different times.
       void AddPose(const MessagePose& poseMessage);
 
       /// @brief Records pose messages for the helicopter using already-unpacked entries.
+      /// @details This method and GetTransform can be called by separate threads.
       /// @param latitude The latitude of the helicopter in degrees.
       /// @param longitude The longitude of the helicopter in degrees.
       /// @param altitude The altitude of the helicopter in meters.
@@ -51,6 +54,7 @@ namespace asdp {
         asdp::Time time);
 
       /// @brief Provide a transform that moves points in helicopter space from one time to another based on helicopter pose change.
+      /// @details This method and AddPose can be called by separate threads.
       /// @param endTime The end time for the transform (probably the time of scan out for the center of the rendered image).
       /// @param startTime The start time for the transform (probably the time of the center of image capture).
       /// @return A 4x4 transformation matrix that can be used to transform points in helicopter coordinates for the
@@ -78,6 +82,7 @@ namespace asdp {
 
       size_t m_maxCount;            ///< Maximum number of poses to store.
       std::list<Pose> m_poses;      ///< Vector to store recorded poses, sorted in time with earliest first.
+      mutable std::mutex m_poseMutex;       ///< Mutex to protect the list of poses.
 
       /// @brief Extrapolate the pose at a specific time based on a recent pose.
       /// @param pose The recent pose to use for extrapolation.
