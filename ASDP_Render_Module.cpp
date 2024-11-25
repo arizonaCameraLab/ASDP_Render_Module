@@ -49,7 +49,7 @@ using namespace asdp::render;
 using json = nlohmann::json;
 using json = nlohmann::json;
 
-static std::string VERSION = "2.5.0";
+static std::string VERSION = "2.6.0";
 
 /// @brief The path to the configuration file. Defined in the CMakeLists file.
 std::filesystem::path g_dirPath = CONFIG_FILE_PATH;
@@ -1415,7 +1415,8 @@ int main(int argc, char** argv)
         return 1001;
       }
       std::cout << "Requesting replay of stream " << replayStreamID << std::endl;
-      status = client->SendCommandPacket(CommandPacketStartReplay(replayStreamID, Time()));
+      // Set the initial time to be above zero so that we never predict backwards to negative time.
+      status = client->SendCommandPacket(CommandPacketStartReplay(replayStreamID, Time(10,0)));
       if (status != OKAY) {
         std::cerr << "Failed to start replay: " << ErrorMessage(status) << std::endl;
         return 1002;
