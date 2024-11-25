@@ -647,7 +647,7 @@ Status HandleStreamPacket(std::shared_ptr<StreamPacket> packet, std::shared_ptr<
             {
               // Store the time that we're paused at so that we can reset our clock-sync estimates
               // when we resume.
-              status = timer->GetCoreTime(pausedTime);
+              status = message->GetTime(pausedTime);
               if (status != OKAY) {
                 return status;
               }
