@@ -1051,6 +1051,27 @@ int main(int argc, char** argv)
     if (cameras.size() == 0) {
       return 13;
     }
+    std::vector<FeatureID> features;
+    status = state.GetFeatures(features);
+    if (status != OKAY) {
+      std::cerr << "Failed to get features: " << ErrorMessage(status) << std::endl;
+      return 1000;
+    }
+    bool hasStorage = false;
+    bool hasTemperatures = false;
+    bool hasPoses = false;
+    for (const auto& feature : features) {
+      if (feature == STORAGE_API_AVAILABLE) {
+        hasStorage = true;
+        break;
+      } else if (feature == TEMPERATURE_API_AVAILABLE) {
+        hasTemperatures = true;
+        break;
+      } else if (feature == POSE_API_POSITION_AVAILABLE || feature == POSE_API_ORIENTATION_AVAILABLE) {
+        hasPoses = true;
+        break;
+      }
+    }
 
     // Find the trigger for the first camera, which we will use to synchronize to the display.  We assume that
     // they are all using the same trigger.
@@ -1323,7 +1344,7 @@ int main(int argc, char** argv)
     }
 
     // Ask for streaming pose and temperature data.
-    if (doStreamPoses) {
+    if (doStreamPoses && hasPoses) {
       std::cout << "Requesting pose data." << std::endl;
       status = client->SendCommandPacket(CommandPacketStreamPoses());
       if (status != OKAY) {
@@ -1331,11 +1352,13 @@ int main(int argc, char** argv)
         return 26;
       }
     }
-    std::cout << "Requesting temperature data." << std::endl;
-    status = client->SendCommandPacket(CommandPacketStreamTemperatures());
-    if (status != OKAY) {
-      std::cerr << "Failed to request temperature data: " << ErrorMessage(status) << std::endl;
-      return 27;
+    if (hasTemperatures) {
+      std::cout << "Requesting temperature data." << std::endl;
+      status = client->SendCommandPacket(CommandPacketStreamTemperatures());
+      if (status != OKAY) {
+        std::cerr << "Failed to request temperature data: " << ErrorMessage(status) << std::endl;
+        return 27;
+      }
     }
 
     // Request streaming on the cameras at their maximum rates from their associated ID.
@@ -1387,19 +1410,6 @@ int main(int argc, char** argv)
 
     // If we've been asked to replay a stream, then send a request to do this.
     if (replayStreamID) {
-      std::vector<FeatureID> features;
-      status = state.GetFeatures(features);
-      if (status != OKAY) {
-        std::cerr << "Failed to get features: " << ErrorMessage(status) << std::endl;
-        return 1000;
-      }
-      bool hasStorage = false;
-      for (const auto& feature : features) {
-        if (feature == STORAGE_API_AVAILABLE) {
-          hasStorage = true;
-          break;
-        }
-      }
       if (!hasStorage) {
         std::cerr << "Error: Storage API not available when replay requested." << std::endl;
         return 1001;
