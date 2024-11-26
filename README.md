@@ -77,6 +77,15 @@ of the network interface card to listen on (perhaps "localhost" for testing).  I
 following optional arguments:
 - **--frameStride** The number of frames to skip between rendering frames.  This can be used to
   reduce the load on the system.  A value of 1 renders every frame, 2 renders every other frame.
+- **--toneMap** The tone mapping to use, default linear.  Other options are blackbody and bluesky.
+- **--addDisplay** This will add a second display window with default settings; these settings can
+  be overridden with additional arguments.  When making one of the displays full-screen, it must be
+  the last one added so that it maintains focus.
+- **--replay** Rather than running live, replay the specified stored stream ID (1+).
+- **--loopReplay** When replaying, loop the replay.
+- **--lineBatchesPerGPUSend** The number of line batches to send to the GPU at a time, default 16
+  under Linux and 32 under Windows. This trades throughput for latency.
+- **--openXR** Display using an OpenXR device, using its specified resolution and field of view.
 - **--width** The width of the window, default 1280.
 - **--height** The height of the window, default 1024.
 - **--fullscreen** If present, the window will be full-screen.  The display number to use is given
@@ -84,14 +93,12 @@ following optional arguments:
 - **--fps** The number of frames per second to render, default 60.
 - **--joystick** The joystick to use for control, for example GLFW::0 will use the first joystick.
 - **--hFOV** The horizontal field of view of the camera in degrees, default 40.
-- **--toneMap** The tone mapping to use, default linear.  Other options are blackbody and bluesky.
-- **--addDisplay** This will add a second display window with default settings; these settings can
-  be overridden with additional arguments.  When making one of the displays full-screen, it must be
-  the last one added so that it maintains focus.
-- **--replay** Rather than running live, replay the specified stored stream ID (1+).
-- **--lineBatchesPerGPUSend** The number of line batches to send to the GPU at a time, default 16
-  under Linux and 32 under Windows. This trades throughput for latency.
-- **--openXR** Display using an OpenXR device, using its specified resolution and field of view.
+- **--noPoses** Do not stream poses from the server, so no latency adjustment.
+- **--dumpTiming** Specify the base name of a file to dump timing information to when the program quits.
+- **--triggerAheadMicroseconds** The number of microseconds ahead of the scan-out time to trigger the
+  camera when connected to a live stream, default 22000.
+- **--lockRotation** Lock the rotation of the camera to the helicopter's initial orientation.  This
+  should help to reduce simulator sickness due to the camera moving in a way that the viewer is not.
 
 For example, to run the program on interface 10.10.10.22 with two windows, one full-screen on
 display 1 and the other having default parameters with both using different joysticks,
