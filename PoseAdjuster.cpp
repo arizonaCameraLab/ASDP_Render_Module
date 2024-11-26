@@ -233,6 +233,7 @@ glm::dmat4 PoseAdjuster::GetTransform(asdp::Time endTime, asdp::Time startTime) 
   glm::dmat4 startTransform = startTrans * startRot;
   glm::dmat4 endRot = glm::mat4_cast(endPose.orientation);
   if (m_coordinates == INITIAL_ORIENTATION) {
+    // If we are using the initial orientation, that's the space we always want to rotate into.
     endRot = glm::mat4_cast(m_initialOrientation);
   }
   glm::dmat4 endTrans = glm::translate(glm::dmat4(1.0), endPose.position);
@@ -457,6 +458,47 @@ std::string PoseAdjuster::Test()
     if (!isNear(rotatedZ[0], std::sin(glm::radians(2.0f)), 0.02)
         || !isNear(rotatedZ[1], 0, 0.01) || !isNear(rotatedZ[2], std::cos(glm::radians(2.0f)), 0.02)) {
       return "PoseAdjuster Test: GetTransform() rotation before time1 is incorrect.";
+    }
+  }
+
+  // Check to be sure that we can lock the orientation.  In this case, rotations to any time should
+  // rotate to the original orientation.
+  {
+    PoseAdjuster adjuster(3, INITIAL_ORIENTATION);
+    asdp::Time time1{ 1, 0 };
+    asdp::Time time2{ 2, 0 };
+    asdp::Time time3{ 3, 0 };
+
+    {
+      // Verify that we get the identity transform when there are no poses.
+      glm::mat4 transform = adjuster.GetTransform(time1, time2);
+      glm::mat4 identity = glm::identity<glm::mat4>();
+      for (int i = 0; i < 16; ++i) {
+        if (!isNear(transform[i / 4][i % 4], identity[i / 4][i % 4])) {
+          return "PoseAdjuster Test: GetTransform() locked with no poses does not return identity.";
+        }
+      }
+    }
+
+    // Add poses that rotate 90 degrees around the X axis from the first to the last and have velocities of +1/second in X
+    // and rotations by 2 degrees per second around y.
+    adjuster.AddPose(0, 0, 0, { 0, 0, 0 }, { 0, 0, 0 }, { 0, 2, 0 }, time1);
+    adjuster.AddPose(0, 0, 0, { 30, 0, 0 }, { 1, 0, 0 }, { 0, 2, 0 }, time2);
+    adjuster.AddPose(0, 0, 0, { 90, 0, 0 }, { 1, 0, 0 }, { 0, 0, 0 }, time3);
+
+    // The +Y axis should stay put because we're rotating from time1 to time1.
+    glm::mat4 transform = adjuster.GetTransform(time3, time1);
+    glm::vec4 pos1 = transform * glm::vec4(0, 1, 0, 1);
+    if (!isNear(pos1[0], 0) || !isNear(pos1[1], 1) || !isNear(pos1[2], 0)) {
+      return "PoseAdjuster Test: GetTransform() locked rotation from time3 to time1 is incorrect.";
+    }
+
+    // Relative translation should be -1 meters in the X direction a second after time3 because the
+    // helicopter would have moved 1 meter forwards, making the earlier origin be 1 meter behind it.
+    transform = adjuster.GetTransform(Time(4, 0), time3);
+    glm::vec4 pos2 = transform * glm::vec4(0, 0, 0, 1);
+    if (!isNear(pos2[0], -1) || !isNear(pos2[1], 0) || !isNear(pos2[2], 0)) {
+      return "PoseAdjuster Test: GetTransform() locked translation after time3 is incorrect.";
     }
   }
 
