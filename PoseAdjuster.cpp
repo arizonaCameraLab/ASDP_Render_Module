@@ -37,8 +37,9 @@ static ECEF convertLLAtoECEF(double latitude, double longitude, double altitude)
 using namespace asdp::render;
 using namespace asdp;
 
-PoseAdjuster::PoseAdjuster(size_t maxCount)
+PoseAdjuster::PoseAdjuster(size_t maxCount, PoseAdjusterCoordinates coordinates)
   : m_maxCount(maxCount)
+  , m_coordinates(coordinates)
 {
 }
 
@@ -95,6 +96,13 @@ void PoseAdjuster::AddPose(double latitude, double longitude, double altitude,
     newPose.orientation =  rotationLong * rotationLat * HeliX * HeliY * rotationX * rotationY * rotationZ;
   }
 
+  // Store the initial orientation if this is the first one.
+  std::lock_guard<std::mutex> lock(m_poseMutex);
+  if (m_poses.empty()) {
+    m_initialOrientation = newPose.orientation;
+    std::cout << "XXX Setting initial orientation to " << m_initialOrientation.x << ", " << m_initialOrientation.y << ", " << m_initialOrientation.z << ", " << m_initialOrientation.w << std::endl;
+  }
+
   // Velocity in local coordinates in meters per second
   if (vel[0] > -1e5 && vel[1] > -1e5 && vel[2] > -1e5) {
     newPose.velocity = glm::dvec3(vel[0], vel[1], vel[2]);
@@ -116,7 +124,6 @@ void PoseAdjuster::AddPose(double latitude, double longitude, double altitude,
 
   // Put the pose into the list and keep it sorted.  We find the first entry that is before the new pose and
   // place it after that entry.
-  std::lock_guard<std::mutex> lock(m_poseMutex);
   auto it = m_poses.rbegin();
   while (it != m_poses.rend()) {
     if (it->time <= newPose.time) {
@@ -226,6 +233,9 @@ glm::dmat4 PoseAdjuster::GetTransform(asdp::Time endTime, asdp::Time startTime) 
   glm::dmat4 startTrans = glm::translate(glm::dmat4(1.0), startPose.position);
   glm::dmat4 startTransform = startTrans * startRot;
   glm::dmat4 endRot = glm::mat4_cast(endPose.orientation);
+  if (m_coordinates == INITIAL_ORIENTATION) {
+    endRot = glm::mat4_cast(m_initialOrientation);
+  }
   glm::dmat4 endTrans = glm::translate(glm::dmat4(1.0), endPose.position);
   glm::dmat4 endTransform = endTrans * endRot;
   glm::mat4 transform = glm::inverse(endTransform) * startTransform;

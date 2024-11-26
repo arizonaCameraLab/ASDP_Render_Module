@@ -22,20 +22,32 @@
 namespace asdp {
   namespace render {
 
+    enum PoseAdjusterCoordinates {
+      HELICOPTER = 0,           ///< Helicopter space, with Z up, X forward, and Y right.
+      INITIAL_ORIENTATION = 1   ///< Helicopter space at its initial orientation.
+    };
+
     /// @brief PoseAdjuster class that produces a differential transform to move points in Helicopter space.
+    /// @details This is used to offset the latency-induced motion in the scene based on the helicopter's
+    /// pose at the current time and at the time images were captured.
+    /// This class can also optionally keep the world locked to the helicopter's orientation at the
+    /// start of the run, which keeps from producing world rotation without the viewer being rotated
+    /// along with the helicopter during replay, hopefully reducing simulator sickness.
     class PoseAdjuster {
     public:
 
       /// @brief Constructor
       /// @param maxCount The maximum number of poses to store.
-      PoseAdjuster(size_t maxCount = 2000);
+      /// @param coordinates The coordinate system to use for the poses.
+      PoseAdjuster(size_t maxCount = 2000, PoseAdjusterCoordinates coordinates = HELICOPTER);
 
       /// @brief Destructor, virtual so that derived classes can have their destructors called from pointers.
       virtual ~PoseAdjuster();
 
       /// @brief Records pose messages for the helicopter after unpacking entries from a MessagePose.
       /// @details This method and GetTransform can be called by separate threads.
-      /// @param poseMessage The pose message to be recorded.  These are used to determine the pose of the helicopter at different times.
+      /// @param poseMessage The pose message to be recorded.  These are used to determine the pose
+      /// of the helicopter at different times.
       void AddPose(const MessagePose& poseMessage);
 
       /// @brief Records pose messages for the helicopter using already-unpacked entries.
@@ -53,12 +65,15 @@ namespace asdp {
         std::array<float, 3> const &rotVel,
         asdp::Time time);
 
-      /// @brief Provide a transform that moves points in helicopter space from one time to another based on helicopter pose change.
+      /// @brief Provide a transform that moves points in helicopter space from one time to another
+      /// based on helicopter pose change.
       /// @details This method and AddPose can be called by separate threads.
-      /// @param endTime The end time for the transform (probably the time of scan out for the center of the rendered image).
-      /// @param startTime The start time for the transform (probably the time of the center of image capture).
-      /// @return A 4x4 transformation matrix that can be used to transform points in helicopter coordinates for the
-      /// pose at startTime to helicopter coordinates for the pose at endTime.
+      /// @param endTime The end time for the transform (probably the time of scan out for the center
+      /// of the rendered image).
+      /// @param startTime The start time for the transform (probably the time of the center of image
+      /// capture).
+      /// @return A 4x4 transformation matrix that can be used to transform points in helicopter
+      /// coordinates for the pose at startTime to helicopter coordinates for the pose at endTime.
       /// If there are no poses available, the identity matrix is returned.
       glm::dmat4 GetTransform(asdp::Time endTime, asdp::Time startTime) const;
 
@@ -67,6 +82,9 @@ namespace asdp {
       static std::string Test();
 
     protected:
+      PoseAdjusterCoordinates m_coordinates;          ///< The coordinate system to use for the poses.
+      glm::dquat m_initialOrientation = { 1, 0, 0, 0 }; ///< The initial orientation of the helicopter.
+
       /// Structure describing a helicopter pose, including the position, orientation, and velocities.
       /// Its entries must be double precision to avoid numerical instability with the large Earth radius included in position.
       struct Pose {
