@@ -100,7 +100,6 @@ void PoseAdjuster::AddPose(double latitude, double longitude, double altitude,
   std::lock_guard<std::mutex> lock(m_poseMutex);
   if (m_poses.empty()) {
     m_initialOrientation = newPose.orientation;
-    std::cout << "XXX Setting initial orientation to " << m_initialOrientation.x << ", " << m_initialOrientation.y << ", " << m_initialOrientation.z << ", " << m_initialOrientation.w << std::endl;
   }
 
   // Velocity in local coordinates in meters per second
