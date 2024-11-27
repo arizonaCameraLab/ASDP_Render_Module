@@ -39,7 +39,11 @@ namespace asdp {
       /// @brief Constructor
       /// @param maxCount The maximum number of poses to store.
       /// @param coordinates The coordinate system to use for the poses.
-      PoseAdjuster(size_t maxCount = 2000, PoseAdjusterCoordinates coordinates = HELICOPTER);
+      /// @param ignoreTimeDifference If true, ignore the time difference between the start and end times
+      /// when calculating the transform.  This is only useful to demonstrate what happens when we
+      /// do not do latency compensation.
+      PoseAdjuster(size_t maxCount = 2000, PoseAdjusterCoordinates coordinates = HELICOPTER,
+        bool ignoreTimeDifference = false);
 
       /// @brief Destructor, virtual so that derived classes can have their destructors called from pointers.
       virtual ~PoseAdjuster();
@@ -67,7 +71,8 @@ namespace asdp {
 
       /// @brief Provide a transform that moves points in helicopter space from one time to another
       /// based on helicopter pose change.
-      /// @details This method and AddPose can be called by separate threads.
+      /// @details This method and AddPose can be called by separate threads.  This also adjusts
+      /// the coordinate system based on the coordinate system set in the constructor.
       /// @param endTime The end time for the transform (probably the time of scan out for the center
       /// of the rendered image).
       /// @param startTime The start time for the transform (probably the time of the center of image
@@ -84,6 +89,8 @@ namespace asdp {
     protected:
       PoseAdjusterCoordinates m_coordinates;          ///< The coordinate system to use for the poses.
       glm::dquat m_initialOrientation = { 1, 0, 0, 0 }; ///< The initial orientation of the helicopter.
+
+      bool m_ignoreTimeDifference;                    ///< If true, ignore the time difference between the start and end times when calculating the transform.
 
       /// Structure describing a helicopter pose, including the position, orientation, and velocities.
       /// Its entries must be double precision to avoid numerical instability with the large Earth radius included in position.

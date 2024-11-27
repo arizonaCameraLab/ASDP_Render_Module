@@ -37,9 +37,10 @@ static ECEF convertLLAtoECEF(double latitude, double longitude, double altitude)
 using namespace asdp::render;
 using namespace asdp;
 
-PoseAdjuster::PoseAdjuster(size_t maxCount, PoseAdjusterCoordinates coordinates)
+PoseAdjuster::PoseAdjuster(size_t maxCount, PoseAdjusterCoordinates coordinates, bool ignoreTimeDifference)
   : m_maxCount(maxCount)
   , m_coordinates(coordinates)
+  , m_ignoreTimeDifference(ignoreTimeDifference)
 {
 }
 
@@ -220,6 +221,11 @@ PoseAdjuster::Pose PoseAdjuster::GetPose(asdp::Time time) const
 
 glm::dmat4 PoseAdjuster::GetTransform(asdp::Time endTime, asdp::Time startTime) const
 {
+  // If we have been asked to ignore time differences, make both of these the end time.
+  if (m_ignoreTimeDifference) {
+    startTime = endTime;
+  }
+
   // Get the poses at the start and end times.
   Pose startPose = GetPose(startTime);
   Pose endPose = GetPose(endTime);

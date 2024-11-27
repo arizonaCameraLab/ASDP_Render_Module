@@ -49,7 +49,7 @@ using namespace asdp::render;
 using json = nlohmann::json;
 using json = nlohmann::json;
 
-static std::string VERSION = "2.9.0";
+static std::string VERSION = "2.10.0";
 
 /// @brief The path to the configuration file. Defined in the CMakeLists file.
 std::filesystem::path g_dirPath = CONFIG_FILE_PATH;
@@ -826,6 +826,7 @@ void usage(std::string name)
   std::cerr << "  --dumpTiming <file name base>       Write timing on quit to CSV files with the specified base name." << std::endl;
   std::cerr << "  --triggerAheadMicroseconds <int>    Microseconds ahead of render to trigger camera (default 22000)." << std::endl;
   std::cerr << "  --lockRotation                      Lock the rotation of the viewer to the initial helicopter pose." << std::endl;
+  std::cerr << "  --disableLatencyCompensation        Disable latency compensation." << std::endl;
 };
 
 int main(int argc, char** argv)
@@ -846,6 +847,7 @@ int main(int argc, char** argv)
   std::string dumpTimingFileName; ///< The base name for the timing files.
   unsigned triggerAheadMicroseconds = 22000; ///< Microseconds ahead of render to trigger camera.
   bool lockRotation = false;      ///< Lock the rotation of the viewer to the initial helicopter pose.
+  bool disableLatencyCompensation = false; ///< Disable latency compensation.
   size_t realParams = 0;          ///< The number of non-flag parameters we've seen.
 
   // Parse the command line arguments, with the first non-flag argument being the
@@ -948,6 +950,8 @@ int main(int argc, char** argv)
       triggerAheadMicroseconds = std::stoi(argv[i]);
     } else if (std::string("--lockRotation") == argv[i]) {
       lockRotation = true;
+    } else if (std::string("--disableLatencyCompensation") == argv[i]) {
+      disableLatencyCompensation = true;
     } else if (argv[i][0] == '-') {
       usage(argv[0]);
       return 1;
@@ -974,7 +978,8 @@ int main(int argc, char** argv)
     if (lockRotation) {
       poseAdjusterCoordinates = INITIAL_ORIENTATION;
     }
-    std::shared_ptr<PoseAdjuster> poseAdjuster = std::make_shared<PoseAdjuster>(2000, poseAdjusterCoordinates);
+    std::shared_ptr<PoseAdjuster> poseAdjuster = std::make_shared<PoseAdjuster>(2000, poseAdjusterCoordinates,
+      disableLatencyCompensation);
 
     // Open a client, specifying the IP address to listen on.
     std::shared_ptr<CoreClient> client = std::make_shared<CoreClient>(ip_address);

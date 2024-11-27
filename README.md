@@ -99,6 +99,8 @@ following optional arguments:
   camera when connected to a live stream, default 22000.
 - **--lockRotation** Lock the rotation of the camera to the helicopter's initial orientation.  This
   should help to reduce simulator sickness due to the camera moving in a way that the viewer is not.
+- **--disableLatencyCompensation** Do not adjust the latency of the camera stream to match the helicopter
+  motion.  This can be used to highlight the effect of latency compensation by turning it off.
 
 For example, to run the program on interface 10.10.10.22 with two windows, one full-screen on
 display 1 and the other having default parameters with both using different joysticks,
