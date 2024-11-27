@@ -1084,9 +1084,9 @@ int main(int argc, char** argv)
     }
 
     // Find the trigger for the first camera, which we will use to synchronize to the display.  We assume that
-    // they are all using the same trigger.
+    // they are all using the same trigger.  We don't send triggers when we replay.
     uint8_t triggerID = 0;
-    if (cameras.size() > 0) {
+    if (cameras.size() > 0 && replayStreamID == 0) {
       triggerID = cameras[0].trigger;
     }
 

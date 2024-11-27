@@ -915,6 +915,7 @@ void CompositeCameras::RenderView(asdp::Time scanOutTime, const float* modelView
     /// To handle depth-based velocity changes, this must include adjusting the model
     /// matrix within the vertex shader to support translation and rotation based on the
     /// scanning time (Y texture coordinate?).
+    /// NOTE: When latency compensation is disabled, this should also be disabled.
 
     // Set the model-view-projection matrix for this camera including the appropriate shift
     glUniformMatrix4fv(m_modelViewProjectionUniformId, 1, GL_FALSE, adjustedMVP);

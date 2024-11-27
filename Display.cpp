@@ -127,7 +127,7 @@ std::string Display::GetStatus() const
 
 bool Display::TriggerCameras(std::chrono::steady_clock::time_point when)
 {
-  if ((m_client == nullptr) || (m_timer == nullptr)) {
+  if ((m_client == nullptr) || (m_timer == nullptr) || (m_triggerID == 0)) {
     // No client or timer, so we can't trigger the cameras.
     return true;
   }

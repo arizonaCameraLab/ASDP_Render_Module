@@ -42,7 +42,8 @@ namespace asdp {
       /// Composite passed in to generate the textured geometry.
       /// @param client The CoreClient used to communicate with the Core to cause software triggers,
       /// a null pointer for none.
-      /// @param triggerID The ID of the trigger to use to trigger the cameras, 1 or higher.
+      /// @param triggerID The ID of the trigger to use to trigger the cameras, 1 or higher.  If set to 0,
+      /// no triggers will be sent to the cameras.
       /// @param triggerAheadMicroseconds The offset in microseconds to subtract from the time of frame swapping.
       /// This is to ensure that the frames make it all the way through the Composite object before being needed.
       /// It is expected to be read from a configuration file and tuned for the specific hardware and software.
