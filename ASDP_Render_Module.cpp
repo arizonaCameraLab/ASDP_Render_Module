@@ -49,7 +49,7 @@ using namespace asdp::render;
 using json = nlohmann::json;
 using json = nlohmann::json;
 
-static std::string VERSION = "2.10.0";
+static std::string VERSION = "2.11.0";
 
 /// @brief The path to the configuration file. Defined in the CMakeLists file.
 std::filesystem::path g_dirPath = CONFIG_FILE_PATH;
@@ -1251,19 +1251,26 @@ int main(int argc, char** argv)
         std::cerr << "Failed to get timer: " << ErrorMessage(status) << std::endl;
         return 22;
       }
+      uint32_t renderOffsetMicroseconds = 0;
+      if (replayStreamID != 0) {
+        renderOffsetMicroseconds = 1000000 / displayInfos[i].fps;
+      }
       std::shared_ptr<Composite> composite = std::make_shared<CompositeCameras>(
-        visibleCameras, toneMapTexture, poseAdjuster);
+        visibleCameras, toneMapTexture, poseAdjuster, renderOffsetMicroseconds,
+        Time(0, 1000000 / displayInfos[i].fps), (i == 0) ? (&g_timingInfo) : nullptr);
 
+      // Only time the first listed display, to avoid race conditions
       if (displayInfos[i].useOpenXR) {
         displays.push_back(std::make_shared<DisplayOpenXR>(composite, displayTexture.get(),
-          client, triggerID, triggerAheadMicroseconds, 2500, 1, handlers, nullptr, &g_timingInfo));
+          client, triggerID, triggerAheadMicroseconds, 2500, 1, handlers, nullptr,
+          (i == 0) ? (&g_timingInfo) : nullptr));
       } else {
         displays.push_back(std::make_shared<DisplayWindow>("ASDP Render Module " + std::to_string(i),
           composite, client, triggerID, triggerAheadMicroseconds, displayInfos[i].fps, 2500,
           displayInfos[i].width, displayInfos[i].height,
           displayInfos[i].hFOV, displayInfos[i].joystick, displayTexture.get(),
           displayInfos[i].fullScreen, displayInfos[i].fullScreenDisplay, false, handlers, nullptr,
-          &g_timingInfo));
+          (i == 0) ? (&g_timingInfo) : nullptr));
       }
       if (displays.back()->GetStatus() != "") {
         std::cerr << "Error constructing Display " << i << ": " << displays.back()->GetStatus() << std::endl;
@@ -1582,7 +1589,8 @@ int main(int argc, char** argv)
       dumpTimingFile << "Render start,Render submit";
       for (size_t i = 0; i < g_timingInfo.cameras.size(); i++) {
         dumpTimingFile << ",Camera " << i+1 << " frame begin,Camera " << i+1
-          << " frame end,Camera " << i+1 << " texture complete";
+          << " frame end,Camera " << i+1 << " texture complete,Camera " << i+1
+          << " center time seconds, Camera " << i+1 << " center time microseconds";
       }
       dumpTimingFile << std::endl;
       dumpTimingFile << std::setprecision(20);
@@ -1608,6 +1616,14 @@ int main(int argc, char** argv)
           if (i < g_timingInfo.cameras[j].textureTimes.size()) {
             dumpTimingFile << TimeIntervalToStringMilliseconds(g_timingInfo.cameras[j].textureTimes[i] - g_timingInfo.startTime);
           }
+          if (i < g_timingInfo.cameras[j].centerRenderTimes.size()) {
+            dumpTimingFile << ",";
+            dumpTimingFile << std::to_string(g_timingInfo.cameras[j].centerRenderTimes[i].seconds);
+            dumpTimingFile << ",";
+            dumpTimingFile << std::to_string(g_timingInfo.cameras[j].centerRenderTimes[i].microseconds);
+          } else {
+            dumpTimingFile << ",,";
+          }
         }
         dumpTimingFile << std::endl;
       }
@@ -1621,7 +1637,7 @@ int main(int argc, char** argv)
       intervalTimingFile << "Render start interval,Render submit interval";
       for (size_t i = 0; i < g_timingInfo.cameras.size(); i++) {
         intervalTimingFile << ",Camera " << i+1 << " frame begin interval, " << i+1 << " frame end interval,Camera"
-          << i+1 << " texture complete interval";
+          << i+1 << " texture complete interval,Camera " << i+1 << " center time interval";
       }
       intervalTimingFile << std::endl;
       intervalTimingFile << std::setprecision(20);
@@ -1647,6 +1663,12 @@ int main(int argc, char** argv)
           if (i < g_timingInfo.cameras[j].textureTimes.size()) {
             intervalTimingFile << TimeIntervalToStringMilliseconds(g_timingInfo.cameras[j].textureTimes[i] - g_timingInfo.cameras[j].textureTimes[i - 1]);
           }
+          intervalTimingFile << ",";
+          if (i < g_timingInfo.cameras[j].centerRenderTimes.size()) {
+            Time diff = g_timingInfo.cameras[j].centerRenderTimes[i] - g_timingInfo.cameras[j].centerRenderTimes[i - 1];
+            double diffms = diff.seconds * 1000.0 + diff.microseconds / 1000.0;
+            intervalTimingFile << std::to_string(diffms);
+          }
         }
         intervalTimingFile << std::endl;
       }
@@ -1657,7 +1679,9 @@ int main(int argc, char** argv)
       std::string summaryTimingFileName = dumpTimingFileName + "_summary.csv";
       std::ofstream summaryTimingFile(summaryTimingFileName);
       std::cout << "Dumping summary timing information to " << summaryTimingFileName << std::endl;
-      summaryTimingFile << "Render start to submit,Render start interval,Min camera end to render,Max camera end to render,Min camera texture to render,Max camera texture to render" << std::endl;
+      summaryTimingFile << "Render start to submit,Render start interval,Min camera end to render"
+        << ",Max camera end to render, Min camera texture to render, Max camera texture to render"
+        << ",Min center interval,Max center interval" << std::endl;
       summaryTimingFile << std::setprecision(20);
       for (size_t i = 1; i < g_timingInfo.renderStartTimes.size(); i++) {
         if (i < g_timingInfo.renderSubmitTimes.size()) {
@@ -1693,11 +1717,30 @@ int main(int argc, char** argv)
           maxTime = std::max(maxTime, t);
         }
         if (minTime == std::chrono::steady_clock::time_point::min()) {
-          summaryTimingFile << "," << std::endl;
+          summaryTimingFile << "," << ",";
         } else {
           summaryTimingFile << TimeIntervalToStringMilliseconds(g_timingInfo.renderStartTimes[i] - maxTime) << ",";
-          summaryTimingFile << TimeIntervalToStringMilliseconds(g_timingInfo.renderStartTimes[i] - minTime) << std::endl;
+          summaryTimingFile << TimeIntervalToStringMilliseconds(g_timingInfo.renderStartTimes[i] - minTime) << ",";
         }
+
+        // Find the minimum and maximum center render intervals.
+        Time minCenterInterval = { 1000000, 0 };
+        Time maxCenterInterval = { 0, 0 };
+        for (size_t j = 0; j < g_timingInfo.cameras.size(); j++) {
+          if (g_timingInfo.cameras[j].centerRenderTimes.size() > i) {
+            Time diff = g_timingInfo.cameras[j].centerRenderTimes[i] - g_timingInfo.cameras[j].centerRenderTimes[i - 1];
+            if (diff < minCenterInterval) {
+              minCenterInterval = diff;
+            }
+            if (diff > maxCenterInterval) {
+              maxCenterInterval = diff;
+            }
+          }
+        }
+        summaryTimingFile << std::to_string(minCenterInterval.seconds * 1000.0 + minCenterInterval.microseconds / 1000.0);
+        summaryTimingFile << ",";
+        summaryTimingFile << std::to_string(maxCenterInterval.seconds * 1000.0 + maxCenterInterval.microseconds / 1000.0);
+        summaryTimingFile << std::endl;
       }
       summaryTimingFile.close();
     }

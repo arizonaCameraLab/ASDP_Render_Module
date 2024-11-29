@@ -27,6 +27,7 @@
 #include <ImageQueue.h>
 #include <Distortion.h>
 #include <PoseAdjuster.h>
+#include <RenderTimingInfo.h>
 
 namespace asdp {
   namespace render {
@@ -191,8 +192,16 @@ namespace asdp {
       /// @param cameraRenderInfo The configuration of the cameras needed to generate textured geometry.
       /// @param toneMapTexture The OpenGL texture ID of the tone map to use.
       /// @param poseAdjuster A shared pointer to the pose adjuster to use for transforming points.
+      /// @param renderOffsetMicroseconds The offset in microseconds to render the images at.  This is used
+      /// for the replay case to change the algorithm so that it deals with the fact that the image
+      /// generation cannot be synchronized with rendering.  This specifies how far back (probably one
+      /// frame time) for both frame selection and pose adjustment to mimic the behavior of a live
+      /// capture.
+      /// @param frameInterval The interval between frames to use for replay mode.
+      /// @param renderTimingInfo A pointer to the render timing information to fill in.
       CompositeCameras(std::vector<CameraRenderInfo>& cameraRenderInfo, GLuint toneMapTexture,
-        std::shared_ptr<PoseAdjuster> poseAdjuster);
+        std::shared_ptr<PoseAdjuster> poseAdjuster, uint32_t renderOffsetMicroseconds = 0,
+        Time frameInterval = Time(), RenderTimingInfo *renderTimingInfo = nullptr);
 
       /// @brief Destructor
       ~CompositeCameras();
@@ -202,6 +211,12 @@ namespace asdp {
       std::vector<CameraRenderInfo> m_cameraRenderInfos;
       GLuint m_toneMapTexture; ///< The OpenGL texture ID of the tone map to use.
       std::shared_ptr<PoseAdjuster> m_poseAdjuster; ///< A shared pointer to the pose adjuster to use for transforming points.
+
+      // Parameters used to handle replay mode, keeping a consistent interval between frame selection
+      uint32_t m_renderOffsetMicroseconds;  ///< The offset in microseconds to render the images at for replay mode.
+      Time m_lastFrameTime;                 ///< The average time of the last frames used.
+      Time m_frameInterval;                 ///< The interval between frames to use for replay mode.
+      RenderTimingInfo *m_renderTimingInfo; ///< A pointer to the render timing information to fill in.
 
       /// @brief The OpenGL program ID.
       GLuint m_programId;

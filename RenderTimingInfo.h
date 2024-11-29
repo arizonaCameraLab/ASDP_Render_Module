@@ -11,6 +11,7 @@
  */
 
 #pragma once
+#include <ASDP_Core_API.h>
 
 namespace asdp {
   namespace render {
@@ -19,9 +20,11 @@ namespace asdp {
     struct RenderTimingInfo
     {
       struct camera {
-        std::vector<std::chrono::steady_clock::time_point> frameBeginTimes; ///< The times for the begin frame message receipts.
-        std::vector<std::chrono::steady_clock::time_point> frameEndTimes;   ///< The times for the end frame message receipts.
-        std::vector<std::chrono::steady_clock::time_point> textureTimes;    ///< The times for texture fill complete.
+        std::vector<std::chrono::steady_clock::time_point> frameBeginTimes;   ///< The times for the begin frame message receipts.
+        std::vector<std::chrono::steady_clock::time_point> frameEndTimes;     ///< The times for the end frame message receipts.
+        std::vector<std::chrono::steady_clock::time_point> textureTimes;      ///< The times for texture fill complete.
+        /// The center time for each of the images used in a render frame.
+        std::vector<Time> centerRenderTimes;
       };
       std::vector<camera> cameras;  ///< The timing information for each camera.
 

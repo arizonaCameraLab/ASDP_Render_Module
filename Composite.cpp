@@ -601,11 +601,15 @@ R"(#version 330 core
    })";
 
 CompositeCameras::CompositeCameras(std::vector<CameraRenderInfo>& cameraRenderInfo, GLuint toneMaptexture,
-  std::shared_ptr<PoseAdjuster> poseAdjuster)
+  std::shared_ptr<PoseAdjuster> poseAdjuster, uint32_t renderOffsetMicroseconds, Time frameInterval,
+  RenderTimingInfo *renderTimingInfo)
   : Composite()
   , m_cameraRenderInfos(cameraRenderInfo)
   , m_toneMapTexture(toneMaptexture)
   , m_poseAdjuster(poseAdjuster)
+  , m_renderOffsetMicroseconds(renderOffsetMicroseconds)
+  , m_frameInterval(frameInterval)
+  , m_renderTimingInfo(renderTimingInfo)
   , m_programId(0)
   , m_modelViewProjectionUniformId(0)
   , m_imageTextureId(0)
@@ -821,14 +825,9 @@ void CompositeCameras::SetupRenderFrame(asdp::Time scanOutTime)
   glUseProgram(m_programId);
   glDisable(GL_CULL_FACE);
 
-  // To ensure that the set of images from all cameras are synchronized, we pull the first
-  // two images from each queue and then select a set of consistent ones.  We do this by finding
-  // the time of the oldest image among the first (newest) image from all cameras and then
-  // selecting from each pair the one whose time is closest to the selected time.  We return
-  // the unused images to their queues and push the selected images into the m_images vector.
-  // There will be one entry per camera with the same vector index as the cameraRenderInfo.
 
-  // Get the image pairs
+  // To ensure that the set of images from all cameras are synchronized, we pull the first
+  // two images from each queue and then select a set of consistent ones.
   std::vector< std::list< std::shared_ptr<ImageData> > > images;
   for (auto const& cameraRenderInfo : m_cameraRenderInfos) {
     images.push_back(cameraRenderInfo.m_imageQueue->LockNewestImages(2));
@@ -838,19 +837,35 @@ void CompositeCameras::SetupRenderFrame(asdp::Time scanOutTime)
     }
   }
 
-  // Find the oldest time among the newest image from each pair.
-  asdp::Time oldestTime = images[0].front()->imageCenterTime;
-  for (size_t i = 1; i < images.size(); i++) {
-    if (images[i].front()->imageCenterTime < oldestTime) {
-      oldestTime = images[i].front()->imageCenterTime;
+  // Select the desired time, which is the one that will have consistent images across all cameras
+  // for this frame, and consistent gaps between frames from frame to frame during replay (for live,
+  // the synchronization of the camera triggers with the render time assures temporal consistency).
+  asdp::Time desiredTime;
+  if (m_renderOffsetMicroseconds == 0) {
+    // Live: select by finding the time of the oldest image among the first (newest) image from
+    // all cameras and then selecting from each pair the one whose time is closest to the
+    // selected time.
+    asdp::Time desiredTime = images[0].front()->imageCenterTime;
+    for (size_t i = 1; i < images.size(); i++) {
+      if (images[i].front()->imageCenterTime < desiredTime) {
+        desiredTime = images[i].front()->imageCenterTime;
+      }
+    }
+  } else {
+    // Stored: Select by adding the frame interval to the last desired time and then verifying that
+    // it is close enough to the requested offset from the scan-out time, replacing it if not.
+    desiredTime = m_lastFrameTime + m_frameInterval;
+    double diff = TimeDiffMagnitude(desiredTime, scanOutTime);
+    if (diff > m_renderOffsetMicroseconds * 1.0e-6) {
+      desiredTime = scanOutTime - asdp::Time(0, m_renderOffsetMicroseconds);
     }
   }
 
-  // Find the image from each pair that is closest to the oldest time.  Push it into the m_images
+  // Find the image from each pair that is closest to the desired time.  Push it into the m_images
   // array and return the other image to the queue.
   for (size_t i = 0; i < images.size(); i++) {
-    double diff0 = TimeDiffMagnitude(images[i].front()->imageCenterTime, oldestTime);
-    double diff1 = TimeDiffMagnitude(images[i].back()->imageCenterTime, oldestTime);
+    double diff0 = TimeDiffMagnitude(images[i].front()->imageCenterTime, desiredTime);
+    double diff1 = TimeDiffMagnitude(images[i].back()->imageCenterTime, desiredTime);
 
     if (diff0 < diff1) {
       m_images.push_back(images[i].front());
@@ -860,6 +875,22 @@ void CompositeCameras::SetupRenderFrame(asdp::Time scanOutTime)
       m_cameraRenderInfos[i].m_imageQueue->UnlockImage(images[i].front());
     }
   }
+
+  // If we have a RenderTimingInfo object, fill in the times for each camera.
+  if (m_renderTimingInfo != nullptr) {
+    for (size_t i = 0; i < m_images.size(); i++) {
+      m_renderTimingInfo->cameras[i].centerRenderTimes.push_back(m_images[i]->imageCenterTime);
+    }
+  }
+
+  // Find the average of all selected image times to use for estimating future frame times.
+  double sumSeconds = 0.0;
+  for (size_t i = 0; i < m_images.size(); i++) {
+    sumSeconds += m_images[i]->imageCenterTime.seconds + m_images[i]->imageCenterTime.microseconds / 1e6;
+  }
+  double averageSeconds = sumSeconds / m_images.size();
+  m_lastFrameTime = asdp::Time(static_cast<int>(averageSeconds),
+    static_cast<int>((averageSeconds - static_cast<int>(averageSeconds)) * 1e6));
 }
 
 void CompositeCameras::RenderView(asdp::Time scanOutTime, const float* modelViewProjection)
@@ -896,7 +927,8 @@ void CompositeCameras::RenderView(asdp::Time scanOutTime, const float* modelView
     // The camera points are in the helicopter coordinate system, so we need to adjust
     // from where they are (canonical position at render time) to where they were at
     // image acquisition.
-    glm::dmat4 shiftPoints = m_poseAdjuster->GetTransform(scanOutTime, m_images[i]->imageCenterTime);
+    glm::dmat4 shiftPoints = m_poseAdjuster->GetTransform(scanOutTime - Time(0, m_renderOffsetMicroseconds),
+      m_images[i]->imageCenterTime);
 
     // Apply the shift in the local helicopter coordinate system within the model-view-projection
     // matrix (which is really a view-projection matrix).
