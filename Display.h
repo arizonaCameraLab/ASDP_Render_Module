@@ -174,6 +174,7 @@ protected:
       /// @param handlers Event handlers to use, if any.
       /// @param userData User data to pass to the event handlers.
       /// @param timingInfo Timing information on display operations should be stored here, if it is not null.
+      /// @param replaying True if the display is replaying a recording, false if not.
       DisplayWindow(std::string windowName, std::shared_ptr<Composite> composite,
         std::shared_ptr<CoreClient> client, uint8_t triggerID, uint32_t triggerAheadMicroseconds,
         float fps = 60, uint32_t renderAheadMicroseconds = 2500,
@@ -181,7 +182,7 @@ protected:
         std::string joystick = "", Display *sharedWindow = nullptr,
         bool fullScreen = false, int desiredDisplay = 0, bool hidden = false,
         std::shared_ptr<EventHandlers> handlers = nullptr, void* userData = nullptr,
-        RenderTimingInfo* timingInfo = nullptr);
+        RenderTimingInfo* timingInfo = nullptr, bool replaying = false);
 
       void SetNowPlaying(bool nowPlaying) override;
 
@@ -190,6 +191,9 @@ protected:
     private:
       /// Where to store render timing info, if not nullptr.
       RenderTimingInfo* m_timingInfo;
+
+      /// Are we replaying?
+      bool m_replaying;
 
       /// Pointer to time when we started pausing, nullptr if not pausing.
       std::unique_ptr<Time> m_pauseTime;
@@ -266,11 +270,12 @@ protected:
       /// @param handlers Event handlers to use, if any.
       /// @param userData User data to pass to the event handlers.
       /// @param timingInfo Timing information on display operations should be stored here, if it is not null.
+      /// @param replaying True if the display is replaying a recording, false if not.
       DisplayOpenXR(std::shared_ptr<Composite> composite, Display* sharedWindow,
         std::shared_ptr<CoreClient> client, uint8_t triggerID, uint32_t triggerAheadMicroseconds,
         uint32_t renderAheadMicroseconds = 2500, int verbosity = 0,
         std::shared_ptr<EventHandlers> handlers = nullptr, void* userData = nullptr,
-        RenderTimingInfo* timingInfo = nullptr);
+        RenderTimingInfo* timingInfo = nullptr, bool replaying = false);
 
       void SetNowPlaying(bool nowPlaying) override;
 
@@ -279,6 +284,9 @@ protected:
     private:
       /// Where to store render timing info, if not nullptr.
       RenderTimingInfo* m_timingInfo;
+
+      /// Are we replaying?
+      bool m_replaying;
 
       /// @brief Method to implement the display thread.
       void DisplayThread(Display* sharedWindow, uint32_t renderAheadMicroseconds);

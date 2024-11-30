@@ -232,9 +232,10 @@ DisplayWindow::DisplayWindow(std::string windowName, std::shared_ptr<Composite> 
     std::string joystick, Display* sharedWindow,
     bool fullScreen, int desiredDisplay, bool hidden,
     std::shared_ptr<EventHandlers> handlers, void* userData,
-    RenderTimingInfo* timingInfo)
+    RenderTimingInfo* timingInfo, bool replaying)
   : Display(composite, client, triggerID, triggerAheadMicroseconds, handlers, userData)
   , m_timingInfo(timingInfo)
+  , m_replaying(replaying)
   , m_impl(new DisplayWindowImpl)
 
 {
@@ -421,9 +422,11 @@ void DisplayWindow::DisplayThread(std::string windowName,
     double middleOfNextFrameOffset = frameTime / 2.0 + renderAheadMicroseconds / 1e6;
     Time renderTime;
     m_timer->GetCoreTime(renderTime, std::chrono::steady_clock::now());
-    uint32_t seconds = static_cast<uint32_t>(middleOfNextFrameOffset);
-    uint32_t microseconds = (middleOfNextFrameOffset - seconds) * 1e6;
-    renderTime += Time(seconds, microseconds);
+    if (!m_replaying) {
+      uint32_t seconds = static_cast<uint32_t>(middleOfNextFrameOffset);
+      uint32_t microseconds = (middleOfNextFrameOffset - seconds) * 1e6;
+      renderTime += Time(seconds, microseconds);
+    }
 
     // Grab the context mutex for the duration of the loop.  Once we have it, we know
     // that the context is not active in another thread.
@@ -1626,50 +1629,53 @@ bool asdp::render::DisplayOpenXR::DisplayOpenXRImpl::OpenXRRenderLayer(XrTime pr
   if (status != OKAY) {
     return false;
   }
+  if (!m_display->m_replaying) {
 #ifdef _WIN32
-  // Check that the extension is available before calling it.
-  // then figure out how far into the future we are and add that to the present time.
-  if (m_xrConvertTimeToWin32PerformanceCounterKHR) {
-    LARGE_INTEGER counterNow;
-    if (!QueryPerformanceCounter(&counterNow)) {
-      std::cerr << "OpenXRRenderLayer(): Failed to read performance counter" << std::endl;
-      return false;
-    }
-    LARGE_INTEGER counterThen;
-    XrResult result = m_xrConvertTimeToWin32PerformanceCounterKHR(m_instance, predictedDisplayTime, &counterThen);
-    if (result != XR_SUCCESS) {
-      std::cerr << "OpenXRRenderLayer(): Failed to convert OpenXR time to Windows performance counter: " << result << std::endl;
-      return false;
-    }
-    size_t nanoseconds = 0;
-    if (counterThen.QuadPart > counterNow.QuadPart) {
-      LONGLONG diff = counterThen.QuadPart - counterNow.QuadPart;
-      LARGE_INTEGER frequency;
-      if (!QueryPerformanceFrequency(&frequency)) {
-        std::cerr << "OpenXRRenderLayer(): Failed to read performance frequency" << std::endl;
+    // Check that the extension is available before calling it.
+    // then figure out how far into the future we are and add that to the present time.
+    if (m_xrConvertTimeToWin32PerformanceCounterKHR) {
+      LARGE_INTEGER counterNow;
+      if (!QueryPerformanceCounter(&counterNow)) {
+        std::cerr << "OpenXRRenderLayer(): Failed to read performance counter" << std::endl;
         return false;
       }
-      double seconds = static_cast<double>(diff) / static_cast<double>(frequency.QuadPart);
-      Time dt;
-      dt.seconds = static_cast<uint64_t>(seconds);
-      dt.microseconds = static_cast<uint32_t>((seconds - dt.seconds) * 1e6);
-      // On the HTC Vive OpenXR implementation, this returns a time many seconds into the future, it is probably returning
-      // the time since the epoch rather than the time since the start of the performance timer (boot).
-      if (dt.seconds == 0) {
-        time += dt;
-        //std::cout << "XXX dt = " << dt.seconds << "s " << dt.microseconds << "us" << std::endl;
-      } else {
-        static bool warned = false;
-        if (!warned) {
-          std::cerr << "OpenXRRenderLayer(): Time prediction more than a second ahead, probably a bug in the OpenXR runtime; not predicting." << std::endl;
-          warned = true;
+      LARGE_INTEGER counterThen;
+      XrResult result = m_xrConvertTimeToWin32PerformanceCounterKHR(m_instance, predictedDisplayTime, &counterThen);
+      if (result != XR_SUCCESS) {
+        std::cerr << "OpenXRRenderLayer(): Failed to convert OpenXR time to Windows performance counter: " << result << std::endl;
+        return false;
+      }
+      size_t nanoseconds = 0;
+      if (counterThen.QuadPart > counterNow.QuadPart) {
+        LONGLONG diff = counterThen.QuadPart - counterNow.QuadPart;
+        LARGE_INTEGER frequency;
+        if (!QueryPerformanceFrequency(&frequency)) {
+          std::cerr << "OpenXRRenderLayer(): Failed to read performance frequency" << std::endl;
+          return false;
+        }
+        double seconds = static_cast<double>(diff) / static_cast<double>(frequency.QuadPart);
+        Time dt;
+        dt.seconds = static_cast<uint64_t>(seconds);
+        dt.microseconds = static_cast<uint32_t>((seconds - dt.seconds) * 1e6);
+        // On the HTC Vive OpenXR implementation, this returns a time many seconds into the future, it is probably returning
+        // the time since the epoch rather than the time since the start of the performance timer (boot).
+        if (dt.seconds == 0) {
+          time += dt;
+          //std::cout << "XXX dt = " << dt.seconds << "s " << dt.microseconds << "us" << std::endl;
+        }
+        else {
+          static bool warned = false;
+          if (!warned) {
+            std::cerr << "OpenXRRenderLayer(): Time prediction more than a second ahead, probably a bug in the OpenXR runtime; not predicting." << std::endl;
+            warned = true;
+          }
         }
       }
-    }
-  }
+        }
 #else
-  std::cerr << "Time prediction not implemented for this platform" << std::endl;
+    std::cerr << "Time prediction not implemented for this platform" << std::endl;
 #endif
+  }
 
   // Trigger the cameras, saying that we need the data now. The base class will handle offsetting
   // by the specified transmission/processing time as passed to its constructor by the client.
@@ -1823,9 +1829,10 @@ DisplayOpenXR::DisplayOpenXR(std::shared_ptr<Composite> composite, Display* shar
     std::shared_ptr<CoreClient> client, uint8_t triggerID, uint32_t triggerAheadMicroseconds,
     uint32_t renderAheadMicroseconds, int verbosity,
     std::shared_ptr<EventHandlers> handlers, void* userData,
-    RenderTimingInfo* timingInfo)
+    RenderTimingInfo* timingInfo, bool replaying)
   : Display(composite, client, triggerID, triggerAheadMicroseconds, handlers, userData)
   , m_timingInfo(timingInfo)
+  , m_replaying(replaying)
 {
   m_impl = std::make_unique<DisplayOpenXRImpl>(this);
   m_impl->m_verbosity = verbosity;
@@ -1928,8 +1935,10 @@ DisplayOpenXR::DisplayOpenXR(std::shared_ptr<Composite> composite, Display* shar
     std::shared_ptr<CoreClient> client, uint8_t triggerID, uint32_t triggerAheadMicroseconds,
     uint32_t renderAheadMicroseconds, int verbosity,
     std::shared_ptr<EventHandlers> handlers, void* userData,
-    RenderTimingInfo* timingInfo)
+    RenderTimingInfo* timingInfo, bool replaying)
   : Display(composite, client, triggerID, triggerAheadMicroseconds, handlers, userData)
+  , m_timingInfo(timingInfo)
+  , m_replaying(replaying)
 {
   m_status = "OpenXR is not compiled in.";
 }

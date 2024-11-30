@@ -1263,14 +1263,14 @@ int main(int argc, char** argv)
       if (displayInfos[i].useOpenXR) {
         displays.push_back(std::make_shared<DisplayOpenXR>(composite, displayTexture.get(),
           client, triggerID, triggerAheadMicroseconds, 2500, 1, handlers, nullptr,
-          (i == 0) ? (&g_timingInfo) : nullptr));
+          (i == 0) ? (&g_timingInfo) : nullptr, replayStreamID != 0));
       } else {
         displays.push_back(std::make_shared<DisplayWindow>("ASDP Render Module " + std::to_string(i),
           composite, client, triggerID, triggerAheadMicroseconds, displayInfos[i].fps, 2500,
           displayInfos[i].width, displayInfos[i].height,
           displayInfos[i].hFOV, displayInfos[i].joystick, displayTexture.get(),
           displayInfos[i].fullScreen, displayInfos[i].fullScreenDisplay, false, handlers, nullptr,
-          (i == 0) ? (&g_timingInfo) : nullptr));
+          (i == 0) ? (&g_timingInfo) : nullptr, replayStreamID != 0));
       }
       if (displays.back()->GetStatus() != "") {
         std::cerr << "Error constructing Display " << i << ": " << displays.back()->GetStatus() << std::endl;
