@@ -853,11 +853,13 @@ void CompositeCameras::SetupRenderFrame(asdp::Time scanOutTime)
     }
   } else {
     // Stored: Select by adding the frame interval to the last desired time and then verifying that
-    // it is close enough to the requested offset from the scan-out time, replacing it if not.
+    // it is close enough to the requested offset from the scan-out time (within a frame time),
+    // replacing it if not.
     desiredTime = m_lastFrameTime + m_frameInterval;
-    double diff = TimeDiffMagnitude(desiredTime, scanOutTime);
-    if (diff > m_renderOffsetMicroseconds * 1.0e-6) {
-      desiredTime = scanOutTime - asdp::Time(0, m_renderOffsetMicroseconds);
+    Time requestedTime = scanOutTime - asdp::Time(0, m_renderOffsetMicroseconds);
+    double diff = TimeDiffMagnitude(desiredTime, requestedTime);
+    if (diff > m_frameInterval.seconds * m_frameInterval.microseconds * 1e-6) {
+      desiredTime = requestedTime;
     }
   }
 
