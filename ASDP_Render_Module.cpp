@@ -1255,7 +1255,7 @@ int main(int argc, char** argv)
       if (replayStreamID != 0) {
 	// Set up to run 2 frames behind the current time, which empirically was much
 	// smoother than a single frame behind.
-        renderOffsetMicroseconds = 2000000 / displayInfos[i].fps;
+        renderOffsetMicroseconds = 1.5 * (1000000 / displayInfos[i].fps);
       }
       std::shared_ptr<Composite> composite = std::make_shared<CompositeCameras>(
         visibleCameras, toneMapTexture, poseAdjuster, renderOffsetMicroseconds,
