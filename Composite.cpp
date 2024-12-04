@@ -717,6 +717,13 @@ bool CompositeCameras::SetupRendering()
   if (m_viewProjectionUniformId == -1 || m_poseAdjustUniformId == -1 || m_fVelocityUniformID == -1 ||
     m_fAxisUniformID == -1 || m_fAngleUniformID == -1 || m_imageTextureId == -1 || m_toneMapTextureId == -1) {
     std::cerr << "CompositeCameras::SetupRendering(): Failed to get uniform IDs" << std::endl;
+    std::cerr << "  viewProjection: " << m_viewProjectionUniformId << std::endl;
+    std::cerr << "  poseAdjust: " << m_poseAdjustUniformId << std::endl;
+    std::cerr << "  fVelocity: " << m_fVelocityUniformID << std::endl;
+    std::cerr << "  fAxis: " << m_fAxisUniformID << std::endl;
+    std::cerr << "  fAngle: " << m_fAngleUniformID << std::endl;
+    std::cerr << "  imageTexture: " << m_imageTextureId << std::endl;
+    std::cerr << "  toneMapTexture: " << m_toneMapTextureId << std::endl;
     return false;
   }
 
