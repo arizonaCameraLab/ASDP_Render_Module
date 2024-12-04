@@ -619,7 +619,7 @@ R"(#version 330 core
       // Determine the time within a frame that this vertex is being rendered.
       // The center vertex (Y texture coordinate 0.5) is at time 0, the top at -0.5, the bottom at 0.5.
       // Because the Y texture coordinate is 0 at the top, we need to invert it.
-      float time = 1.0 - (aTexCoord.y - 0.5);
+      float time = -(aTexCoord.y - 0.5);
 
       // Construct a rotation matrix for the camera's rotation around the axis during a frame time.
       mat4 delta = axisAngleToMatrix(fAxis, fAngle * time);
@@ -1009,7 +1009,7 @@ void CompositeCameras::RenderView(asdp::Time scanOutTime, const float* viewProje
                                          velocity.vel[2] * frameTime };
 
     std::array<GLfloat, 3> fAxis = { velocity.axis[0], velocity.axis[1], velocity.axis[2] };
-    GLfloat fAngle = velocity.angleRad * frameTime;;
+    GLfloat fAngle = velocity.angleRad * frameTime;
 
     // Set the matrices and uniform parameters for this camera
     glUniformMatrix4fv(m_viewProjectionUniformId, 1, GL_FALSE, viewProjection);
