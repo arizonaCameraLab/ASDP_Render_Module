@@ -198,7 +198,7 @@ namespace asdp {
       /// generation cannot be synchronized with rendering.  This specifies how far back (probably one
       /// frame time) for both frame selection and pose adjustment to mimic the behavior of a live
       /// capture.
-      /// @param frameInterval The interval between frames to use for replay mode.
+      /// @param frameInterval The interval between frames to use for within-frame adjustment and replay mode.
       /// @param renderTimingInfo A pointer to the render timing information to fill in.
       CompositeCameras(std::vector<CameraRenderInfo>& cameraRenderInfo, GLuint toneMapTexture,
         std::shared_ptr<PoseAdjuster> poseAdjuster, uint32_t renderOffsetMicroseconds = 0,
@@ -223,11 +223,15 @@ namespace asdp {
       GLuint m_programId;
 
       /// @brief The Uniform ID of the view-projection matrix taking points from helicopter space.
-      GLuint m_viewProjectionUniformId;
+      GLint m_viewProjectionUniformId;
 
       /// @brief The Uniform ID of the poseAdjust matrix moving points to their earlier position
       /// in helicopter space.
-      GLuint m_poseAdjustUniformId;
+      GLint m_poseAdjustUniformId;
+
+      GLint m_fVelocityUniformID;    ///< The Uniform ID of the per-frame velocity in helicopter space.
+      GLint m_fAxisUniformID;        ///< The Uniform ID of the axis of rotation in helicopter space.
+      GLint m_fAngleUniformID;       ///< The Uniform ID of the per-frame angle of rotation in helicopter space.
 
       /// The identifiers for the image and tone-map textures.
       GLuint m_imageTextureId;

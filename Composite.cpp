@@ -611,25 +611,26 @@ R"(#version 330 core
    uniform mat4 poseAdjust;   ///< Moves points in helicopter space to their capture-time positions.
    // The following are for the camera rotation and translation during the frame, and they are
    // in the helicopter coordinate system.
-   uniform vec3 hfVelocity;   ///< The change in position over half a frame time from frame center
-   uniform vec3 hfAxis;       ///< The axis around which the camera is rotating during the frame
-   uniform float hfAngle;     ///< The angle of rotation around the axis during half a frame time in radians
+   uniform vec3 fVelocity;   ///< The change in position over a frame time from frame center
+   uniform vec3 fAxis;       ///< The axis around which the camera is rotating during the frame
+   uniform float fAngle;     ///< The angle of rotation around the axis during a frame time in radians
    void main()
    {
       // Determine the time within a frame that this vertex is being rendered.
       // The center vertex (Y texture coordinate 0.5) is at time 0, the top at -0.5, the bottom at 0.5.
-      float time = aTexCoord.y - 0.5;
+      // Because the Y texture coordinate is 0 at the top, we need to invert it.
+      float time = 1.0 - (aTexCoord.y - 0.5);
 
-      // Construct a rotation matrix for the camera's rotation around the axis during half a frame time.
-      mat4 delta = axisAngleToMatrix(hfAxis, hfAngle * time);
+      // Construct a rotation matrix for the camera's rotation around the axis during a frame time.
+      mat4 delta = axisAngleToMatrix(fAxis, fAngle * time);
 
       // Add the scaled velocity as a translation to the position in this matrix.
-      vec3 shift = hfVelocity * time;
+      vec3 shift = fVelocity * time;
       delta[3][0] = shift.x;
       delta[3][1] = shift.y;
       delta[3][2] = shift.z;
 
-      /// @todo The following is for speed testing only -- we need to determine the proper order of operations.
+      // Apply the matrices to the position to get the final projected position.
       gl_Position = viewProjection * delta * poseAdjust * vec4(aPos, 1.0);
       TexCoord = vec2(aTexCoord.x, aTexCoord.y);
    })";
@@ -660,6 +661,9 @@ CompositeCameras::CompositeCameras(std::vector<CameraRenderInfo>& cameraRenderIn
   , m_programId(0)
   , m_viewProjectionUniformId(0)
   , m_poseAdjustUniformId(0)
+  , m_fVelocityUniformID(0)
+  , m_fAxisUniformID(0)
+  , m_fAngleUniformID(0)
   , m_imageTextureId(0)
   , m_toneMapTextureId(0)
 {
@@ -705,8 +709,16 @@ bool CompositeCameras::SetupRendering()
   // Get the IDs for all of the uniform parameters we will want to change.
   m_viewProjectionUniformId = glGetUniformLocation(m_programId, "viewProjection");
   m_poseAdjustUniformId = glGetUniformLocation(m_programId, "poseAdjust");
+  m_fVelocityUniformID = glGetUniformLocation(m_programId, "fVelocity");
+  m_fAxisUniformID = glGetUniformLocation(m_programId, "fAxis");
+  m_fAngleUniformID = glGetUniformLocation(m_programId, "fAngle");
   m_imageTextureId = glGetUniformLocation(m_programId, "imageTexture");
   m_toneMapTextureId = glGetUniformLocation(m_programId, "toneMapTexture");
+  if (m_viewProjectionUniformId == -1 || m_poseAdjustUniformId == -1 || m_fVelocityUniformID == -1 ||
+    m_fAxisUniformID == -1 || m_fAngleUniformID == -1 || m_imageTextureId == -1 || m_toneMapTextureId == -1) {
+    std::cerr << "CompositeCameras::SetupRendering(): Failed to get uniform IDs" << std::endl;
+    return false;
+  }
 
   // Construct a Vertex Array Object for each camera that describes the positions and
   // texture coordinates along with the indices.  We'll also keep two vertex buffer objects,
@@ -752,6 +764,8 @@ void CompositeCameras::AddBufferObjects(CameraRenderInfo const& cameraRenderInfo
       // coordinates to land correctly, with the edges of the far triangles going half a pixel
       // into the bordering pixels. The range will be from slightly negative to slightly greater
       // than 1.0 for each axis, depending on the number of pixels in X and Y.
+      // @todo We need to adjust the ranges to cover (0..1) for the texture coordinates? Or do we
+      // need one less to make the scale correct?
       GLfloat u = i / fnx;
       GLfloat v = 1.0f - j / fny;
 
@@ -987,12 +1001,22 @@ void CompositeCameras::RenderView(asdp::Time scanOutTime, const float* viewProje
     }
 
     // Construct the differential shift matrix to adjust the camera points to the scan-out time.
-    /// NOTE: When latency compensation is disabled, this should also be disabled.
-    /// @todo
+    // These must all be in the helicopter coordinate system but scaled to a single frame time.
+    PoseAdjuster::VelocityEstimate velocity = m_poseAdjuster->EstimateVelocity(m_images[i]->imageCenterTime);
+    float frameTime = m_frameInterval.seconds + m_frameInterval.microseconds * 1.0e-6;
+
+    std::array<GLfloat, 3> fVelocity = { velocity.vel[0] * frameTime, velocity.vel[1] * frameTime,
+                                         velocity.vel[2] * frameTime };
+
+    std::array<GLfloat, 3> fAxis = { velocity.axis[0], velocity.axis[1], velocity.axis[2] };
+    GLfloat fAngle = velocity.angleRad * frameTime;;
 
     // Set the matrices and uniform parameters for this camera
     glUniformMatrix4fv(m_viewProjectionUniformId, 1, GL_FALSE, viewProjection);
     glUniformMatrix4fv(m_poseAdjustUniformId, 1, GL_FALSE, fShift);
+    glUniform3fv(m_fVelocityUniformID, 1, fVelocity.data());
+    glUniform3fv(m_fAxisUniformID, 1, fAxis.data());
+    glUniform1f(m_fAngleUniformID, fAngle);
 
     // Draw the camera view using its vertex buffer objects.
     glBindBuffer(GL_ARRAY_BUFFER, m_vertexBufferObjects[i]);

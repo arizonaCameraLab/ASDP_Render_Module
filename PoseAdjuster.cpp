@@ -249,6 +249,32 @@ glm::dmat4 PoseAdjuster::GetTransform(asdp::Time endTime, asdp::Time startTime) 
   return transform;
 }
 
+PoseAdjuster::VelocityEstimate PoseAdjuster::EstimateVelocity(asdp::Time time) const
+{
+  // If we are ignoring time differences, return a zero velocity.
+  if (m_ignoreTimeDifference) {
+    return VelocityEstimate();
+  }
+
+  // Get the pose at the requested time.
+  Pose pose = GetPose(time);
+
+  // The velocity is just the velocity in the pose.
+  VelocityEstimate estimate;
+  estimate.vel = { float(pose.velocity[0]), float(pose.velocity[1]), float(pose.velocity[2]) };
+
+  // The rotational velocity is the rotation in the pose over dt, scale back to seconds here.
+  estimate.angleRad = float(glm::angle(pose.angularVelocity) / pose.dt);
+  glm::vec3 axis = { 1, 0, 0 };
+  if (estimate.angleRad != 0) {
+    // If we have a non-zero angle, get the axis of rotation.  This avoids normalizing (0,0,0).
+    axis = glm::normalize(glm::axis(pose.angularVelocity));
+  }
+  estimate.axis = { axis[0], axis[1], axis[2] };
+
+  return estimate;
+}
+
 static double isNear(double a, double b, double epsilon = 1e-6) {
   return std::abs(a - b) < epsilon;
 }

@@ -40,7 +40,8 @@ namespace asdp {
       /// @param maxCount The maximum number of poses to store.
       /// @param coordinates The coordinate system to use for the poses.
       /// @param ignoreTimeDifference If true, ignore the time difference between the start and end times
-      /// when calculating the transform.  This is only useful to demonstrate what happens when we
+      /// when calculating the transform and always return no motion for the velocity and rotational
+      /// velocity estimates.  This is only useful to demonstrate what happens when we
       /// do not do latency compensation.
       PoseAdjuster(size_t maxCount = 2000, PoseAdjusterCoordinates coordinates = HELICOPTER,
         bool ignoreTimeDifference = false);
@@ -61,7 +62,8 @@ namespace asdp {
       /// @param altitude The altitude of the helicopter in meters.
       /// @param rot The rotation of the helicopter as a 3D vector (roll, pitch, yaw).
       /// @param vel The velocity of the helicopter as a 3D vector (vx, vy, vz).
-      /// @param rotVel The angular velocity of the helicopter as a 3D vector (roll rate, pitch rate, yaw rate).
+      /// @param rotVel The angular velocity of the helicopter as a 3D vector (roll rate, pitch rate, yaw rate)
+      /// in degrees/second.
       /// @param time The time of the pose.
       void AddPose(double latitude, double longitude, double altitude,
         std::array<float, 3> const &rot,
@@ -81,6 +83,20 @@ namespace asdp {
       /// coordinates for the pose at startTime to helicopter coordinates for the pose at endTime.
       /// If there are no poses available, the identity matrix is returned.
       glm::dmat4 GetTransform(asdp::Time endTime, asdp::Time startTime) const;
+
+      /// @brief Class to hold the result of velocity and rotational velocity estimation.
+      struct VelocityEstimate {
+        std::array<float, 3> vel = { 0, 0, 0 };  ///< The estimated velocity of the helicopter.
+        std::array<float, 3> axis = { 1, 0, 0 }; ///< The estimated angle the helicopter is rotating around.
+        float angleRad = 0;                      ///< The estimated angular velocity of the helicopter in radians/sec.
+      };
+
+      /// @brief Estimate the velocity and rotational velocity of the helicopter at a specific time.
+      /// @param time The time for which to estimate the velocity.
+      /// @return The estimated velocity and rotational velocity of the helicopter at the specified time.
+      /// If there are no poses available, the velocity and rotational velocity are both zero.
+      /// If ignoreTimeDifference was set in the constructor, the velocity and rotational velocity are both zero.
+      VelocityEstimate EstimateVelocity(asdp::Time time) const;
 
       /// @brief Test function for the PoseAdjuster class.
       /// @return A string indicating the result of the test, empty on success and message describing the problem on failure.
