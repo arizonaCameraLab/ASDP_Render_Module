@@ -534,5 +534,60 @@ std::string PoseAdjuster::Test()
     }
   }
 
+  // Test the EstimateVelocity method when we have asked to ignore time differences, so it should
+  // always return no velocities.
+  {
+    PoseAdjuster adjuster(3, HELICOPTER, true);
+    asdp::Time time1{ 1, 0 };
+    asdp::Time time2{ 2, 0 };
+    asdp::Time time3{ 3, 0 };
+
+    // Add poses that rotate 90 degrees around the X axis from the first to the last and have velocities of +1/second in X
+    // and rotations by 2 degrees per second around y.
+    adjuster.AddPose(0, 0, 0, { 0, 0, 0 }, { 1, 0, 0 }, { 0, 2, 0 }, time1);
+    adjuster.AddPose(0, 0, 0, { 30, 0, 0 }, { 1, 0, 0 }, { 0, 2, 0 }, time2);
+    adjuster.AddPose(0, 0, 0, { 90, 0, 0 }, { 1, 0, 0 }, { 0, 2, 0 }, time3);
+
+    // Check the velocity estimate at time1, which should be zero.
+    VelocityEstimate estimate = adjuster.EstimateVelocity(time1);
+    if (!isNear(estimate.vel[0], 0) || !isNear(estimate.vel[1], 0) || !isNear(estimate.vel[2], 0)) {
+      return "PoseAdjuster Test: EstimateVelocity() at time1 is incorrect.";
+    }
+
+    // Check the rotational velocity estimate at time1, which should be zero around the X axis.
+    if (!isNear(estimate.angleRad, 0) || !isNear(estimate.axis[0], 1) ||
+        !isNear(estimate.axis[1], 0) || !isNear(estimate.axis[2], 0)) {
+      return "PoseAdjuster Test: EstimateVelocity() at time1 is incorrect for rotation.";
+    }
+  }
+
+  // Test the EstimateVelocity method when we have not asked to ignore time differences, so it should
+  // return the converted results.
+  {
+    PoseAdjuster adjuster(3);
+    asdp::Time time1{ 1, 0 };
+    asdp::Time time2{ 2, 0 };
+    asdp::Time time3{ 3, 0 };
+
+    // Add poses that rotate 90 degrees around the X axis from the first to the last and have velocities
+    // and rotations that differ per report
+    adjuster.AddPose(0, 0, 0, { 0, 0, 0 }, { 1, 0, 0 }, { 0, 4, 0 }, time1);
+    adjuster.AddPose(0, 0, 0, { 30, 0, 0 }, { 2, 0, 0 }, { 0, 5, 0 }, time2);
+    adjuster.AddPose(0, 0, 0, { 90, 0, 0 }, { 3, 0, 0 }, { 0, 6, 0 }, time3);
+
+    // Check the velocity at halfway between times 2 and 3, which should be properly converted average.
+    VelocityEstimate estimate = adjuster.EstimateVelocity(Time(2, 500000));
+    if (!isNear(estimate.vel[0], 2.5) || !isNear(estimate.vel[1], 0) || !isNear(estimate.vel[2], 0)) {
+      return "PoseAdjuster Test: EstimateVelocity() at time2.5 is incorrect.";
+    }
+
+    // Check the rotational velocity at halfway between times 2 and 3, which should be properly converted average.
+    double rads = glm::radians(5.5);
+    if (!isNear(estimate.angleRad, rads) || !isNear(estimate.axis[0], 0) ||
+        !isNear(estimate.axis[1], 1) || !isNear(estimate.axis[2], 0)) {
+      return "PoseAdjuster Test: EstimateVelocity() at time2.5 is incorrect for rotation.";
+    }
+  }
+
   return "";
 }
