@@ -105,8 +105,9 @@ namespace asdp {
       /// depth textures and binding the frame buffer.  RenderView() is responsible for setting
       /// the program and the matrix parameter for it.
       /// @param scanOutTime The time that the scan out is occurring, in ASDP Core time.  This is the time of the middle of the frame.
-      /// @param modelViewProjection The matrix specifying the entire viewing transformation to use.
-      virtual void RenderView(asdp::Time scanOutTime, const float* modelViewProjection) = 0;
+      /// @param viewProjection The matrix specifying the transformation from helicopter space
+      /// into final projected points.
+      virtual void RenderView(asdp::Time scanOutTime, const float* viewProjection) = 0;
 
       /// @brief Set up state needed for rendering, perhaps including the shader program and geometry/textures.
       /// @details This function is called during the first call to Render().  If it fails, rendering is not
@@ -156,7 +157,7 @@ namespace asdp {
       std::shared_ptr<MeshCube> m_roomCube;
 
       bool SetupRendering() override;
-      void RenderView(asdp::Time scanOutTime, const float* modelViewProjection) override;
+      void RenderView(asdp::Time scanOutTime, const float* viewProjection) override;
       void SetupRenderFrame(asdp::Time scanOutTime) override;
       void TearDownRenderFrame() override;
     };
@@ -221,8 +222,12 @@ namespace asdp {
       /// @brief The OpenGL program ID.
       GLuint m_programId;
 
-      /// @brief The Uniform ID of the modelview-projection matrix.
-      GLuint m_modelViewProjectionUniformId;
+      /// @brief The Uniform ID of the view-projection matrix taking points from helicopter space.
+      GLuint m_viewProjectionUniformId;
+
+      /// @brief The Uniform ID of the poseAdjust matrix moving points to their earlier position
+      /// in helicopter space.
+      GLuint m_poseAdjustUniformId;
 
       /// The identifiers for the image and tone-map textures.
       GLuint m_imageTextureId;
@@ -256,7 +261,7 @@ namespace asdp {
 
       // Overridden methods
       bool SetupRendering() override;
-      void RenderView(asdp::Time scanOutTime, const float* modelViewProjection) override;
+      void RenderView(asdp::Time scanOutTime, const float* viewProjection) override;
       void SetupRenderFrame(asdp::Time scanOutTime) override;
       void TearDownRenderFrame() override;
     };
