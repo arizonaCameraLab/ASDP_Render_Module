@@ -649,14 +649,15 @@ R"(#version 330 core
    })";
 
 CompositeCameras::CompositeCameras(std::vector<CameraRenderInfo>& cameraRenderInfo, GLuint toneMaptexture,
-  std::shared_ptr<PoseAdjuster> poseAdjuster, uint32_t renderOffsetMicroseconds, Time frameInterval,
-  RenderTimingInfo *renderTimingInfo)
+  std::shared_ptr<PoseAdjuster> poseAdjuster, Time cameraFrameInterval,
+  uint32_t renderOffsetMicroseconds, Time renderFrameInterval, RenderTimingInfo *renderTimingInfo)
   : Composite()
   , m_cameraRenderInfos(cameraRenderInfo)
   , m_toneMapTexture(toneMaptexture)
   , m_poseAdjuster(poseAdjuster)
+  , m_cameraFrameInterval(cameraFrameInterval)
   , m_renderOffsetMicroseconds(renderOffsetMicroseconds)
-  , m_frameInterval(frameInterval)
+  , m_renderFrameInterval(renderFrameInterval)
   , m_renderTimingInfo(renderTimingInfo)
   , m_programId(0)
   , m_viewProjectionUniformId(0)
@@ -925,10 +926,10 @@ void CompositeCameras::SetupRenderFrame(asdp::Time scanOutTime)
     // Stored: Select by adding the frame interval to the last desired time and then verifying that
     // it is close enough to the requested offset from the scan-out time (within a frame time),
     // replacing it if not.
-    desiredTime = m_lastFrameTime + m_frameInterval;
+    desiredTime = m_lastFrameTime + m_renderFrameInterval;
     Time requestedTime = scanOutTime - asdp::Time(0, m_renderOffsetMicroseconds);
     double diff = TimeDiffMagnitude(desiredTime, requestedTime);
-    if (diff > m_frameInterval.seconds * m_frameInterval.microseconds * 1e-6) {
+    if (diff > m_renderFrameInterval.seconds * m_renderFrameInterval.microseconds * 1e-6) {
       desiredTime = requestedTime;
     }
   }
@@ -1010,7 +1011,7 @@ void CompositeCameras::RenderView(asdp::Time scanOutTime, const float* viewProje
     // Construct the differential shift matrix to adjust the camera points to the scan-out time.
     // These must all be in the helicopter coordinate system but scaled to a single frame time.
     PoseAdjuster::VelocityEstimate velocity = m_poseAdjuster->EstimateVelocity(m_images[i]->imageCenterTime);
-    float frameTime = m_frameInterval.seconds + m_frameInterval.microseconds * 1.0e-6;
+    float frameTime = m_cameraFrameInterval.seconds + m_cameraFrameInterval.microseconds * 1.0e-6;
 
     std::array<GLfloat, 3> fVelocity = { velocity.vel[0] * frameTime, velocity.vel[1] * frameTime,
                                          velocity.vel[2] * frameTime };
