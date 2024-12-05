@@ -1198,6 +1198,7 @@ int main(int argc, char** argv)
     }
 
     // If the camera FPS is not set, find the minimum period for one of the cameras and use that.
+    // This assumes that all cameras capture at the same frame rate.
     if (cameraFPS == 0.0 && cameras.size() > 0) {
       cameraFPS = 1.0 / cameras[0].minTriggerPeriod;
     }
@@ -1395,13 +1396,6 @@ int main(int argc, char** argv)
       uint32_t camID = cameraIDs[i];
       CameraInfo &camera = cameras[i];
 
-      // Find the minimum period for the camera and which internal trigger ID it uses, then
-      // configure the trigger to run at that rate unless this has been overridden on the command line.
-      // Configure it as a periodic software trigger using the same software trigger ID, which we'll also
-      // send to the Display object constructor.
-      if (cameraFPS == 0.0) {
-        cameraFPS = 1.0 / camera.minTriggerPeriod;
-      }
       TriggerInfo ti;
       ti.ID = camera.trigger;
       ti.mode = 3;
