@@ -89,8 +89,8 @@ void PoseAdjuster::AddPose(double latitude, double longitude, double altitude,
     // The resulting transformation specifies the helicopter orientation in Earth-centered space.
     glm::dquat rotationLong = glm::angleAxis(glm::radians(longitude), glm::dvec3(0, 0, 1));
     glm::dquat rotationLat = glm::angleAxis(glm::radians(latitude), glm::dvec3(0, 1, 0));
-    glm::dquat HeliX = glm::angleAxis(glm::radians(90.0), glm::dvec3(1, 0, 0));
-    glm::dquat HeliY = glm::angleAxis(glm::radians(90.0), glm::dvec3(0, 1, 0));
+    static const glm::dquat HeliX = glm::angleAxis(glm::radians(90.0), glm::dvec3(1, 0, 0));
+    static const glm::dquat HeliY = glm::angleAxis(glm::radians(90.0), glm::dvec3(0, 1, 0));
     glm::dquat rotationX = glm::angleAxis(glm::radians(double(rot[0])), glm::dvec3(1, 0, 0));
     glm::dquat rotationY = glm::angleAxis(glm::radians(double(rot[1])), glm::dvec3(0, 1, 0));
     glm::dquat rotationZ = glm::angleAxis(glm::radians(double(rot[2])), glm::dvec3(0, 0, 1));
@@ -123,7 +123,7 @@ void PoseAdjuster::AddPose(double latitude, double longitude, double altitude,
   newPose.time = time;
 
   // Put the pose into the list and keep it sorted.  We find the first entry that is before the new pose and
-  // place it after that entry.
+  // place it after that entry. It is expected that we'll always be appending to the end of the list.
   auto it = m_poses.rbegin();
   while (it != m_poses.rend()) {
     if (it->time <= newPose.time) {
@@ -144,7 +144,7 @@ void PoseAdjuster::AddPose(double latitude, double longitude, double altitude,
 
 PoseAdjuster::Pose PoseAdjuster::ExtrapolatePose(const Pose& pose, Time time)
 {
-  // Velocity and angular velocity are assumed to stay the same, as is the dt.
+  // Velocity and angular velocity are assumed to stay the same, as does dt.
   Pose out = pose;
   out.time = time;
 
@@ -166,7 +166,9 @@ PoseAdjuster::Pose PoseAdjuster::ExtrapolatePose(const Pose& pose, Time time)
   // We must transform the rotation from the helicopter coordinates to Earth coordinates
   // before applying it.
   glm::dquat EarthAngularVelocity = pose.orientation * pose.angularVelocity * glm::inverse(pose.orientation);
-  out.orientation = glm::angleAxis((delta / pose.dt) * glm::angle(EarthAngularVelocity), glm::axis(EarthAngularVelocity)) * pose.orientation;
+  out.orientation = glm::angleAxis( (delta / pose.dt) * glm::angle(EarthAngularVelocity),
+                                    glm::normalize(glm::axis(EarthAngularVelocity))
+                                  ) * pose.orientation;
 
   return out;
 }
@@ -212,7 +214,7 @@ PoseAdjuster::Pose PoseAdjuster::GetPose(asdp::Time time) const
     return interpolatedPose;
   }
 
-  // Extrapolate from whichever pose we found.  We found exactly one of them.
+  // We found exactly one pose.  Extrapolate from whichever we found.
   if (foundBefore) {
     return ExtrapolatePose(beforePose, time);
   }
@@ -247,6 +249,32 @@ glm::dmat4 PoseAdjuster::GetTransform(asdp::Time endTime, asdp::Time startTime) 
   glm::mat4 transform = glm::inverse(endTransform) * startTransform;
 
   return transform;
+}
+
+PoseAdjuster::VelocityEstimate PoseAdjuster::EstimateVelocity(asdp::Time time) const
+{
+  // If we are ignoring time differences, return a zero velocity.
+  if (m_ignoreTimeDifference) {
+    return VelocityEstimate();
+  }
+
+  // Get the pose at the requested time.
+  Pose pose = GetPose(time);
+
+  // The velocity is just the velocity in the pose.
+  VelocityEstimate estimate;
+  estimate.vel = { float(pose.velocity[0]), float(pose.velocity[1]), float(pose.velocity[2]) };
+
+  // The rotational velocity is the rotation in the pose over dt, scale back to seconds here.
+  estimate.angleRad = float(glm::angle(pose.angularVelocity) / pose.dt);
+  glm::vec3 axis = { 1, 0, 0 };
+  if (estimate.angleRad != 0) {
+    // If we have a non-zero angle, get the axis of rotation.  This avoids normalizing (0,0,0).
+    axis = glm::normalize(glm::axis(pose.angularVelocity));
+  }
+  estimate.axis = { axis[0], axis[1], axis[2] };
+
+  return estimate;
 }
 
 static double isNear(double a, double b, double epsilon = 1e-6) {
@@ -505,6 +533,61 @@ std::string PoseAdjuster::Test()
     glm::vec4 pos2 = transform * glm::vec4(0, 0, 0, 1);
     if (!isNear(pos2[0], -1) || !isNear(pos2[1], 0) || !isNear(pos2[2], 0)) {
       return "PoseAdjuster Test: GetTransform() locked translation after time3 is incorrect.";
+    }
+  }
+
+  // Test the EstimateVelocity method when we have asked to ignore time differences, so it should
+  // always return no velocities.
+  {
+    PoseAdjuster adjuster(3, HELICOPTER, true);
+    asdp::Time time1{ 1, 0 };
+    asdp::Time time2{ 2, 0 };
+    asdp::Time time3{ 3, 0 };
+
+    // Add poses that rotate 90 degrees around the X axis from the first to the last and have velocities of +1/second in X
+    // and rotations by 2 degrees per second around y.
+    adjuster.AddPose(0, 0, 0, { 0, 0, 0 }, { 1, 0, 0 }, { 0, 2, 0 }, time1);
+    adjuster.AddPose(0, 0, 0, { 30, 0, 0 }, { 1, 0, 0 }, { 0, 2, 0 }, time2);
+    adjuster.AddPose(0, 0, 0, { 90, 0, 0 }, { 1, 0, 0 }, { 0, 2, 0 }, time3);
+
+    // Check the velocity estimate at time1, which should be zero.
+    VelocityEstimate estimate = adjuster.EstimateVelocity(time1);
+    if (!isNear(estimate.vel[0], 0) || !isNear(estimate.vel[1], 0) || !isNear(estimate.vel[2], 0)) {
+      return "PoseAdjuster Test: EstimateVelocity() at time1 is incorrect.";
+    }
+
+    // Check the rotational velocity estimate at time1, which should be zero around the X axis.
+    if (!isNear(estimate.angleRad, 0) || !isNear(estimate.axis[0], 1) ||
+        !isNear(estimate.axis[1], 0) || !isNear(estimate.axis[2], 0)) {
+      return "PoseAdjuster Test: EstimateVelocity() at time1 is incorrect for rotation.";
+    }
+  }
+
+  // Test the EstimateVelocity method when we have not asked to ignore time differences, so it should
+  // return the converted results.
+  {
+    PoseAdjuster adjuster(3);
+    asdp::Time time1{ 1, 0 };
+    asdp::Time time2{ 2, 0 };
+    asdp::Time time3{ 3, 0 };
+
+    // Add poses that rotate 90 degrees around the X axis from the first to the last and have velocities
+    // and rotations that differ per report
+    adjuster.AddPose(0, 0, 0, { 0, 0, 0 }, { 1, 0, 0 }, { 0, 4, 0 }, time1);
+    adjuster.AddPose(0, 0, 0, { 30, 0, 0 }, { 2, 0, 0 }, { 0, 5, 0 }, time2);
+    adjuster.AddPose(0, 0, 0, { 90, 0, 0 }, { 3, 0, 0 }, { 0, 6, 0 }, time3);
+
+    // Check the velocity at halfway between times 2 and 3, which should be properly converted average.
+    VelocityEstimate estimate = adjuster.EstimateVelocity(Time(2, 500000));
+    if (!isNear(estimate.vel[0], 2.5) || !isNear(estimate.vel[1], 0) || !isNear(estimate.vel[2], 0)) {
+      return "PoseAdjuster Test: EstimateVelocity() at time2.5 is incorrect.";
+    }
+
+    // Check the rotational velocity at halfway between times 2 and 3, which should be properly converted average.
+    double rads = glm::radians(5.5);
+    if (!isNear(estimate.angleRad, rads) || !isNear(estimate.axis[0], 0) ||
+        !isNear(estimate.axis[1], 1) || !isNear(estimate.axis[2], 0)) {
+      return "PoseAdjuster Test: EstimateVelocity() at time2.5 is incorrect for rotation.";
     }
   }
 

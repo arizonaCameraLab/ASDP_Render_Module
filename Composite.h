@@ -105,8 +105,9 @@ namespace asdp {
       /// depth textures and binding the frame buffer.  RenderView() is responsible for setting
       /// the program and the matrix parameter for it.
       /// @param scanOutTime The time that the scan out is occurring, in ASDP Core time.  This is the time of the middle of the frame.
-      /// @param modelViewProjection The matrix specifying the entire viewing transformation to use.
-      virtual void RenderView(asdp::Time scanOutTime, const float* modelViewProjection) = 0;
+      /// @param viewProjection The matrix specifying the transformation from helicopter space
+      /// into final projected points.
+      virtual void RenderView(asdp::Time scanOutTime, const float* viewProjection) = 0;
 
       /// @brief Set up state needed for rendering, perhaps including the shader program and geometry/textures.
       /// @details This function is called during the first call to Render().  If it fails, rendering is not
@@ -156,7 +157,7 @@ namespace asdp {
       std::shared_ptr<MeshCube> m_roomCube;
 
       bool SetupRendering() override;
-      void RenderView(asdp::Time scanOutTime, const float* modelViewProjection) override;
+      void RenderView(asdp::Time scanOutTime, const float* viewProjection) override;
       void SetupRenderFrame(asdp::Time scanOutTime) override;
       void TearDownRenderFrame() override;
     };
@@ -192,16 +193,18 @@ namespace asdp {
       /// @param cameraRenderInfo The configuration of the cameras needed to generate textured geometry.
       /// @param toneMapTexture The OpenGL texture ID of the tone map to use.
       /// @param poseAdjuster A shared pointer to the pose adjuster to use for transforming points.
+      /// @param cameraFrameInterval The interval between camera frames to use for distortion correction.
       /// @param renderOffsetMicroseconds The offset in microseconds to render the images at.  This is used
       /// for the replay case to change the algorithm so that it deals with the fact that the image
-      /// generation cannot be synchronized with rendering.  This specifies how far back (probably one
-      /// frame time) for both frame selection and pose adjustment to mimic the behavior of a live
+      /// generation cannot be synchronized with rendering.  This specifies how far back (probably 1+
+      /// image frame time) for both frame selection and pose adjustment to mimic the behavior of a live
       /// capture.
-      /// @param frameInterval The interval between frames to use for replay mode.
+      /// @param renderFrameInterval The interval between rendered frames to use for replay mode.
       /// @param renderTimingInfo A pointer to the render timing information to fill in.
       CompositeCameras(std::vector<CameraRenderInfo>& cameraRenderInfo, GLuint toneMapTexture,
-        std::shared_ptr<PoseAdjuster> poseAdjuster, uint32_t renderOffsetMicroseconds = 0,
-        Time frameInterval = Time(), RenderTimingInfo *renderTimingInfo = nullptr);
+        std::shared_ptr<PoseAdjuster> poseAdjuster, Time cameraFrameInterval,
+        uint32_t renderOffsetMicroseconds = 0,
+        Time renderFrameInterval = Time(), RenderTimingInfo *renderTimingInfo = nullptr);
 
       /// @brief Destructor
       ~CompositeCameras();
@@ -215,14 +218,24 @@ namespace asdp {
       // Parameters used to handle replay mode, keeping a consistent interval between frame selection
       uint32_t m_renderOffsetMicroseconds;  ///< The offset in microseconds to render the images at for replay mode.
       Time m_lastFrameTime;                 ///< The average time of the last frames used.
-      Time m_frameInterval;                 ///< The interval between frames to use for replay mode.
+      Time m_renderFrameInterval;           ///< The interval between render frames to use for replay mode.
       RenderTimingInfo *m_renderTimingInfo; ///< A pointer to the render timing information to fill in.
+
+      Time m_cameraFrameInterval;           ///< The interval between camera frames to use for distortion correction.
 
       /// @brief The OpenGL program ID.
       GLuint m_programId;
 
-      /// @brief The Uniform ID of the modelview-projection matrix.
-      GLuint m_modelViewProjectionUniformId;
+      /// @brief The Uniform ID of the view-projection matrix taking points from helicopter space.
+      GLint m_viewProjectionUniformId;
+
+      /// @brief The Uniform ID of the poseAdjust matrix moving points to their earlier position
+      /// in helicopter space.
+      GLint m_poseAdjustUniformId;
+
+      GLint m_fVelocityUniformID;    ///< The Uniform ID of the per-frame velocity in helicopter space.
+      GLint m_fAxisUniformID;        ///< The Uniform ID of the axis of rotation in helicopter space.
+      GLint m_fAngleUniformID;       ///< The Uniform ID of the per-frame angle of rotation in helicopter space.
 
       /// The identifiers for the image and tone-map textures.
       GLuint m_imageTextureId;
@@ -256,7 +269,7 @@ namespace asdp {
 
       // Overridden methods
       bool SetupRendering() override;
-      void RenderView(asdp::Time scanOutTime, const float* modelViewProjection) override;
+      void RenderView(asdp::Time scanOutTime, const float* viewProjection) override;
       void SetupRenderFrame(asdp::Time scanOutTime) override;
       void TearDownRenderFrame() override;
     };

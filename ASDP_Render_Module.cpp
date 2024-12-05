@@ -49,7 +49,7 @@ using namespace asdp::render;
 using json = nlohmann::json;
 using json = nlohmann::json;
 
-static std::string VERSION = "2.11.0";
+static std::string VERSION = "2.13.0";
 
 /// @brief The path to the configuration file. Defined in the CMakeLists file.
 std::filesystem::path g_dirPath = CONFIG_FILE_PATH;
@@ -820,6 +820,7 @@ void usage(std::string name)
   std::cerr << "  --height <height>                   The height of the window (default 1024)." << std::endl;
   std::cerr << "  --fullScreen <display>              Run in full screen mode on the specified display (0+)." << std::endl;
   std::cerr << "  --fps <frames per second>           The frames per second to run at (default 60)." << std::endl;
+  std::cerr << "  --cameraFPS <frames per second>     The frames per second to run the camera at (default is maximum rate)." << std::endl;
   std::cerr << "  --joystick <string>                 The joystick to use for input (e.g. GLFW::0)." << std::endl;
   std::cerr << "  --hFOV <horizontal field of view>   The horizontal field of view in degrees (default 40)." << std::endl;
   std::cerr << "  --noPoses                           Do not stream poses from the server, so no latency adjustment." << std::endl;
@@ -848,6 +849,7 @@ int main(int argc, char** argv)
   unsigned triggerAheadMicroseconds = 22000; ///< Microseconds ahead of render to trigger camera.
   bool lockRotation = false;      ///< Lock the rotation of the viewer to the initial helicopter pose.
   bool disableLatencyCompensation = false; ///< Disable latency compensation.
+  double cameraFPS = 0.0;         ///< The frames per second to run the camera at, 0 defaults to camera-specified maximum.
   size_t realParams = 0;          ///< The number of non-flag parameters we've seen.
 
   // Parse the command line arguments, with the first non-flag argument being the
@@ -1195,6 +1197,13 @@ int main(int argc, char** argv)
       cameraIDs.push_back(cameraRenderInfos[i].m_ID);
     }
 
+    // If the camera FPS is not set, find the minimum period for one of the cameras and use that.
+    // This assumes that all cameras capture at the same frame rate.
+    if (cameraFPS == 0.0 && cameras.size() > 0) {
+      cameraFPS = 1.0 / cameras[0].minTriggerPeriod;
+    }
+    std::cout << "Camera frame rate: " << cameraFPS << " fps" << std::endl;
+
     // Initialize the timing information, making an entry for each camera.  We make sure that there is
     // the maximum camera ID so that we can use the camera ID as an index.
     uint32_t maxID = 0;
@@ -1253,12 +1262,13 @@ int main(int argc, char** argv)
       }
       uint32_t renderOffsetMicroseconds = 0;
       if (replayStreamID != 0) {
-	// Set up to run 2 frames behind the current time, which empirically was much
-	// smoother than a single frame behind.
-        renderOffsetMicroseconds = 1.5 * (1000000 / displayInfos[i].fps);
+        // Set up to run 1.5 frames behind the current time, which empirically was much
+        // smoother than a single frame behind and slightly smoother than 2 frames.
+        renderOffsetMicroseconds = 1.5 * (1000000 / cameraFPS);
       }
       std::shared_ptr<Composite> composite = std::make_shared<CompositeCameras>(
-        visibleCameras, toneMapTexture, poseAdjuster, renderOffsetMicroseconds,
+        visibleCameras, toneMapTexture, poseAdjuster, Time(1/cameraFPS),
+        renderOffsetMicroseconds,
         Time(0, 1000000 / displayInfos[i].fps), (i == 0) ? (&g_timingInfo) : nullptr);
 
       // Only time the first listed display, to avoid race conditions
@@ -1386,13 +1396,10 @@ int main(int argc, char** argv)
       uint32_t camID = cameraIDs[i];
       CameraInfo &camera = cameras[i];
 
-      // Find the minimum period for the camera and which internal trigger ID it uses, then
-      // configure the trigger to run at that rate. Configure it as a periodic software trigger
-      // using the same software trigger ID, which we'll also send to the Display object constructor.
       TriggerInfo ti;
       ti.ID = camera.trigger;
       ti.mode = 3;
-      ti.period = camera.minTriggerPeriod;
+      ti.period = 1/cameraFPS;
       ti.offset = 0;
       ti.trackingFactor = 0.005;
       ti.externalID = camera.trigger;

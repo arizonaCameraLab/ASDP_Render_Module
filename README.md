@@ -91,6 +91,8 @@ following optional arguments:
 - **--fullscreen** If present, the window will be full-screen.  The display number to use is given
   as an argument.  For example, "--fullscreen 0" will make the window full-screen on display 1.
 - **--fps** The number of frames per second to render, default 60.
+- **--cameraFPS** The number of frames per second to request from the camera.  This defaults to the
+  fastest frame rate that the first camera can provide, but cane be overridden here.
 - **--joystick** The joystick to use for control, for example GLFW::0 will use the first joystick.
 - **--hFOV** The horizontal field of view of the camera in degrees, default 40.
 - **--noPoses** Do not stream poses from the server, so no latency adjustment.
