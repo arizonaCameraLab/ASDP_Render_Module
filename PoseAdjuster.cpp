@@ -89,8 +89,8 @@ void PoseAdjuster::AddPose(double latitude, double longitude, double altitude,
     // The resulting transformation specifies the helicopter orientation in Earth-centered space.
     glm::dquat rotationLong = glm::angleAxis(glm::radians(longitude), glm::dvec3(0, 0, 1));
     glm::dquat rotationLat = glm::angleAxis(glm::radians(latitude), glm::dvec3(0, 1, 0));
-    glm::dquat HeliX = glm::angleAxis(glm::radians(90.0), glm::dvec3(1, 0, 0));
-    glm::dquat HeliY = glm::angleAxis(glm::radians(90.0), glm::dvec3(0, 1, 0));
+    static const glm::dquat HeliX = glm::angleAxis(glm::radians(90.0), glm::dvec3(1, 0, 0));
+    static const glm::dquat HeliY = glm::angleAxis(glm::radians(90.0), glm::dvec3(0, 1, 0));
     glm::dquat rotationX = glm::angleAxis(glm::radians(double(rot[0])), glm::dvec3(1, 0, 0));
     glm::dquat rotationY = glm::angleAxis(glm::radians(double(rot[1])), glm::dvec3(0, 1, 0));
     glm::dquat rotationZ = glm::angleAxis(glm::radians(double(rot[2])), glm::dvec3(0, 0, 1));
@@ -123,7 +123,7 @@ void PoseAdjuster::AddPose(double latitude, double longitude, double altitude,
   newPose.time = time;
 
   // Put the pose into the list and keep it sorted.  We find the first entry that is before the new pose and
-  // place it after that entry.
+  // place it after that entry. It is expected that we'll always be appending to the end of the list.
   auto it = m_poses.rbegin();
   while (it != m_poses.rend()) {
     if (it->time <= newPose.time) {
@@ -144,7 +144,7 @@ void PoseAdjuster::AddPose(double latitude, double longitude, double altitude,
 
 PoseAdjuster::Pose PoseAdjuster::ExtrapolatePose(const Pose& pose, Time time)
 {
-  // Velocity and angular velocity are assumed to stay the same, as is the dt.
+  // Velocity and angular velocity are assumed to stay the same, as does dt.
   Pose out = pose;
   out.time = time;
 
@@ -166,7 +166,9 @@ PoseAdjuster::Pose PoseAdjuster::ExtrapolatePose(const Pose& pose, Time time)
   // We must transform the rotation from the helicopter coordinates to Earth coordinates
   // before applying it.
   glm::dquat EarthAngularVelocity = pose.orientation * pose.angularVelocity * glm::inverse(pose.orientation);
-  out.orientation = glm::angleAxis((delta / pose.dt) * glm::angle(EarthAngularVelocity), glm::axis(EarthAngularVelocity)) * pose.orientation;
+  out.orientation = glm::angleAxis( (delta / pose.dt) * glm::angle(EarthAngularVelocity),
+                                    glm::normalize(glm::axis(EarthAngularVelocity))
+                                  ) * pose.orientation;
 
   return out;
 }
@@ -212,7 +214,7 @@ PoseAdjuster::Pose PoseAdjuster::GetPose(asdp::Time time) const
     return interpolatedPose;
   }
 
-  // Extrapolate from whichever pose we found.  We found exactly one of them.
+  // We found exactly one pose.  Extrapolate from whichever we found.
   if (foundBefore) {
     return ExtrapolatePose(beforePose, time);
   }

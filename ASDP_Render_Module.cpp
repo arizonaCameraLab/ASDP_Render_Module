@@ -49,7 +49,7 @@ using namespace asdp::render;
 using json = nlohmann::json;
 using json = nlohmann::json;
 
-static std::string VERSION = "2.12.0";
+static std::string VERSION = "2.13.0";
 
 /// @brief The path to the configuration file. Defined in the CMakeLists file.
 std::filesystem::path g_dirPath = CONFIG_FILE_PATH;
@@ -1262,12 +1262,12 @@ int main(int argc, char** argv)
       }
       uint32_t renderOffsetMicroseconds = 0;
       if (replayStreamID != 0) {
-        // Set up to run 2 frames behind the current time, which empirically was much
-        // smoother than a single frame behind.
-        renderOffsetMicroseconds = 1.5 * (1000000 / displayInfos[i].fps);
+        // Set up to run 1.5 frames behind the current time, which empirically was much
+        // smoother than a single frame behind and slightly smoother than 2 frames.
+        renderOffsetMicroseconds = 1.5 * (1000000 / cameraFPS);
       }
       std::shared_ptr<Composite> composite = std::make_shared<CompositeCameras>(
-        visibleCameras, toneMapTexture, poseAdjuster, Time(0, 1000000 / cameraFPS),
+        visibleCameras, toneMapTexture, poseAdjuster, Time(1/cameraFPS),
         renderOffsetMicroseconds,
         Time(0, 1000000 / displayInfos[i].fps), (i == 0) ? (&g_timingInfo) : nullptr);
 

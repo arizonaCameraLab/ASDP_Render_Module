@@ -196,8 +196,8 @@ namespace asdp {
       /// @param cameraFrameInterval The interval between camera frames to use for distortion correction.
       /// @param renderOffsetMicroseconds The offset in microseconds to render the images at.  This is used
       /// for the replay case to change the algorithm so that it deals with the fact that the image
-      /// generation cannot be synchronized with rendering.  This specifies how far back (probably one
-      /// frame time) for both frame selection and pose adjustment to mimic the behavior of a live
+      /// generation cannot be synchronized with rendering.  This specifies how far back (probably 1+
+      /// image frame time) for both frame selection and pose adjustment to mimic the behavior of a live
       /// capture.
       /// @param renderFrameInterval The interval between rendered frames to use for replay mode.
       /// @param renderTimingInfo A pointer to the render timing information to fill in.

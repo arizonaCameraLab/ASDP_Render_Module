@@ -929,7 +929,11 @@ void CompositeCameras::SetupRenderFrame(asdp::Time scanOutTime)
     // it is close enough to the requested offset from the scan-out time (within a frame time),
     // replacing it if not.
     desiredTime = m_lastFrameTime + m_renderFrameInterval;
-    Time requestedTime = scanOutTime - asdp::Time(0, m_renderOffsetMicroseconds);
+    Time offset = asdp::Time(m_renderOffsetMicroseconds / 1000000, m_renderOffsetMicroseconds % 1000000);
+    Time requestedTime = scanOutTime - offset;
+    if (scanOutTime < offset) {
+      requestedTime = Time(0, 0);
+    }
     double diff = TimeDiffMagnitude(desiredTime, requestedTime);
     if (diff > m_renderFrameInterval.seconds * m_renderFrameInterval.microseconds * 1e-6) {
       desiredTime = requestedTime;
@@ -970,6 +974,27 @@ void CompositeCameras::SetupRenderFrame(asdp::Time scanOutTime)
 
 void CompositeCameras::RenderView(asdp::Time scanOutTime, const float* viewProjection)
 {
+  // Find the frame time in floating point seconds.
+  float frameTime = m_cameraFrameInterval.seconds + m_cameraFrameInterval.microseconds * 1.0e-6;
+
+  // Bind the tone map texture to texture unit 1.
+  glActiveTexture(GL_TEXTURE1);
+  glBindTexture(GL_TEXTURE_1D, m_toneMapTexture);
+  glUniform1i(m_toneMapTextureId, 1);
+
+  // Unbind any vertex array object.
+  // We cannot use vertex array objects because we're potentially going to be called
+  // from multiple OpenGL contexts in different threads and VAOs are not shared between
+  // contexts.
+  glBindVertexArray(0);
+
+  // Enable the vertex attribute arrays we are going to use
+  glEnableVertexAttribArray(0);
+  glEnableVertexAttribArray(1);
+
+  // Set the matrices and uniform parameters that are the same for all cameras
+  glUniformMatrix4fv(m_viewProjectionUniformId, 1, GL_FALSE, viewProjection);
+
   // Draw each camera, using the appropriate texture.
   for (size_t i = 0; i < m_cameraRenderInfos.size(); i++) {
 
@@ -983,27 +1008,15 @@ void CompositeCameras::RenderView(asdp::Time scanOutTime, const float* viewProje
     glBindTexture(GL_TEXTURE_2D, texture);
     glUniform1i(m_imageTextureId, 0);
 
-    // Bind the tone map texture to texture unit 1.
-    glActiveTexture(GL_TEXTURE1);
-    glBindTexture(GL_TEXTURE_1D, m_toneMapTexture);
-    glUniform1i(m_toneMapTextureId, 1);
-
-    // Unbind any vertex array object.
-    // We cannot use vertex array objects because we're potentially going to be called
-    // from multiple OpenGL contexts in different threads and VAOs are not shared between
-    // contexts.
-    glBindVertexArray(0);
-
-    // Enable the vertex attribute arrays we are going to use
-    glEnableVertexAttribArray(0);
-    glEnableVertexAttribArray(1);
-
     // Adjust for helicopter motion changes from image acquisition to scan-out.
     // The camera points are in the helicopter coordinate system, so we need to adjust
     // from where they are (canonical position at render time) to where they were at
     // image acquisition.
-    glm::dmat4 shiftPoints = m_poseAdjuster->GetTransform(scanOutTime - Time(0, m_renderOffsetMicroseconds),
-      m_images[i]->imageCenterTime);
+    glm::dmat4 shiftPoints = glm::dmat4(1.0);
+    if (scanOutTime > Time(0, m_renderOffsetMicroseconds)) {
+      shiftPoints = m_poseAdjuster->GetTransform(scanOutTime - Time(0, m_renderOffsetMicroseconds),
+        m_images[i]->imageCenterTime);
+    }
     const double* data = glm::value_ptr(shiftPoints);
     float fShift[16];
     for (size_t i = 0; i < 16; i++) {
@@ -1013,7 +1026,6 @@ void CompositeCameras::RenderView(asdp::Time scanOutTime, const float* viewProje
     // Construct the differential shift matrix to adjust the camera points to the scan-out time.
     // These must all be in the helicopter coordinate system but scaled to a single frame time.
     PoseAdjuster::VelocityEstimate velocity = m_poseAdjuster->EstimateVelocity(m_images[i]->imageCenterTime);
-    float frameTime = m_cameraFrameInterval.seconds + m_cameraFrameInterval.microseconds * 1.0e-6;
 
     std::array<GLfloat, 3> fVelocity = { velocity.vel[0] * frameTime, velocity.vel[1] * frameTime,
                                          velocity.vel[2] * frameTime };
@@ -1021,26 +1033,27 @@ void CompositeCameras::RenderView(asdp::Time scanOutTime, const float* viewProje
     std::array<GLfloat, 3> fAxis = { velocity.axis[0], velocity.axis[1], velocity.axis[2] };
     GLfloat fAngle = velocity.angleRad * frameTime;
 
-    // Set the matrices and uniform parameters for this camera
-    glUniformMatrix4fv(m_viewProjectionUniformId, 1, GL_FALSE, viewProjection);
+    // Set the matrices and uniform parameters specific to this camera
     glUniformMatrix4fv(m_poseAdjustUniformId, 1, GL_FALSE, fShift);
     glUniform3fv(m_fVelocityUniformID, 1, fVelocity.data());
     glUniform3fv(m_fAxisUniformID, 1, fAxis.data());
     glUniform1f(m_fAngleUniformID, fAngle);
 
-    // Draw the camera view using its vertex buffer objects.
+    // Draw the camera using its vertex buffer objects.
     glBindBuffer(GL_ARRAY_BUFFER, m_vertexBufferObjects[i]);
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(GLfloat), (GLvoid*)0);
     glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(GLfloat), (GLvoid*)(3 * sizeof(GLfloat)));
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_indexBufferObjects[i]);
     glDrawElements(GL_TRIANGLES, m_numIndices[i], GL_UNSIGNED_INT, 0);
 
-    // Unbind the textures from their respective texture units
-    glActiveTexture(GL_TEXTURE1);
-    glBindTexture(GL_TEXTURE_1D, 0);
+    // Unbind the camera image from its texture unit
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, 0);
   }
+
+  // Unbind the tone map texture from its texture unit
+  glActiveTexture(GL_TEXTURE1);
+  glBindTexture(GL_TEXTURE_1D, 0);
 }
 
 void CompositeCameras::TearDownRenderFrame()
