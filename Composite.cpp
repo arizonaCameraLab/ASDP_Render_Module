@@ -631,7 +631,9 @@ R"(#version 330 core
       delta[3][2] = shift.z;
 
       // Apply the matrices to the position to get the final projected position.
-      gl_Position = viewProjection * delta * poseAdjust * vec4(aPos, 1.0);
+      // Perform the within-frame distortion first (it is in helicopter space), then the pose adjustment
+      // (to previous helicopter space), and finally the view+projection.
+      gl_Position = viewProjection * poseAdjust * delta * vec4(aPos, 1.0);
       TexCoord = vec2(aTexCoord.x, aTexCoord.y);
    })";
 
