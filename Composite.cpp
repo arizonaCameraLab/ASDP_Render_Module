@@ -753,9 +753,8 @@ static double radians(double degrees) {
   return degrees * M_PI / 180.0;
 }
 
-// NOTE: This must be called in order, once for each camera, to produce the required buffers in order.
-void CompositeCameras::AddBufferObjects(CameraRenderInfo const& cameraRenderInfo, size_t nx, size_t ny,
-  GLfloat depth)
+std::vector<GLfloat> CompositeCameras::ComputeCameraMeshVertexInfo(CameraRenderInfo const& cameraRenderInfo,
+  size_t nx, size_t ny, GLfloat depth)
 {
   double fnxInv = 1 / static_cast<GLfloat>(nx);
   double fnyInv = 1 / static_cast<GLfloat>(ny);
@@ -811,9 +810,9 @@ void CompositeCameras::AddBufferObjects(CameraRenderInfo const& cameraRenderInfo
       if (cameraRenderInfo.m_distortion != nullptr) {
         distPoint = cameraRenderInfo.m_distortion->MapPoint(distPoint);
       }
-      double &xc = distPoint[0];
-      double &yc = distPoint[1];
-      double &zc = distPoint[2];
+      double& xc = distPoint[0];
+      double& yc = distPoint[1];
+      double& zc = distPoint[2];
 
       // Rotate the X, Y, Z coordinates to match the camera center of projection
       // and viewing direction of this camera in the coordinate system of the camera cluster.
@@ -828,10 +827,8 @@ void CompositeCameras::AddBufferObjects(CameraRenderInfo const& cameraRenderInfo
       glm::vec3 point(xh, yh, zh);
       glm::vec3 transformedPoint = glm::vec3(rotation * glm::vec4(point, 1.0f));
 
-      // Offset the points by the camera position in the helicopter view space.
-      transformedPoint[0] += cameraRenderInfo.m_positionMeters[0];
-      transformedPoint[1] += cameraRenderInfo.m_positionMeters[1];
-      transformedPoint[2] += cameraRenderInfo.m_positionMeters[2];
+      // Compute the normalized direction vector.
+      glm::vec3 direction = glm::normalize(transformedPoint);
 
       // Add the vertex description
       vertices.push_back(transformedPoint[0]);
@@ -839,7 +836,31 @@ void CompositeCameras::AddBufferObjects(CameraRenderInfo const& cameraRenderInfo
       vertices.push_back(transformedPoint[2]);
       vertices.push_back(u);
       vertices.push_back(v);
+      vertices.push_back(direction[0]);
+      vertices.push_back(direction[1]);
+      vertices.push_back(direction[2]);
     }
+  }
+
+  return vertices;
+}
+
+// NOTE: This must be called in order, once for each camera, to produce the required buffers in order.
+void CompositeCameras::AddBufferObjects(CameraRenderInfo const& cameraRenderInfo, size_t nx, size_t ny,
+  GLfloat depth)
+{
+  // Create the vertices including the texture coordinates.  Each entry will have
+  // 8 floats: X, Y, Z, U, V, NX, NY, NZ.  We only care about the first five.
+  std::vector<GLfloat> vertInfo = ComputeCameraMeshVertexInfo(cameraRenderInfo, nx, ny, depth);
+  std::vector<GLfloat> vertices;
+  for (size_t v = 0; v < vertInfo.size(); v += 8) {
+    // Add the vertex description
+    // Offset the points by the camera position in the helicopter view space.
+    vertices.push_back(vertInfo[v + 0] + cameraRenderInfo.m_positionMeters[0]);
+    vertices.push_back(vertInfo[v + 1] + cameraRenderInfo.m_positionMeters[1]);
+    vertices.push_back(vertInfo[v + 2] + cameraRenderInfo.m_positionMeters[2]);
+    vertices.push_back(vertInfo[v + 3]);
+    vertices.push_back(vertInfo[v + 4]);
   }
 
   // Create the indices for the triangles, three per triangle.
