@@ -15,6 +15,7 @@
 #include <string>
 #include <array>
 #include <vector>
+#include <map>
 #include <cstdint>
 #include <memory>
 #include <mutex>
@@ -244,42 +245,59 @@ namespace asdp {
       /// @brief Vector of Image objects to use during a frame rendering, one per camera.
       std::vector<std::shared_ptr<asdp::render::ImageData>> m_images;
 
-      /// @brief Vector of vertex buffer objects to hold the position + texture coords for each camera.
-      std::vector<GLuint> m_vertexBufferObjects;
+      /// @brief Information needed per vertex to generate the vertices for the render mesh for a camera.
+      struct VertexInfo {
+        glm::vec2 texCoord; ///< The texture coordinates for the vertex.
+        glm::vec3 offset; ///< The offset from the camera origin to the point on the plane at a specified depth.
+        /// The length of the offset vector (distance from the camera).  This is initialized to the length
+        /// of the offset vectorin ComputeCameraMeshInfo, but can be updated by depth calculations later to
+        /// adjust the distance along the normalizedOffset direction to push a point.
+        float depth;
+        glm::vec3 normalizedOffset; ///< The normalized offset from the camera origin.
+      };
+      /// @brief Information needed to generate the vertices for the render mesh for a camera.
+      struct MeshInfo {
+        std::vector<VertexInfo> vertexInfo; ///< The vertex information for the camera.
+        size_t nx;                          ///< The number of vertices in the X direction.
+        size_t ny;                          ///< The number of vertices in the Y direction.
+      };
 
-      /// @brief Vector of vertex buffer objects to hold the indices for each camera.
-      std::vector<GLuint> m_indexBufferObjects;
+      /// @brief Information about the buffers for a camera and mesh used to create/edit them.
+      struct CameraBufferInfo {
+        MeshInfo mesh; ///< The mesh information for the camera, used to create and modify the vertexBufferObject.
+        GLuint vertexBufferObject; ///< Vertex buffer object for the camera.
+        GLuint indexBufferObject; ///< Index buffer object for the camera.
+        GLsizei numIndices; ///< Number of indices in the index buffer.
+      };
 
-      /// @brief Vector of number of elements for the element buffer objects for each camera.
-      std::vector<GLsizei> m_numIndices;
+      /// Information about the buffers for each camera, looked up by the camera ID from CameraRenderInfo.
+      std::map<uint16_t,CameraBufferInfo> m_cameraBufferInfos;
 
       /// @brief Compute the values needed to create the vertices for the render mesh for a camera.
+      /// @details This function computes the vertices for a quadrilateral that will be used to display
+      /// the image from the camera.  The quadrilateral is at a specified depth from the camera and
+      /// is centered on the camera's view direction.  This is used to create a fixed-depth planar
+      /// mesh that can be used to render the camera's image.
       /// @param cameraRenderInfo The camera to compute the mesh for.
       /// @param nx The number of vertices in the X direction.
       /// @param ny The number of vertices in the Y direction.
       /// @param depth The distance from the camera to the quadrilateral displaying the image.
-      /// @return A vector of floats containing the vertex information.  There is one set of information
-      /// per vertex, with the first three values being the offset from the camera origin to a plane at the
-      /// specified depth, the next two being the texture coordinates, and the last three being the normalized offset.
-      /// Either the depth or the normalized offset can be used to determine the position of the vertex after
-      /// scaling as appropriate by adding the camera offset.
-      std::vector<GLfloat> ComputeCameraMeshVertexInfo(const CameraRenderInfo& cameraRenderInfo, size_t nx, size_t ny,
-        GLfloat depth);
+      /// @return Information about the mesh that was constructed.
+      MeshInfo ComputePlanarCameraMeshInfo(const CameraRenderInfo& cameraRenderInfo, size_t nx = 100, size_t ny = 100,
+        GLfloat depth = 900);
 
-      /// @brief Add the buffer objects for a camera to the OpenGL context and store the IDs.
+      /// @brief Create the buffer objects for a camera and store them along with other buffer info.
       /// @details This function creates the buffer objects for the camera and stores the IDs
-      /// in the m_vertexBufferObjects, m_indexBufferObjects, and m_vertexArrayObjects vectors.
-      /// It also stores the number of elements in the m_numIndices vector.
-      /// This must be called in order, once for each camera, to produce the required buffers in order
-      /// in the object vectors.
+      /// in the m_cameraBufferInfos object, along with the mesh information used to construct them.
+      /// This must be called once for each camera to produce the required buffers before they are used
+      /// for rendering.
       /// @param cameraRenderInfo The camera to add the buffer objects for.
-      /// @param nx The number of vertices in the X direction.
-      /// @param ny The number of vertices in the Y direction.
-      /// @param depth The distance from the camera to the quadrilateral displaying the image.
-      /// @sideeffect The buffer objects are created and stored in m_vertexBufferObjects, m_indexBufferObjects,
-      /// and m_numIndices.
-      void AddBufferObjects(const CameraRenderInfo& cameraRenderInfo,
-        size_t nx = 100, size_t ny = 100, GLfloat depth = 900);
+      /// @param mesh The mesh information for the camera.
+      /// @sideeffect The buffer objects are created and appended to m_cameraBufferInfos.
+      void CreateBufferInfo(const CameraRenderInfo& cameraRenderInfo, MeshInfo const &mesh);
+
+      /// @todo
+      void UpdateVertexBuffer(const CameraRenderInfo& cameraRenderInfo);
 
       // Overridden methods
       bool SetupRendering() override;
