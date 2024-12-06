@@ -907,7 +907,7 @@ void CompositeCameras::CreateBufferInfo(CameraRenderInfo const& cameraRenderInfo
 void CompositeCameras::UpdateVertexBuffer(CameraRenderInfo const& cameraRenderInfo)
 {
   // Find the mesh information for this camera.
-  CameraBufferInfo& const cbi = m_cameraBufferInfos[cameraRenderInfo.m_ID];
+  CameraBufferInfo const &cbi = m_cameraBufferInfos[cameraRenderInfo.m_ID];
   MeshInfo const &mesh = cbi.mesh;
 
   // Create the vertices including the texture coordinates by scaling the normalized offsets
