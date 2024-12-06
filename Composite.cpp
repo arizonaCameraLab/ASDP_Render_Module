@@ -784,32 +784,23 @@ void CompositeCameras::AddBufferObjects(CameraRenderInfo const& cameraRenderInfo
   // left, move right, then move up at the end of each line.
   std::vector<GLfloat> vertices;
   for (size_t j = 0; j <= ny; j++) {
-    // Compute the U and V normalized texture coordinates for the vertex in the range 0 to 1.
-    // Because standard image textures have the origin at the upper left and OpenGL has it
-    // at the lower right, we must invert the v texture coordinate.
-    /// @todo The triangles go past the edges of the pixels, so we need to adjust the texture
-    // coordinates to land correctly, with the edges of the far triangles going half a pixel
-    // into the bordering pixels. The range will be from slightly negative to slightly greater
-    // than 1.0 for each axis, depending on the number of pixels in X and Y.
-    GLfloat v = 1.0f - j * fnyInv;
-
-    // Compute the normalized X, Y, coordinates in the range -1 to 1.
-    double yn = -1.0f + 2.0f * j * fnyInv;
 
     for (size_t i = 0; i <= nx; i++) {
-      // Compute the U and V normalized texture coordinates for the vertex in the range 0 to 1.
+      // Compute the U and V normalized texture coordinates for the vertex in the range ~0 to ~1.
       /// @todo The triangles go past the edges of the pixels, so we need to adjust the texture
       // coordinates to land correctly, with the edges of the far triangles going half a pixel
       // into the bordering pixels. The range will be from slightly negative to slightly greater
       // than 1.0 for each axis, depending on the number of pixels in X and Y.
       GLfloat u = i * fnxInv;
+      GLfloat v = 1.0f - j * fnyInv;
 
       // Compute the normalized X, Y, coordinates in the range -1 to 1.
       double xn = -1.0f + 2.0f * i * fnxInv;
+      double yn = -1.0f + 2.0f * j * fnyInv;
 
       // Compute the scaled X, Y coordinates for the four corners of the quad that place them
       // for a correctly-sized quad given the camera info to get them to scaled space.
-      // The Z coordinate it along the negative Z axis at the specified depth.
+      // The Z coordinate is along the negative Z axis at the specified depth.
       double xs = xn * xHalfWidth;
       double ys = yn * yHalfWidth;
       double zs = -depth;
