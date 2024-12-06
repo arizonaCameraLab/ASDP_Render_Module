@@ -253,19 +253,33 @@ namespace asdp {
       /// @brief Vector of number of elements for the element buffer objects for each camera.
       std::vector<GLsizei> m_numIndices;
 
-      /// @brief Vector of vertex array objects for each camera.
-      std::vector<GLuint> m_vertexArrayObjects;
+      /// @brief Compute the values needed to create the vertices for the render mesh for a camera.
+      /// @param cameraRenderInfo The camera to compute the mesh for.
+      /// @param nx The number of vertices in the X direction.
+      /// @param ny The number of vertices in the Y direction.
+      /// @param depth The distance from the camera to the quadrilateral displaying the image.
+      /// @return A vector of floats containing the vertex information.  There is one set of information
+      /// per vertex, with the first three values being the offset from the camera origin to a plane at the
+      /// specified depth, the next two being the texture coordinates, and the last three being the normalized offset.
+      /// Either the depth or the normalized offset can be used to determine the position of the vertex after
+      /// scaling as appropriate by adding the camera offset.
+      std::vector<GLfloat> ComputeCameraMeshVertexInfo(const CameraRenderInfo& cameraRenderInfo, size_t nx, size_t ny,
+        GLfloat depth);
 
       /// @brief Add the buffer objects for a camera to the OpenGL context and store the IDs.
       /// @details This function creates the buffer objects for the camera and stores the IDs
       /// in the m_vertexBufferObjects, m_indexBufferObjects, and m_vertexArrayObjects vectors.
       /// It also stores the number of elements in the m_numIndices vector.
+      /// This must be called in order, once for each camera, to produce the required buffers in order
+      /// in the object vectors.
       /// @param cameraRenderInfo The camera to add the buffer objects for.
       /// @param nx The number of vertices in the X direction.
       /// @param ny The number of vertices in the Y direction.
       /// @param depth The distance from the camera to the quadrilateral displaying the image.
-      void AddBufferObjects(const CameraRenderInfo& cameraRenderInfo, size_t nx = 100, size_t ny = 100,
-        GLfloat depth = 900);
+      /// @sideeffect The buffer objects are created and stored in m_vertexBufferObjects, m_indexBufferObjects,
+      /// and m_numIndices.
+      void AddBufferObjects(const CameraRenderInfo& cameraRenderInfo,
+        size_t nx = 100, size_t ny = 100, GLfloat depth = 900);
 
       // Overridden methods
       bool SetupRendering() override;
