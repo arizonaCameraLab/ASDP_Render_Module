@@ -1049,9 +1049,8 @@ void CompositeCameras::RenderView(asdp::Time scanOutTime, const float* viewProje
 
     uint16_t cameraID = m_cameraRenderInfos[c].m_ID;
 
-    // Update the depth texture, recomputing the vertices.
-    /// @todo Only do this if the depth has changed since the last time.
-    UpdateVertexBuffer(m_cameraRenderInfos[c]);
+    /// @todo Update the depth texture, recomputing the vertices, if we're doing depth estimation.
+    //UpdateVertexBuffer(m_cameraRenderInfos[c]);
 
     // If there is no texture, bind the default texture for the image to texture unit 0.
     // Otherwise, bind the stored texture.
