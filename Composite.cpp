@@ -733,18 +733,17 @@ bool CompositeCameras::SetupRendering()
   // Construct a vertex and index buffer object for each camera that describes the positions and
   // texture coordinates along with the indices, along with a count of index buffer entries.
   for (auto const& cameraRenderInfo : m_cameraRenderInfos) {
-    AddBufferObjects(cameraRenderInfo);
+    MeshInfo meshInfo = ComputePlanarCameraMeshInfo(cameraRenderInfo);
+    CreateBufferInfo(cameraRenderInfo, meshInfo);
   }
   return true;
 }
 
 CompositeCameras::~CompositeCameras()
 {
-  for (size_t i = 0; i < m_vertexBufferObjects.size(); i++) {
-    glDeleteBuffers(1, &m_vertexBufferObjects[i]);
-  }
-  for (size_t i = 0; i < m_indexBufferObjects.size(); i++) {
-    glDeleteBuffers(1, &m_indexBufferObjects[i]);
+  for (size_t i = 0; i < m_cameraBufferInfos.size(); i++) {
+    glDeleteBuffers(1, &m_cameraBufferInfos[i].vertexBufferObject);
+    glDeleteBuffers(1, &m_cameraBufferInfos[i].indexBufferObject);
   }
   glDeleteProgram(m_programId);
 }
@@ -753,7 +752,7 @@ static double radians(double degrees) {
   return degrees * M_PI / 180.0;
 }
 
-std::vector<GLfloat> CompositeCameras::ComputeCameraMeshVertexInfo(CameraRenderInfo const& cameraRenderInfo,
+CompositeCameras::MeshInfo CompositeCameras::ComputePlanarCameraMeshInfo(CameraRenderInfo const& cameraRenderInfo,
   size_t nx, size_t ny, GLfloat depth)
 {
   double fnxInv = 1 / static_cast<GLfloat>(nx);
@@ -781,7 +780,7 @@ std::vector<GLfloat> CompositeCameras::ComputeCameraMeshVertexInfo(CameraRenderI
   // 5 floats: X, Y, Z, U, V.  We add entries that span the entire range, with one
   // more vertex in each dimension than there are quads.  We start from the lower-
   // left, move right, then move up at the end of each line.
-  std::vector<GLfloat> vertices;
+  std::vector<VertexInfo> vertices;
   for (size_t j = 0; j <= ny; j++) {
 
     for (size_t i = 0; i <= nx; i++) {
@@ -827,55 +826,51 @@ std::vector<GLfloat> CompositeCameras::ComputeCameraMeshVertexInfo(CameraRenderI
       glm::vec3 point(xh, yh, zh);
       glm::vec3 transformedPoint = glm::vec3(rotation * glm::vec4(point, 1.0f));
 
-      // Compute the normalized direction vector.
-      glm::vec3 direction = glm::normalize(transformedPoint);
-
-      // Add the vertex description
-      vertices.push_back(transformedPoint[0]);
-      vertices.push_back(transformedPoint[1]);
-      vertices.push_back(transformedPoint[2]);
-      vertices.push_back(u);
-      vertices.push_back(v);
-      vertices.push_back(direction[0]);
-      vertices.push_back(direction[1]);
-      vertices.push_back(direction[2]);
+      // Add the vertex description, computing quantities as needed
+      VertexInfo vertex;
+      vertex.offset = transformedPoint;
+      vertex.texCoord = glm::vec2(u, v);
+      vertex.normalizedOffset = glm::normalize(transformedPoint);
+      vertex.depth = glm::length(transformedPoint);
+      vertices.push_back(vertex);
     }
   }
 
-  return vertices;
+  MeshInfo ret;
+  ret.nx = nx;
+  ret.ny = ny;
+  ret.vertexInfo = vertices;
+  return ret;
 }
 
 // NOTE: This must be called in order, once for each camera, to produce the required buffers in order.
-void CompositeCameras::AddBufferObjects(CameraRenderInfo const& cameraRenderInfo, size_t nx, size_t ny,
-  GLfloat depth)
+void CompositeCameras::CreateBufferInfo(CameraRenderInfo const& cameraRenderInfo, MeshInfo const& mesh)
 {
-  // Create the vertices including the texture coordinates.  Each entry will have
-  // 8 floats: X, Y, Z, U, V, NX, NY, NZ.  We only care about the first five.
-  std::vector<GLfloat> vertInfo = ComputeCameraMeshVertexInfo(cameraRenderInfo, nx, ny, depth);
+  // Create the vertices including the texture coordinates.
   std::vector<GLfloat> vertices;
-  for (size_t v = 0; v < vertInfo.size(); v += 8) {
+  for (VertexInfo const &v : mesh.vertexInfo) {
     // Add the vertex description
     // Offset the points by the camera position in the helicopter view space.
-    vertices.push_back(vertInfo[v + 0] + cameraRenderInfo.m_positionMeters[0]);
-    vertices.push_back(vertInfo[v + 1] + cameraRenderInfo.m_positionMeters[1]);
-    vertices.push_back(vertInfo[v + 2] + cameraRenderInfo.m_positionMeters[2]);
-    vertices.push_back(vertInfo[v + 3]);
-    vertices.push_back(vertInfo[v + 4]);
+    vertices.push_back(v.offset[0] + cameraRenderInfo.m_positionMeters[0]);
+    vertices.push_back(v.offset[1] + cameraRenderInfo.m_positionMeters[1]);
+    vertices.push_back(v.offset[2] + cameraRenderInfo.m_positionMeters[2]);
+    vertices.push_back(v.texCoord[0]);
+    vertices.push_back(v.texCoord[1]);
   }
 
   // Create the indices for the triangles, three per triangle.
   std::vector<GLuint> indices;
-  for (size_t j = 0; j < ny; j++) {
-    for (size_t i = 0; i < nx; i++) {
+  for (size_t j = 0; j < mesh.ny; j++) {
+    for (size_t i = 0; i < mesh.nx; i++) {
       // Add the indices for the two triangles in the quad.
-      size_t start = i + (nx+1) * j;
+      size_t start = i + (mesh.nx+1) * j;
       indices.push_back(start);
       indices.push_back(start + 1);
-      indices.push_back(start + (nx+1) + 1);
+      indices.push_back(start + (mesh.nx+1) + 1);
 
       indices.push_back(start);
-      indices.push_back(start + (nx + 1) + 1);
-      indices.push_back(start + (nx + 1));
+      indices.push_back(start + (mesh.nx + 1) + 1);
+      indices.push_back(start + (mesh.nx + 1));
     }
   }
 
@@ -900,10 +895,13 @@ void CompositeCameras::AddBufferObjects(CameraRenderInfo const& cameraRenderInfo
   glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(GLfloat), (GLvoid*)(3 * sizeof(GLfloat)));
   glEnableVertexAttribArray(1);
 
-  // Save the vertex and index buffer objects and the number of elements in the index buffer.
-  m_vertexBufferObjects.push_back(vertexBufferObject);
-  m_indexBufferObjects.push_back(indexBufferObject);
-  m_numIndices.push_back(indices.size());
+  // Save the camera buffer information for this camera, filling in all of its elements.
+  CameraBufferInfo cbi;
+  cbi.mesh = mesh;
+  cbi.vertexBufferObject = vertexBufferObject;
+  cbi.indexBufferObject = indexBufferObject;
+  cbi.numIndices = indices.size();
+  m_cameraBufferInfos[cameraRenderInfo.m_ID] = cbi;
 }
 
 static double TimeDiffMagnitude(asdp::Time t1, asdp::Time t2) {
@@ -1021,6 +1019,8 @@ void CompositeCameras::RenderView(asdp::Time scanOutTime, const float* viewProje
   // Draw each camera, using the appropriate texture.
   for (size_t c = 0; c < m_cameraRenderInfos.size(); c++) {
 
+    uint16_t cameraID = m_cameraRenderInfos[c].m_ID;
+
     // If there is no texture, bind the default texture for the image to texture unit 0.
     // Otherwise, bind the stored texture.
     GLuint texture = 0;
@@ -1063,11 +1063,11 @@ void CompositeCameras::RenderView(asdp::Time scanOutTime, const float* viewProje
     glUniform1f(m_fAngleUniformID, fAngle);
 
     // Draw the camera using its vertex buffer objects.
-    glBindBuffer(GL_ARRAY_BUFFER, m_vertexBufferObjects[c]);
+    glBindBuffer(GL_ARRAY_BUFFER, m_cameraBufferInfos[cameraID].vertexBufferObject);
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(GLfloat), (GLvoid*)0);
     glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(GLfloat), (GLvoid*)(3 * sizeof(GLfloat)));
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_indexBufferObjects[c]);
-    glDrawElements(GL_TRIANGLES, m_numIndices[c], GL_UNSIGNED_INT, 0);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_cameraBufferInfos[cameraID].indexBufferObject);
+    glDrawElements(GL_TRIANGLES, m_cameraBufferInfos[cameraID].numIndices, GL_UNSIGNED_INT, 0);
 
     // Unbind the camera image from its texture unit
     glActiveTexture(GL_TEXTURE0);
