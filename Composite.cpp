@@ -786,11 +786,9 @@ void CompositeCameras::AddBufferObjects(CameraRenderInfo const& cameraRenderInfo
   for (size_t j = 0; j <= ny; j++) {
 
     for (size_t i = 0; i <= nx; i++) {
-      // Compute the U and V normalized texture coordinates for the vertex in the range ~0 to ~1.
-      /// @todo The triangles go past the edges of the pixels, so we need to adjust the texture
-      // coordinates to land correctly, with the edges of the far triangles going half a pixel
-      // into the bordering pixels. The range will be from slightly negative to slightly greater
-      // than 1.0 for each axis, depending on the number of pixels in X and Y.
+      // Compute the U and V normalized texture coordinates for the vertex in the range 0 to 1.
+      // The normalized texture coordinates in the range 0 to 1 handle mapping the texture so that
+      // the corners of the last pixels are at the edges of the quad.
       GLfloat u = i * fnxInv;
       GLfloat v = 1.0f - j * fnyInv;
 

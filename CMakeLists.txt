@@ -217,13 +217,14 @@ endif()
 if(BUILD_UTILITIES)
 
   set (CPP_UTILS
+    Texture_Coordinates
   )
   foreach (BASE ${CPP_UTILS})
     set (APP ${BASE})
     add_executable (${APP} util/${BASE}.cpp)
     set_target_properties(${APP} PROPERTIES FOLDER util/C++)
     target_link_libraries(${APP} PRIVATE
-	    ASDP_Core_API::ASDP_Core_API
+	    ASDP_Core_API::ASDP_Core_API glfw GLEW::glew OpenGL::GL
     )
     install(TARGETS ${APP} EXPORT ${PROJECT_NAME}
       RUNTIME DESTINATION bin
