@@ -843,7 +843,7 @@ CompositeCameras::MeshInfo CompositeCameras::ComputePlanarCameraMeshInfo(CameraR
   return ret;
 }
 
-// NOTE: This must be called in order, once for each camera, to produce the required buffers in order.
+// NOTE: This must be called for each camera to produce the required buffers before rendering uses them.
 void CompositeCameras::CreateBufferInfo(CameraRenderInfo const& cameraRenderInfo, MeshInfo const& mesh)
 {
   // Create the vertices including the texture coordinates.
@@ -881,7 +881,7 @@ void CompositeCameras::CreateBufferInfo(CameraRenderInfo const& cameraRenderInfo
   GLuint vertexBufferObject;
   glGenBuffers(1, &vertexBufferObject);
   glBindBuffer(GL_ARRAY_BUFFER, vertexBufferObject);
-  glBufferData(GL_ARRAY_BUFFER, sizeof(vertices[0]) * vertices.size(), vertices.data(), GL_STATIC_DRAW);
+  glBufferData(GL_ARRAY_BUFFER, sizeof(vertices[0]) * vertices.size(), vertices.data(), GL_DYNAMIC_DRAW);
 
   // Create a vertex buffer object for the indices.
   GLuint indexBufferObject;
@@ -902,6 +902,34 @@ void CompositeCameras::CreateBufferInfo(CameraRenderInfo const& cameraRenderInfo
   cbi.indexBufferObject = indexBufferObject;
   cbi.numIndices = indices.size();
   m_cameraBufferInfos[cameraRenderInfo.m_ID] = cbi;
+}
+
+void CompositeCameras::UpdateVertexBuffer(CameraRenderInfo const& cameraRenderInfo)
+{
+  // Find the mesh information for this camera.
+  CameraBufferInfo& const cbi = m_cameraBufferInfos[cameraRenderInfo.m_ID];
+  MeshInfo const &mesh = cbi.mesh;
+
+  // Create the vertices including the texture coordinates by scaling the normalized offsets
+  // in the mesh by their current depth values and adding the camera center.
+  std::vector<GLfloat> vertices;
+  vertices.reserve(5 * mesh.vertexInfo.size());
+  for (VertexInfo const& v : mesh.vertexInfo) {
+    // Add the vertex description
+    // Offset the points by the camera position in the helicopter view space.
+    vertices.push_back(v.normalizedOffset[0] * v.depth + cameraRenderInfo.m_positionMeters[0]);
+    vertices.push_back(v.normalizedOffset[1] * v.depth + cameraRenderInfo.m_positionMeters[1]);
+    vertices.push_back(v.normalizedOffset[2] * v.depth + cameraRenderInfo.m_positionMeters[2]);
+    vertices.push_back(v.texCoord[0]);
+    vertices.push_back(v.texCoord[1]);
+  }
+
+  // Unbind any vertex array object, we won't be using these because they are not shared between contexts.
+  glBindVertexArray(0);
+
+  // Update the vertex buffer object data with the vertices.
+  glBindBuffer(GL_ARRAY_BUFFER, cbi.vertexBufferObject);
+  glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(vertices[0]) * vertices.size(), vertices.data());
 }
 
 static double TimeDiffMagnitude(asdp::Time t1, asdp::Time t2) {
@@ -1020,6 +1048,10 @@ void CompositeCameras::RenderView(asdp::Time scanOutTime, const float* viewProje
   for (size_t c = 0; c < m_cameraRenderInfos.size(); c++) {
 
     uint16_t cameraID = m_cameraRenderInfos[c].m_ID;
+
+    // Update the depth texture, recomputing the vertices.
+    /// @todo Only do this if the depth has changed since the last time.
+    UpdateVertexBuffer(m_cameraRenderInfos[c]);
 
     // If there is no texture, bind the default texture for the image to texture unit 0.
     // Otherwise, bind the stored texture.

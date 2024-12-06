@@ -293,10 +293,14 @@ namespace asdp {
       /// for rendering.
       /// @param cameraRenderInfo The camera to add the buffer objects for.
       /// @param mesh The mesh information for the camera.
-      /// @sideeffect The buffer objects are created and appended to m_cameraBufferInfos.
+      /// @sideeffect The buffer objects are created and added to m_cameraBufferInfos.
       void CreateBufferInfo(const CameraRenderInfo& cameraRenderInfo, MeshInfo const &mesh);
 
-      /// @todo
+      /// @brief Update the vertex buffer object for a camera based on its current depth information.
+      /// @details This function updates the vertex buffer object for a camera based on the current depth
+      /// information in the cameraRenderInfo object.  It uses the mesh information stored in the
+      /// m_cameraBufferInfos object to update the vertex buffer object with the new depth information.
+      /// NOTE: This does not call glFinish() to ensure that that data has been written before returning.
       void UpdateVertexBuffer(const CameraRenderInfo& cameraRenderInfo);
 
       // Overridden methods
