@@ -12,9 +12,11 @@
 
 #pragma once
 #include <vector>
+#include <array>
 #include <memory>
 #include <string>
 #include <Composite.h>
+#include <PoseAdjuster.h>
 
 namespace asdp {
   namespace render {
@@ -25,11 +27,13 @@ namespace asdp {
     /// each pair.  This is used to produce an internal representation of depths around the helicopter that
     /// can then be queried based on rays to determine the distance from the ray start to an object in the
     /// world.
+    /// NOTE: The caller must have a current OpenGL context on the calling thread when calling any of the
+    /// functions in this class, including the constructor.
     class DepthEstimator {
     public:
       /// brief Construct the estimator with a list of cameras.
-      /// @param[in] cameras List of cameras to use to estimate depth.  These will be grouped into
-      /// pairs of cameras to estimate depth.
+      /// @param[in] cameras List of pairs of cameras to use to estimate depth.
+      /// @param[in] poseAdjuster Pose adjuster to use to adjust the poses of the cameras to the same time.
       /// @param[in] nx Number of points to create in the X direction.
       /// @param[in] ny Number of points to create in the Y direction.
       /// @param[in] minZRotDeg Minimum Z rotation in degrees for the manifold representing depth.
@@ -45,7 +49,9 @@ namespace asdp {
       ///            Rotation is around helicopter Z first (mesh X axis), then around the new X
       ///            axis (mesh Y axis).
       /// @param[in] depths List of depths to check in meters in increasing distance order.
-      DepthEstimator(std::vector<CameraRenderInfo> cameras, unsigned nx, unsigned ny,
+      DepthEstimator(std::vector< std::array<CameraRenderInfo, 2> > cameras,
+        std::shared_ptr<PoseAdjuster> poseAdjuster,
+        unsigned nx, unsigned ny,
         float minZRotDeg = -115, float maxZRotDeg = 115,
         float minXRotDeg = -55, float maxXRotDeg = 55,
         std::vector<float> depths = {10, 20, 50, 100, 200, 500, 1000});
@@ -66,7 +72,7 @@ namespace asdp {
       /// A successfull call to ComputeDepthEstimate() must be made before calling this function.
       /// @param[in] point The starting point of the ray in Helicopter space.
       /// @param[in] direction The direction of the ray in Helicopter space.
-      /// @return The estimated distance from ray start in Helicopter space to an object, -1 if there is an error.
+      /// @return The estimated distance from ray start in Helicopter space to an object, -1e6 if there is an error.
       float EstimateDepth(const glm::vec3 &point, const glm::vec3 &direction) const;
 
       /// @brief Test function to test the class.

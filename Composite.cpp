@@ -731,10 +731,13 @@ bool CompositeCameras::SetupRendering()
   }
 
   // Construct a vertex and index buffer object for each camera that describes the positions and
-  // texture coordinates along with the indices, along with a count of index buffer entries.
-  for (auto const& cameraRenderInfo : m_cameraRenderInfos) {
-    MeshInfo meshInfo = ComputePlanarCameraMeshInfo(cameraRenderInfo);
-    CreateBufferInfo(cameraRenderInfo, meshInfo);
+  // texture coordinates along with the indices, along with a count of index buffer entries.  Make
+  // the mesh if it has not already been filled in.
+  for (auto &cameraRenderInfo : m_cameraRenderInfos) {
+    if (cameraRenderInfo.m_mesh.nx == 0) {
+      cameraRenderInfo.ComputePlanarCameraMeshInfo();
+    }
+    CreateBufferInfo(cameraRenderInfo, cameraRenderInfo.m_mesh);
   }
   return true;
 }
@@ -752,8 +755,7 @@ static double radians(double degrees) {
   return degrees * M_PI / 180.0;
 }
 
-CompositeCameras::MeshInfo CompositeCameras::ComputePlanarCameraMeshInfo(CameraRenderInfo const& cameraRenderInfo,
-  size_t nx, size_t ny, GLfloat depth)
+void CameraRenderInfo::ComputePlanarCameraMeshInfo(size_t nx, size_t ny, GLfloat depth)
 {
   double fnxInv = 1 / static_cast<GLfloat>(nx);
   double fnyInv = 1 / static_cast<GLfloat>(ny);
@@ -761,19 +763,19 @@ CompositeCameras::MeshInfo CompositeCameras::ComputePlanarCameraMeshInfo(CameraR
   // Compute the scaled X, Y coordinates for the four corners of the quad that place them
   // for a correctly-sized quad given the camera info to get them to scaled space.
   // The Z coordinate is along the negative Z axis at the specified depth.
-  double xHalfWidth = tan(radians(cameraRenderInfo.m_fovDegrees[0]) * 0.5) * depth;
-  double yHalfWidth = tan(radians(cameraRenderInfo.m_fovDegrees[1]) * 0.5) * depth;
+  double xHalfWidth = tan(radians(m_fovDegrees[0]) * 0.5) * depth;
+  double yHalfWidth = tan(radians(m_fovDegrees[1]) * 0.5) * depth;
 
   // Rotate the points in the helicopter view space by the specified orientation change
   // to point them in the direction that the camera is looking.
   glm::mat4 rotationX = glm::rotate(glm::mat4(1.0f),
-    glm::radians(static_cast<GLfloat>(cameraRenderInfo.m_orientationDegrees[0])),
+    glm::radians(static_cast<GLfloat>(m_orientationDegrees[0])),
     glm::vec3(1.0f, 0.0f, 0.0f));
   glm::mat4 rotationY = glm::rotate(rotationX,
-    glm::radians(static_cast<GLfloat>(cameraRenderInfo.m_orientationDegrees[1])),
+    glm::radians(static_cast<GLfloat>(m_orientationDegrees[1])),
     glm::vec3(0.0f, 1.0f, 0.0f));
   glm::mat4 rotation = glm::rotate(rotationY,
-    glm::radians(static_cast<GLfloat>(cameraRenderInfo.m_orientationDegrees[2])),
+    glm::radians(static_cast<GLfloat>(m_orientationDegrees[2])),
     glm::vec3(0.0f, 0.0f, 1.0f));
 
   // Create the vertices including the texture coordinates.  Each entry will have
@@ -806,8 +808,8 @@ CompositeCameras::MeshInfo CompositeCameras::ComputePlanarCameraMeshInfo(CameraR
       // canonical view space.  If we don't have a distortion model, we just use the X, Y, Z
       // coordinates as is.
       std::array<double, 3> distPoint = std::array<double, 3>{xs, ys, zs};
-      if (cameraRenderInfo.m_distortion != nullptr) {
-        distPoint = cameraRenderInfo.m_distortion->MapPoint(distPoint);
+      if (m_distortion != nullptr) {
+        distPoint = m_distortion->MapPoint(distPoint);
       }
       double& xc = distPoint[0];
       double& yc = distPoint[1];
@@ -836,11 +838,9 @@ CompositeCameras::MeshInfo CompositeCameras::ComputePlanarCameraMeshInfo(CameraR
     }
   }
 
-  MeshInfo ret;
-  ret.nx = nx;
-  ret.ny = ny;
-  ret.vertexInfo = vertices;
-  return ret;
+  m_mesh.nx = nx;
+  m_mesh.ny = ny;
+  m_mesh.vertexInfo = vertices;
 }
 
 // NOTE: This must be called for each camera to produce the required buffers before rendering uses them.
