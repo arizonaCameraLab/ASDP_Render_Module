@@ -47,7 +47,7 @@ ToneMap::ToneMap(std::vector<ToneMapEntry> mapping, size_t numEntries)
   }
 }
 
-uint32_t ToneMap::GenerateTexture()
+uint32_t ToneMap::GenerateTexture() const
 {
   // Generate a 1D texture.
   GLuint texture = 0;
@@ -73,7 +73,7 @@ uint32_t ToneMap::GenerateTexture()
   return texture;
 }
 
-bool ToneMap::FillTexture(uint32_t textureID)
+bool ToneMap::FillTexture(uint32_t textureID) const
 {
   // Bind the texture.
   glBindTexture(GL_TEXTURE_1D, textureID);

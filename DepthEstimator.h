@@ -34,8 +34,9 @@ namespace asdp {
       /// brief Construct the estimator with a list of cameras.
       /// @param[in] cameras List of pairs of cameras to use to estimate depth.
       /// @param[in] poseAdjuster Pose adjuster to use to adjust the poses of the cameras to the same time.
-      /// @param[in] nx Number of points to create in the X direction.
-      /// @param[in] ny Number of points to create in the Y direction.
+      /// @param[in] cameraFrameInterval The time between frames in the camera images.
+      /// @param[in] nx Number of points to create in the X direction for each camera pair.
+      /// @param[in] ny Number of points to create in the Y direction for each camera pair.
       /// @param[in] minZRotDeg Minimum Z rotation in degrees for the manifold representing depth.
       ///            Rotation is around helicopter Z first (mesh X axis), then around the new X
       ///            axis (mesh Y axis).
@@ -50,7 +51,7 @@ namespace asdp {
       ///            axis (mesh Y axis).
       /// @param[in] depths List of depths to check in meters in increasing distance order.
       DepthEstimator(std::vector< std::array<CameraRenderInfo, 2> > cameras,
-        std::shared_ptr<PoseAdjuster> poseAdjuster,
+        std::shared_ptr<PoseAdjuster> poseAdjuster, Time cameraFrameInterval,
         unsigned nx, unsigned ny,
         float minZRotDeg = -115, float maxZRotDeg = 115,
         float minXRotDeg = -55, float maxXRotDeg = 55,

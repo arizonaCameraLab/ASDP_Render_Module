@@ -53,14 +53,14 @@ namespace asdp {
       /// on the calling thread before calling this function.  The caller is responsible for deleting
       /// the texture when it is no longer needed.
       /// @return The OpenGL texture ID, 0 on failure.
-      uint32_t GenerateTexture();
+      uint32_t GenerateTexture() const;
 
       /// @brief Fill in the texture with the mapping.
       /// @details The caller is responsible for making sure that the OpenGL context is current
       /// on the calling thread before calling this function.
       /// @param textureID The OpenGL texture ID to fill in.
       /// @return True on success, false on failure.
-      bool FillTexture(uint32_t textureID);
+      bool FillTexture(uint32_t textureID) const;
 
     protected:
       std::vector< std::array<float, 3> >   m_mapping;  ///< The mapping from intensity to color.
