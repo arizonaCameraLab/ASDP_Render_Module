@@ -183,6 +183,21 @@ namespace asdp {
 
     /// @brief Information about a single camera needed to produce a renderable view from it.
     struct CameraRenderInfo {
+      CameraRenderInfo() = delete;
+      /// @brief Constructor
+      CameraRenderInfo(uint16_t id, std::array<double, 3> positionMeters,
+          std::array<double, 3> orientationDegrees,
+          std::array<uint16_t, 2> resolutionPixels, std::array<double, 2> fovDegrees,
+          std::shared_ptr<Distortion> distortion,
+          std::shared_ptr<asdp::render::ImageQueue> imageQueue)
+        : m_ID(id)
+        , m_positionMeters(positionMeters)
+        , m_orientationDegrees(orientationDegrees)
+        , m_resolutionPixels(resolutionPixels)
+        , m_fovDegrees(fovDegrees)
+        , m_distortion(distortion)
+        , m_imageQueue(imageQueue) {}
+
       uint16_t m_ID = 0;                              ///< ID of the camera.
       /// Position of the camera's center of projection in meters from the camera device origin.
       /// The canonical orientation is in the local helicopter coordinate system, with +X pointing
@@ -198,17 +213,17 @@ namespace asdp {
       std::array<double, 2> m_fovDegrees = {};        ///< Field of view of the camera in degrees, horizontal then vertical.
       /// Distortion correction object for the camera.
       std::shared_ptr<Distortion> m_distortion;
-      /// The mesh to use to render the camera's image. Can be constructed using ComputePlanarCameraMeshInfo.
-      MeshInfo m_mesh;
       /// Queue of images from the camera.  The newest image is the one to render.
       std::shared_ptr<asdp::render::ImageQueue> m_imageQueue;
+
+      /// The mesh to use to render the camera's image. Can be constructed using ComputePlanarCameraMeshInfo.
+      MeshInfo m_mesh;
 
       /// @brief Compute the values needed to create the vertices for the render mesh for a camera.
       /// @details This function computes the vertices for a quadrilateral that will be used to display
       /// the image from the camera.  The quadrilateral is at a specified depth from the camera and
       /// is centered on the camera's view direction.  This is used to create a fixed-depth planar
       /// mesh that can be used to render the camera's image.
-      /// The above values must have been filled in before calling this function.
       /// @param nx The number of vertices in the X direction.
       /// @param ny The number of vertices in the Y direction.
       /// @param depth The distance from the camera to the quadrilateral displaying the image.

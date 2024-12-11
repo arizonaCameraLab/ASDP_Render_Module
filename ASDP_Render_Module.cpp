@@ -1117,28 +1117,27 @@ int main(int argc, char** argv)
     std::vector<asdp::render::CameraRenderInfo> cameraRenderInfos;
     try {
       for (const auto& camera : config["cameras"]) {
-        asdp::render::CameraRenderInfo info;
-        info.m_ID = camera["id"];
-        info.m_positionMeters = camera["positionMeters"];
-        info.m_orientationDegrees = camera["orientationDegrees"];
-        info.m_resolutionPixels = camera["resolutionPixels"];
-        info.m_fovDegrees = camera["fieldOfViewDegrees"];
+        std::shared_ptr<Distortion> dist;
         json distortion = camera["distortion"];
         if (distortion["type"] == "none") {
           DistortionNone* distortion = new DistortionNone;
-          info.m_distortion = std::shared_ptr<Distortion>(distortion);
+          dist = std::shared_ptr<Distortion>(distortion);
         } else if (distortion["type"] == "radial") {
           json parameters = distortion["parameters"];
           std::array<double, 2> center = parameters["COP"];
           json map = parameters["map"];
           std::vector< std::array<double, 2> > mapPoints = map;
           DistortionRadialLERP* distortion = new DistortionRadialLERP(center, mapPoints);
-          info.m_distortion = std::shared_ptr<Distortion>(distortion);
+          dist = std::shared_ptr<Distortion>(distortion);
         } else {
           std::cerr << "Error: Unknown distortion type: " << distortion["type"] << std::endl;
           return 17;
         }
-        info.m_imageQueue = std::make_shared<asdp::render::ImageQueue>();
+
+        asdp::render::CameraRenderInfo info(camera["id"],
+          camera["positionMeters"], camera["orientationDegrees"],
+          camera["resolutionPixels"], camera["fieldOfViewDegrees"],
+          dist, std::make_shared<asdp::render::ImageQueue>());
 
         //==================================================================================================
         // Fill in three textures for this camera, all gray and at time zero.

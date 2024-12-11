@@ -106,38 +106,40 @@ int main()
   for (int x = 0; x < nx; x++) {
     uint16_t minVal = static_cast<uint16_t>(x * (65535.0/3) / nx);
     for (int y = 0; y < ny; y++) {
-      asdp::render::CameraRenderInfo camera;
-      // Give each camera a unique ID
-      camera.m_ID = x * ny + y;
-      camera.m_fovDegrees[0] = hFOV;
-      camera.m_fovDegrees[1] = vFOV;
-
-      // Make the image for the camera.
-      uint16_t maxVal = static_cast<uint16_t>( 2*(65535.0 / 3) + y * (65535.0/3) / ny);
-      std::shared_ptr<asdp::render::ImageData> image = std::make_shared<asdp::render::ImageData>();
-      image->texture = MakeTexture(width, height, minVal, maxVal);
-      camera.m_imageQueue = std::make_shared<asdp::render::ImageQueue>();
-      // We must insert two images because the renderer will grab the newest two images.
-      camera.m_imageQueue->InsertImage(image);
-      camera.m_imageQueue->InsertImage(image);
-
       // Odd-numbered columns are rotated with X facing up, even with it facing down.
       // The transformations are complicated by the fact that our Euler order of operations
       // is XYZ.  We need to rotate around X by 90 or -90 degrees to point straight up or down.
       // We then need to rotate around the the new Y axis by -90 plus the desired Y rotation
       // so that the original X axis will be pointing down.  Finally, we need to rotate around
       // the new Z axis by 90 + the desired vertical rotation.
-      double desiredHor = 1.01 * (x - (nx - 1)/2.0) * vFOV;  ///< Camera is rotated portrait
-      double desiredVer = 1.01 * (y - (ny - 1)/2.0) * hFOV;  ///< Camera is rotated portrait
+      double desiredHor = 1.01 * (x - (nx - 1) / 2.0) * vFOV;  ///< Camera is rotated portrait
+      double desiredVer = 1.01 * (y - (ny - 1) / 2.0) * hFOV;  ///< Camera is rotated portrait
+      std::array<double, 3> orientationDegrees;
       if (x % 2 == 0) {
-        camera.m_orientationDegrees[0] = 90;
-        camera.m_orientationDegrees[1] = -90 - desiredHor;
-        camera.m_orientationDegrees[2] = 90 - desiredVer;
-      } else {
-        camera.m_orientationDegrees[0] = 90;
-        camera.m_orientationDegrees[1] = 90 - desiredHor;
-        camera.m_orientationDegrees[2] = -90 + desiredVer;
+        orientationDegrees[0] = 90;
+        orientationDegrees[1] = -90 - desiredHor;
+        orientationDegrees[2] = 90 - desiredVer;
       }
+      else {
+        orientationDegrees[0] = 90;
+        orientationDegrees[1] = 90 - desiredHor;
+        orientationDegrees[2] = -90 + desiredVer;
+      }
+
+      // Make the image for the camera.
+      uint16_t maxVal = static_cast<uint16_t>(2 * (65535.0 / 3) + y * (65535.0 / 3) / ny);
+      std::shared_ptr<asdp::render::ImageData> image = std::make_shared<asdp::render::ImageData>();
+      image->texture = MakeTexture(width, height, minVal, maxVal);
+      std::shared_ptr<asdp::render::ImageQueue> iq = std::make_shared<asdp::render::ImageQueue>();
+      // We must insert two images because the renderer will grab the newest two images.
+      iq->InsertImage(image);
+      iq->InsertImage(image);
+
+      // Give each camera a unique ID
+      asdp::render::CameraRenderInfo camera(x * ny + y,
+        std::array<double, 3>(), orientationDegrees,
+        std::array<uint16_t, 2>(), std::array<double, 2>({ hFOV, vFOV }),
+        nullptr, iq);
 
       cameras.push_back(camera);
     }
