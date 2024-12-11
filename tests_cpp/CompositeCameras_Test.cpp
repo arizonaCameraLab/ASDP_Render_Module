@@ -107,6 +107,8 @@ int main()
     uint16_t minVal = static_cast<uint16_t>(x * (65535.0/3) / nx);
     for (int y = 0; y < ny; y++) {
       asdp::render::CameraRenderInfo camera;
+      // Give each camera a unique ID
+      camera.m_ID = x * ny + y;
       camera.m_fovDegrees[0] = hFOV;
       camera.m_fovDegrees[1] = vFOV;
 
