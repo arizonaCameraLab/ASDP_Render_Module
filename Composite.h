@@ -164,6 +164,23 @@ namespace asdp {
     };
 
 
+    /// @brief Information needed per vertex to generate the vertices for the render mesh for a camera.
+    struct VertexInfo {
+      glm::vec2 texCoord; ///< The texture coordinates for the vertex.
+      glm::vec3 offset; ///< The offset from the camera origin to the point on the plane at a specified depth.
+      /// The length of the offset vector (distance from the camera).  This is initialized to the length
+      /// of the offset vectorin ComputeCameraMeshInfo, but can be updated by depth calculations later to
+      /// adjust the distance along the normalizedOffset direction to push a point.
+      float depth;
+      glm::vec3 normalizedOffset; ///< The normalized offset from the camera origin.
+    };
+    /// @brief Information needed to generate the vertices for the render mesh for a camera.
+    struct MeshInfo {
+      std::vector<VertexInfo> vertexInfo; ///< The vertex information for the camera.
+      size_t nx = 0;                      ///< The number of vertices in the X direction.
+      size_t ny = 0;                      ///< The number of vertices in the Y direction.
+    };
+
     /// @brief Information about a single camera needed to produce a renderable view from it.
     struct CameraRenderInfo {
       uint16_t m_ID = 0;                              ///< ID of the camera.
@@ -177,12 +194,26 @@ namespace asdp {
       /// right, +Y pointing forwards, and +Z pointing up.  The camera is translated in the
       /// helicopter frame of reference and then rotated around its new center.
       std::array<double, 3> m_orientationDegrees = {};
-      std::array<uint16_t, 2> m_resolutionPixels = {};///< Resolution of the camera in pixels.
+      std::array<uint16_t, 2> m_resolutionPixels = {};///< Resolution of the camera in pixels, X then Y.
       std::array<double, 2> m_fovDegrees = {};        ///< Field of view of the camera in degrees, horizontal then vertical.
       /// Distortion correction object for the camera.
       std::shared_ptr<Distortion> m_distortion;
+      /// The mesh to use to render the camera's image. Can be constructed using ComputePlanarCameraMeshInfo.
+      MeshInfo m_mesh;
       /// Queue of images from the camera.  The newest image is the one to render.
       std::shared_ptr<asdp::render::ImageQueue> m_imageQueue;
+
+      /// @brief Compute the values needed to create the vertices for the render mesh for a camera.
+      /// @details This function computes the vertices for a quadrilateral that will be used to display
+      /// the image from the camera.  The quadrilateral is at a specified depth from the camera and
+      /// is centered on the camera's view direction.  This is used to create a fixed-depth planar
+      /// mesh that can be used to render the camera's image.
+      /// The above values must have been filled in before calling this function.
+      /// @param nx The number of vertices in the X direction.
+      /// @param ny The number of vertices in the Y direction.
+      /// @param depth The distance from the camera to the quadrilateral displaying the image.
+      /// @return Information about the mesh that was constructed.
+      void ComputePlanarCameraMeshInfo(size_t nx = 100, size_t ny = 100, GLfloat depth = 900);
     };
 
     /// @brief Composite class that renders a set of camera views.
@@ -194,7 +225,7 @@ namespace asdp {
       /// @param cameraRenderInfo The configuration of the cameras needed to generate textured geometry.
       /// @param toneMapTexture The OpenGL texture ID of the tone map to use.
       /// @param poseAdjuster A shared pointer to the pose adjuster to use for transforming points.
-      /// @param cameraFrameInterval The interval between camera frames to use for distortion correction.
+      /// @param cameraFrameInterval The interval between camera frames to use for latency correction.
       /// @param renderOffsetMicroseconds The offset in microseconds to render the images at.  This is used
       /// for the replay case to change the algorithm so that it deals with the fact that the image
       /// generation cannot be synchronized with rendering.  This specifies how far back (probably 1+
@@ -245,23 +276,6 @@ namespace asdp {
       /// @brief Vector of Image objects to use during a frame rendering, one per camera.
       std::vector<std::shared_ptr<asdp::render::ImageData>> m_images;
 
-      /// @brief Information needed per vertex to generate the vertices for the render mesh for a camera.
-      struct VertexInfo {
-        glm::vec2 texCoord; ///< The texture coordinates for the vertex.
-        glm::vec3 offset; ///< The offset from the camera origin to the point on the plane at a specified depth.
-        /// The length of the offset vector (distance from the camera).  This is initialized to the length
-        /// of the offset vectorin ComputeCameraMeshInfo, but can be updated by depth calculations later to
-        /// adjust the distance along the normalizedOffset direction to push a point.
-        float depth;
-        glm::vec3 normalizedOffset; ///< The normalized offset from the camera origin.
-      };
-      /// @brief Information needed to generate the vertices for the render mesh for a camera.
-      struct MeshInfo {
-        std::vector<VertexInfo> vertexInfo; ///< The vertex information for the camera.
-        size_t nx;                          ///< The number of vertices in the X direction.
-        size_t ny;                          ///< The number of vertices in the Y direction.
-      };
-
       /// @brief Information about the buffers for a camera and mesh used to create/edit them.
       struct CameraBufferInfo {
         MeshInfo mesh; ///< The mesh information for the camera, used to create and modify the vertexBufferObject.
@@ -272,19 +286,6 @@ namespace asdp {
 
       /// Information about the buffers for each camera, looked up by the camera ID from CameraRenderInfo.
       std::map<uint16_t,CameraBufferInfo> m_cameraBufferInfos;
-
-      /// @brief Compute the values needed to create the vertices for the render mesh for a camera.
-      /// @details This function computes the vertices for a quadrilateral that will be used to display
-      /// the image from the camera.  The quadrilateral is at a specified depth from the camera and
-      /// is centered on the camera's view direction.  This is used to create a fixed-depth planar
-      /// mesh that can be used to render the camera's image.
-      /// @param cameraRenderInfo The camera to compute the mesh for.
-      /// @param nx The number of vertices in the X direction.
-      /// @param ny The number of vertices in the Y direction.
-      /// @param depth The distance from the camera to the quadrilateral displaying the image.
-      /// @return Information about the mesh that was constructed.
-      MeshInfo ComputePlanarCameraMeshInfo(const CameraRenderInfo& cameraRenderInfo, size_t nx = 100, size_t ny = 100,
-        GLfloat depth = 900);
 
       /// @brief Create the buffer objects for a camera and store them along with other buffer info.
       /// @details This function creates the buffer objects for the camera and stores the IDs
