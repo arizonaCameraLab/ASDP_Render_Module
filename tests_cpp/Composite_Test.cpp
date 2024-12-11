@@ -8,6 +8,9 @@
 #include <Composite.h>
 #include <ASDP_Core_API.h>
 #include <GLFW/glfw3.h>
+#include <glm/glm.hpp>
+#include <glm/gtc/quaternion.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 
 int main()
 {
@@ -54,13 +57,22 @@ int main()
     // Set the viewpoint here
     auto now = std::chrono::steady_clock::now();
     auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - start).count();
-    double angle = degreesPerSecond * (elapsed / 1000.0);
+    double angle = -degreesPerSecond * (elapsed / 1000.0);
 
     // Offset the viewpoint center and rotate around the Z axis so we can verify correct behavior.
     // Also rotate slowly around the X axis.
+    views[0].nearClip = 0.1f;
+    views[0].farClip = 1000.0f;
     views[0].viewpoint[0] = -5;
-    views[0].orientation[0] = angle/100;
-    views[0].orientation[2] = angle;
+    float dx = glm::radians(angle/100); // Rotate 45 degrees around the X axis
+    float dz = glm::radians(angle); // Rotate 30 degrees around the Z axis
+    glm::quat rotationX = glm::angleAxis(dx, glm::vec3(1.0f, 0.0f, 0.0f));
+    glm::quat rotationZ = glm::angleAxis(dz, glm::vec3(0.0f, 0.0f, 1.0f));
+    glm::quat combinedRotation = rotationZ * rotationX;
+    views[0].orientation[0] = combinedRotation.w;
+    views[0].orientation[1] = combinedRotation.x;
+    views[0].orientation[2] = combinedRotation.y;
+    views[0].orientation[3] = combinedRotation.z;
 
     // Render here
     composite.Render(asdp::Time(), views);
