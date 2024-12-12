@@ -149,7 +149,6 @@ public:
 
       // Use the ratio of the new and original fields of view to scale the pixel count, making sure that
       // the results are an even number of pixels in X and Y.
-      /// @todo
       std::array<unsigned, 2> pixelCounts;
       uint16_t maxX = std::max(cameras[i][0].m_resolutionPixels[0], cameras[i][1].m_resolutionPixels[0]);
       uint16_t maxY = std::max(cameras[i][0].m_resolutionPixels[1], cameras[i][1].m_resolutionPixels[1]);
