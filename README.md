@@ -185,7 +185,14 @@ For radial distortion, the parameters are as follows:
 ## Utilities
 
 The **util** directory contains a number of utilities.
-- **Time_CUDA_Writes** is a utility to measure the time it takes to write frames from pinned CPU memory to to GPU memory.
+- **Time_CUDA_Writes** is a utility to measure the time it takes to write frames from pinned CPU memory
+  to to GPU memory.
+- **Speed_Test_Receiver_CUDA.cu** is a utility to measure the time it takes to receive frames from the
+  network and write them to GPU memory.
+- **Texture_Coordinates** is a utility to verify that the coordinates in OpenGL go all the way to
+  the corner of a pixel.
+- **Compare_Configurations** compares two camera configuration files and reports the deviations between them.
+  This can be used to validate the results of an optimized configuration file against a reference configuration file.
 
 ## Coordinate systems
 

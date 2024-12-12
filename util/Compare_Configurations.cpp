@@ -1,0 +1,251 @@
+/*
+ * Copyright (C) 2024: Arizona Board of Regents on Behalf of the University of Arizona
+ */
+
+// This is a client that connects to the first server it encounters and runs a Render Module.
+
+/**
+ * @file ASDP_Render_Module.cpp
+ * @brief Apache Strap-Down Pilotage Render Module.
+ *
+* @author ReliaSolve.
+* @date May 20th, 2024.
+*/
+
+#include <iostream>
+#include <fstream>
+#include <sstream>
+#include <chrono>
+#include <map>
+#include <set>
+#include <mutex>
+#include <thread>
+#include <string>
+#include <filesystem>
+#include <vector>
+#include <list>
+#include <atomic>
+#include <ASDP_Core_API.h>
+#include <ASDP_SpinFreeQueue.hpp>
+#include <ASDP_BufferPool.h>
+#include <ASDP_StreamPacketSortedQueue.h>
+#include <ASDP_ClockSynchronizer.h>
+#include <nlohmann/json.hpp>
+#include <GL/glew.h>
+#include <ToneMap.h>
+#include <Composite.h>
+
+using namespace asdp;
+using namespace asdp::render;
+using json = nlohmann::json;
+
+static std::string VERSION = "1.0.0";
+
+void usage(std::string name)
+{
+  std::cerr << "Usage: " << name << " [options] file1.json file2.json" << std::endl;
+  std::cerr << "  file1.json                         The first file to compare." << std::endl;
+  std::cerr << "  file2.json                         The second file to compare." << std::endl;
+  std::cerr << "  Options:" << std::endl;
+  std::cerr << "  --help                             Print this information and quit." << std::endl;
+};
+
+int main(int argc, char** argv)
+{
+  std::string file1, file2;
+  size_t realParams = 0;          ///< The number of non-flag parameters we've seen.
+
+  // Parse the command line arguments, with the first non-flag argument being the
+  // name of the IP address to listen on.
+  for (int i = 1; i < argc; ++i) {
+    if (std::string("--help") == argv[i]) {
+      usage(argv[0]);
+    } else if (argv[i][0] == '-') {
+      usage(argv[0]);
+      return 1;
+    } else switch (realParams++) {
+    case 0:
+      file1 = argv[i];
+      break;
+    case 1:
+      file2 = argv[i];
+      break;
+    default:
+      usage(argv[0]);
+      return 2;
+    }
+  }
+  if (realParams != 2) {
+    usage(argv[0]);
+    return 2;
+  }
+
+  // Run inside a block so that the destructors will be called for all objects before we exit.
+  {
+    std::cout << "Compare_Configurations version " << VERSION << std::endl;
+
+    // Read the configuration files.
+    if (!std::filesystem::exists(file1)) {
+      std::cerr << "Configuration file not found: " << file1 << std::endl;
+      return 14;
+    }
+    std::ifstream configFile1(file1);
+    json config1 = json::parse(configFile1);
+    std::cout << "Read configuration from " << file1 << std::endl;
+
+    if (!std::filesystem::exists(file2)) {
+      std::cerr << "Configuration file not found: " << file2 << std::endl;
+      return 14;
+    }
+    std::ifstream configFile2(file2);
+    json config2 = json::parse(configFile2);
+    std::cout << "Read configuration from " << file2 << std::endl;
+
+    // Construct CameraRenderInfos for each configuration file.
+    std::vector<asdp::render::CameraRenderInfo> cameraRenderInfos1;
+    for (const auto& camera : config1["cameras"]) {
+      std::shared_ptr<Distortion> dist;
+      json distortion = camera["distortion"];
+      if (distortion["type"] == "none") {
+        DistortionNone* distortion = new DistortionNone;
+        dist = std::shared_ptr<Distortion>(distortion);
+      } else if (distortion["type"] == "radial") {
+        json parameters = distortion["parameters"];
+        std::array<double, 2> center = parameters["COP"];
+        json map = parameters["map"];
+        std::vector< std::array<double, 2> > mapPoints = map;
+        DistortionRadialLERP* distortion = new DistortionRadialLERP(center, mapPoints);
+        dist = std::shared_ptr<Distortion>(distortion);
+      } else {
+        std::cerr << "Error: Unknown distortion type: " << distortion["type"] << std::endl;
+        return 17;
+      }
+
+      asdp::render::CameraRenderInfo info(camera["id"],
+      camera["positionMeters"], camera["orientationDegrees"],
+      camera["resolutionPixels"], camera["fieldOfViewDegrees"],
+      dist, std::make_shared<asdp::render::ImageQueue>());
+      info.ComputePlanarCameraMeshInfo();
+      cameraRenderInfos1.push_back(info);
+    }
+
+    std::vector<asdp::render::CameraRenderInfo> cameraRenderInfos2;
+    for (const auto& camera : config2["cameras"]) {
+      std::shared_ptr<Distortion> dist;
+      json distortion = camera["distortion"];
+      if (distortion["type"] == "none") {
+        DistortionNone* distortion = new DistortionNone;
+        dist = std::shared_ptr<Distortion>(distortion);
+      }
+      else if (distortion["type"] == "radial") {
+        json parameters = distortion["parameters"];
+        std::array<double, 2> center = parameters["COP"];
+        json map = parameters["map"];
+        std::vector< std::array<double, 2> > mapPoints = map;
+        DistortionRadialLERP* distortion = new DistortionRadialLERP(center, mapPoints);
+        dist = std::shared_ptr<Distortion>(distortion);
+      }
+      else {
+        std::cerr << "Error: Unknown distortion type: " << distortion["type"] << std::endl;
+        return 17;
+      }
+
+      asdp::render::CameraRenderInfo info(camera["id"],
+        camera["positionMeters"], camera["orientationDegrees"],
+        camera["resolutionPixels"], camera["fieldOfViewDegrees"],
+        dist, std::make_shared<asdp::render::ImageQueue>());
+      info.ComputePlanarCameraMeshInfo();
+      cameraRenderInfos2.push_back(info);
+    }
+
+    // Compare the two configurations. If they have a different number of cameras, just
+    // report that and exit.  Otherwise, compare the camera meshes and report the pairwise
+    // mean and max edge vertex differences and the total mean and max across all cameras.
+    if (cameraRenderInfos1.size() != cameraRenderInfos2.size()) {
+      std::cout << "The two configurations have a different numbers of cameras: "
+        << cameraRenderInfos1.size() << " vs. " << cameraRenderInfos2.size() << std::endl;
+      return 0;
+    }
+    std::cout << "The files each have " << cameraRenderInfos1.size() << " cameras." << std::endl;
+
+    // Go through the cameras and compare the meshes if the camera IDs match.  Keep track of the
+    // total mean and max differences for meters and pixels across all cameras.
+    double totalMeanDistDiff = 0.0, totalMeanPixelDiff = 0.0;
+    double totalMaxDistDiff = 0.0, totalMaxPixelDiff = 0.0;
+    for (size_t c = 0; c < cameraRenderInfos1.size(); ++c) {
+      if (cameraRenderInfos1[c].m_ID != cameraRenderInfos2[c].m_ID) {
+        std::cout << "Camera IDs do not match: " << cameraRenderInfos1[c].m_ID
+          << " vs. " << cameraRenderInfos2[c].m_ID << std::endl;
+        return 0;
+      }
+
+      // Make sure that the meshes are the same sizes.
+      MeshInfo const &mesh1 = cameraRenderInfos1[c].m_mesh;
+      MeshInfo const &mesh2 = cameraRenderInfos2[c].m_mesh;
+      if (mesh1.nx != mesh2.nx || mesh1.ny != mesh2.ny) {
+        std::cout << "Camera " << cameraRenderInfos1[c].m_ID << " meshes have different numbers of vertices: "
+          << mesh1.nx << "," << mesh1.ny << " vs. " << mesh2.nx << "," << mesh2.ny << std::endl;
+        return 0;
+      }
+
+      // Compare all border vertices on the meshes, determining their differences in meters and in
+      // projected pixel location differences.
+      double meanDistDiff = 0.0, meanPixelDiff = 0.0;
+      double maxDistDiff = 0.0, maxPixelDiff = 0.0;
+      int count = 0;
+      for (int y = 0; y < mesh1.ny; ++y) {
+        for (int x = 0; x < mesh1.nx; ++x) {
+          if (x == 0 || x == mesh1.nx - 1 || y == 0 || y == mesh1.ny - 1) {
+            size_t index = y * mesh1.nx + x;
+            // Add the offset to the camera's base location to get the actual vertex location for each camera.
+            // Then subtract the two to get the difference in meters.
+            glm::dvec3 vertex1, vertex2;
+            for (int i = 0; i < 3; ++i) {
+              vertex1[i] = cameraRenderInfos1[i].m_positionMeters[i] + mesh1.vertexInfo[index].offset[i];
+              vertex2[i] = cameraRenderInfos2[i].m_positionMeters[i] + mesh2.vertexInfo[index].offset[i];
+            }
+            double dist = glm::distance(vertex1,vertex2);
+
+            meanDistDiff += dist;
+            maxDistDiff = std::max(maxDistDiff, dist);
+
+            // Compute the projected pixel location for each camera and compare the differences.
+            // Find the size of a pixel on the first camera when it is projected to a plane at the
+            // specified depth.  This is 1/xPixels times the width of the plane at the depth of a vertex
+            // near the center.  We ignore distortion for this calculation, assuming that the FOV is specified
+            // reasonably.
+            /// @todo Project both of these onto the depth plane and compare that difference to the pixel size
+            /// rather than the distance itself, which may not be oriented in plane.
+            size_t centerIndex = (mesh1.ny / 2) * mesh1.nx + mesh1.nx / 2;
+            double centerDepth = cameraRenderInfos1[c].m_mesh.vertexInfo[centerIndex].depth;
+            double width = 2 * centerDepth * std::tan(glm::radians(cameraRenderInfos1[c].m_fovDegrees[0])/2);
+            double pixelSize = width / cameraRenderInfos1[c].m_resolutionPixels[0];
+            meanPixelDiff += dist / pixelSize;
+            maxPixelDiff = std::max(maxPixelDiff, dist / pixelSize);
+            ++count;
+          }
+        }
+      }
+
+      meanDistDiff /= count;
+      meanPixelDiff /= count;
+
+      std::cout << "  Camera " << cameraRenderInfos1[c].m_ID << " mean dist: " << meanDistDiff
+        << " max dist: " << maxDistDiff << "; mean pixel dist: " << meanPixelDiff
+        << " max pixel dist: " << maxPixelDiff << std::endl;
+
+      totalMeanDistDiff += meanDistDiff;
+      totalMeanPixelDiff += meanPixelDiff;
+      totalMaxDistDiff = std::max(totalMaxDistDiff, maxDistDiff);
+      totalMaxPixelDiff = std::max(totalMaxPixelDiff, maxPixelDiff);
+    }
+
+    totalMeanDistDiff /= cameraRenderInfos1.size();
+    totalMeanPixelDiff /= cameraRenderInfos1.size();
+
+    std::cout << "Total mean dist: " << totalMeanDistDiff << " max dist: " << totalMaxDistDiff
+      << "; total mean pixel dist: " << totalMeanPixelDiff << " max pixel dist: " << totalMaxPixelDiff << std::endl;
+  }
+
+  return 0;
+}

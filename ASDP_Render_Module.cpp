@@ -47,7 +47,6 @@
 using namespace asdp;
 using namespace asdp::render;
 using json = nlohmann::json;
-using json = nlohmann::json;
 
 static std::string VERSION = "2.13.0";
 

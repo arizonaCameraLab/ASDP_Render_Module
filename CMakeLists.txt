@@ -218,13 +218,16 @@ if(BUILD_UTILITIES)
 
   set (CPP_UTILS
     Texture_Coordinates
+    Compare_Configurations
   )
   foreach (BASE ${CPP_UTILS})
     set (APP ${BASE})
     add_executable (${APP} util/${BASE}.cpp)
     set_target_properties(${APP} PROPERTIES FOLDER util/C++)
     target_link_libraries(${APP} PRIVATE
-	    ASDP_Core_API::ASDP_Core_API glfw GLEW::glew OpenGL::GL
+	    Render_Module nlohmann_json::nlohmann_json
+      ASDP_Core_API::ASDP_Core_API
+      glfw GLEW::glew OpenGL::GL
     )
     install(TARGETS ${APP} EXPORT ${PROJECT_NAME}
       RUNTIME DESTINATION bin
