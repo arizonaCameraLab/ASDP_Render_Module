@@ -209,8 +209,8 @@ int main(int argc, char** argv)
             // Then subtract the two to get the difference in meters.
             glm::dvec3 vertex1, vertex2;
             for (int i = 0; i < 3; ++i) {
-              vertex1[i] = cameraRenderInfos1[i].m_positionMeters[i] + mesh1.vertexInfo[index].offset[i];
-              vertex2[i] = cameraRenderInfos2[i].m_positionMeters[i] + mesh2.vertexInfo[index].offset[i];
+              vertex1[i] = cameraRenderInfos1[c].m_positionMeters[i] + mesh1.vertexInfo[index].offset[i];
+              vertex2[i] = cameraRenderInfos2[c].m_positionMeters[i] + mesh2.vertexInfo[index].offset[i];
             }
             double dist = glm::distance(vertex1,vertex2);
 
