@@ -209,6 +209,16 @@ public:
   /// Last time we checked the keyboard, used to control motion rate.
   std::chrono::steady_clock::time_point m_lastKeyboardCheck;
 
+  /// Is the left mouse button pressed?
+  bool m_leftMouseButtonPressed = false;
+
+  /// The cursor position when the left mouse button was pressed.
+  double m_mousePressedX = 0.0;
+  double m_mousePressedY = 0.0;
+
+  /// Last time we adjusted due to the mouse, used to control motion rate.
+  std::chrono::steady_clock::time_point m_lastMouseMotion;
+
   /// Time point to start rendering the next frame.
   std::chrono::steady_clock::time_point m_nextFrameTime;
 
@@ -444,6 +454,7 @@ void DisplayWindow::DisplayThread(std::string windowName,
 
     // Process keyboard/mouse/joystick input events and update the viewpoint
     HandleKeyboard();
+    HandleMouse();
     if (m_impl->m_glfwJoystickIndex >= 0) {
       auto now = std::chrono::steady_clock::now();
       std::chrono::duration<double> elapsed = now - lastJoystickCheck;
@@ -558,6 +569,47 @@ void DisplayWindow::HandleKeyboard()
     }
   }
   m_impl->m_spacePressed = spacePressed;
+}
+
+void DisplayWindow::HandleMouse()
+{
+  // If the mouse button has not been pressed and it now is pressed, set the mouse pressed
+  // position to the current position.
+  if (!m_impl->m_leftMouseButtonPressed && (glfwGetMouseButton(Display::m_impl->m_window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS)) {
+    m_impl->m_leftMouseButtonPressed = true;
+    glfwGetCursorPos(Display::m_impl->m_window, &m_impl->m_mousePressedX, &m_impl->m_mousePressedY);
+    m_impl->m_lastMouseMotion = std::chrono::steady_clock::now();
+    return;
+  }
+
+  // If the mouse button is not now pressed, clear the pressed flag and we're done.
+  if (glfwGetMouseButton(Display::m_impl->m_window, GLFW_MOUSE_BUTTON_LEFT) != GLFW_PRESS) {
+    m_impl->m_leftMouseButtonPressed = false;
+    return;
+  }
+
+  // Find the current mouse position and delta from the pressed position.  Scale by half the window height
+  // and the maximum rate and the time in seconds and adjust the viewpoint accordingly.
+  double xpos, ypos;
+  glfwGetCursorPos(Display::m_impl->m_window, &xpos, &ypos);
+  double deltaX = xpos - m_impl->m_mousePressedX;
+  double deltaY = ypos - m_impl->m_mousePressedY;
+
+  // Scale the deltas to be a fraction of half the window height (scale them both by the same amount).
+  int width, height;
+  glfwGetWindowSize(Display::m_impl->m_window, &width, &height);
+  deltaX /= (height / 2.0);
+  deltaY /= (height / 2.0);
+
+  auto now = std::chrono::steady_clock::now();
+  std::chrono::duration<double> elapsed = now - m_impl->m_lastMouseMotion;
+  m_impl->m_lastMouseMotion = now;
+
+  // Handle the mouse movement with the button held down
+  // We scale the deltas and increment the rotation angles so long as the button is held down.
+  double MaxDegreesPerSecond = 45.0;
+  m_impl->m_rotationZDegrees -= MaxDegreesPerSecond * deltaX * elapsed.count();
+  m_impl->m_rotationXDegrees -= MaxDegreesPerSecond * deltaY * elapsed.count();
 }
 
 void DisplayWindow::ComputeAndClampViewOrientation()

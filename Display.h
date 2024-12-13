@@ -214,6 +214,9 @@ protected:
       /// @brief Helper function to handle keyboard input.
       void HandleKeyboard();
 
+      /// @brief Helpfer function to handle mouse input.
+      void HandleMouse();
+
       /// @brief Helper function to clamp the viewing orientation to be within the expected visible range.
       /// @details This function is called by the display thread to ensure that the view orientation is
       /// within the expected range.  It is expected to be called after the view orientation is updated.
