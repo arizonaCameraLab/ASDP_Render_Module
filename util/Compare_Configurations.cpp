@@ -39,7 +39,7 @@ using namespace asdp;
 using namespace asdp::render;
 using json = nlohmann::json;
 
-static std::string VERSION = "1.0.0";
+static std::string VERSION = "1.1.0";
 
 void usage(std::string name)
 {
@@ -47,12 +47,14 @@ void usage(std::string name)
   std::cerr << "  file1.json                         The first file to compare." << std::endl;
   std::cerr << "  file2.json                         The second file to compare." << std::endl;
   std::cerr << "  Options:" << std::endl;
+  std::cerr << "  --depth <float>                    Depth to focal planes (default 900)." << std::endl;
   std::cerr << "  --help                             Print this information and quit." << std::endl;
 };
 
 int main(int argc, char** argv)
 {
   std::string file1, file2;
+  float depth = 900.0f;
   size_t realParams = 0;          ///< The number of non-flag parameters we've seen.
 
   // Parse the command line arguments, with the first non-flag argument being the
@@ -60,6 +62,12 @@ int main(int argc, char** argv)
   for (int i = 1; i < argc; ++i) {
     if (std::string("--help") == argv[i]) {
       usage(argv[0]);
+    } else if (std::string("--depth") == argv[i]) {
+      if (++i >= argc) {
+        usage(argv[0]);
+        return 1;
+      }
+      depth = std::stof(argv[i]);
     } else if (argv[i][0] == '-') {
       usage(argv[0]);
       return 1;
@@ -125,7 +133,7 @@ int main(int argc, char** argv)
       camera["positionMeters"], camera["orientationDegrees"],
       camera["resolutionPixels"], camera["fieldOfViewDegrees"],
       dist, std::make_shared<asdp::render::ImageQueue>());
-      info.ComputePlanarCameraMeshInfo();
+      info.ComputePlanarCameraMeshInfo(100, 100, depth);
       cameraRenderInfos1.push_back(info);
     }
 
@@ -154,7 +162,7 @@ int main(int argc, char** argv)
         camera["positionMeters"], camera["orientationDegrees"],
         camera["resolutionPixels"], camera["fieldOfViewDegrees"],
         dist, std::make_shared<asdp::render::ImageQueue>());
-      info.ComputePlanarCameraMeshInfo();
+      info.ComputePlanarCameraMeshInfo(100, 100, depth);
       cameraRenderInfos2.push_back(info);
     }
 
@@ -211,14 +219,12 @@ int main(int argc, char** argv)
 
             // Compute the projected pixel location for each camera and compare the differences.
             // Find the size of a pixel on the first camera when it is projected to a plane at the
-            // specified depth.  This is 1/xPixels times the width of the plane at the depth of a vertex
-            // near the center.  We ignore distortion for this calculation, assuming that the FOV is specified
-            // reasonably.
+            // specified depth.  This is 1/xPixels times the width of the plane at the depth the vertex.
+            // We ignore distortion for this calculation, assuming that the FOV is specified reasonably.
             /// @todo Project both of these onto the depth plane and compare that difference to the pixel size
             /// rather than the distance itself, which may not be oriented in plane.
-            size_t centerIndex = (mesh1.ny / 2) * mesh1.nx + mesh1.nx / 2;
-            double centerDepth = cameraRenderInfos1[c].m_mesh.vertexInfo[centerIndex].depth;
-            double width = 2 * centerDepth * std::tan(glm::radians(cameraRenderInfos1[c].m_fovDegrees[0])/2);
+            double depth = cameraRenderInfos1[c].m_mesh.vertexInfo[index].depth;
+            double width = 2 * depth * std::tan(glm::radians(cameraRenderInfos1[c].m_fovDegrees[0])/2);
             double pixelSize = width / cameraRenderInfos1[c].m_resolutionPixels[0];
             meanPixelDiff += dist / pixelSize;
             maxPixelDiff = std::max(maxPixelDiff, dist / pixelSize);
