@@ -407,9 +407,6 @@ void DisplayWindow::DisplayThread(std::string windowName,
       }
     }
 
-    // Add hooks for mouse input.
-    /// @todo
-
     // Release the window's current context in case another Display wants to borrow it.
     glfwMakeContextCurrent(nullptr);
 
@@ -471,7 +468,6 @@ void DisplayWindow::DisplayThread(std::string windowName,
         }
       }
     }
-    /// @todo mouse input
 
     // Ensure that the view orientation stays within bounds.
     ComputeAndClampViewOrientation();
