@@ -1138,6 +1138,19 @@ int main(int argc, char** argv)
           camera["resolutionPixels"], camera["fieldOfViewDegrees"],
           dist, std::make_shared<asdp::render::ImageQueue>());
 
+        // Read the offset and gain from the color object if it is present and they are present.
+        // Override the default values if they are present.
+        if (camera.contains("color")) {
+          float offset = 0.0f, gain = 1.0f;
+          if (camera["color"].contains("offset")) {
+            offset = camera["color"]["offset"];
+          }
+          if (camera["color"].contains("gain")) {
+            gain = camera["color"]["gain"];
+          }
+          info.SetColorOffsetGain(offset, gain);
+        }
+
         //==================================================================================================
         // Fill in three textures for this camera, all gray and at time zero.
         // This creates one for the display to be using, one for the texture thread to write to, and

@@ -184,6 +184,7 @@ namespace asdp {
     /// @brief Information about a single camera needed to produce a renderable view from it.
     struct CameraRenderInfo {
       CameraRenderInfo() = delete;
+
       /// @brief Constructor
       CameraRenderInfo(uint16_t id, std::array<double, 3> positionMeters,
           std::array<double, 3> orientationDegrees,
@@ -197,6 +198,29 @@ namespace asdp {
         , m_fovDegrees(fovDegrees)
         , m_distortion(distortion)
         , m_imageQueue(imageQueue) {}
+
+      CameraRenderInfo(const CameraRenderInfo& other)
+        :CameraRenderInfo(other.m_ID, other.m_positionMeters, other.m_orientationDegrees,
+          other.m_resolutionPixels, other.m_fovDegrees, other.m_distortion, other.m_imageQueue)
+      {
+        float offset, gain;
+        other.GetColorOffsetGain(offset, gain);
+        SetColorOffsetGain(offset, gain);
+      };
+
+      /// @brief Thread-safe access to the color offset and gain, which must be consistent.
+      void GetColorOffsetGain(float& colorOffset, float& colorGain) const {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        colorOffset = m_colorOffset;
+        colorGain = m_colorGain;
+      }
+
+      /// @brief Thread-safe set of the color offset and gain, which must be consistent.
+      void SetColorOffsetGain(float colorOffset, float colorGain) {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        m_colorOffset = colorOffset;
+        m_colorGain = colorGain;
+      }
 
       uint16_t m_ID = 0;                              ///< ID of the camera.
       /// Position of the camera's center of projection in meters from the camera device origin.
@@ -229,6 +253,11 @@ namespace asdp {
       /// @param depth The distance from the camera to the quadrilateral displaying the image.
       /// @return Information about the mesh that was constructed.
       void ComputePlanarCameraMeshInfo(size_t nx = 100, size_t ny = 100, GLfloat depth = 900);
+
+    protected:
+      mutable std::mutex m_mutex;      ///< Mutex to control access to information that must be read as a single unit.
+      float m_colorOffset = 0;         ///< Color = (original + offset) * gain.
+      float m_colorGain = 1;           ///< Color = (original + offset) * gain.
     };
 
     /// @brief Composite class that renders a set of camera views.

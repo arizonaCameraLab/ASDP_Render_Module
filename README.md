@@ -148,6 +148,10 @@ the file to *0.json* in the install directory before running the program.
           "COP" : [0.0, 0.0],
           "map" : [[0, 0], [1, 1]]
         }
+      },
+      "color" : {
+        "offset" : 0.0,
+        "gain" : 1.0
       }
     },
     {
@@ -181,6 +185,11 @@ For radial distortion, the parameters are as follows:
   distortion that increased the distance by a factor of 2 could be specified by the list [[0,0], [1,2]] for
   a camera whose field of view is less than 45 degrees at its corners, with the second entry changed to
   [3, 6] for a wider field of view.
+
+The **color** field is an optional object that can specify the global offset and gain to apply to the image.  The
+default offset is 0.0 and the default gain is 1.0.  The offset is added and the result multiplied by the
+gain.  This can be used to adjust the brightness and contrast of each camera so that they share the
+same color space, which is where the tone map is applied.
 
 ## Utilities
 
