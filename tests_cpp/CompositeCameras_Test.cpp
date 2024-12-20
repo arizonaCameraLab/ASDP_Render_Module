@@ -145,6 +145,26 @@ int main()
     }
   }
 
+  // Make a tenth camera that will be used to test the color offset and gain parameters.
+  // It will be smaller and drawn in the center in front of the other cameras (its position
+  // will be negative Y).
+  {
+    std::array<double, 3> position = { 0.0, -0.5, 0.0 };
+    std::array<double, 3> orientation = { 0.0, 0.0, 0.0 };
+    std::array<double, 2> fieldOfView = { hFOV/2, vFOV/2 };
+    std::shared_ptr<asdp::render::ImageData> image = std::make_shared<asdp::render::ImageData>();
+    // Color values run from half of the image value to 3/4 of the image value.
+    image->texture = MakeTexture(width, height, 65535/2, 65535*3/4);
+    std::shared_ptr<asdp::render::ImageQueue> iq = std::make_shared<asdp::render::ImageQueue>();
+    // We must insert two images because the renderer will grab the newest two images.
+    iq->InsertImage(image);
+    iq->InsertImage(image);
+    asdp::render::CameraRenderInfo camera(9, position, orientation, std::array<uint16_t, 2>(), fieldOfView, nullptr, iq);
+    // Color values run from half of the image value to 3/4 of the image value.
+    camera.SetColorOffsetGain(-0.5f, 4);
+    cameras.push_back(camera);
+  }
+
   // Use the default tone-map texture for the cameras.
   asdp::render::ToneMap toneMap;
   GLuint toneMapTexture = toneMap.GenerateTexture();
@@ -159,6 +179,7 @@ int main()
   std::cout << "second brighter on the right." << std::endl;
   std::cout << "Above should be brighter extensions and below should be darker ones." << std::endl;
   std::cout << "The extensions meet at dark and then bright boundaries from left to right." << std::endl;
+  std::cout << "A smaller box should be in the center of the view, black at bottom to white at top." << std::endl;
   std::cout << "" << std::endl;
   std::cout << "Close the window to exit." << std::endl;
   auto start = std::chrono::steady_clock::now();

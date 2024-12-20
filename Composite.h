@@ -317,6 +317,9 @@ namespace asdp {
       GLuint m_imageTextureId;
       GLuint m_toneMapTextureId;
 
+      GLuint m_offsetUniformID;      ///< The Uniform ID of the color offset.
+      GLuint m_gainUniformID;        ///< The Uniform ID of the color gain.
+
       /// @brief Vector of Image objects to use during a frame rendering, one per camera.
       std::vector<std::shared_ptr<asdp::render::ImageData>> m_images;
 

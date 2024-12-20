@@ -643,10 +643,13 @@ R"(#version 330 core
    in vec2 TexCoord;
    uniform sampler2D imageTexture;
    uniform sampler1D toneMapTexture;
+   uniform float offset;
+   uniform float gain;
    void main()
    {
       // Look up the intensity from the image texture and then use the tone map to get the color.
-      float intensity = texture(imageTexture, TexCoord).r;
+      // Apply offset and gain.  The texture sampler should be set to GL_CLAMP_TO_EDGE.
+      float intensity = gain * (offset + texture(imageTexture, TexCoord).r);
       FragColor = texture(toneMapTexture, intensity);
    })";
 
@@ -667,6 +670,8 @@ CompositeCameras::CompositeCameras(std::vector<CameraRenderInfo>& cameraRenderIn
   , m_fVelocityUniformID(0)
   , m_fAxisUniformID(0)
   , m_fAngleUniformID(0)
+  , m_offsetUniformID(0)
+  , m_gainUniformID(0)
   , m_imageTextureId(0)
   , m_toneMapTextureId(0)
 {
@@ -715,16 +720,21 @@ bool CompositeCameras::SetupRendering()
   m_fVelocityUniformID = glGetUniformLocation(m_programId, "fVelocity");
   m_fAxisUniformID = glGetUniformLocation(m_programId, "fAxis");
   m_fAngleUniformID = glGetUniformLocation(m_programId, "fAngle");
+  m_offsetUniformID = glGetUniformLocation(m_programId, "offset");
+  m_gainUniformID = glGetUniformLocation(m_programId, "gain");
   m_imageTextureId = glGetUniformLocation(m_programId, "imageTexture");
   m_toneMapTextureId = glGetUniformLocation(m_programId, "toneMapTexture");
   if (m_viewProjectionUniformId == -1 || m_poseAdjustUniformId == -1 || m_fVelocityUniformID == -1 ||
-    m_fAxisUniformID == -1 || m_fAngleUniformID == -1 || m_imageTextureId == -1 || m_toneMapTextureId == -1) {
+    m_fAxisUniformID == -1 || m_fAngleUniformID == -1 || m_imageTextureId == -1 || m_toneMapTextureId == -1 ||
+    m_offsetUniformID == -1 || m_gainUniformID == -1) {
     std::cerr << "CompositeCameras::SetupRendering(): Failed to get uniform IDs" << std::endl;
     std::cerr << "  viewProjection: " << m_viewProjectionUniformId << std::endl;
     std::cerr << "  poseAdjust: " << m_poseAdjustUniformId << std::endl;
     std::cerr << "  fVelocity: " << m_fVelocityUniformID << std::endl;
     std::cerr << "  fAxis: " << m_fAxisUniformID << std::endl;
     std::cerr << "  fAngle: " << m_fAngleUniformID << std::endl;
+    std::cerr << "  offset: " << m_offsetUniformID << std::endl;
+    std::cerr << "  gain: " << m_gainUniformID << std::endl;
     std::cerr << "  imageTexture: " << m_imageTextureId << std::endl;
     std::cerr << "  toneMapTexture: " << m_toneMapTextureId << std::endl;
     return false;
@@ -1092,6 +1102,10 @@ void CompositeCameras::RenderView(asdp::Time scanOutTime, const float* viewProje
     glUniform3fv(m_fVelocityUniformID, 1, fVelocity.data());
     glUniform3fv(m_fAxisUniformID, 1, fAxis.data());
     glUniform1f(m_fAngleUniformID, fAngle);
+    float offset, gain;
+    m_cameraRenderInfos[c].GetColorOffsetGain(offset, gain);
+    glUniform1f(m_offsetUniformID, offset);
+    glUniform1f(m_gainUniformID, gain);
 
     // Draw the camera using its vertex buffer objects.
     glBindBuffer(GL_ARRAY_BUFFER, m_cameraBufferInfos[cameraID].vertexBufferObject);

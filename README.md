@@ -189,7 +189,7 @@ For radial distortion, the parameters are as follows:
 The **color** field is an optional object that can specify the global offset and gain to apply to the image.  The
 default offset is 0.0 and the default gain is 1.0.  The offset is added and the result multiplied by the
 gain.  This can be used to adjust the brightness and contrast of each camera so that they share the
-same color space, which is where the tone map is applied.
+same color space, which is where the tone map is applied.  A negative offset will make the image darker.
 
 ## Utilities
 
@@ -264,6 +264,7 @@ You should see a row of three distorted dark boxes horizontally across the cente
 the first and third brighter on the left and the second brighter on the right.
 Above should be brighter extensions and below should be darker ones.
 The extensions meet at dark and then bright boundaries from left to right.
+There is a smaller camera in the center of the view that is black on the bottom and white on the top.
 The expected image is shown below.
 
 ![Test of the CompositeCameras class](CompositeCameras_Test.png "Test of the CompositeCameras class")
