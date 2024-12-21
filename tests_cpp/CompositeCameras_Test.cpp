@@ -161,7 +161,7 @@ int main()
     iq->InsertImage(image);
     asdp::render::CameraRenderInfo camera(9, position, orientation, std::array<uint16_t, 2>(), fieldOfView, nullptr, iq);
     // Color values run from half of the image value to 3/4 of the image value.
-    camera.SetColorOffsetGain(-0.5f, 4);
+    camera.SetColorOffsetGain(-0.5f * 65535, 4);
     cameras.push_back(camera);
   }
 
