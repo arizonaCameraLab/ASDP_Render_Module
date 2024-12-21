@@ -1104,6 +1104,8 @@ void CompositeCameras::RenderView(asdp::Time scanOutTime, const float* viewProje
     glUniform1f(m_fAngleUniformID, fAngle);
     float offset, gain;
     m_cameraRenderInfos[c].GetColorOffsetGain(offset, gain);
+    // Scale offset by the maximum color value to get it into 0-1 range.
+    offset /= 65535.0f;
     glUniform1f(m_offsetUniformID, offset);
     glUniform1f(m_gainUniformID, gain);
 
