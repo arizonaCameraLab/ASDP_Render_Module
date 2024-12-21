@@ -108,7 +108,7 @@ void TextureThread(int width, int height, std::atomic_bool& done,
     data->gpuImageBufferPtr = gpuImageBufferSP;
     data->imageQueuePtr = imageQueue;
     data->streamPtr = stream;
-    CPUDataToTextureHandler handler(texturesToCUDAMap, data, width, height, 16);
+    CPUDataToTextureHandler handler(texturesToCUDAMap, data, width, height, 16, 2.0f, 3.0f);
     if (handler.GetStatus().size() > 0) {
       std::cerr << "Error in CPUDataToTextureHandler constructor: " << handler.GetStatus() << std::endl;
       return;
@@ -193,6 +193,8 @@ int main()
     glBindTexture(GL_TEXTURE_2D, 0);
 
     imageData->texture = texture;
+    imageData->exposure = 2.0f;
+    imageData->gain = 3.0f;
     imageQueue->InsertImage(imageData);
   }
 
@@ -291,6 +293,14 @@ int main()
     // Draw a single rectangle that fills the window.
     // Draw the quad using the newest texture
     std::shared_ptr<ImageData> image = imageQueue->LockNewestImages().front();
+    if (image->exposure != 2.0f) {
+      std::cerr << "Exposure is not 2.0: " << image->exposure << std::endl;
+      return 5;
+    }
+    if (image->gain != 3.0f) {
+      std::cerr << "Gain is not 3.0: " << image->gain << std::endl;
+      return 6;
+    }
     glBindTexture(GL_TEXTURE_2D, image->texture);
     glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, 0);
     glBindTexture(GL_TEXTURE_2D, 0);

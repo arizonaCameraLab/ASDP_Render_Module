@@ -32,9 +32,11 @@ __global__ void WriteSurfaceKernel(cudaSurfaceObject_t surface, uint16_t* buffer
 CPUDataToTextureHandler::CPUDataToTextureHandler(
   std::shared_ptr< std::map<GLuint, cudaGraphicsResource*> > texturesToCUDAMap,
   std::shared_ptr<DataToSendToGPU> dataPtr,
-  uint16_t width, uint16_t height, uint16_t batchSize)
+  uint16_t width, uint16_t height, uint16_t batchSize,
+  float exposure, float gain)
   : m_status(""), m_dataPtr(dataPtr)
   , m_width(width), m_height(height), m_batchSize(batchSize)
+  , m_exposure(exposure), m_gain(gain)
   , m_lastLineSent(0), m_largestLineReceived(0)
   , m_imageData(nullptr), m_resource(nullptr), m_textureData(nullptr), m_surfObj(0)
 {
@@ -103,6 +105,10 @@ CPUDataToTextureHandler::~CPUDataToTextureHandler()
 
   // Set the time on the image data to the average of the begin and end times.
   m_imageData->imageCenterTime = m_centerTime;
+
+  // Set the exposure and gain on the image data.
+  m_imageData->exposure = m_exposure;
+  m_imageData->gain = m_gain;
 
   // Ensure that the stream completes (so OpenGL on other threads in other contexts won't race).
   // This may be superfluous because the call to cudaGraphicsUnmapResources() handles this at least

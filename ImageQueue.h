@@ -41,6 +41,12 @@ namespace asdp {
       /// @details This time is used to determine how much to shift the image based
       /// on the change in pose of the helicopter since the image was taken.
       asdp::Time imageCenterTime = {};
+
+      /// @brief The gain used to capture the image.
+      float gain = 0.0f;
+
+      /// @brief The exposure time used to capture the image.
+      float exposure = 0.0f;
     };
 
     /// @brief Thread-safe access to pool of images along with times they were created.

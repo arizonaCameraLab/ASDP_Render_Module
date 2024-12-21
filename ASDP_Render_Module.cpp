@@ -48,7 +48,7 @@ using namespace asdp;
 using namespace asdp::render;
 using json = nlohmann::json;
 
-static std::string VERSION = "2.15.0";
+static std::string VERSION = "2.16.0";
 
 /// @brief The path to the configuration file. Defined in the CMakeLists file.
 std::filesystem::path g_dirPath = CONFIG_FILE_PATH;
@@ -71,8 +71,11 @@ static void ChangePlayPause(bool nowPlaying, void* /* unused */)
 /// @param cameraID The camera ID that the data is for.
 /// @param width The width of the image data.
 /// @param height The height of the image data.
+/// @param exposure The exposure time for the image data.
+/// @param gain The gain for the image data.
 /// @return OKAY on success, error status on failure.
-asdp::Status ParseFrameBeginMessage(Message &message, uint32_t &cameraID, uint16_t& width, uint16_t& height)
+asdp::Status ParseFrameBeginMessage(Message &message, uint32_t &cameraID, uint16_t& width, uint16_t& height,
+  float &exposure, float &gain)
 {
   MessageFrameBegin frameBegin(message);
   if (frameBegin.GetConstructorStatus() != OKAY) {
@@ -87,6 +90,14 @@ asdp::Status ParseFrameBeginMessage(Message &message, uint32_t &cameraID, uint16
     return status;
   }
   status = frameBegin.GetSensorHeight(height);
+  if (status != OKAY) {
+    return status;
+  }
+  status = frameBegin.GetExposure(exposure);
+  if (status != OKAY) {
+    return status;
+  }
+  status = frameBegin.GetGain(gain);
   if (status != OKAY) {
     return status;
   }
@@ -217,8 +228,8 @@ static void CopyDataToTextures(uint16_t width, uint16_t height,
             if (message.cameraID >= handlers.size()) {
               handlers.resize(message.cameraID + 1);
             }
-            handlers[message.cameraID] = std::make_shared<CPUDataToTextureHandler>(texturesToCUDAMap, data, message.width, message.height,
-              static_cast<uint16_t>(batchSize));
+            handlers[message.cameraID] = std::make_shared<CPUDataToTextureHandler>(texturesToCUDAMap, data,
+              message.width, message.height, static_cast<uint16_t>(batchSize), message.exposure, message.gain);
             if (!handlers[message.cameraID]->GetStatus().empty()) {
               std::cerr << "Error creating CPUDataToTextureHandler: " << handlers[message.cameraID]->GetStatus() << std::endl;
               done = true;
@@ -410,7 +421,8 @@ static void ReceiveDataThread(ReceiverUDP& receiveSocket, size_t maxBytesPerPack
             // camera.
             uint32_t cameraID;
             uint16_t width, height;
-            status = ParseFrameBeginMessage(*message, cameraID, width, height);
+            float exposure, gain;
+            status = ParseFrameBeginMessage(*message, cameraID, width, height, exposure, gain);
             if (OKAY != status) {
               std::cerr << "ReceiveDataThread: ParseFrameBeginMessage() failed: " << ErrorMessage(status) << std::endl;
               done = true;
@@ -437,6 +449,8 @@ static void ReceiveDataThread(ReceiverUDP& receiveSocket, size_t maxBytesPerPack
             summary.cameraID = cameraID;
             summary.width = width;
             summary.height = height;
+            summary.exposure = exposure;
+            summary.gain = gain;
             messageSummaries.push_back(summary);
           }
           break;

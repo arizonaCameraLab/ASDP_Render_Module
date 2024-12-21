@@ -8,6 +8,7 @@
 #include <cmath>
 #include <string>
 #include <iostream>
+#include <algorithm>
 #include <GL/glew.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -672,6 +673,7 @@ CompositeCameras::CompositeCameras(std::vector<CameraRenderInfo>& cameraRenderIn
   , m_fAngleUniformID(0)
   , m_offsetUniformID(0)
   , m_gainUniformID(0)
+  , m_globalExposureGain(cameraFrameInterval.seconds + cameraFrameInterval.microseconds * 1e-6)
   , m_imageTextureId(0)
   , m_toneMapTextureId(0)
 {
@@ -1054,6 +1056,29 @@ void CompositeCameras::RenderView(asdp::Time scanOutTime, const float* viewProje
   // Set the matrices and uniform parameters that are the same for all cameras
   glUniformMatrix4fv(m_viewProjectionUniformId, 1, GL_FALSE, viewProjection);
 
+  // Compute a product of gain and exposure for each camera and then use this set to
+  // determine a global to apply across all cameras, which will handle them auto-gaining
+  // or auto-exposing over time and will bring them all into a consistent range.
+  std::vector<float> scales;
+  for (size_t c = 0; c < m_cameraRenderInfos.size(); c++) {
+    float exposure = m_images[c]->exposure;
+    if (exposure == 0) {
+      continue;
+    }
+    float gain = m_images[c]->gain;
+    if (gain == 0) {
+      continue;
+    }
+    scales.push_back(exposure * gain);
+  }
+  // Select the median of the scales to use as the global gain.  Then blend it with the
+  // stored one to smooth out changes.
+  if (scales.size()) {
+    std::sort(scales.begin(), scales.end());
+    float globalExposureGain = scales[scales.size() / 2];
+    m_globalExposureGain = 0.9 * m_globalExposureGain + 0.1 * globalExposureGain;
+  }
+
   // Draw each camera, using the appropriate texture.
   for (size_t c = 0; c < m_cameraRenderInfos.size(); c++) {
 
@@ -1106,6 +1131,18 @@ void CompositeCameras::RenderView(asdp::Time scanOutTime, const float* viewProje
     m_cameraRenderInfos[c].GetColorOffsetGain(offset, gain);
     // Scale offset by the maximum color value to get it into 0-1 range.
     offset /= 65535.0f;
+    // Scale gain by image exposure and gain if they are nonzero.
+    float exposureValue = m_images[c]->exposure;
+    if (exposureValue != 0) {
+      gain *= exposureValue;
+    }
+    float gainValue = m_images[c]->gain;
+    if (gainValue != 0) {
+      gain *= gainValue;
+    }
+    if (m_globalExposureGain > 0) {
+      gain /= m_globalExposureGain;
+    }
     glUniform1f(m_offsetUniformID, offset);
     glUniform1f(m_gainUniformID, gain);
 

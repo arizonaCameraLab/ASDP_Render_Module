@@ -28,6 +28,8 @@ struct MessageSummary {
   uint16_t right = 0;               ///< The right edge of the region to process (if present for a message type)
   uint16_t top = 0;                 ///< The top edge of the region to process (if present for a message type)
   uint16_t bottom = 0;              ///< The bottom edge of the region to process (if present for a message type)
+  float exposure = 0.0f;            ///< The exposure time for the image (if present for a message type)
+  float gain = 0.0f;                ///< The gain for the image (if present for a message type)
 };
 
 /// @brief Structure to hold the data needed to send data to the GPU and run the kernel.
@@ -52,9 +54,11 @@ public:
   /// @param width The width of the image data (the whole image).
   /// @param height The height of the image data (the whole image).
   /// @param batchSize The number of lines to send to the GPU at once (the height of the region that will be sent).
+  /// @param exposure The exposure time for the image.
+  /// @param gain The gain for the image.
   CPUDataToTextureHandler(std::shared_ptr< std::map<GLuint, cudaGraphicsResource*> > texturesToCUDAMap,
     std::shared_ptr<DataToSendToGPU> dataPtr,
-    uint16_t width, uint16_t height, uint16_t batchSize);
+    uint16_t width, uint16_t height, uint16_t batchSize, float exposure, float gain);
 
   ~CPUDataToTextureHandler();
 
@@ -85,6 +89,8 @@ protected:
   uint16_t m_lastLineSent;                    ///< The last line sent to the GPU
   uint16_t m_largestLineReceived;             ///< The largest line received so far
   asdp::Time m_centerTime;                    ///< The time the image was taken
+  float m_exposure;                           ///< The exposure time for the image
+  float m_gain;                               ///< The gain for the image
 
   std::shared_ptr<asdp::render::ImageData> m_imageData;///< The image data for the texture, including time and texure ID
   cudaGraphicsResource* m_resource;           ///< The CUDA graphics resource for the texture

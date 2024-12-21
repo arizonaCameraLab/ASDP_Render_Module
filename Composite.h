@@ -320,6 +320,11 @@ namespace asdp {
       GLuint m_offsetUniformID;      ///< The Uniform ID of the color offset.
       GLuint m_gainUniformID;        ///< The Uniform ID of the color gain.
 
+      /// Global scale based on the product of exposure and gain for all cameras being rendered.
+      /// This is averaged over time to enable autoexposure and autogain without causing flickering
+      /// if they change rapidly.
+      float m_globalExposureGain;
+
       /// @brief Vector of Image objects to use during a frame rendering, one per camera.
       std::vector<std::shared_ptr<asdp::render::ImageData>> m_images;
 
