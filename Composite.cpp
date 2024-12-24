@@ -1131,17 +1131,20 @@ void CompositeCameras::RenderView(asdp::Time scanOutTime, const float* viewProje
     m_cameraRenderInfos[c].GetColorOffsetGain(offset, gain);
     // Scale offset by the maximum color value to get it into 0-1 range.
     offset /= 65535.0f;
-    // Scale gain by image exposure and gain if they are nonzero.
+    // Scale gain by image exposure and gain if they are nonzero.  We divide by each -- higher gain
+    // and longer exposure both brighten the values in the pixels, so we must darken the image to mix
+    // with other cameras.
     float exposureValue = m_images[c]->exposure;
     if (exposureValue != 0) {
-      gain *= exposureValue;
+      gain /= exposureValue;
     }
     float gainValue = m_images[c]->gain;
     if (gainValue != 0) {
-      gain *= gainValue;
+      gain /= gainValue;
     }
+    // Then rescale by the global exposure gain to bring all cameras into a consistent range.
     if (m_globalExposureGain > 0) {
-      gain /= m_globalExposureGain;
+      gain *= m_globalExposureGain;
     }
     glUniform1f(m_offsetUniformID, offset);
     glUniform1f(m_gainUniformID, gain);
