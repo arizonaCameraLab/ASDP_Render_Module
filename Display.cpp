@@ -848,7 +848,9 @@ public:
   // Map color buffer to associated depth buffer. This map is populated on demand.
   std::map<uint32_t, uint32_t> m_colorToDepthMap;
 
+#ifdef XR_USE_PLATFORM_WIN32
   PFN_xrConvertTimeToWin32PerformanceCounterKHR m_xrConvertTimeToWin32PerformanceCounterKHR = nullptr;
+#endif
 
   /// Keep track of the last grabbed state so that we can toggle the play/pause state when it is triggered.
   bool m_lastGrabbedState;
@@ -906,6 +908,7 @@ void asdp::render::DisplayOpenXR::DisplayOpenXRImpl::OpenXRCreateInstance()
 
   CHECK_XRCMD(xrCreateInstance(&createInfo, &m_instance));
 
+#ifdef XR_USE_PLATFORM_WIN32
   // Load the Windows performance timer extension function
   xrGetInstanceProcAddr(m_instance, "xrConvertTimeToWin32PerformanceCounterKHR",
     reinterpret_cast<PFN_xrVoidFunction*>(&m_xrConvertTimeToWin32PerformanceCounterKHR));
@@ -913,6 +916,7 @@ void asdp::render::DisplayOpenXR::DisplayOpenXRImpl::OpenXRCreateInstance()
   if (!m_xrConvertTimeToWin32PerformanceCounterKHR) {
     std::cerr << "Warning: DisplayOpenXR() Failed to load xrConvertTimeToWin32PerformanceCounterKHR function." << std::endl;
   }
+#endif
 }
 
 void asdp::render::DisplayOpenXR::DisplayOpenXRImpl::OpenXRInitializeSystem(Display* sharedWindow)
