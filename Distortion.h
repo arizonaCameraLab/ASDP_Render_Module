@@ -33,7 +33,7 @@ namespace asdp {
       /// +X axis to the right in the image, its +Y axis pointing up in the image, looking down
       /// the -Z axis.  The center of projection for the camera is at the origin.  For example,
       /// the point (0, 0, -5) will project to the center of the image, 5 units away from the camera
-      /// in any ideal camera's space.
+      /// in an ideal camera's space.
       /// @return Projection point for this pixel in the real camera.  The point will have the same
       /// Z value as the input point, but the X and Y values will be distorted to account for the
       /// lens distortion.
@@ -59,9 +59,8 @@ namespace asdp {
     class DistortionRadialLERP : public Distortion {
     public:
       /// @brief Constructor that takes the center of projection and control points for the distortion.
-      /// @param COP Center of projection for the distortion.  This is the normalized point in the range
-      /// [-1..1] for each axis going from one side of the sensor to the other.  For an ideal camera, the
-      /// center of the sensor would be (0.0, 0.0).
+      /// @param COP Center of projection for the distortion.  This (X,Y) is the location where the center of
+      /// projection pierces the Z=-1 plane.  For an ideal camera, the center of the sensor would be (0.0, 0.0).
       /// @param controlPoints Control points for the distortion.  These points are the radial distance
       /// from the center of projection and they lie on a plane that is 1 unit down the -Z axis.  The first
       /// element is the radial distance in the undistored case, and the second element is the radial distance
