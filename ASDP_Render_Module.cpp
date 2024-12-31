@@ -1137,7 +1137,14 @@ int main(int argc, char** argv)
           dist = std::shared_ptr<Distortion>(distortion);
         } else if (distortion["type"] == "radial") {
           json parameters = distortion["parameters"];
+          // The center of projection in the file is specified in fractional half-image span in
+          // the X and Y directions, but in piercing location of the Z=-1 plane for the Distortion
+          // object.  We must convert the fractional half-image span to a piercing location.
           std::array<double, 2> center = parameters["COP"];
+          double halfWidth = tan(glm::radians(double(camera["fieldOfViewDegrees"][0])) / 2.0);
+          double halfHeight = tan(glm::radians(double(camera["fieldOfViewDegrees"][1])) / 2.0);
+          center[0] *= halfWidth;
+          center[1] *= halfHeight;
           json map = parameters["map"];
           std::vector< std::array<double, 2> > mapPoints = map;
           DistortionRadialLERP* distortion = new DistortionRadialLERP(center, mapPoints);
