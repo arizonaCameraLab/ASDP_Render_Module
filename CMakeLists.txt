@@ -130,6 +130,7 @@ target_link_libraries(Render_Module PUBLIC
 )
 set_property(TARGET Render_Module PROPERTY CUDA_ARCHITECTURES 60 75 80)
 if(OPENXR_FOUND)
+  target_compile_definitions(Render_Module PRIVATE XR_USE_GRAPHICS_API_OPENGL)
   if(WIN32)
       target_compile_definitions(Render_Module PRIVATE USE_OPENXR=1 XR_USE_PLATFORM_WIN32)
   elseif(PRESENTATION_BACKEND MATCHES "xlib")
