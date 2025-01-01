@@ -102,6 +102,7 @@ set (Render_Module_HEADERS
   GPUBufferPool.h
   PoseAdjuster.h
   DepthEstimator.h
+  Vignette.h
 )
 set (Render_Module_SOURCES
   Composite.cpp
@@ -114,6 +115,7 @@ set (Render_Module_SOURCES
   GPUBufferPool.cpp
   PoseAdjuster.cpp
   DepthEstimator.cu
+  Vignette.cpp
 )
 add_library(Render_Module STATIC ${Render_Module_SOURCES} ${Render_Module_HEADERS})
 target_include_directories(Render_Module PUBLIC
@@ -283,6 +285,7 @@ if(BUILD_TESTS)
     GPUBufferPool_Test
     PoseAdjuster_Test
     DepthEstimator_Test
+    Vignette_Test
   )
   foreach (BASE ${CPP_TESTS})
     set (APP ${BASE})

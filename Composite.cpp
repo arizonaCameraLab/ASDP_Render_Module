@@ -607,7 +607,9 @@ R"(#version 330 core
 
    layout (location = 0) in vec3 aPos;
    layout (location = 1) in vec2 aTexCoord;
+   layout (location = 2) in float aVignetteGain;
    out vec2 TexCoord;
+   out float vignetteGain;
    uniform mat4 viewProjection;
    uniform mat4 poseAdjust;   ///< Moves points in helicopter space to their capture-time positions.
    // The following are for the camera rotation and translation during the frame, and they are
@@ -635,13 +637,17 @@ R"(#version 330 core
       // Perform the within-frame distortion first (it is in helicopter space), then the pose adjustment
       // (to previous helicopter space), and finally the view+projection.
       gl_Position = viewProjection * poseAdjust * delta * vec4(aPos, 1.0);
+
+      // Pass the texture coordinate and vignette gain to the fragment shader.
       TexCoord = vec2(aTexCoord.x, aTexCoord.y);
+      vignetteGain = aVignetteGain;
    })";
 
 static const GLchar* camerasFragmentShader =
 R"(#version 330 core
    out vec4 FragColor;
    in vec2 TexCoord;
+   in float vignetteGain;
    uniform sampler2D imageTexture;
    uniform sampler1D toneMapTexture;
    uniform float offset;
@@ -649,8 +655,8 @@ R"(#version 330 core
    void main()
    {
       // Look up the intensity from the image texture and then use the tone map to get the color.
-      // Apply offset and gain.  The texture sampler should be set to GL_CLAMP_TO_EDGE.
-      float intensity = gain * (offset + texture(imageTexture, TexCoord).r);
+      // Apply offset, gain, and vignette gain.  The texture sampler should be set to GL_CLAMP_TO_EDGE.
+      float intensity = vignetteGain * gain * (offset + texture(imageTexture, TexCoord).r);
       FragColor = texture(toneMapTexture, intensity);
    })";
 
@@ -791,7 +797,7 @@ void CameraRenderInfo::ComputePlanarCameraMeshInfo(size_t nx, size_t ny, GLfloat
     glm::vec3(0.0f, 0.0f, 1.0f));
 
   // Create the vertices including the texture coordinates.  Each entry will have
-  // 5 floats: X, Y, Z, U, V.  We add entries that span the entire range, with one
+  // 6 floats: X, Y, Z, U, V, vignette.  We add entries that span the entire range, with one
   // more vertex in each dimension than there are quads.  We start from the lower-
   // left, move right, then move up at the end of each line.
   std::vector<VertexInfo> vertices;
@@ -846,6 +852,7 @@ void CameraRenderInfo::ComputePlanarCameraMeshInfo(size_t nx, size_t ny, GLfloat
       vertex.texCoord = glm::vec2(u, v);
       vertex.normalizedOffset = glm::normalize(transformedPoint);
       vertex.depth = glm::length(transformedPoint);
+      //vertex.vignetteGain = 1.0f;   /// @todo Compute the vignette gain.
       vertices.push_back(vertex);
     }
   }
@@ -858,7 +865,7 @@ void CameraRenderInfo::ComputePlanarCameraMeshInfo(size_t nx, size_t ny, GLfloat
 // NOTE: This must be called for each camera to produce the required buffers before rendering uses them.
 void CompositeCameras::CreateBufferInfo(CameraRenderInfo const& cameraRenderInfo, MeshInfo const& mesh)
 {
-  // Create the vertices including the texture coordinates.
+  // Create the vertices including the texture coordinates and vignette correction.
   std::vector<GLfloat> vertices;
   for (VertexInfo const &v : mesh.vertexInfo) {
     // Add the vertex description
@@ -868,6 +875,7 @@ void CompositeCameras::CreateBufferInfo(CameraRenderInfo const& cameraRenderInfo
     vertices.push_back(v.offset[2] + cameraRenderInfo.m_positionMeters[2]);
     vertices.push_back(v.texCoord[0]);
     vertices.push_back(v.texCoord[1]);
+    vertices.push_back(v.vignetteGain);
   }
 
   // Create the indices for the triangles, three per triangle.
@@ -901,12 +909,6 @@ void CompositeCameras::CreateBufferInfo(CameraRenderInfo const& cameraRenderInfo
   glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, indexBufferObject);
   glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices[0]) * indices.size(), indices.data(), GL_STATIC_DRAW);
 
-  // Set up the vertex attributes for the vertex buffer object.
-  glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(GLfloat), (GLvoid*)0);
-  glEnableVertexAttribArray(0);
-  glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(GLfloat), (GLvoid*)(3 * sizeof(GLfloat)));
-  glEnableVertexAttribArray(1);
-
   // Save the camera buffer information for this camera, filling in all of its elements.
   CameraBufferInfo cbi;
   cbi.mesh = mesh;
@@ -925,7 +927,7 @@ void CompositeCameras::UpdateVertexBuffer(CameraRenderInfo const& cameraRenderIn
   // Create the vertices including the texture coordinates by scaling the normalized offsets
   // in the mesh by their current depth values and adding the camera center.
   std::vector<GLfloat> vertices;
-  vertices.reserve(5 * mesh.vertexInfo.size());
+  vertices.reserve(6 * mesh.vertexInfo.size());
   for (VertexInfo const& v : mesh.vertexInfo) {
     // Add the vertex description
     // Offset the points by the camera position in the helicopter view space.
@@ -934,6 +936,7 @@ void CompositeCameras::UpdateVertexBuffer(CameraRenderInfo const& cameraRenderIn
     vertices.push_back(v.normalizedOffset[2] * v.depth + cameraRenderInfo.m_positionMeters[2]);
     vertices.push_back(v.texCoord[0]);
     vertices.push_back(v.texCoord[1]);
+    vertices.push_back(v.vignetteGain);
   }
 
   // Unbind any vertex array object, we won't be using these because they are not shared between contexts.
@@ -1052,6 +1055,7 @@ void CompositeCameras::RenderView(asdp::Time scanOutTime, const float* viewProje
   // Enable the vertex attribute arrays we are going to use
   glEnableVertexAttribArray(0);
   glEnableVertexAttribArray(1);
+  glEnableVertexAttribArray(2);
 
   // Set the matrices and uniform parameters that are the same for all cameras
   glUniformMatrix4fv(m_viewProjectionUniformId, 1, GL_FALSE, viewProjection);
@@ -1149,10 +1153,11 @@ void CompositeCameras::RenderView(asdp::Time scanOutTime, const float* viewProje
     glUniform1f(m_offsetUniformID, offset);
     glUniform1f(m_gainUniformID, gain);
 
-    // Draw the camera using its vertex buffer objects.
+    // Draw the camera using its vertex buffer objects after specifying its layout.
     glBindBuffer(GL_ARRAY_BUFFER, m_cameraBufferInfos[cameraID].vertexBufferObject);
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(GLfloat), (GLvoid*)0);
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(GLfloat), (GLvoid*)(3 * sizeof(GLfloat)));
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(GLfloat), (GLvoid*)0);
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 6 * sizeof(GLfloat), (GLvoid*)(3 * sizeof(GLfloat)));
+    glVertexAttribPointer(2, 1, GL_FLOAT, GL_FALSE, 6 * sizeof(GLfloat), (GLvoid*)(5 * sizeof(GLfloat)));
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_cameraBufferInfos[cameraID].indexBufferObject);
     glDrawElements(GL_TRIANGLES, m_cameraBufferInfos[cameraID].numIndices, GL_UNSIGNED_INT, 0);
 

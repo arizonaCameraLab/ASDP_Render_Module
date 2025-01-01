@@ -168,6 +168,7 @@ namespace asdp {
     struct VertexInfo {
       glm::vec2 texCoord; ///< The texture coordinates for the vertex.
       glm::vec3 offset; ///< The offset from the camera origin to the point on the plane at a specified depth.
+      float vignetteGain = 1.0f; ///< The scale factor for the vignette effect.
       /// The length of the offset vector (distance from the camera).  This is initialized to the length
       /// of the offset vector in ComputeCameraMeshInfo, but can be updated by depth calculations later to
       /// adjust the distance along the normalizedOffset direction to push a point.

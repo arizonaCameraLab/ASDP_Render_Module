@@ -146,12 +146,19 @@ the file to *0.json* in the install directory before running the program.
         "type" : "radial",
         "parameters" : {
           "COP" : [0.0, 0.0],
-          "map" : [[0, 0], [1, 1]]
+          "map" : [[0, 0], [2.0, 2.0]]
         }
       },
       "color" : {
         "offset" : -2400.0,
         "gain" : 1.1
+      },
+      "vignette": {
+        "type" : "evenPolynomial",
+        "parameters" : {
+          "COP" : [0.0, 0.0],
+          "coefficients" : [1.0]
+        }
       }
     },
     {
@@ -180,7 +187,7 @@ For radial distortion, the parameters are as follows:
   each axis.  This is the point in the image that is not distorted.  A value of [0.0, 0.0] is the center of the image.
   A value of [1.0, 1.0] is the upper right corner of the image.  A value of [-1.0, -1.0] is the lower left corner.
 - **map:** A list of points with the first one being [0,0] and the later ones in increasing order that specify
-  the ideal-camra radius and its distorted radius.  These are for points that are projected onto the 
+  the ideal-camera radius and its distorted radius.  These are for points that are projected onto the
   Z = -1 plane.  They must span the entire range of the image (including the corners).  For example, a
   distortion that increased the distance by a factor of 2 could be specified by the list [[0,0], [1,2]] for
   a camera whose field of view is less than 45 degrees at its corners, with the second entry changed to
@@ -190,6 +197,24 @@ The **color** field is an optional object that can specify the global offset and
 default offset is in pixel counts and is 0.0.  The default gain is 1.0.  The offset is added and the result
 multiplied by the gain.  This can be used to adjust the brightness and contrast of each camera so that they share the
 same color space, which is where the tone map is applied.  A negative offset will make the image darker.
+
+The **vignette** field is an optional object that can specify a vignette effect to apply to the image.  The
+"evenPolynomial" type is the only one currently supported, handling a
+vignette effect that is a radial falloff of the image brightness from the center to the edges.  The COP is the
+center of projection of the camera in fraction of the sensor in the range [-1..1] for each axis.  This is
+expected to match the distortion COP.  A value of [0.0, 0.0] is the center of the image.  A value of [1.0, 1.0]
+is the upper right corner of the image.  A value of [-1.0, -1.0] is the lower left corner.  The coefficents are
+a list of polynomial terms starting with zeroeth-order (for a unity gain, [1.0]) and the later ones in increasing
+order (2nd, 4th, etc.) that specify the polynomial whose value at that radius will multiply the image brightness.
+The value [1.0, 0.01, 0.02] would multiply by 1.0 + 0.01 * r^2 + 0.02 * r^4 for the point at radius r from the
+center of projection.
+Radius is measured in units of the fractional half-width of the image, ignoring any COP offset.  A point at
+a half-width to the right of the COP would have a radius of 1.0.  With a COP of [0.0, 0.0], the upper right
+corner of the image would have an X coordinate of 1.0 and a Y coordinate that depends on the aspect ratio of
+the image (not the ratio of the fields of view, which are related to this via tangent/arctangent operations).
+Larger values will make the image brighter, correcting for the vignette effect.
+Vignette correction is applied after color offset/gain correction and before distortion correction.
+If no vignette is specified, the image is not modified (gain of 1.0 everywhere).
 
 ## Utilities
 
