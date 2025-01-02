@@ -1154,10 +1154,34 @@ int main(int argc, char** argv)
           return 17;
         }
 
+        std::shared_ptr<Vignette> vig(new VignetteNone);
+        try {
+          json vignette = camera["vignette"];
+          if (vignette["type"] == "evenPolynomial") {
+            json parameters = vignette["parameters"];
+            std::array<double, 2> center = parameters["COP"];
+            std::array<double, 2> cArray = parameters["coefficients"];
+            std::vector<double> coefficients(cArray.begin(), cArray.end());
+            VignetteRadialPolynomail* vignette = new VignetteRadialPolynomail(center,
+              camera["fieldOfViewDegrees"], coefficients);
+            vig = std::shared_ptr<Vignette>(vignette);
+          }
+          else if (vignette["type"] == nullptr) {
+            // No vignette specified, so use the default.
+          }
+          else {
+            std::cerr << "Error: Unknown vignette type: " << vignette["type"] << std::endl;
+            return 18;
+          }
+        }
+        catch (...) {
+          // No vignette specified, so use the default.
+        }
+
         asdp::render::CameraRenderInfo info(camera["id"],
           camera["positionMeters"], camera["orientationDegrees"],
           camera["resolutionPixels"], camera["fieldOfViewDegrees"],
-          dist, std::make_shared<asdp::render::ImageQueue>());
+          dist, vig, std::make_shared<asdp::render::ImageQueue>());
 
         // Read the offset and gain from the color object if it is present and they are present.
         // Override the default values if they are present.

@@ -139,7 +139,7 @@ int main()
       asdp::render::CameraRenderInfo camera(x * ny + y,
         std::array<double, 3>(), orientationDegrees,
         std::array<uint16_t, 2>(), std::array<double, 2>({ hFOV, vFOV }),
-        nullptr, iq);
+        nullptr, nullptr, iq);
 
       cameras.push_back(camera);
     }
@@ -159,7 +159,8 @@ int main()
     // We must insert two images because the renderer will grab the newest two images.
     iq->InsertImage(image);
     iq->InsertImage(image);
-    asdp::render::CameraRenderInfo camera(9, position, orientation, std::array<uint16_t, 2>(), fieldOfView, nullptr, iq);
+    asdp::render::CameraRenderInfo camera(9, position, orientation, std::array<uint16_t, 2>(), fieldOfView,
+      nullptr, nullptr, iq);
     // Color values run from half of the image value to 3/4 of the image value.
     camera.SetColorOffsetGain(-0.5f * 65535, 4);
     cameras.push_back(camera);

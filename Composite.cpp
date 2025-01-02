@@ -775,14 +775,15 @@ static double radians(double degrees) {
 
 void CameraRenderInfo::ComputePlanarCameraMeshInfo(size_t nx, size_t ny, GLfloat depth)
 {
+  // Pre-divide so we can use multiplications instead of divisions in the loop, which is faster.
   double fnxInv = 1 / static_cast<GLfloat>(nx);
   double fnyInv = 1 / static_cast<GLfloat>(ny);
 
   // Compute the scaled X, Y coordinates for the four corners of the quad that place them
   // for a correctly-sized quad given the camera info to get them to scaled space.
   // The Z coordinate is along the negative Z axis at the specified depth.
-  double xHalfWidth = tan(radians(m_fovDegrees[0]) * 0.5) * depth;
-  double yHalfWidth = tan(radians(m_fovDegrees[1]) * 0.5) * depth;
+  double xHalfSpan = tan(radians(m_fovDegrees[0]) * 0.5) * depth;
+  double yHalfSpan = tan(radians(m_fovDegrees[1]) * 0.5) * depth;
 
   // Rotate the points in the helicopter view space by the specified orientation change
   // to point them in the direction that the camera is looking.
@@ -817,8 +818,8 @@ void CameraRenderInfo::ComputePlanarCameraMeshInfo(size_t nx, size_t ny, GLfloat
       // Compute the scaled X, Y coordinates for the four corners of the quad that place them
       // for a correctly-sized quad given the camera info to get them to scaled space.
       // The Z coordinate is along the negative Z axis at the specified depth.
-      double xs = xn * xHalfWidth;
-      double ys = yn * yHalfWidth;
+      double xs = xn * xHalfSpan;
+      double ys = yn * yHalfSpan;
       double zs = -depth;
 
       // Perform distortion correction on the X, Y coordinates to get to canonical view
@@ -852,7 +853,7 @@ void CameraRenderInfo::ComputePlanarCameraMeshInfo(size_t nx, size_t ny, GLfloat
       vertex.texCoord = glm::vec2(u, v);
       vertex.normalizedOffset = glm::normalize(transformedPoint);
       vertex.depth = glm::length(transformedPoint);
-      //vertex.vignetteGain = 1.0f;   /// @todo Compute the vignette gain.
+      vertex.vignetteGain = m_vignette->EvaluateAtPoint({ xn, yn });
       vertices.push_back(vertex);
     }
   }

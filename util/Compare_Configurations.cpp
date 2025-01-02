@@ -129,10 +129,33 @@ int main(int argc, char** argv)
         return 17;
       }
 
+      std::shared_ptr<Vignette> vig(new VignetteNone);
+      try {
+        json vignette = camera["vignette"];
+        if (vignette["type"] == "evenPolynomial") {
+          json parameters = vignette["parameters"];
+          std::array<double, 2> center = parameters["COP"];
+          std::array<double, 2> cArray = parameters["coefficients"];
+          std::vector<double> coefficients(cArray.begin(), cArray.end());
+          VignetteRadialPolynomail* vignette = new VignetteRadialPolynomail(center, camera["fieldOfViewDegrees"], coefficients);
+          vig = std::shared_ptr<Vignette>(vignette);
+        }
+        else if (vignette["type"] == nullptr) {
+          // No vignette specified, so use the default.
+        }
+        else {
+          std::cerr << "Error: Unknown vignette type: " << vignette["type"] << std::endl;
+          return 18;
+        }
+      }
+      catch (...) {
+        // No vignette specified, so use the default.
+      }
+
       asdp::render::CameraRenderInfo info(camera["id"],
-      camera["positionMeters"], camera["orientationDegrees"],
-      camera["resolutionPixels"], camera["fieldOfViewDegrees"],
-      dist, std::make_shared<asdp::render::ImageQueue>());
+        camera["positionMeters"], camera["orientationDegrees"],
+        camera["resolutionPixels"], camera["fieldOfViewDegrees"],
+        dist, vig, std::make_shared<asdp::render::ImageQueue>());
       info.ComputePlanarCameraMeshInfo(100, 100, depth);
       cameraRenderInfos1.push_back(info);
     }
@@ -155,13 +178,36 @@ int main(int argc, char** argv)
       }
       else {
         std::cerr << "Error: Unknown distortion type: " << distortion["type"] << std::endl;
-        return 17;
+        return 19;
+      }
+
+      std::shared_ptr<Vignette> vig(new VignetteNone);
+      try {
+        json vignette = camera["vignette"];
+        if (vignette["type"] == "evenPolynomial") {
+          json parameters = vignette["parameters"];
+          std::array<double, 2> center = parameters["COP"];
+          std::array<double, 2> cArray = parameters["coefficients"];
+          std::vector<double> coefficients(cArray.begin(), cArray.end());
+          VignetteRadialPolynomail* vignette = new VignetteRadialPolynomail(center, camera["fieldOfViewDegrees"], coefficients);
+          vig = std::shared_ptr<Vignette>(vignette);
+        }
+        else if (vignette["type"] == nullptr) {
+          // No vignette specified, so use the default.
+        }
+        else {
+          std::cerr << "Error: Unknown vignette type: " << vignette["type"] << std::endl;
+          return 20;
+        }
+      }
+      catch (...) {
+        // No vignette specified, so use the default.
       }
 
       asdp::render::CameraRenderInfo info(camera["id"],
         camera["positionMeters"], camera["orientationDegrees"],
         camera["resolutionPixels"], camera["fieldOfViewDegrees"],
-        dist, std::make_shared<asdp::render::ImageQueue>());
+        dist, vig, std::make_shared<asdp::render::ImageQueue>());
       info.ComputePlanarCameraMeshInfo(100, 100, depth);
       cameraRenderInfos2.push_back(info);
     }
@@ -180,6 +226,7 @@ int main(int argc, char** argv)
     // total mean and max differences for meters and pixels across all cameras.
     double totalMeanDistDiff = 0.0, totalMeanPixelDiff = 0.0;
     double totalMaxDistDiff = 0.0, totalMaxPixelDiff = 0.0;
+    double totalMeanVigDiff = 0.0, totalMaxVigDiff = 0.0;
     for (size_t c = 0; c < cameraRenderInfos1.size(); ++c) {
       if (cameraRenderInfos1[c].m_ID != cameraRenderInfos2[c].m_ID) {
         std::cout << "Camera IDs do not match: " << cameraRenderInfos1[c].m_ID
@@ -197,9 +244,10 @@ int main(int argc, char** argv)
       }
 
       // Compare all border vertices on the meshes, determining their differences in meters and in
-      // projected pixel location differences.
+      // projected pixel location differences. Also determine the differences in vignette brightness.
       double meanDistDiff = 0.0, meanPixelDiff = 0.0;
       double maxDistDiff = 0.0, maxPixelDiff = 0.0;
+      double meanVigDiff = 0.0, maxVigDiff = 0.0;
       int count = 0;
       for (int y = 0; y < mesh1.ny; ++y) {
         for (int x = 0; x < mesh1.nx; ++x) {
@@ -228,6 +276,16 @@ int main(int argc, char** argv)
             double pixelSize = width / cameraRenderInfos1[c].m_resolutionPixels[0];
             meanPixelDiff += dist / pixelSize;
             maxPixelDiff = std::max(maxPixelDiff, dist / pixelSize);
+
+            // Find the difference in vignette scaling.
+            double xNorm = 2.0 * x / (mesh1.nx - 1) - 1.0;
+            double yNorm = 2.0 * y / (mesh1.ny - 1) - 1.0;
+            double vig1 = cameraRenderInfos1[c].m_vignette->EvaluateAtPoint({ xNorm, yNorm });
+            double vig2 = cameraRenderInfos2[c].m_vignette->EvaluateAtPoint({ xNorm, yNorm });
+            double vigDiff = fabs(vig1 - vig2);
+            meanVigDiff += vigDiff;
+            maxVigDiff = std::max(maxVigDiff, vigDiff);
+
             ++count;
           }
         }
@@ -235,22 +293,29 @@ int main(int argc, char** argv)
 
       meanDistDiff /= count;
       meanPixelDiff /= count;
+      meanVigDiff /= count;
 
       std::cout << "  Camera " << cameraRenderInfos1[c].m_ID << " mean dist: " << meanDistDiff
         << " max dist: " << maxDistDiff << "; mean pixel dist: " << meanPixelDiff
-        << " max pixel dist: " << maxPixelDiff << std::endl;
+        << " max pixel dist: " << maxPixelDiff << "; mean vig diff: " << meanVigDiff
+        << std::endl;
 
       totalMeanDistDiff += meanDistDiff;
       totalMeanPixelDiff += meanPixelDiff;
       totalMaxDistDiff = std::max(totalMaxDistDiff, maxDistDiff);
       totalMaxPixelDiff = std::max(totalMaxPixelDiff, maxPixelDiff);
+      totalMeanVigDiff += meanVigDiff;
+      totalMaxVigDiff = std::max(totalMaxVigDiff, maxVigDiff);
     }
 
     totalMeanDistDiff /= cameraRenderInfos1.size();
     totalMeanPixelDiff /= cameraRenderInfos1.size();
+    totalMeanVigDiff /= cameraRenderInfos1.size();
 
     std::cout << "Total mean dist: " << totalMeanDistDiff << " max dist: " << totalMaxDistDiff
-      << "; total mean pixel dist: " << totalMeanPixelDiff << " max pixel dist: " << totalMaxPixelDiff << std::endl;
+      << "; total mean pixel dist: " << totalMeanPixelDiff << " max pixel dist: " << totalMaxPixelDiff
+      << "; total mean vig diff: " << totalMeanVigDiff << " max vig diff: " << totalMaxVigDiff
+      << std::endl;
   }
 
   return 0;

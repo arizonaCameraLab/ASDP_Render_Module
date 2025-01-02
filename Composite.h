@@ -27,6 +27,7 @@
 #include <ASDP_Core_API.h>
 #include <ImageQueue.h>
 #include <Distortion.h>
+#include <Vignette.h>
 #include <PoseAdjuster.h>
 #include <RenderTimingInfo.h>
 
@@ -163,7 +164,6 @@ namespace asdp {
       void TearDownRenderFrame() override;
     };
 
-
     /// @brief Information needed per vertex to generate the vertices for the render mesh for a camera.
     struct VertexInfo {
       glm::vec2 texCoord; ///< The texture coordinates for the vertex.
@@ -175,6 +175,7 @@ namespace asdp {
       float depth;
       glm::vec3 normalizedOffset; ///< The normalized offset from the camera origin.
     };
+
     /// @brief Information needed to generate the vertices for the render mesh for a camera.
     struct MeshInfo {
       std::vector<VertexInfo> vertexInfo; ///< The vertex information for the camera.
@@ -191,6 +192,7 @@ namespace asdp {
           std::array<double, 3> orientationDegrees,
           std::array<uint16_t, 2> resolutionPixels, std::array<double, 2> fovDegrees,
           std::shared_ptr<Distortion> distortion,
+          std::shared_ptr<Vignette> vignette,
           std::shared_ptr<asdp::render::ImageQueue> imageQueue)
         : m_ID(id)
         , m_positionMeters(positionMeters)
@@ -198,11 +200,13 @@ namespace asdp {
         , m_resolutionPixels(resolutionPixels)
         , m_fovDegrees(fovDegrees)
         , m_distortion(distortion)
+        , m_vignette(vignette)
         , m_imageQueue(imageQueue) {}
 
       CameraRenderInfo(const CameraRenderInfo& other)
         :CameraRenderInfo(other.m_ID, other.m_positionMeters, other.m_orientationDegrees,
-          other.m_resolutionPixels, other.m_fovDegrees, other.m_distortion, other.m_imageQueue)
+          other.m_resolutionPixels, other.m_fovDegrees, other.m_distortion, other.m_vignette,
+          other.m_imageQueue)
       {
         float offset, gain;
         other.GetColorOffsetGain(offset, gain);
@@ -240,6 +244,8 @@ namespace asdp {
       std::array<double, 2> m_fovDegrees = {};        ///< Field of view of the camera in degrees, horizontal then vertical.
       /// Distortion correction object for the camera.
       std::shared_ptr<Distortion> m_distortion;
+      /// Vignette correction object for the camera.
+      std::shared_ptr<Vignette> m_vignette;
       /// Queue of images from the camera.  The newest image is the one to render.
       std::shared_ptr<asdp::render::ImageQueue> m_imageQueue;
 
