@@ -32,7 +32,11 @@ VignetteRadialPolynomail::VignetteRadialPolynomail(std::array<double, 2> const& 
   m_halfSizes[1] = std::tan(FOVsDegrees[1] * 0.5 * Pi / 180.0);
 
   // Compute the scale factor to take vertical distances to horizontal distances.
-  m_vScale = m_halfSizes[0] / m_halfSizes[1];
+  // We will multiply the Y difference by this to get equivalent X distance.
+  // When the width is greater than the height, this will be less than 1 because
+  // the total motion in Y is less than the total motion in X. Therefore we divide
+  // the height by the width.
+  m_vScale = m_halfSizes[1] / m_halfSizes[0];
 }
 
 double VignetteRadialPolynomail::EvaluateAtPoint(std::array<double, 2> point) const
@@ -93,9 +97,9 @@ std::string Vignette::Test()
   // Test the VignetteRadialPolynomail class.
   {
     std::array<double, 2> COP = {0.5, 0.1};
-    // This has an aspect ratio of 2:1 on the image, so we only need to move half as
+    // This has an aspect ratio of 1:2 on the image, so we only need to move half as
     // far in Y to match X motion.
-    std::array<double, 2> FOVsDegrees = {90.0, 53.13};
+    std::array<double, 2> FOVsDegrees = {53.13, 90.0};
     std::vector<double> coefficients = {1.0, 0.1};
 
     VignetteRadialPolynomail vig(COP, FOVsDegrees, coefficients);

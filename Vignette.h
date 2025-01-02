@@ -28,7 +28,8 @@ namespace asdp {
 
       /// @brief Evaluate the scale factor at a normalized 2D point within the image.
       /// @param point Point in 2D space that spans the range [-1,1] in both X and Y,
-      /// covering the range of the image.
+      /// covering the range of the image. X is higher to the right, Y is higher at the top;
+      /// so (1,1) is the upper right corner of the image.
       /// @return Value to multiply the image brightness by at this location to correct
       /// for vignetting.
       virtual double EvaluateAtPoint(std::array<double, 2> point) const = 0;
