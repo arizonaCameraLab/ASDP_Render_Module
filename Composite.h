@@ -207,6 +207,8 @@ namespace asdp {
         float offset, gain;
         other.GetColorOffsetGain(offset, gain);
         SetColorOffsetGain(offset, gain);
+
+        m_mesh = other.m_mesh;
       };
 
       /// @brief Thread-safe access to the color offset and gain, which must be consistent.
