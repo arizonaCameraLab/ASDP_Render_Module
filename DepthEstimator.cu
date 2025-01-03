@@ -161,15 +161,21 @@ public:
         }
       }
 
-      // Create the CUDA streams for the two cameras.
-      for (size_t b = 0; b < 2; b++) {
-        cudaStream_t* streamPtr = new cudaStream_t;
-        cudaError_t res = cudaStreamCreate(streamPtr);
-        if (res != cudaSuccess) {
-          m_constructorStatus = "Failed to create stream: " + std::string(cudaGetErrorString(res));
-          return;
-        }
-        depthInfo.m_streams[b] = streamPtr;
+      // Create the CUDA streams.
+      cudaStream_t* streamPtr = new cudaStream_t;
+      cudaError_t res = cudaStreamCreate(streamPtr);
+      if (res != cudaSuccess) {
+        m_constructorStatus = "Failed to create stream: " + std::string(cudaGetErrorString(res));
+        return;
+      }
+      depthInfo.m_stream = streamPtr;
+
+      // Allocate the GPU and CPU memory for the depth buffers.
+      depthInfo.m_CPURegionBuffer.resize(pixelCounts[0] * pixelCounts[1]);
+      res = cudaMalloc(&depthInfo.m_GPURegionBuffer, pixelCounts[0] * pixelCounts[1] * sizeof(float));
+      if (res != cudaSuccess) {
+        m_constructorStatus = "Failed to allocate GPU memory: " + std::string(cudaGetErrorString(res));
+        return;
       }
 
       m_perDepths.push_back(depthInfo);
@@ -183,14 +189,16 @@ public:
     // Delete the frame bufffers, color buffers, and depth buffers.
     // Unmap the CUDA graphics resources for the color buffers.
     // Delete the CUDA streams.
+    // Free the GPU memory for the depth buffers.
     for (PerDepth &di : m_perDepths) {
       glDeleteFramebuffers(2, di.m_frameBuffers.data());
       for (size_t b = 0; b < 2; b++) {
         cudaGraphicsUnregisterResource(di.m_cudaColorBuffers[b]);
-        cudaStreamDestroy(*(di.m_streams[b]));
       }
       glDeleteTextures(2, di.m_colorBuffers.data());
       glDeleteTextures(2, di.m_depthBuffers.data());
+      cudaFree(di.m_GPURegionBuffer);
+      cudaStreamDestroy(*(di.m_stream));
     }
   }
 
@@ -204,13 +212,15 @@ public:
 
   typedef struct {
     float m_depth = 0.0f;
+    std::vector<float> m_CPURegionBuffer;
+    float* m_GPURegionBuffer;
+    cudaStream_t* m_stream = nullptr;
     /// @todo Consider pulling these out into yet another structure, making an array of 2 of them.
     std::array< std::shared_ptr<CompositeCameras>, 2> m_composites = {};
     std::array<GLuint, 2> m_frameBuffers = {};
     std::array<GLuint, 2> m_colorBuffers = {};
     std::array<GLuint, 2> m_depthBuffers = {};
     std::array<cudaGraphicsResource*, 2> m_cudaColorBuffers = {};
-    std::array<cudaStream_t*, 2> m_streams = {};
   } PerDepth;
 
   std::vector<PerDepth> m_perDepths;
@@ -369,6 +379,9 @@ public:
       fences.push_back(cFences);
     }
 
+    // Vector of surface objects to destroy once we're done with them.
+    std::vector<cudaSurfaceObject_t> surfObjs;
+
     // Loop back through the camera pairs and depths, waiting for both fences to complete
     // and then mapping the color buffers to CUDA and running the depth estimation.
     for (size_t c = 0; c < m_cameraPairs.size(); c++) {
@@ -386,22 +399,60 @@ public:
           }
         }
 
-        // Map the color buffers to CUDA, using the already-registered images.
-        // Run the depth estimation kernels and then read back the values to CPU memory.
+        // Map the color buffers to CUDA, using the already-registered images.  Then get the
+        // mapped array values.
+        std::array< cudaArray*, 2> arrays;
         for (size_t b = 0; b < 2; b++) {
-          cudaError_t res = cudaGraphicsMapResources(1, &pd.m_cudaColorBuffers[b], *(pd.m_streams[b]));
+          cudaError_t res = cudaGraphicsMapResources(1, &pd.m_cudaColorBuffers[b], *(pd.m_stream));
           if (res != cudaSuccess) {
             return "ComputeDepthEstimate: cudaGraphicsMapResources() failed for pair " + std::to_string(c)
               + " depth " + std::to_string(d) + " camera " + std::to_string(b) + ": "
               + std::string(cudaGetErrorString(res));
           }
+          res = cudaGraphicsSubResourceGetMappedArray(&arrays[b], pd.m_cudaColorBuffers[b], 0, 0);
+          if (res != cudaSuccess) {
+            return "ComputeDepthEstimate: cudaGraphicsSubResourceGetMappedArray() failed for pair " + std::to_string(c)
+              + " depth " + std::to_string(d) + " camera " + std::to_string(b) + ": "
+              + std::string(cudaGetErrorString(res));
+          }
+        }
 
-          // Run the depth estimation kernels, which must handle portions of a region that are outside
-          // of the projected area (they will be blue).
-          /// @todo
+        // Create surface objects for the color buffers and add them to the list to destroy.
+        cudaSurfaceObject_t surfObj1, surfObj2;
+        cudaResourceDesc resDesc;
+        memset(&resDesc, 0, sizeof(resDesc));
+        resDesc.resType = cudaResourceTypeArray;
+        resDesc.res.array.array = arrays[0];
+        cudaError_t res = cudaCreateSurfaceObject(&surfObj1, &resDesc);
+        if (res != cudaSuccess) {
+          return "ComputeDepthEstimate: cudaCreateSurfaceObject() failed for pair " + std::to_string(c)
+            + " depth " + std::to_string(d) + " camera 0: " + std::string(cudaGetErrorString(res));
+        }
+        surfObjs.push_back(surfObj1);
+        resDesc.res.array.array = arrays[1];
+        res = cudaCreateSurfaceObject(&surfObj2, &resDesc);
+        if (res != cudaSuccess) {
+          return "ComputeDepthEstimate: cudaCreateSurfaceObject() failed for pair " + std::to_string(c)
+            + " depth " + std::to_string(d) + " camera 1: " + std::string(cudaGetErrorString(res));
+        }
+        surfObjs.push_back(surfObj2);
 
-          // Copy the results back to CPU memory.
-          /// @todo
+
+        // Run the depth estimation kernels, which must handle portions of a region that are outside
+        // of the projected area (they will be blue).
+        dim3 blockSize(m_nx, m_ny);
+        dim3 gridSize(cpi.m_pixelCounts[0] / m_nx, cpi.m_pixelCounts[1] / m_ny);
+        CompareSurfacesKernel << <gridSize, blockSize, 0, *(pd.m_stream)>> > (
+          surfObj1, surfObj2, pd.m_GPURegionBuffer,
+          cpi.m_pixelCounts[0], cpi.m_pixelCounts[1]);
+
+        // Copy the results back to CPU memory.
+        res = cudaMemcpyAsync(pd.m_CPURegionBuffer.data(), pd.m_GPURegionBuffer,
+          cpi.m_pixelCounts[0] * cpi.m_pixelCounts[1] * sizeof(float), cudaMemcpyDeviceToHost,
+          *(pd.m_stream));
+        if (res != cudaSuccess) {
+          return "ComputeDepthEstimate: cudaMemcpy() failed for pair " + std::to_string(c)
+            + " depth " + std::to_string(d) + ": " + std::string(cudaGetErrorString(res));
         }
       }
     }
@@ -409,10 +460,13 @@ public:
     // Wait for all the CUDA streams to complete.
     for (auto cpi : m_cameraPairs) {
       for (auto pd : cpi.m_perDepths) {
-        for (size_t b = 0; b < 2; b++) {
-          cudaStreamSynchronize(*(pd.m_streams[b]));
-        }
+        cudaStreamSynchronize(*(pd.m_stream));
       }
+    }
+
+    // Done with the surface objects.
+    for (cudaSurfaceObject_t surfObj : surfObjs) {
+      cudaDestroySurfaceObject(surfObj);
     }
 
     // Loop back through the camera pairs and depths, unmap the color buffers from CUDA.
@@ -421,13 +475,20 @@ public:
       for (size_t d = 0; d < cpi.m_perDepths.size(); d++) {
         CameraPairInfo::PerDepth& pd = cpi.m_perDepths[d];
         for (size_t b = 0; b < 2; b++) {
-          cudaError_t res = cudaGraphicsUnmapResources(1, &pd.m_cudaColorBuffers[b], *(pd.m_streams[b]));
+          cudaError_t res = cudaGraphicsUnmapResources(1, &pd.m_cudaColorBuffers[b], *(pd.m_stream));
           if (res != cudaSuccess) {
             return "ComputeDepthEstimate: cudaGraphicsUnmapResources() failed for pair " + std::to_string(c)
               + " depth " + std::to_string(d) + " camera " + std::to_string(b) + ": "
               + std::string(cudaGetErrorString(res));
           }
         }
+      }
+    }
+
+    // Wait for all the CUDA streams to complete.
+    for (auto cpi : m_cameraPairs) {
+      for (auto pd : cpi.m_perDepths) {
+        cudaStreamSynchronize(*(pd.m_stream));
       }
     }
 
