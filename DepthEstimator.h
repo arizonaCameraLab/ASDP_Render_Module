@@ -27,8 +27,8 @@ namespace asdp {
     /// each pair.  This is used to produce an internal representation of depths around the helicopter that
     /// can then be queried based on rays to determine the distance from the ray start to an object in the
     /// world.
-    /// NOTE: The caller must have a current OpenGL context on the calling thread when calling any of the
-    /// functions in this class, including the constructor.
+    /// NOTE: The caller must have the same current OpenGL context on the calling thread when calling any of the
+    /// functions in this class, including the constructor. This context must have had glewInit() called on it.
     class DepthEstimator {
     public:
       /// brief Construct the estimator with a list of cameras.
