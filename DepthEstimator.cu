@@ -631,16 +631,122 @@ std::string DepthEstimator::ComputeDepthEstimate(Time time)
   return m_impl->ComputeDepthEstimate(time);
 }
 
+/// @brief Intersect a ray with a plane.
+/// @param rayStart The start point of the ray.
+/// @param rayDir The direction of the ray.
+/// @param planeStart A point on the plane.
+/// @param planeNormal The normal of the plane.
+/// @param intersectionPoint The point of intersection.
+/// @return True if the ray intersects the plane, false otherwise.
+static bool intersectRayWithPlane(const glm::dvec3& rayStart, const glm::dvec3& rayDir,
+  const glm::dvec3& planeStart, const glm::dvec3& planeNormal,
+  glm::dvec3& intersectionPoint)
+{
+  float denom = glm::dot(rayDir, planeNormal);
+  if (glm::epsilonEqual(denom, 0.0f, glm::epsilon<float>())) {
+    // The ray is parallel to the plane
+    return false;
+  }
+
+  double t = glm::dot(planeStart - rayStart, planeNormal) / denom;
+  if (t < 0) {
+    // The intersection is behind the ray's start point
+    return false;
+  }
+
+  intersectionPoint = rayStart + t * rayDir;
+  return true;
+}
+
 float DepthEstimator::EstimateDepth(const glm::vec3& point, const glm::vec3& direction) const
 {
-  /// @todo
+  // Make sure we have valid data.
+  if (m_impl == nullptr || m_impl->m_cameraPairs.size() == 0) {
+    return m_impl->m_defaultDepth;
+  }
 
-  return m_impl->m_defaultDepth;
+  // Compute values we'll need more than once.
+  glm::dvec3 rayDir = glm::normalize(glm::dvec3(direction.x, direction.y, direction.z));
+  glm::dvec3 rayStart = glm::dvec3(point.x, point.y, point.z);
+
+  // Find out which camera pair has the largest positive normalized dot product with the ray.
+  // We rotate the -Z axis by the camera orientation to get the direction of the camera.
+  double bestDot = -2;
+  size_t bestPair = 0;
+  for (size_t i = 0; i < m_impl->m_cameraPairs.size(); i++) {
+    CameraPairInfo const& cpi = m_impl->m_cameraPairs[i];
+    glm::dvec3 cameraDir = glm::dvec3(0, 0, -1);
+    glm::dvec3 cameraDirRot = cpi.m_orientation * cameraDir;
+    double dot = glm::dot(rayDir, cameraDirRot);
+    if (dot > bestDot) {
+      bestDot = dot;
+      bestPair = i;
+    }
+  }
+
+  // Find the coordinate of the ray's piercing point on the plane at the default depth.
+  // The plane's orientation is the -Z axis rotated by the camera orientation, and its
+  // distance from the origin is the default depth.
+  glm::dvec3 pierce;
+  glm::dvec3 planeNormal = m_impl->m_cameraPairs[bestPair].m_orientation * glm::dvec3(0, 0, -1);
+  glm::dvec3 pointOnPlane = m_impl->m_cameraPairs[bestPair].m_position + double(m_impl->m_defaultDepth) * planeNormal;
+  if (!intersectRayWithPlane(rayStart, rayDir, pointOnPlane, planeNormal, pierce)) {
+    return m_impl->m_defaultDepth;
+  }
+
+  // Determine the coordinates in the view frustum of the piercing point, clamping to the
+  // range -1 to 1 in each dimension.
+  double halfX = m_impl->m_defaultDepth * tan(glm::radians(m_impl->m_cameraPairs[bestPair].m_fovsDeg[0] / 2));
+  double halfY = m_impl->m_defaultDepth * tan(glm::radians(m_impl->m_cameraPairs[bestPair].m_fovsDeg[1] / 2));
+  glm::dvec3 xDir = glm::normalize(glm::cross(planeNormal, glm::dvec3(0, 1, 0)));
+  glm::dvec3 yDir = glm::normalize(glm::cross(xDir, planeNormal));
+  double x = glm::dot(pierce - pointOnPlane, xDir) / halfX;
+  double y = glm::dot(pierce - pointOnPlane, yDir) / halfY;
+  x = glm::clamp(x, -1.0, 1.0);
+  y = glm::clamp(y, -1.0, 1.0);
+
+  // Convert the coordinates to the region index, which goes from 0 to 1 on each axis with the
+  // -1 to 1 range covering half a pixel beyond the index point for each.  Clamp to the range 0 to 1 on each axis.
+  // Interpolate the depth value based on the fractional piercing index.
+  double xScaled = x * m_impl->m_nx / (m_impl->m_nx - 1.0);
+  double yScaled = y * m_impl->m_ny / (m_impl->m_ny - 1.0);
+  double xCoord = (xScaled + 1.0) / 2.0 * (m_impl->m_nx - 1.0);
+  xCoord = glm::clamp(xCoord, 0.0, m_impl->m_nx - 1.0);
+  double yCoord = (yScaled + 1.0) / 2.0 * (m_impl->m_ny - 1.0);
+  yCoord = glm::clamp(yCoord, 0.0, m_impl->m_ny - 1.0);
+
+  // Look up the four values (floor and ceiling) around the point and use bilinear interpolation
+  // to determine the depth at the point.
+  size_t xFloor = size_t(floor(xCoord));
+  size_t xCeil = size_t(ceil(xCoord));
+  size_t yFloor = size_t(floor(yCoord));
+  size_t yCeil = size_t(ceil(yCoord));
+  double xFrac = xCoord - xFloor;
+  double yFrac = yCoord - yFloor;
+  double depthFF = m_impl->m_depths[yFloor * m_impl->m_nx + xFloor];
+  double depthFC = m_impl->m_depths[yFloor * m_impl->m_nx + xCeil];
+  double depthCF = m_impl->m_depths[yCeil * m_impl->m_nx + xFloor];
+  double depthCC = m_impl->m_depths[yCeil * m_impl->m_nx + xCeil];
+  double depth = (1 - xFrac) * (1 - yFrac) * depthFF + xFrac * (1 - yFrac) * depthFC +
+    (1 - xFrac) * yFrac * depthCF + xFrac * yFrac * depthCC;
+
+  // Estimate the contact point as that depth from the camera pair origin in the direction of the
+  // piercing point.
+  glm::dvec3 cameraToPierce = pierce - m_impl->m_cameraPairs[bestPair].m_position;
+  glm::dvec3 contactPoint = m_impl->m_cameraPairs[bestPair].m_position + depth * glm::normalize(cameraToPierce);
+
+  // Return the distance from the ray start to that point.
+  return glm::length(glm::vec3(contactPoint - rayStart));
 }
 
 
 std::string DepthEstimator::Test()
 {
+  /// @todo Test intersectRayWithPlane()
+
+  /// @todo Produce a specific depth map and test EstimateDepth() on it.
+
+  /// @todo Produce a set of images and cameras with known depths and test ComputeDepthEstimate() on them.
 
   return "@todo Write tests for DepthEstimator";
 }
