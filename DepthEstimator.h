@@ -3,11 +3,11 @@
  */
 
  /**
-  * @file ImageQueue.h
-  * @brief Apache Strap-Down Pilotage Render/ImageQueue class header file.
+  * @file DepthEstimator.h
+  * @brief Apache Strap-Down Pilotage Render/DepthEstimator class header file.
   *
   * @author ReliaSolve.
-  * @date November 9th, 2024.
+  * @date December 11th, 2024.
   */
 
 #pragma once
@@ -50,12 +50,17 @@ namespace asdp {
       ///            Rotation is around helicopter Z first (mesh X axis), then around the new X
       ///            axis (mesh Y axis).
       /// @param[in] depths List of depths to check in meters in increasing distance order.
+      /// @param[in] fitnessThreshold The threshold for fitness of the depth manifold.  If the
+      ///            difference between the average squared difference between the region in the
+      ///            best and worst matched conditions is less than this, use the default depth
+      ///            because there is not enough distinction.
       DepthEstimator(std::vector< std::array<CameraRenderInfo, 2> > cameras,
         std::shared_ptr<PoseAdjuster> poseAdjuster, Time cameraFrameInterval,
         unsigned nx, unsigned ny,
         float minZRotDeg = -115, float maxZRotDeg = 115,
         float minXRotDeg = -55, float maxXRotDeg = 55,
-        std::vector<float> depths = {10, 20, 50, 100, 200, 500, 1000});
+        std::vector<float> depths = {10, 20, 50, 100, 200, 500, 1000},
+        float fitnessThreshold = 5.0f);
 
       virtual ~DepthEstimator() = default;
 

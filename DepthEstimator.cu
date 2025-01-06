@@ -231,6 +231,7 @@ public:
 /// Provides implementation details for the DepthEstimator class
 class DepthEstimator::DepthEstimatorImpl {
 public:
+  friend class DepthEstimator;
   DepthEstimatorImpl() = delete;
   DepthEstimatorImpl(DepthEstimator *parent,
       std::vector< std::array<CameraRenderInfo, 2> > cameras,
@@ -239,7 +240,8 @@ public:
       unsigned nx, unsigned ny,
       float minZRotDeg, float maxZRotDeg,
       float minXRotDeg, float maxXRotDeg,
-      std::vector<float> depths)
+      std::vector<float> depths,
+      float fitnessThreshold)
     : m_parent(parent)
     , m_nx(nx)
     , m_ny(ny)
@@ -247,6 +249,7 @@ public:
     , m_maxZRotDeg(maxZRotDeg)
     , m_minXRotDeg(minXRotDeg)
     , m_maxXRotDeg(maxXRotDeg)
+    , m_fitnessThreshold(fitnessThreshold)
   {
     // Find the default depth.
     if (depths.size() == 0) {
@@ -256,6 +259,9 @@ public:
       // Use the furthest depth as the default.
       m_defaultDepth = depths.back();
     }
+
+    // Fill in the default depth for all regions.
+    m_depths.resize(nx * ny, m_defaultDepth);
 
     // Generate CameraPairInfo (two sets of CompositeCameras covering all depths) for each pair of cameras,
     // one set for the left camera and one for the right camera.  The two sets for each depth will be rendered
@@ -492,14 +498,50 @@ public:
       }
     }
 
-    // Find the best depth value for each region in the depth map.
-    // Determine the best-matched and worse-matched depth at each location.
-    // Determine the difference between the best-matched and worse-matched depths as a quality of fit measure.
-    // Compute a weighted Gaussian fit, where the weights include the quality of fit measure.
+    // Find the best depth value for each region.
+    // Determine the best-matched and worse-matched scores at each location.
+    std::vector<float> bestDepths(m_nx * m_ny);
+    std::vector<float> bestDepthValues(m_nx* m_ny, 1e30);
+    std::vector<float> worstDepthValues(m_nx * m_ny, -1e30);
+    std::vector<float> qualityOfFit(m_nx * m_ny, 0.0f);
+    for (size_t c = 0; c < m_cameraPairs.size(); c++) {
+      CameraPairInfo& cpi = m_cameraPairs[c];
+      for (size_t d = 0; d < cpi.m_perDepths.size(); d++) {
+        CameraPairInfo::PerDepth& pd = cpi.m_perDepths[d];
+        float depth = pd.m_depth;
+        for (size_t i = 0; i < pd.m_CPURegionBuffer.size(); i++) {
+          float score = pd.m_CPURegionBuffer[i];
+          if (score < bestDepthValues[i]) {
+            bestDepths[i] = depth;
+            bestDepthValues[i] = score;
+          }
+          if (score > worstDepthValues[i]) {
+            worstDepthValues[i] = score;
+          }
+        }
+      }
+    }
+    // Determine the difference between the best-matched and worst-matched scores as a certainty/quality of fit measure.
+    for (size_t i = 0; i < m_nx * m_ny; i++) {
+      // The largest possible average squared difference is 255^2 (65535), but the largest likely
+      // value will be more like 200 or lower.  The minimum possible is 0, but with noise the minimum
+      // likely would be more like 4.
+      // The metric must be resilient to the best being 0 and to best and worst being the same.
+      // It must also be be properly scaled compared to the distances between points (which are on
+      // an integer lattice).
+      qualityOfFit[i] = worstDepthValues[i] - bestDepthValues[i];
+    }
 
+    // We want to use the default if a region is not well fit.  Otherwise, we use the best depth.
+    for (size_t i = 0; i < m_nx * m_ny; i++) {
+      if (qualityOfFit[i] < m_fitnessThreshold) {
+        m_depths[i] = m_defaultDepth;
+      } else {
+        m_depths[i] = bestDepths[i];
+      }
+    }
 
-    /// @todo
-    return "@todo";
+    return "";
   }
 
   DepthEstimator *m_parent;
@@ -528,15 +570,21 @@ public:
 
   /// Default depth to use if the depth cannot be estimated.
   float m_defaultDepth;
-};
 
+  /// Computed estimated depth at every region location.
+  std::vector<float> m_depths;
+
+  /// Fitness threshold for determining if a region is well fit.
+  float m_fitnessThreshold;
+};
 
 DepthEstimator::DepthEstimator(std::vector< std::array<CameraRenderInfo, 2> > cameras,
   std::shared_ptr<PoseAdjuster> poseAdjuster, Time cameraFrameInterval,
   unsigned nx, unsigned ny,
   float minZRotDeg, float maxZRotDeg,
   float minXRotDeg, float maxXRotDeg,
-  std::vector<float> depths)
+  std::vector<float> depths,
+  float fitnessThreshold)
 {
   // Check the parameters.
   if (cameras.size() == 0) {
@@ -569,7 +617,8 @@ DepthEstimator::DepthEstimator(std::vector< std::array<CameraRenderInfo, 2> > ca
   // Create the implementation.
   m_impl = std::make_unique<DepthEstimatorImpl>(this, cameras,
     poseAdjuster, cameraFrameInterval, nx, ny,
-    minZRotDeg, maxZRotDeg, minXRotDeg, maxXRotDeg, depths);
+    minZRotDeg, maxZRotDeg, minXRotDeg, maxXRotDeg, depths,
+    fitnessThreshold);
   m_constructorStatus = m_impl->m_constructorStatus;
 }
 
