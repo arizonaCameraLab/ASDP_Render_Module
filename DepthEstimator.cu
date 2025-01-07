@@ -729,9 +729,11 @@ float DepthEstimator::EstimateDepth(const glm::vec3& point, const glm::vec3& dir
     (1 - xFrac) * yFrac * depthCF + xFrac * yFrac * depthCC;
 
   // Estimate the contact point as that depth from the camera pair origin in the direction of the
-  // piercing point.
+  // piercing point, scaled by ratio of the found depth to the default depth to make it match the
+  // one that would have been found for a plane at the found depth.
   glm::dvec3 cameraToPierce = pierce - m_impl->m_cameraPairs[bestPair].m_position;
-  glm::dvec3 contactPoint = m_impl->m_cameraPairs[bestPair].m_position + depth * glm::normalize(cameraToPierce);
+  glm::dvec3 contactPoint = m_impl->m_cameraPairs[bestPair].m_position
+    + (depth / m_impl->m_defaultDepth) * cameraToPierce;
 
   // Return the distance from the ray start to that point.
   return glm::length(glm::vec3(contactPoint - rayStart));
@@ -814,6 +816,8 @@ std::string DepthEstimator::Test()
     if (de.m_constructorStatus != "") {
       return "DepthEstimator::Test(): DepthEstimator constructor failed: " + de.m_constructorStatus;
     }
+
+    // Directly construct a depth map and test EstimateDepth() on it.
 
     /// @todo
   }
