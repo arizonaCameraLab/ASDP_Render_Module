@@ -4,6 +4,7 @@
 
 #include <memory>
 #include <GL/glew.h>
+#include <GLFW/glfw3.h>
 #include <ToneMap.h>
 #include <DepthEstimator.h>
 #include <Composite.h>
@@ -130,29 +131,26 @@ public:
       glGenFramebuffers(2, depthInfo.m_frameBuffers.data());
 
       glGenTextures(2, depthInfo.m_colorBuffers.data());
-      for (size_t b = 0; b < 2; b++) {
-        glBindTexture(GL_TEXTURE_2D, depthInfo.m_colorBuffers[b]);
+      for (auto &buf : depthInfo.m_colorBuffers) {
+        glBindTexture(GL_TEXTURE_2D, buf);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, pixelCounts[0], pixelCounts[1], 0,
-          GL_RGBA, GL_FLOAT, nullptr);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, pixelCounts[0], pixelCounts[1], 0,
+          GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+        glBindTexture(GL_TEXTURE_2D, 0);
       }
 
       glGenRenderbuffers(2, depthInfo.m_depthBuffers.data());
-      for (size_t b = 0; b < 2; b++) {
-        glBindTexture(GL_TEXTURE_2D, depthInfo.m_depthBuffers[b]);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT32, pixelCounts[0], pixelCounts[1], 0,
-          GL_DEPTH_COMPONENT, GL_FLOAT, nullptr);
+      for (auto& buf : depthInfo.m_depthBuffers) {
+        glBindRenderbuffer(GL_RENDERBUFFER, buf);
+        glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, pixelCounts[0], pixelCounts[1]);
+        glBindRenderbuffer(GL_RENDERBUFFER, 0);
       }
 
       // Map the CUDA graphics resources for the color buffers.
-      for (size_t b = 0; b < 2; b++) {
+      for (size_t b = 0; b < depthInfo.m_colorBuffers.size(); b++) {
         cudaError_t res = cudaGraphicsGLRegisterImage(&depthInfo.m_cudaColorBuffers[b], depthInfo.m_colorBuffers[b],
           GL_TEXTURE_2D, cudaGraphicsRegisterFlagsSurfaceLoadStore);
         if (res != cudaSuccess) {
@@ -635,7 +633,7 @@ std::string DepthEstimator::ComputeDepthEstimate(Time time)
 /// @param rayStart The start point of the ray.
 /// @param rayDir The direction of the ray.
 /// @param planeStart A point on the plane.
-/// @param planeNormal The normal of the plane.
+/// @param planeNormal The normal to the plane.
 /// @param intersectionPoint The point of intersection.
 /// @return True if the ray intersects the plane, false otherwise.
 static bool intersectRayWithPlane(const glm::dvec3& rayStart, const glm::dvec3& rayDir,
@@ -742,11 +740,85 @@ float DepthEstimator::EstimateDepth(const glm::vec3& point, const glm::vec3& dir
 
 std::string DepthEstimator::Test()
 {
-  /// @todo Test intersectRayWithPlane()
+  // Test intersectRayWithPlane()
+  {
+    glm::dvec3 rayStart(0, 0, 0);
+    glm::dvec3 rayDir(0, 0, 1);
+    glm::dvec3 planeStart(0, 0, 1);
+    glm::dvec3 planeNormal(0, 0, 1);
+    glm::dvec3 intersectionPoint;
+    if (!intersectRayWithPlane(rayStart, rayDir, planeStart, planeNormal, intersectionPoint)) {
+      return "intersectRayWithPlane() failed for perpendicular ray and plane";
+    }
+    if (intersectionPoint != glm::dvec3(0, 0, 1)) {
+      return "intersectRayWithPlane() failed for perpendicular ray and plane";
+    }
+
+    rayDir = glm::dvec3(0, 0, -1);
+    if (intersectRayWithPlane(rayStart, rayDir, planeStart, planeNormal, intersectionPoint)) {
+      return "intersectRayWithPlane() should not have succeeded for anti-perpendicular ray and plane";
+    }
+
+    rayDir = glm::dvec3(1, 0, 0);
+    if (intersectRayWithPlane(rayStart, rayDir, planeStart, planeNormal, intersectionPoint)) {
+      return "intersectRayWithPlane() should not have succeeded for parallel ray and plane";
+    }
+
+    rayDir = glm::dvec3(1, 0, 1);
+    if (!intersectRayWithPlane(rayStart, rayDir, planeStart, planeNormal, intersectionPoint)) {
+      return "intersectRayWithPlane() failed for skew ray and plane";
+    }
+    if (!glm::epsilonEqual(glm::distance(intersectionPoint, glm::dvec3(1, 0, 1)), 0.0, glm::epsilon<double>())) {
+      return "intersectRayWithPlane() failed for skew ray and plane";
+    }
+  }
 
   /// @todo Produce a specific depth map and test EstimateDepth() on it.
+  {
+    // Create a window and OpenGL context.
+    if (!glfwInit()) {
+      return "DepthEstimator::Test(): Failed to initialize GLFW";
+    }
+    glfwWindowHint(GLFW_VISIBLE, false);
+    std::shared_ptr<GLFWwindow> window(glfwCreateWindow(640, 480, "DepthEstimator Test", NULL, NULL), glfwDestroyWindow);
+    if (!window) {
+      return "DepthEstimator::Test(): Failed to create GLFW window";
+    }
+    glfwMakeContextCurrent(window.get());
+
+    // Initialize GLEW in our context. It is okay to initialize it more than once.
+    glewExperimental = true;
+    if (glewInit() != GLEW_OK) {
+      return "DepthEstimator::Test(): Failed to initialize GLEW";
+    }
+
+    // Construct a DepthEstimator after making the objects required to construct it.
+    std::vector< std::array<CameraRenderInfo, 2> > cameras;
+    DistortionNone *dNone = new DistortionNone();
+    std::shared_ptr<Distortion> distortion(dNone);
+    VignetteNone *vNone = new VignetteNone();
+    std::shared_ptr<Vignette> vignette(vNone);
+    CameraRenderInfo cam1(1, { -1, 0, 0 }, { 0, 0, 0 }, { 100, 100 }, { 90.0, 90.0 }, distortion, vignette, nullptr);
+    CameraRenderInfo cam2(2, { 1, 0, 0 }, { 0, 0, 0 }, { 100, 100 }, { 90.0, 90.0 }, distortion, vignette, nullptr);
+    cameras.push_back({ cam1, cam2 });
+
+    std::shared_ptr<PoseAdjuster> poseAdjuster = std::make_shared<PoseAdjuster>();
+    Time cameraFrameInterval = 1/60.0;
+    unsigned nx = 10;
+    unsigned ny = 10;
+    float minZRotDeg = -45;
+    float maxZRotDeg = 45;
+    float minXRotDeg = -45;
+    float maxXRotDeg = 45;
+    DepthEstimator de(cameras, poseAdjuster, cameraFrameInterval, nx, ny, minZRotDeg, maxZRotDeg, minXRotDeg, maxXRotDeg);
+    if (de.m_constructorStatus != "") {
+      return "DepthEstimator::Test(): DepthEstimator constructor failed: " + de.m_constructorStatus;
+    }
+
+    /// @todo
+  }
 
   /// @todo Produce a set of images and cameras with known depths and test ComputeDepthEstimate() on them.
 
-  return "@todo Write tests for DepthEstimator";
+  return "@todo Write more tests for DepthEstimator";
 }
