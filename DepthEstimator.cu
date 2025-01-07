@@ -190,8 +190,8 @@ public:
     // Free the GPU memory for the depth buffers.
     for (PerDepth &di : m_perDepths) {
       glDeleteFramebuffers(2, di.m_frameBuffers.data());
-      for (size_t b = 0; b < 2; b++) {
-        cudaGraphicsUnregisterResource(di.m_cudaColorBuffers[b]);
+      for (auto &buf : di.m_cudaColorBuffers) {
+        cudaGraphicsUnregisterResource(buf);
       }
       glDeleteTextures(2, di.m_colorBuffers.data());
       glDeleteTextures(2, di.m_depthBuffers.data());
@@ -739,7 +739,6 @@ float DepthEstimator::EstimateDepth(const glm::vec3& point, const glm::vec3& dir
   return glm::length(glm::vec3(contactPoint - rayStart));
 }
 
-
 std::string DepthEstimator::Test()
 {
   // Test intersectRayWithPlane()
@@ -794,32 +793,105 @@ std::string DepthEstimator::Test()
       return "DepthEstimator::Test(): Failed to initialize GLEW";
     }
 
-    // Construct a DepthEstimator after making the objects required to construct it.
-    std::vector< std::array<CameraRenderInfo, 2> > cameras;
-    DistortionNone *dNone = new DistortionNone();
-    std::shared_ptr<Distortion> distortion(dNone);
-    VignetteNone *vNone = new VignetteNone();
-    std::shared_ptr<Vignette> vignette(vNone);
-    CameraRenderInfo cam1(1, { -1, 0, 0 }, { 0, 0, 0 }, { 100, 100 }, { 90.0, 90.0 }, distortion, vignette, nullptr);
-    CameraRenderInfo cam2(2, { 1, 0, 0 }, { 0, 0, 0 }, { 100, 100 }, { 90.0, 90.0 }, distortion, vignette, nullptr);
-    cameras.push_back({ cam1, cam2 });
+    // Put into a block so that we destroy things in here before we destroy the context.
+    {
+      // Construct a DepthEstimator after making the objects required to construct it.
+      std::vector< std::array<CameraRenderInfo, 2> > cameras;
+      DistortionNone* dNone = new DistortionNone();
+      std::shared_ptr<Distortion> distortion(dNone);
+      VignetteNone* vNone = new VignetteNone();
+      std::shared_ptr<Vignette> vignette(vNone);
+      CameraRenderInfo cam1(1, { -1, 0, 0 }, { 0, 0, 0 }, { 100, 100 }, { 90.0, 90.0 }, distortion, vignette, nullptr);
+      CameraRenderInfo cam2(2, { 1, 0, 0 }, { 0, 0, 0 }, { 100, 100 }, { 90.0, 90.0 }, distortion, vignette, nullptr);
+      cameras.push_back({ cam1, cam2 });
 
-    std::shared_ptr<PoseAdjuster> poseAdjuster = std::make_shared<PoseAdjuster>();
-    Time cameraFrameInterval = 1/60.0;
-    unsigned nx = 10;
-    unsigned ny = 10;
-    float minZRotDeg = -45;
-    float maxZRotDeg = 45;
-    float minXRotDeg = -45;
-    float maxXRotDeg = 45;
-    DepthEstimator de(cameras, poseAdjuster, cameraFrameInterval, nx, ny, minZRotDeg, maxZRotDeg, minXRotDeg, maxXRotDeg);
-    if (de.m_constructorStatus != "") {
-      return "DepthEstimator::Test(): DepthEstimator constructor failed: " + de.m_constructorStatus;
+      std::shared_ptr<PoseAdjuster> poseAdjuster = std::make_shared<PoseAdjuster>();
+      Time cameraFrameInterval = 1 / 60.0;
+      unsigned nx = 10;
+      unsigned ny = 10;
+      float minZRotDeg = -45;
+      float maxZRotDeg = 45;
+      float minXRotDeg = -45;
+      float maxXRotDeg = 45;
+      DepthEstimator de(cameras, poseAdjuster, cameraFrameInterval, nx, ny, minZRotDeg, maxZRotDeg, minXRotDeg, maxXRotDeg);
+      if (de.m_constructorStatus != "") {
+        return "DepthEstimator::Test(): DepthEstimator constructor failed: " + de.m_constructorStatus;
+      }
+
+      //================================================================================================
+      // Fill in the default depth for all regions and test EstimateDepth() on the result to make sure
+      // our geometric transformations work properly.
+      float defaultDepth = de.m_impl->m_defaultDepth;
+      float depth = defaultDepth;
+      de.m_impl->m_depths.clear();
+      de.m_impl->m_depths.resize(nx * ny, depth);
+
+      // Test the depth at the origin, shooting along the -Z axis towards the plane.
+      float estimatedDepth = de.EstimateDepth(glm::vec3(0, 0, 0), glm::vec3(0, 0, -1));
+      if (fabs(estimatedDepth - depth) > depth * 1e-6) {
+        return "DepthEstimator::Test(): EstimateDepth() default-depth failed for origin";
+      }
+
+      // Test shooting at a slight angle to the -Z axis towards the plane.  The depth should scale
+      // with the length of the long edge of the triangle.
+      float dx = 0.1;
+      estimatedDepth = de.EstimateDepth(glm::vec3(0, 0, 0), glm::vec3(dx, 0, -1));
+      float expectedDepth = sqrt(1 + dx * dx) * depth;
+      if (fabs(estimatedDepth - expectedDepth) > expectedDepth * 1e-6) {
+        return "DepthEstimator::Test(): EstimateDepth() default-depth failed for slight angle";
+      }
+
+      // Test shooting at an angle that is beyond the edge.  It should use the same depth as the
+      // value at the edge
+      dx = 2.0;
+      estimatedDepth = de.EstimateDepth(glm::vec3(0, 0, 0), glm::vec3(dx, 0, -1));
+      expectedDepth = sqrt(1 + dx * dx) * depth;
+      if (fabs(estimatedDepth - expectedDepth) > expectedDepth * 1e-6) {
+        return "DepthEstimator::Test(): EstimateDepth() default-depth failed for edge";
+      }
+
+      //================================================================================================
+      // Fill in half of the default depth for all regions and test EstimateDepth() again.
+      depth /= 2;
+      de.m_impl->m_depths.clear();
+      de.m_impl->m_depths.resize(nx * ny, depth);
+
+      // Test the depth at the origin, shooting along the +Z axis away from the plane.
+      // This should return the default depth because there is not intersection.
+      estimatedDepth = de.EstimateDepth(glm::vec3(0, 0, 0), glm::vec3(0, 0, 1));
+      if (fabs(estimatedDepth - defaultDepth) > defaultDepth * 1e-6) {
+        return "DepthEstimator::Test(): EstimateDepth() half-default-depth failed away from origin";
+      }
+
+      // Test the depth at the origin, shooting along the -Z axis towards the plane.
+      estimatedDepth = de.EstimateDepth(glm::vec3(0, 0, 0), glm::vec3(0, 0, -1));
+      if (fabs(estimatedDepth - depth) > depth * 1e-6) {
+        return "DepthEstimator::Test(): EstimateDepth() half-default-depth failed for origin";
+      }
+
+      // Test shooting at a slight angle to the -Z axis towards the plane.  The depth should scale
+      // with the length of the long edge of the triangle.
+      dx = 0.1;
+      estimatedDepth = de.EstimateDepth(glm::vec3(0, 0, 0), glm::vec3(dx, 0, -1));
+      expectedDepth = sqrt(1 + dx * dx) * depth;
+      if (fabs(estimatedDepth - expectedDepth) > expectedDepth * 1e-6) {
+        return "DepthEstimator::Test(): EstimateDepth() half-default-depth failed for slight angle";
+      }
+
+      // Test shooting at an angle that is beyond the edge.  It should use the same depth as the
+      // value at the edge
+      dx = 2.0;
+      estimatedDepth = de.EstimateDepth(glm::vec3(0, 0, 0), glm::vec3(dx, 0, -1));
+      expectedDepth = sqrt(1 + dx * dx) * depth;
+      if (fabs(estimatedDepth - expectedDepth) > expectedDepth * 1e-6) {
+        return "DepthEstimator::Test(): EstimateDepth() half-default-depth failed for edge";
+      }
+
+      //================================================================================================
+      // Fill in different depths for different regions and test EstimateDepth() again.
+      /// @todo
     }
 
-    // Directly construct a depth map and test EstimateDepth() on it.
-
-    /// @todo
   }
 
   /// @todo Produce a set of images and cameras with known depths and test ComputeDepthEstimate() on them.
