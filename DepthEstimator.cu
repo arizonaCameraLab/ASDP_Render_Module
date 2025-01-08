@@ -95,8 +95,7 @@ public:
     std::array<float, 2> fovsDeg, std::array<unsigned, 2> pixelCounts,
     std::shared_ptr<PoseAdjuster> poseAdjuster, Time cameraFrameInterval,
     std::vector<float> depths)
-    : m_camera1(camera1)
-    , m_camera2(camera2)
+    : m_cameras({camera1, camera2})
     , m_position(position)
     , m_orientation(orientation)
     , m_fovsDeg(fovsDeg)
@@ -190,8 +189,8 @@ public:
     // Free the GPU memory for the depth buffers.
     for (PerDepth &di : m_perDepths) {
       glDeleteFramebuffers(2, di.m_frameBuffers.data());
-      for (auto &buf : di.m_cudaColorBuffers) {
-        cudaGraphicsUnregisterResource(buf);
+      for (size_t b = 0; b < di.m_cudaColorBuffers.size(); b++) {
+        cudaGraphicsUnregisterResource(di.m_cudaColorBuffers[b]);
       }
       glDeleteTextures(2, di.m_colorBuffers.data());
       glDeleteTextures(2, di.m_depthBuffers.data());
@@ -200,7 +199,7 @@ public:
     }
   }
 
-  CameraRenderInfo m_camera1, m_camera2;
+  std::array<CameraRenderInfo,2 > m_cameras;
   std::shared_ptr<PoseAdjuster> m_poseAdjuster;
   glm::dvec3 m_position;
   glm::dquat m_orientation;
@@ -325,11 +324,12 @@ public:
       if (pixelCounts[1] % m_ny != 0) { pixelCounts[1] += m_ny - (pixelCounts[1] % m_ny); }
 
       // Make the camera pair info.
-      CameraPairInfo cameraPairInfo(toneMap, cameras[i][0], cameras[i][1],
+      std::shared_ptr<CameraPairInfo> cameraPairInfo = std::make_shared<CameraPairInfo>(
+        toneMap, cameras[i][0], cameras[i][1],
         position, orientation, fovsDeg, pixelCounts,
         poseAdjuster, cameraFrameInterval, depths);
-      if (!cameraPairInfo.m_constructorStatus.empty()) {
-        m_constructorStatus = cameraPairInfo.m_constructorStatus;
+      if (!cameraPairInfo->m_constructorStatus.empty()) {
+        m_constructorStatus = cameraPairInfo->m_constructorStatus;
         return;
       }
       m_cameraPairs.push_back(cameraPairInfo);
@@ -345,7 +345,7 @@ public:
 
     // For each camera pair and depth, render the two cameras into the frame buffers and keep track of the fences.
     for (size_t c = 0; c < m_cameraPairs.size(); c++) {
-      CameraPairInfo& cpi = m_cameraPairs[c];
+      CameraPairInfo& cpi = *m_cameraPairs[c];
       std::vector< std::array<GLsync, 2> > cFences;
       for (size_t d = 0; d < cpi.m_perDepths.size(); d++) {
         std::array<GLsync, 2> dFences;
@@ -383,7 +383,7 @@ public:
     // Loop back through the camera pairs and depths, waiting for both fences to complete
     // and then mapping the color buffers to CUDA and running the depth estimation.
     for (size_t c = 0; c < m_cameraPairs.size(); c++) {
-      CameraPairInfo& cpi = m_cameraPairs[c];
+      CameraPairInfo& cpi = *m_cameraPairs[c];
       for (size_t d = 0; d < cpi.m_perDepths.size(); d++) {
         CameraPairInfo::PerDepth &pd = cpi.m_perDepths[d];
 
@@ -457,7 +457,7 @@ public:
 
     // Wait for all the CUDA streams to complete.
     for (auto cpi : m_cameraPairs) {
-      for (auto pd : cpi.m_perDepths) {
+      for (auto pd : cpi->m_perDepths) {
         cudaStreamSynchronize(*(pd.m_stream));
       }
     }
@@ -469,7 +469,7 @@ public:
 
     // Loop back through the camera pairs and depths, unmap the color buffers from CUDA.
     for (size_t c = 0; c < m_cameraPairs.size(); c++) {
-      CameraPairInfo& cpi = m_cameraPairs[c];
+      CameraPairInfo& cpi = *m_cameraPairs[c];
       for (size_t d = 0; d < cpi.m_perDepths.size(); d++) {
         CameraPairInfo::PerDepth& pd = cpi.m_perDepths[d];
         for (size_t b = 0; b < 2; b++) {
@@ -485,7 +485,7 @@ public:
 
     // Wait for all the CUDA streams to complete.
     for (auto cpi : m_cameraPairs) {
-      for (auto pd : cpi.m_perDepths) {
+      for (auto pd : cpi->m_perDepths) {
         cudaStreamSynchronize(*(pd.m_stream));
       }
     }
@@ -497,7 +497,7 @@ public:
     std::vector<float> worstDepthValues(m_nx * m_ny, -1e30);
     std::vector<float> qualityOfFit(m_nx * m_ny, 0.0f);
     for (size_t c = 0; c < m_cameraPairs.size(); c++) {
-      CameraPairInfo& cpi = m_cameraPairs[c];
+      CameraPairInfo& cpi = *m_cameraPairs[c];
       for (size_t d = 0; d < cpi.m_perDepths.size(); d++) {
         CameraPairInfo::PerDepth& pd = cpi.m_perDepths[d];
         float depth = pd.m_depth;
@@ -540,7 +540,7 @@ public:
   std::string m_constructorStatus;
 
   /// Camera pairs to use to estimate depth.
-  std::vector<CameraPairInfo> m_cameraPairs;
+  std::vector< std::shared_ptr<CameraPairInfo> > m_cameraPairs;
 
   /// Number of points to create in the X direction.
   unsigned m_nx;
@@ -650,7 +650,7 @@ float DepthEstimator::EstimateDepth(const glm::vec3& point, const glm::vec3& dir
   double bestDot = -2;
   size_t bestPair = 0;
   for (size_t i = 0; i < m_impl->m_cameraPairs.size(); i++) {
-    CameraPairInfo const& cpi = m_impl->m_cameraPairs[i];
+    CameraPairInfo const& cpi = *m_impl->m_cameraPairs[i];
     glm::dvec3 cameraDir = glm::dvec3(0, 0, -1);
     glm::dvec3 cameraDirRot = cpi.m_orientation * cameraDir;
     double dot = glm::dot(rayDir, cameraDirRot);
@@ -664,16 +664,16 @@ float DepthEstimator::EstimateDepth(const glm::vec3& point, const glm::vec3& dir
   // The plane's orientation is the -Z axis rotated by the camera orientation, and its
   // distance from the origin is the default depth.
   glm::dvec3 pierce;
-  glm::dvec3 planeNormal = m_impl->m_cameraPairs[bestPair].m_orientation * glm::dvec3(0, 0, -1);
-  glm::dvec3 pointOnPlane = m_impl->m_cameraPairs[bestPair].m_position + double(m_impl->m_defaultDepth) * planeNormal;
+  glm::dvec3 planeNormal = m_impl->m_cameraPairs[bestPair]->m_orientation * glm::dvec3(0, 0, -1);
+  glm::dvec3 pointOnPlane = m_impl->m_cameraPairs[bestPair]->m_position + double(m_impl->m_defaultDepth) * planeNormal;
   if (!intersectRayWithPlane(rayStart, rayDir, pointOnPlane, planeNormal, pierce)) {
     return m_impl->m_defaultDepth;
   }
 
   // Determine the coordinates in the view frustum of the piercing point, clamping to the
   // range -1 to 1 in each dimension.
-  double halfX = m_impl->m_defaultDepth * tan(glm::radians(m_impl->m_cameraPairs[bestPair].m_fovsDeg[0] / 2));
-  double halfY = m_impl->m_defaultDepth * tan(glm::radians(m_impl->m_cameraPairs[bestPair].m_fovsDeg[1] / 2));
+  double halfX = m_impl->m_defaultDepth * tan(glm::radians(m_impl->m_cameraPairs[bestPair]->m_fovsDeg[0] / 2));
+  double halfY = m_impl->m_defaultDepth * tan(glm::radians(m_impl->m_cameraPairs[bestPair]->m_fovsDeg[1] / 2));
   glm::dvec3 xDir = glm::normalize(glm::cross(planeNormal, glm::dvec3(0, 1, 0)));
   glm::dvec3 yDir = glm::normalize(glm::cross(xDir, planeNormal));
   double x = glm::dot(pierce - pointOnPlane, xDir) / halfX;
@@ -709,12 +709,33 @@ float DepthEstimator::EstimateDepth(const glm::vec3& point, const glm::vec3& dir
   // Estimate the contact point as that depth from the camera pair origin in the direction of the
   // piercing point, scaled by ratio of the found depth to the default depth to make it match the
   // one that would have been found for a plane at the found depth.
-  glm::dvec3 cameraToPierce = pierce - m_impl->m_cameraPairs[bestPair].m_position;
-  glm::dvec3 contactPoint = m_impl->m_cameraPairs[bestPair].m_position
+  glm::dvec3 cameraToPierce = pierce - m_impl->m_cameraPairs[bestPair]->m_position;
+  glm::dvec3 contactPoint = m_impl->m_cameraPairs[bestPair]->m_position
     + (depth / m_impl->m_defaultDepth) * cameraToPierce;
 
   // Return the distance from the ray start to that point.
   return glm::length(glm::vec3(contactPoint - rayStart));
+}
+
+//================================================================================================
+// Testing and its helper functions and classes.
+
+/// @brief Returns a test pattern value at the given X coordinate in the range 0..1.
+/// @details This has variations at many frequency ranges so that it will handle a range
+/// of depths.
+/// @param x The X coordinate in arbitrary units.
+/// @return The test pattern value at that X coordinate.
+static double TestPattern(double x)
+{
+  const double periods[] = { 0.2, 0.7, 1.1, 2, 7, 11, 20, 70, 110 };
+  const double phases[] = { 0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8 };
+  const double magnitudes[] = { 0.3, 0.3, 0.3, 0.3, 0.3, 0.3, 1.0, 1.0, 1.0 };
+  double result = 0, scale = 0;
+  for (size_t i = 0; i < sizeof(periods) / sizeof(periods[0]); i++) {
+    result += magnitudes[i] * (1.0 + sin(10*x / periods[i] + phases[i]));
+    scale += 2 * magnitudes[i];
+  }
+  return result / scale;
 }
 
 std::string DepthEstimator::Test()
@@ -752,7 +773,7 @@ std::string DepthEstimator::Test()
     }
   }
 
-  /// Produce a specific depth map and test EstimateDepth() on it.
+  /// Test the DepthEstimator class.
   {
     // Create a window and OpenGL context.
     if (!glfwInit()) {
@@ -773,21 +794,33 @@ std::string DepthEstimator::Test()
 
     // Put into a block so that we destroy things in here before we destroy the context.
     {
+      uint16_t nx = 12;   ///< Number of points to create in the X direction.  Must be divisible by 4 for our tests below.
+      uint16_t ny = 12;
+
+      uint16_t width = 50*nx;  ///< Width of the frame buffer.
+      uint16_t height = 50*ny; ///< Height of the frame buffer.  Must be divisible by ny for our tests below.
+
       // Construct a DepthEstimator after making the objects required to construct it.
       std::vector< std::array<CameraRenderInfo, 2> > cameras;
       DistortionNone* dNone = new DistortionNone();
       std::shared_ptr<Distortion> distortion(dNone);
       VignetteNone* vNone = new VignetteNone();
       std::shared_ptr<Vignette> vignette(vNone);
-      CameraRenderInfo cam1(1, { -1, 0, 0 }, { 0, 0, 0 }, { 100, 100 }, { 90.0, 90.0 }, distortion, vignette, nullptr);
-      CameraRenderInfo cam2(2, { 1, 0, 0 }, { 0, 0, 0 }, { 100, 100 }, { 90.0, 90.0 }, distortion, vignette, nullptr);
+      std::shared_ptr<ImageQueue> queue1(new ImageQueue);
+      std::shared_ptr<ImageQueue> queue2(new ImageQueue);
+      std::vector< std::shared_ptr<ImageQueue> > queues;
+      queues.push_back(queue1);
+      queues.push_back(queue2);
+      CameraRenderInfo cam1(1, { -1, 0, 0 }, { 0, 0, 0 }, { width, height}, { 90.0, 90.0 },
+        distortion, vignette, queues[0]);
+      CameraRenderInfo cam2(2, { 1, 0, 0 }, { 0, 0, 0 }, { width, height}, { 90.0, 90.0 },
+        distortion, vignette, queues[1]);
       cameras.push_back({ cam1, cam2 });
 
       std::shared_ptr<PoseAdjuster> poseAdjuster = std::make_shared<PoseAdjuster>();
       Time cameraFrameInterval = 1 / 60.0;
-      unsigned nx = 12;   ///< Number of points to create in the X direction.  Must be divisible by 4 for our tests below.
-      unsigned ny = 12;
-      DepthEstimator de(cameras, poseAdjuster, cameraFrameInterval, nx, ny);
+      std::vector<float> testDepths = { 10, 20, 50, 100, 200, 500, 1000 };
+      DepthEstimator de(cameras, poseAdjuster, cameraFrameInterval, nx, ny, testDepths);
       if (de.m_constructorStatus != "") {
         return "DepthEstimator::Test(): DepthEstimator constructor failed: " + de.m_constructorStatus;
       }
@@ -898,19 +931,99 @@ std::string DepthEstimator::Test()
       // Test shooting between two points and make sure that the answer is between the two depths.
       // We aim for slightly over halfway to the edge, which should be between the center and
       // outer points.
-      dx = tan(glm::radians(de.m_impl->m_cameraPairs[0].m_fovsDeg[0]) / 2.0) / 2.0 + 0.01;
+      dx = tan(glm::radians(de.m_impl->m_cameraPairs[0]->m_fovsDeg[0]) / 2.0) / 2.0 + 0.01;
       double below = sqrt(1 + dx * dx) * depth;
       double above = sqrt(1 + dx * dx) * centerDepth;
       estimatedDepth = de.EstimateDepth(glm::vec3(0, 0, 0), glm::vec3(dx, 0, -1));
       if (estimatedDepth <= below || estimatedDepth >= above) {
         return "DepthEstimator::Test(): EstimateDepth() varying depth failed for interpolating between two points";
       }
+
+      //================================================================================================
+      // Produce a set of images with known depths for each camera and test ComputeDepthEstimate() on them.
+      // We analytically render the images with different depths for different image regions in Y so that
+      // each of the ny samples is completely at the same depth.  We use a sum of sinusoids at relatively
+      // prime frequencies with different phases to make the image have contrast and a specific alignment.
+      // We move this pattern to different Z depths for each region in the Y camera axis.
+
+      // Start with a blue-filled RGB image.  This will be the background.
+      std::vector<uint8_t> blueImage(width * height * 3, 0);
+      for (size_t i = 0; i < width * height; i++) {
+        blueImage[i * 3 + 2] = 255;
+      }
+
+      // Make a copy of the blue image for the each camera and then fill its upper half with the test
+      // pattern at different depths.  The image starts at the top left, so this is the first part of the
+      // image.
+
+      std::vector< std::vector<uint8_t> > images;
+      for (size_t c = 0; c < 2; c++) {
+        std::vector<uint8_t> im = blueImage;
+        for (size_t y = 0; y < height / 2; y++) {
+          // Flip the Y axis so the near ground is on the bottom.
+          size_t yFlip = height - y - 1;
+
+          // The depth changes for every height/ny pixels and it comes from the list of
+          // depths.
+          double depth = testDepths[(y / (height / ny)) % testDepths.size()];
+
+          // Find the X piercing points for the depth at the left and right edges of the image
+          // and then compute the scale and offset that will map the image pixels correctly.
+          // Remember that the pixel centers are half a pixel in from the edges.
+          double halfX = depth * tan(glm::radians(de.m_impl->m_cameraPairs[0]->m_cameras[c].m_fovDegrees[0] / 2));
+          double xLeft = -halfX * (double(width) / (width - 1));
+          double xRight = halfX * (double(width) / (width - 1));
+          double scale = (xRight - xLeft) / (width - 1);
+          double offset = -xLeft + (0.5 * scale);
+
+          // Add the camera's X center to the offset.
+          offset += de.m_impl->m_cameraPairs[0]->m_cameras[c].m_positionMeters[0];
+
+          for (size_t x = 0; x < width; x++) {
+            double value = 255 * TestPattern(x * scale + offset);
+            im[(yFlip * width + x) * 3 + 0] = uint8_t(value);
+            im[(yFlip * width + x) * 3 + 1] = uint8_t(value);
+            im[(yFlip * width + x) * 3 + 2] = uint8_t(value);
+          }
+        }
+        images.push_back(im);
+
+#if 0
+        // Write the image to a PPM file for debugging.
+        std::ofstream file("DepthEstimatorTest" + std::to_string(c) + ".ppm", std::ios::binary);
+        file << "P6\n" << width << " " << height << "\n255\n";
+        file.write(reinterpret_cast<char*>(im.data()), im.size());
+#endif
+
+        // Construct an OpenGL texture and copy the image into it.
+        GLuint texture;
+        glGenTextures(1, &texture);
+        glBindTexture(GL_TEXTURE_2D, texture);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, im.data());
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glBindTexture(GL_TEXTURE_2D, 0);
+
+        // Add three copies of the image to the image queue after constructing the ImageData object to hold it.
+        std::shared_ptr<ImageData> id(new ImageData);
+        id->imageCenterTime = 0;
+        id->texture = texture;
+        for (size_t i = 0; i < 3; i++) {
+          de.m_impl->m_cameraPairs[0]->m_cameras[c].m_imageQueue->InsertImage(id);
+        }
+      }
+
+      /// @todo Compute the depth estimate.
+
+      /// @todo Check the depth estimates directly.
+
+      /// @todo Check the depth estimates using probe rays.
+
     }
   }
 
-  /// @todo Produce a set of images and cameras with known depths and test ComputeDepthEstimate() on them.
-
-  /// @todo Check the depth estimates directly.
 
   return "@todo Write more tests for DepthEstimator";
 }
