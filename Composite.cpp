@@ -53,7 +53,7 @@ void Composite::Render(asdp::Time scanOutTime, std::vector<ViewRenderInfo> views
       glBindFramebuffer(GL_FRAMEBUFFER, view.frameBuffer);
       if (view.frameBuffer != 0) {
         glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, view.colorBuffer, 0);
-        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, view.depthBuffer, 0);
+        glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, view.depthBuffer);
       }
 
       // Clear the buffers.  The clear color is sky blue to distingiush from a camera with a black texture.
