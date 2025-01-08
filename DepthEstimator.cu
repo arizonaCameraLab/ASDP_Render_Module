@@ -167,13 +167,8 @@ public:
       }
       depthInfo.m_stream = streamPtr;
 
-      // Allocate the GPU and CPU memory for the depth buffers.
-      depthInfo.m_CPURegionBuffer.resize(pixelCounts[0] * pixelCounts[1]);
-      res = cudaMalloc(&depthInfo.m_GPURegionBuffer, pixelCounts[0] * pixelCounts[1] * sizeof(float));
-      if (res != cudaSuccess) {
-        m_constructorStatus = "Failed to allocate GPU memory: " + std::string(cudaGetErrorString(res));
-        return;
-      }
+      // Zero the GPU and memory for the region buffer; it will be allocated the first time it is needed.
+      depthInfo.m_GPURegionBuffer = nullptr;
 
       m_perDepths.push_back(depthInfo);
     }
@@ -435,6 +430,17 @@ public:
         }
         surfObjs.push_back(surfObj2);
 
+        // Ensure that we have CPU and GPU buffers for the depth estimation.
+        if (pd.m_CPURegionBuffer.size() != m_nx * m_ny) {
+          pd.m_CPURegionBuffer.resize(m_nx * m_ny);
+        }
+        if (pd.m_GPURegionBuffer == nullptr) {
+          res = cudaMalloc(&pd.m_GPURegionBuffer, m_nx * m_ny * sizeof(float));
+          if (res != cudaSuccess) {
+            return "ComputeDepthEstimate: cudaMalloc() failed for pair " + std::to_string(c)
+              + " depth " + std::to_string(d) + ": " + std::string(cudaGetErrorString(res));
+          }
+        }
 
         // Run the depth estimation kernels, which must handle portions of a region that are outside
         // of the projected area (they will be blue).
@@ -446,7 +452,7 @@ public:
 
         // Copy the results back to CPU memory.
         res = cudaMemcpyAsync(pd.m_CPURegionBuffer.data(), pd.m_GPURegionBuffer,
-          cpi.m_pixelCounts[0] * cpi.m_pixelCounts[1] * sizeof(float), cudaMemcpyDeviceToHost,
+          m_nx * m_ny * sizeof(float), cudaMemcpyDeviceToHost,
           *(pd.m_stream));
         if (res != cudaSuccess) {
           return "ComputeDepthEstimate: cudaMemcpy() failed for pair " + std::to_string(c)
@@ -777,19 +783,19 @@ std::string DepthEstimator::Test()
   {
     // Create a window and OpenGL context.
     if (!glfwInit()) {
-      return "DepthEstimator::Test(): Failed to initialize GLFW";
+      return "Failed to initialize GLFW";
     }
     glfwWindowHint(GLFW_VISIBLE, false);
     std::shared_ptr<GLFWwindow> window(glfwCreateWindow(640, 480, "DepthEstimator Test", NULL, NULL), glfwDestroyWindow);
     if (!window) {
-      return "DepthEstimator::Test(): Failed to create GLFW window";
+      return "Failed to create GLFW window";
     }
     glfwMakeContextCurrent(window.get());
 
     // Initialize GLEW in our context. It is okay to initialize it more than once.
     glewExperimental = true;
     if (glewInit() != GLEW_OK) {
-      return "DepthEstimator::Test(): Failed to initialize GLEW";
+      return "Failed to initialize GLEW";
     }
 
     // Put into a block so that we destroy things in here before we destroy the context.
@@ -822,7 +828,7 @@ std::string DepthEstimator::Test()
       std::vector<float> testDepths = { 10, 20, 50, 100, 200, 500, 1000 };
       DepthEstimator de(cameras, poseAdjuster, cameraFrameInterval, nx, ny, testDepths);
       if (de.m_constructorStatus != "") {
-        return "DepthEstimator::Test(): DepthEstimator constructor failed: " + de.m_constructorStatus;
+        return "DepthEstimator constructor failed: " + de.m_constructorStatus;
       }
 
       //================================================================================================
@@ -836,7 +842,7 @@ std::string DepthEstimator::Test()
       // Test the depth at the origin, shooting along the -Z axis towards the plane.
       float estimatedDepth = de.EstimateDepth(glm::vec3(0, 0, 0), glm::vec3(0, 0, -1));
       if (fabs(estimatedDepth - depth) > depth * 1e-6) {
-        return "DepthEstimator::Test(): EstimateDepth() default-depth failed for origin";
+        return "EstimateDepth() default-depth failed for origin";
       }
 
       // Test shooting at a slight angle to the -Z axis towards the plane.  The depth should scale
@@ -845,7 +851,7 @@ std::string DepthEstimator::Test()
       estimatedDepth = de.EstimateDepth(glm::vec3(0, 0, 0), glm::vec3(dx, 0, -1));
       float expectedDepth = sqrt(1 + dx * dx) * depth;
       if (fabs(estimatedDepth - expectedDepth) > expectedDepth * 1e-6) {
-        return "DepthEstimator::Test(): EstimateDepth() default-depth failed for slight angle";
+        return "EstimateDepth() default-depth failed for slight angle";
       }
 
       // Test shooting at a slight angle in Y to the -Z axis towards the plane.  The depth should scale
@@ -854,7 +860,7 @@ std::string DepthEstimator::Test()
       estimatedDepth = de.EstimateDepth(glm::vec3(0, 0, 0), glm::vec3(0, dy, -1));
       expectedDepth = sqrt(1 + dy * dy) * depth;
       if (fabs(estimatedDepth - expectedDepth) > expectedDepth * 1e-6) {
-        return "DepthEstimator::Test(): EstimateDepth() default-depth failed for slight Y angle";
+        return "EstimateDepth() default-depth failed for slight Y angle";
       }
 
       // Test shooting at an angle that is beyond the edge.  It should use the same depth as the
@@ -863,7 +869,7 @@ std::string DepthEstimator::Test()
       estimatedDepth = de.EstimateDepth(glm::vec3(0, 0, 0), glm::vec3(dx, 0, -1));
       expectedDepth = sqrt(1 + dx * dx) * depth;
       if (fabs(estimatedDepth - expectedDepth) > expectedDepth * 1e-6) {
-        return "DepthEstimator::Test(): EstimateDepth() default-depth failed for edge";
+        return "EstimateDepth() default-depth failed for edge";
       }
 
       //================================================================================================
@@ -876,13 +882,13 @@ std::string DepthEstimator::Test()
       // This should return the default depth because there is not intersection.
       estimatedDepth = de.EstimateDepth(glm::vec3(0, 0, 0), glm::vec3(0, 0, 1));
       if (fabs(estimatedDepth - defaultDepth) > defaultDepth * 1e-6) {
-        return "DepthEstimator::Test(): EstimateDepth() half-default-depth failed away from origin";
+        return "EstimateDepth() half-default-depth failed away from origin";
       }
 
       // Test the depth at the origin, shooting along the -Z axis towards the plane.
       estimatedDepth = de.EstimateDepth(glm::vec3(0, 0, 0), glm::vec3(0, 0, -1));
       if (fabs(estimatedDepth - depth) > depth * 1e-6) {
-        return "DepthEstimator::Test(): EstimateDepth() half-default-depth failed for origin";
+        return "EstimateDepth() half-default-depth failed for origin";
       }
 
       // Test shooting at a slight angle in X to the -Z axis towards the plane.  The depth should scale
@@ -891,7 +897,7 @@ std::string DepthEstimator::Test()
       estimatedDepth = de.EstimateDepth(glm::vec3(0, 0, 0), glm::vec3(dx, 0, -1));
       expectedDepth = sqrt(1 + dx * dx) * depth;
       if (fabs(estimatedDepth - expectedDepth) > expectedDepth * 1e-6) {
-        return "DepthEstimator::Test(): EstimateDepth() half-default-depth failed for slight X angle";
+        return "EstimateDepth() half-default-depth failed for slight X angle";
       }
 
       // Test shooting at an angle that is beyond the edge.  It should use the same depth as the
@@ -900,7 +906,7 @@ std::string DepthEstimator::Test()
       estimatedDepth = de.EstimateDepth(glm::vec3(0, 0, 0), glm::vec3(dx, 0, -1));
       expectedDepth = sqrt(1 + dx * dx) * depth;
       if (fabs(estimatedDepth - expectedDepth) > expectedDepth * 1e-6) {
-        return "DepthEstimator::Test(): EstimateDepth() half-default-depth failed for edge";
+        return "EstimateDepth() half-default-depth failed for edge";
       }
 
       //================================================================================================
@@ -916,7 +922,7 @@ std::string DepthEstimator::Test()
       // Test the depth at the origin, shooting along the -Z axis towards the plane.
       estimatedDepth = de.EstimateDepth(glm::vec3(0, 0, 0), glm::vec3(0, 0, -1));
       if (fabs(estimatedDepth - centerDepth) > centerDepth * 1e-6) {
-        return "DepthEstimator::Test(): EstimateDepth() varying depth failed for origin";
+        return "EstimateDepth() varying depth failed for origin";
       }
 
       // Test shooting at a wide angle in X to the -Z axis towards the plane.  The depth should scale
@@ -925,7 +931,7 @@ std::string DepthEstimator::Test()
       estimatedDepth = de.EstimateDepth(glm::vec3(0, 0, 0), glm::vec3(dx, 0, -1));
       expectedDepth = sqrt(1 + dx * dx) * depth;
       if (fabs(estimatedDepth - expectedDepth) > expectedDepth * 1e-6) {
-        return "DepthEstimator::Test(): EstimateDepth() varying depth failed for slight X angle";
+        return "EstimateDepth() varying depth failed for slight X angle";
       }
 
       // Test shooting between two points and make sure that the answer is between the two depths.
@@ -936,7 +942,7 @@ std::string DepthEstimator::Test()
       double above = sqrt(1 + dx * dx) * centerDepth;
       estimatedDepth = de.EstimateDepth(glm::vec3(0, 0, 0), glm::vec3(dx, 0, -1));
       if (estimatedDepth <= below || estimatedDepth >= above) {
-        return "DepthEstimator::Test(): EstimateDepth() varying depth failed for interpolating between two points";
+        return "EstimateDepth() varying depth failed for interpolating between two points";
       }
 
       //================================================================================================
@@ -1015,11 +1021,30 @@ std::string DepthEstimator::Test()
         }
       }
 
-      /// @todo Compute the depth estimate.
+      // Compute the depth estimate.
+      std::string res = de.ComputeDepthEstimate(0);
+      if (res != "") {
+        return "ComputeDepthEstimate() failed: " + res;
+      }
 
-      /// @todo Check the depth estimates directly.
+      // Check the depth estimates directly.
+      for (size_t y = 0; y < ny; y++) {
+        double depth = testDepths[y % testDepths.size()];
+        if (y >= ny / 2) {
+          // In the top half of the image, there are no features, so it should be the default depth.
+          depth = testDepths.back();
+        }
+        for (size_t x = 0; x < nx; x++) {
+          size_t i = y * nx + x;
+          if (fabs(de.m_impl->m_depths[i] - depth) > depth * 1e-6) {
+            return "ComputeDepthEstimate() failed for region " + std::to_string(i)
+              + ", found " + std::to_string(de.m_impl->m_depths[i]) + " expected " + std::to_string(depth);
+          }
+        }
+      }
 
-      /// @todo Check the depth estimates using probe rays.
+      // Check the depth estimates using probe rays.
+      /// @todo
 
     }
   }
