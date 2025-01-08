@@ -236,17 +236,11 @@ public:
       std::shared_ptr<PoseAdjuster> poseAdjuster,
       Time cameraFrameInterval,
       unsigned nx, unsigned ny,
-      float minZRotDeg, float maxZRotDeg,
-      float minXRotDeg, float maxXRotDeg,
       std::vector<float> depths,
       float fitnessThreshold)
     : m_parent(parent)
     , m_nx(nx)
     , m_ny(ny)
-    , m_minZRotDeg(minZRotDeg)
-    , m_maxZRotDeg(maxZRotDeg)
-    , m_minXRotDeg(minXRotDeg)
-    , m_maxXRotDeg(maxXRotDeg)
     , m_fitnessThreshold(fitnessThreshold)
   {
     // Find the default depth.
@@ -554,18 +548,6 @@ public:
   /// Number of points to create in the Y direction.
   unsigned m_ny;
 
-  /// Minimum Z rotation in degrees.
-  float m_minZRotDeg;
-
-  /// Maximum Z rotation in degrees.
-  float m_maxZRotDeg;
-
-  /// Minimum X rotation in degrees.
-  float m_minXRotDeg;
-
-  /// Maximum X rotation in degrees.
-  float m_maxXRotDeg;
-
   /// Default depth to use if the depth cannot be estimated.
   float m_defaultDepth;
 
@@ -579,8 +561,6 @@ public:
 DepthEstimator::DepthEstimator(std::vector< std::array<CameraRenderInfo, 2> > cameras,
   std::shared_ptr<PoseAdjuster> poseAdjuster, Time cameraFrameInterval,
   unsigned nx, unsigned ny,
-  float minZRotDeg, float maxZRotDeg,
-  float minXRotDeg, float maxXRotDeg,
   std::vector<float> depths,
   float fitnessThreshold)
 {
@@ -614,9 +594,7 @@ DepthEstimator::DepthEstimator(std::vector< std::array<CameraRenderInfo, 2> > ca
 
   // Create the implementation.
   m_impl = std::make_unique<DepthEstimatorImpl>(this, cameras,
-    poseAdjuster, cameraFrameInterval, nx, ny,
-    minZRotDeg, maxZRotDeg, minXRotDeg, maxXRotDeg, depths,
-    fitnessThreshold);
+    poseAdjuster, cameraFrameInterval, nx, ny, depths, fitnessThreshold);
   m_constructorStatus = m_impl->m_constructorStatus;
 }
 
@@ -809,11 +787,7 @@ std::string DepthEstimator::Test()
       Time cameraFrameInterval = 1 / 60.0;
       unsigned nx = 10;
       unsigned ny = 10;
-      float minZRotDeg = -45;
-      float maxZRotDeg = 45;
-      float minXRotDeg = -45;
-      float maxXRotDeg = 45;
-      DepthEstimator de(cameras, poseAdjuster, cameraFrameInterval, nx, ny, minZRotDeg, maxZRotDeg, minXRotDeg, maxXRotDeg);
+      DepthEstimator de(cameras, poseAdjuster, cameraFrameInterval, nx, ny);
       if (de.m_constructorStatus != "") {
         return "DepthEstimator::Test(): DepthEstimator constructor failed: " + de.m_constructorStatus;
       }

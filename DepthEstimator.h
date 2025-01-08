@@ -37,18 +37,6 @@ namespace asdp {
       /// @param[in] cameraFrameInterval The time between frames in the camera images.
       /// @param[in] nx Number of points to create in the X direction for each camera pair.
       /// @param[in] ny Number of points to create in the Y direction for each camera pair.
-      /// @param[in] minZRotDeg Minimum Z rotation in degrees for the manifold representing depth.
-      ///            Rotation is around helicopter Z first (mesh X axis), then around the new X
-      ///            axis (mesh Y axis).
-      /// @param[in] maxZRotDeg Maximum Z rotation in degrees for the manifold representing depth.
-      ///            Rotation is around helicopter Z first (mesh X axis), then around the new X
-      ///            axis (mesh Y axis).
-      /// @param[in] minXRotDeg Minimum X rotation in degrees for the manifold representing depth.
-      ///            Rotation is around helicopter Z first (mesh X axis), then around the new X
-      ///            axis (mesh Y axis).
-      /// @param[in] maxXRotDeg Maximum X rotation in degrees for the manifold representing depth.
-      ///            Rotation is around helicopter Z first (mesh X axis), then around the new X
-      ///            axis (mesh Y axis).
       /// @param[in] depths List of depths to check in meters in increasing distance order.
       /// @param[in] fitnessThreshold The threshold for fitness of the depth manifold.  If the
       ///            difference between the average squared difference between the region in the
@@ -57,8 +45,6 @@ namespace asdp {
       DepthEstimator(std::vector< std::array<CameraRenderInfo, 2> > cameras,
         std::shared_ptr<PoseAdjuster> poseAdjuster, Time cameraFrameInterval,
         unsigned nx, unsigned ny,
-        float minZRotDeg = -115, float maxZRotDeg = 115,
-        float minXRotDeg = -55, float maxXRotDeg = 55,
         std::vector<float> depths = {10, 20, 50, 100, 200, 500, 1000},
         float fitnessThreshold = 5.0f);
 
