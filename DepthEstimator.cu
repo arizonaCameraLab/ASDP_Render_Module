@@ -353,8 +353,10 @@ public:
           for (size_t i = 0; i < 4; i++) {
             vri.orientation[i] = cpi.m_orientation[i];
           }
-          vri.leftHalfFOV = vri.rightHalfFOV = cpi.m_fovsDeg[0]/2.0f;
-          vri.topHalfFOV = vri.bottomHalfFOV = cpi.m_fovsDeg[1]/2.0f;
+          vri.leftHalfFOV -cpi.m_fovsDeg[0]/2.0f;
+          vri.rightHalfFOV = cpi.m_fovsDeg[0] / 2.0f;
+          vri.bottomHalfFOV = -cpi.m_fovsDeg[1]/2.0f;
+          vri.topHalfFOV = cpi.m_fovsDeg[1] / 2.0f;
           vri.frameBuffer = cpi.m_perDepths[d].m_frameBuffers[b];
           vri.colorBuffer = cpi.m_perDepths[d].m_colorBuffers[b];
           vri.depthBuffer = cpi.m_perDepths[d].m_depthBuffers[b];
