@@ -130,8 +130,8 @@ public:
       glGenFramebuffers(2, depthInfo.m_frameBuffers.data());
 
       glGenTextures(2, depthInfo.m_colorBuffers.data());
-      for (auto &buf : depthInfo.m_colorBuffers) {
-        glBindTexture(GL_TEXTURE_2D, buf);
+      for (size_t b = 0; b < depthInfo.m_colorBuffers.size(); b++) {
+        glBindTexture(GL_TEXTURE_2D, depthInfo.m_colorBuffers[b]);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -142,8 +142,8 @@ public:
       }
 
       glGenRenderbuffers(2, depthInfo.m_depthBuffers.data());
-      for (auto& buf : depthInfo.m_depthBuffers) {
-        glBindRenderbuffer(GL_RENDERBUFFER, buf);
+      for (size_t b = 0; b < depthInfo.m_depthBuffers.size(); b++) {
+        glBindRenderbuffer(GL_RENDERBUFFER, depthInfo.m_depthBuffers[b]);
         glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, pixelCounts[0], pixelCounts[1]);
         glBindRenderbuffer(GL_RENDERBUFFER, 0);
       }
@@ -396,6 +396,34 @@ public:
         // mapped array values.
         std::array< cudaArray*, 2> arrays;
         for (size_t b = 0; b < 2; b++) {
+
+#if 0
+          // Read back the texture to a CPU buffer.
+          // Write a debugging PPM file named for the camera pair, depth, and camera.
+          {
+            // Check for OpenGL errors.
+            GLenum err = glGetError();
+            if (err != GL_NO_ERROR) {
+              return "ComputeDepthEstimate: OpenGL error before reading back texture for pair " + std::to_string(c)
+                + " depth " + std::to_string(d) + " camera " + std::to_string(b) + ": "
+                + std::to_string(err);
+            }
+            std::vector<uchar4> pixels(cpi.m_pixelCounts[0] * cpi.m_pixelCounts[1]);
+            glBindTexture(GL_TEXTURE_2D, pd.m_colorBuffers[b]);
+            glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+            glBindTexture(GL_TEXTURE_2D, 0);
+            std::ofstream ppmFile("depthEstimator" + std::to_string(c) + "_" + std::to_string(d) + "_" + std::to_string(b) + ".ppm");
+            ppmFile << "P3\n" << cpi.m_pixelCounts[0] << " " << cpi.m_pixelCounts[1] << "\n255\n";
+            for (size_t y = 0; y < cpi.m_pixelCounts[1]; y++) {
+              for (size_t x = 0; x < cpi.m_pixelCounts[0]; x++) {
+                uchar4 val = pixels[x + y * cpi.m_pixelCounts[0]];
+                ppmFile << (int)val.x << " " << (int)val.y << " " << (int)val.z << " ";
+              }
+              ppmFile << "\n";
+            }
+          }
+#endif
+
           cudaError_t res = cudaGraphicsMapResources(1, &pd.m_cudaColorBuffers[b], *(pd.m_stream));
           if (res != cudaSuccess) {
             return "ComputeDepthEstimate: cudaGraphicsMapResources() failed for pair " + std::to_string(c)
@@ -744,6 +772,23 @@ static double TestPattern(double x)
   return result / scale;
 }
 
+static bool isBigEndian() {
+  union {
+    uint32_t i;
+    char c[4];
+  } testUnion = { 0x01020304 };
+
+  return testUnion.c[0] == 1;
+}
+
+static void fixEndian(std::vector<uint16_t>& data) {
+  if (!isBigEndian()) {
+    for (uint16_t& value : data) {
+      value = (value >> 8) | (value << 8);
+    }
+  }
+}
+
 std::string DepthEstimator::Test()
 {
   // Test intersectRayWithPlane()
@@ -952,19 +997,16 @@ std::string DepthEstimator::Test()
       // prime frequencies with different phases to make the image have contrast and a specific alignment.
       // We move this pattern to different Z depths for each region in the Y camera axis.
 
-      // Start with a blue-filled RGB image.  This will be the background.
-      std::vector<uint8_t> blueImage(width * height * 3, 0);
-      for (size_t i = 0; i < width * height; i++) {
-        blueImage[i * 3 + 2] = 255;
-      }
+      // Start with a grey-filled single-color image.  This will be the background.
+      std::vector<uint16_t> blankImage(width * height, 32768);
 
       // Make a copy of the blue image for the each camera and then fill its upper half with the test
       // pattern at different depths.  The image starts at the top left, so this is the first part of the
       // image.
 
-      std::vector< std::vector<uint8_t> > images;
+      std::vector< std::vector<uint16_t> > images;
       for (size_t c = 0; c < 2; c++) {
-        std::vector<uint8_t> im = blueImage;
+        std::vector<uint16_t> im = blankImage;
         for (size_t y = 0; y < height / 2; y++) {
           // Flip the Y axis so the near ground is on the bottom.
           size_t yFlip = height - y - 1;
@@ -986,30 +1028,30 @@ std::string DepthEstimator::Test()
           offset += de.m_impl->m_cameraPairs[0]->m_cameras[c].m_positionMeters[0];
 
           for (size_t x = 0; x < width; x++) {
-            double value = 255 * TestPattern(x * scale + offset);
-            im[(yFlip * width + x) * 3 + 0] = uint8_t(value);
-            im[(yFlip * width + x) * 3 + 1] = uint8_t(value);
-            im[(yFlip * width + x) * 3 + 2] = uint8_t(value);
+            double value = 65535 * TestPattern(x * scale + offset);
+            im[yFlip * width + x] = uint16_t(value);
           }
         }
         images.push_back(im);
 
 #if 0
-        // Write the image to a PPM file for debugging.
-        std::ofstream file("DepthEstimatorTest" + std::to_string(c) + ".ppm", std::ios::binary);
-        file << "P6\n" << width << " " << height << "\n255\n";
-        file.write(reinterpret_cast<char*>(im.data()), im.size());
+        // Write the image to a 16-bit PGM file for debugging, remembering to swap the endianness.
+        std::ofstream file("DepthEstimatorTest" + std::to_string(c) + ".pgm", std::ios::binary);
+        file << "P5\n" << width << " " << height << "\n65535\n";
+        std::vector<uint16_t> fixedImage = im;
+        fixEndian(fixedImage);
+        file.write(reinterpret_cast<char*>(fixedImage.data()), fixedImage.size() * sizeof(uint16_t));
 #endif
 
         // Construct an OpenGL texture and copy the image into it.
         GLuint texture;
         glGenTextures(1, &texture);
         glBindTexture(GL_TEXTURE_2D, texture);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, im.data());
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_R16, width, height, 0, GL_RED, GL_UNSIGNED_SHORT, im.data());
         glBindTexture(GL_TEXTURE_2D, 0);
 
         // Add three copies of the image to the image queue after constructing the ImageData object to hold it.
