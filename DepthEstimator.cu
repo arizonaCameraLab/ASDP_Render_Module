@@ -752,7 +752,7 @@ std::string DepthEstimator::Test()
     }
   }
 
-  /// @todo Produce a specific depth map and test EstimateDepth() on it.
+  /// Produce a specific depth map and test EstimateDepth() on it.
   {
     // Create a window and OpenGL context.
     if (!glfwInit()) {
@@ -785,8 +785,8 @@ std::string DepthEstimator::Test()
 
       std::shared_ptr<PoseAdjuster> poseAdjuster = std::make_shared<PoseAdjuster>();
       Time cameraFrameInterval = 1 / 60.0;
-      unsigned nx = 10;
-      unsigned ny = 10;
+      unsigned nx = 12;   ///< Number of points to create in the X direction.  Must be divisible by 4 for our tests below.
+      unsigned ny = 12;
       DepthEstimator de(cameras, poseAdjuster, cameraFrameInterval, nx, ny);
       if (de.m_constructorStatus != "") {
         return "DepthEstimator::Test(): DepthEstimator constructor failed: " + de.m_constructorStatus;
@@ -815,8 +815,17 @@ std::string DepthEstimator::Test()
         return "DepthEstimator::Test(): EstimateDepth() default-depth failed for slight angle";
       }
 
+      // Test shooting at a slight angle in Y to the -Z axis towards the plane.  The depth should scale
+      // with the length of the long edge of the triangle.
+      float dy = 0.2;
+      estimatedDepth = de.EstimateDepth(glm::vec3(0, 0, 0), glm::vec3(0, dy, -1));
+      expectedDepth = sqrt(1 + dy * dy) * depth;
+      if (fabs(estimatedDepth - expectedDepth) > expectedDepth * 1e-6) {
+        return "DepthEstimator::Test(): EstimateDepth() default-depth failed for slight Y angle";
+      }
+
       // Test shooting at an angle that is beyond the edge.  It should use the same depth as the
-      // value at the edge
+      // value at the edge.
       dx = 2.0;
       estimatedDepth = de.EstimateDepth(glm::vec3(0, 0, 0), glm::vec3(dx, 0, -1));
       expectedDepth = sqrt(1 + dx * dx) * depth;
@@ -843,13 +852,13 @@ std::string DepthEstimator::Test()
         return "DepthEstimator::Test(): EstimateDepth() half-default-depth failed for origin";
       }
 
-      // Test shooting at a slight angle to the -Z axis towards the plane.  The depth should scale
+      // Test shooting at a slight angle in X to the -Z axis towards the plane.  The depth should scale
       // with the length of the long edge of the triangle.
       dx = 0.1;
       estimatedDepth = de.EstimateDepth(glm::vec3(0, 0, 0), glm::vec3(dx, 0, -1));
       expectedDepth = sqrt(1 + dx * dx) * depth;
       if (fabs(estimatedDepth - expectedDepth) > expectedDepth * 1e-6) {
-        return "DepthEstimator::Test(): EstimateDepth() half-default-depth failed for slight angle";
+        return "DepthEstimator::Test(): EstimateDepth() half-default-depth failed for slight X angle";
       }
 
       // Test shooting at an angle that is beyond the edge.  It should use the same depth as the
@@ -862,13 +871,46 @@ std::string DepthEstimator::Test()
       }
 
       //================================================================================================
-      // Fill in different depths for different regions and test EstimateDepth() again.
-      /// @todo
-    }
+      // Fill in different depths for different regions and test EstimateDepth() again.  Make the center
+      // further away so that any collision method will interpolate between the two depths.
+      double centerDepth = depth * 1.5;
+      for (size_t x = nx/4; x < 3*nx/4; x++) {
+        for (size_t y = ny/4; y < 3*ny/4; y++) {
+          de.m_impl->m_depths[y * nx + x] = centerDepth;
+        }
+      }
 
+      // Test the depth at the origin, shooting along the -Z axis towards the plane.
+      estimatedDepth = de.EstimateDepth(glm::vec3(0, 0, 0), glm::vec3(0, 0, -1));
+      if (fabs(estimatedDepth - centerDepth) > centerDepth * 1e-6) {
+        return "DepthEstimator::Test(): EstimateDepth() varying depth failed for origin";
+      }
+
+      // Test shooting at a wide angle in X to the -Z axis towards the plane.  The depth should scale
+      // with the length of the long edge of the triangle.
+      dx = 2.0;
+      estimatedDepth = de.EstimateDepth(glm::vec3(0, 0, 0), glm::vec3(dx, 0, -1));
+      expectedDepth = sqrt(1 + dx * dx) * depth;
+      if (fabs(estimatedDepth - expectedDepth) > expectedDepth * 1e-6) {
+        return "DepthEstimator::Test(): EstimateDepth() varying depth failed for slight X angle";
+      }
+
+      // Test shooting between two points and make sure that the answer is between the two depths.
+      // We aim for slightly over halfway to the edge, which should be between the center and
+      // outer points.
+      dx = tan(glm::radians(de.m_impl->m_cameraPairs[0].m_fovsDeg[0]) / 2.0) / 2.0 + 0.01;
+      double below = sqrt(1 + dx * dx) * depth;
+      double above = sqrt(1 + dx * dx) * centerDepth;
+      estimatedDepth = de.EstimateDepth(glm::vec3(0, 0, 0), glm::vec3(dx, 0, -1));
+      if (estimatedDepth <= below || estimatedDepth >= above) {
+        return "DepthEstimator::Test(): EstimateDepth() varying depth failed for interpolating between two points";
+      }
+    }
   }
 
   /// @todo Produce a set of images and cameras with known depths and test ComputeDepthEstimate() on them.
+
+  /// @todo Check the depth estimates directly.
 
   return "@todo Write more tests for DepthEstimator";
 }
