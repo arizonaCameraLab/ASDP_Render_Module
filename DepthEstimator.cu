@@ -703,21 +703,20 @@ float DepthEstimator::EstimateDepth(const glm::vec3& point, const glm::vec3& dir
   // distance from the origin is the default depth.
   glm::dvec3 pierce;
   glm::dvec3 planeNormal = m_impl->m_cameraPairs[bestPair]->m_orientation * cameraDir;
-  glm::dvec3 pointOnPlane = m_impl->m_cameraPairs[bestPair]->m_position + double(m_impl->m_defaultDepth) * planeNormal;
-  if (!intersectRayWithPlane(rayStart, rayDir, pointOnPlane, planeNormal, pierce)) {
+  glm::dvec3 originOnPlane = m_impl->m_cameraPairs[bestPair]->m_position + double(m_impl->m_defaultDepth) * planeNormal;
+  if (!intersectRayWithPlane(rayStart, rayDir, originOnPlane, planeNormal, pierce)) {
     return m_impl->m_defaultDepth;
   }
 
   // Determine the coordinates in the view frustum of the piercing point, clamping to the
   // range -1 to 1 in each dimension.  In helicopter space, the screen is in the XZ plane,
-  // so screen y will correspond to the Z direction.
-  /// @todo Consider how to compute these cross products and what happens when the camera points in +X...
+  // so screen Y will correspond to helicopter-space Z.
   double halfX = m_impl->m_defaultDepth * tan(glm::radians(m_impl->m_cameraPairs[bestPair]->m_fovsDeg[0] / 2));
   double halfY = m_impl->m_defaultDepth * tan(glm::radians(m_impl->m_cameraPairs[bestPair]->m_fovsDeg[1] / 2));
-  glm::dvec3 zDir = glm::normalize(glm::cross(glm::dvec3(1, 0, 0), planeNormal));
-  glm::dvec3 xDir = glm::normalize(glm::cross(planeNormal, zDir));
-  double x = glm::dot(pierce - pointOnPlane, xDir) / halfX;
-  double y = glm::dot(pierce - pointOnPlane, zDir) / halfY;
+  glm::dvec3 xDir = m_impl->m_cameraPairs[bestPair]->m_orientation * glm::dvec3(1, 0, 0);
+  glm::dvec3 yDir = m_impl->m_cameraPairs[bestPair]->m_orientation * glm::dvec3(0, 0, 1);
+  double x = glm::dot(pierce - originOnPlane, xDir) / halfX;
+  double y = glm::dot(pierce - originOnPlane, yDir) / halfY;
   x = glm::clamp(x, -1.0, 1.0);
   y = glm::clamp(y, -1.0, 1.0);
 
