@@ -961,9 +961,10 @@ std::string DepthEstimator::Test()
       //================================================================================================
       // Fill in different depths for different regions and test EstimateDepth() again.  Make the center
       // further away so that any collision method will interpolate between the two depths.
+      // Make the Y difference go all the way to the bottom so we can ensure that the polarity is correct.
       double centerDepth = depth * 1.5;
       for (size_t x = nx/4; x < 3*nx/4; x++) {
-        for (size_t y = ny/4; y < 3*ny/4; y++) {
+        for (size_t y = 0; y < 3*ny/4; y++) {
           de.m_impl->m_depths[y * nx + x] = centerDepth;
         }
       }
@@ -992,6 +993,26 @@ std::string DepthEstimator::Test()
       estimatedDepth = de.EstimateDepth(glm::vec3(0, 0, 0), glm::vec3(dx, 1, 0));
       if (estimatedDepth <= below || estimatedDepth >= above) {
         return "EstimateDepth() varying depth failed for interpolating between two points";
+      }
+
+      // Test shooting between two points in +Y screen (+Z world) and make sure that the answer
+      // is between the two depths.
+      // We aim for slightly over halfway to the edge, which should be between the center and
+      // outer points.
+      double dz = tan(glm::radians(de.m_impl->m_cameraPairs[0]->m_fovsDeg[0]) / 2.0) / 2.0 + 0.01;
+      below = sqrt(1 + dz * dz) * depth;
+      above = sqrt(1 + dz * dz) * centerDepth;
+      estimatedDepth = de.EstimateDepth(glm::vec3(0, 0, 0), glm::vec3(0, 1, dz));
+      if (estimatedDepth <= below || estimatedDepth >= above) {
+        return "EstimateDepth() varying depth failed for interpolating between two points in +Y";
+      }
+
+      // Test in -Y screen (-Z world) and make sure that the answer is the centerDepth.
+      dz = -dz;
+      expectedDepth = sqrt(1 + dz * dz) * centerDepth;
+      estimatedDepth = de.EstimateDepth(glm::vec3(0, 0, 0), glm::vec3(0, 1, dz));
+      if (fabs(estimatedDepth - expectedDepth) > expectedDepth * 1e-6) {
+        return "EstimateDepth() varying depth failed for interpolating between two points in -Y";
       }
 
       //================================================================================================
