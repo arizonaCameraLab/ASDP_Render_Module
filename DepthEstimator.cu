@@ -682,12 +682,12 @@ float DepthEstimator::EstimateDepth(const glm::vec3& point, const glm::vec3& dir
   glm::dvec3 rayStart = glm::dvec3(point.x, point.y, point.z);
 
   // Find out which camera pair has the largest positive normalized dot product with the ray.
-  // We rotate the -Z axis by the camera orientation to get the direction of the camera.
+  // We rotate the +Y axis by the camera orientation to get the direction of the camera.
   double bestDot = -2;
   size_t bestPair = 0;
+  glm::dvec3 cameraDir = glm::dvec3(0, 1, 0);
   for (size_t i = 0; i < m_impl->m_cameraPairs.size(); i++) {
     CameraPairInfo const& cpi = *m_impl->m_cameraPairs[i];
-    glm::dvec3 cameraDir = glm::dvec3(0, 0, -1);
     glm::dvec3 cameraDirRot = cpi.m_orientation * cameraDir;
     double dot = glm::dot(rayDir, cameraDirRot);
     if (dot > bestDot) {
@@ -697,23 +697,25 @@ float DepthEstimator::EstimateDepth(const glm::vec3& point, const glm::vec3& dir
   }
 
   // Find the coordinate of the ray's piercing point on the plane at the default depth.
-  // The plane's orientation is the -Z axis rotated by the camera orientation, and its
+  // The plane's orientation is the camera axis rotated by the camera orientation, and its
   // distance from the origin is the default depth.
   glm::dvec3 pierce;
-  glm::dvec3 planeNormal = m_impl->m_cameraPairs[bestPair]->m_orientation * glm::dvec3(0, 0, -1);
+  glm::dvec3 planeNormal = m_impl->m_cameraPairs[bestPair]->m_orientation * cameraDir;
   glm::dvec3 pointOnPlane = m_impl->m_cameraPairs[bestPair]->m_position + double(m_impl->m_defaultDepth) * planeNormal;
   if (!intersectRayWithPlane(rayStart, rayDir, pointOnPlane, planeNormal, pierce)) {
     return m_impl->m_defaultDepth;
   }
 
   // Determine the coordinates in the view frustum of the piercing point, clamping to the
-  // range -1 to 1 in each dimension.
+  // range -1 to 1 in each dimension.  In helicopter space, the screen is in the XZ plane,
+  // so screen y will correspond to the Z direction.
+  /// @todo Consider how to compute these cross products and what happens when the camera points in +X...
   double halfX = m_impl->m_defaultDepth * tan(glm::radians(m_impl->m_cameraPairs[bestPair]->m_fovsDeg[0] / 2));
   double halfY = m_impl->m_defaultDepth * tan(glm::radians(m_impl->m_cameraPairs[bestPair]->m_fovsDeg[1] / 2));
-  glm::dvec3 xDir = glm::normalize(glm::cross(planeNormal, glm::dvec3(0, 1, 0)));
-  glm::dvec3 yDir = glm::normalize(glm::cross(xDir, planeNormal));
+  glm::dvec3 zDir = glm::normalize(glm::cross(glm::dvec3(1, 0, 0), planeNormal));
+  glm::dvec3 xDir = glm::normalize(glm::cross(planeNormal, zDir));
   double x = glm::dot(pierce - pointOnPlane, xDir) / halfX;
-  double y = glm::dot(pierce - pointOnPlane, yDir) / halfY;
+  double y = glm::dot(pierce - pointOnPlane, zDir) / halfY;
   x = glm::clamp(x, -1.0, 1.0);
   y = glm::clamp(y, -1.0, 1.0);
 
@@ -886,25 +888,25 @@ std::string DepthEstimator::Test()
       de.m_impl->m_depths.clear();
       de.m_impl->m_depths.resize(nx * ny, depth);
 
-      // Test the depth at the origin, shooting along the -Z axis towards the plane.
-      float estimatedDepth = de.EstimateDepth(glm::vec3(0, 0, 0), glm::vec3(0, 0, -1));
+      // Test the depth at the origin, shooting along the +Y axis towards the plane.
+      float estimatedDepth = de.EstimateDepth(glm::vec3(0, 0, 0), glm::vec3(0, 1, 0));
       if (fabs(estimatedDepth - depth) > depth * 1e-6) {
         return "EstimateDepth() default-depth failed for origin";
       }
 
-      // Test shooting at a slight angle to the -Z axis towards the plane.  The depth should scale
+      // Test shooting at a slight angle to the +Y axis towards the plane.  The depth should scale
       // with the length of the long edge of the triangle.
       float dx = 0.1;
-      estimatedDepth = de.EstimateDepth(glm::vec3(0, 0, 0), glm::vec3(dx, 0, -1));
+      estimatedDepth = de.EstimateDepth(glm::vec3(0, 0, 0), glm::vec3(dx, 1, 0));
       float expectedDepth = sqrt(1 + dx * dx) * depth;
       if (fabs(estimatedDepth - expectedDepth) > expectedDepth * 1e-6) {
         return "EstimateDepth() default-depth failed for slight angle";
       }
 
-      // Test shooting at a slight angle in Y to the -Z axis towards the plane.  The depth should scale
+      // Test shooting at a slight angle in Z to the +Y axis towards the plane.  The depth should scale
       // with the length of the long edge of the triangle.
       float dy = 0.2;
-      estimatedDepth = de.EstimateDepth(glm::vec3(0, 0, 0), glm::vec3(0, dy, -1));
+      estimatedDepth = de.EstimateDepth(glm::vec3(0, 0, 0), glm::vec3(0, 1, dy));
       expectedDepth = sqrt(1 + dy * dy) * depth;
       if (fabs(estimatedDepth - expectedDepth) > expectedDepth * 1e-6) {
         return "EstimateDepth() default-depth failed for slight Y angle";
@@ -913,7 +915,7 @@ std::string DepthEstimator::Test()
       // Test shooting at an angle that is beyond the edge.  It should use the same depth as the
       // value at the edge.
       dx = 2.0;
-      estimatedDepth = de.EstimateDepth(glm::vec3(0, 0, 0), glm::vec3(dx, 0, -1));
+      estimatedDepth = de.EstimateDepth(glm::vec3(0, 0, 0), glm::vec3(dx, 1, 0));
       expectedDepth = sqrt(1 + dx * dx) * depth;
       if (fabs(estimatedDepth - expectedDepth) > expectedDepth * 1e-6) {
         return "EstimateDepth() default-depth failed for edge";
@@ -925,23 +927,23 @@ std::string DepthEstimator::Test()
       de.m_impl->m_depths.clear();
       de.m_impl->m_depths.resize(nx * ny, depth);
 
-      // Test the depth at the origin, shooting along the +Z axis away from the plane.
+      // Test the depth at the origin, shooting along the - axis away from the plane.
       // This should return the default depth because there is not intersection.
-      estimatedDepth = de.EstimateDepth(glm::vec3(0, 0, 0), glm::vec3(0, 0, 1));
+      estimatedDepth = de.EstimateDepth(glm::vec3(0, 0, 0), glm::vec3(0, -1,0));
       if (fabs(estimatedDepth - defaultDepth) > defaultDepth * 1e-6) {
         return "EstimateDepth() half-default-depth failed away from origin";
       }
 
-      // Test the depth at the origin, shooting along the -Z axis towards the plane.
-      estimatedDepth = de.EstimateDepth(glm::vec3(0, 0, 0), glm::vec3(0, 0, -1));
+      // Test the depth at the origin, shooting along the +Y axis towards the plane.
+      estimatedDepth = de.EstimateDepth(glm::vec3(0, 0, 0), glm::vec3(0, 1, 0));
       if (fabs(estimatedDepth - depth) > depth * 1e-6) {
         return "EstimateDepth() half-default-depth failed for origin";
       }
 
-      // Test shooting at a slight angle in X to the -Z axis towards the plane.  The depth should scale
+      // Test shooting at a slight angle in X to the +Y axis towards the plane.  The depth should scale
       // with the length of the long edge of the triangle.
       dx = 0.1;
-      estimatedDepth = de.EstimateDepth(glm::vec3(0, 0, 0), glm::vec3(dx, 0, -1));
+      estimatedDepth = de.EstimateDepth(glm::vec3(0, 0, 0), glm::vec3(dx, 1, 0));
       expectedDepth = sqrt(1 + dx * dx) * depth;
       if (fabs(estimatedDepth - expectedDepth) > expectedDepth * 1e-6) {
         return "EstimateDepth() half-default-depth failed for slight X angle";
@@ -950,7 +952,7 @@ std::string DepthEstimator::Test()
       // Test shooting at an angle that is beyond the edge.  It should use the same depth as the
       // value at the edge
       dx = 2.0;
-      estimatedDepth = de.EstimateDepth(glm::vec3(0, 0, 0), glm::vec3(dx, 0, -1));
+      estimatedDepth = de.EstimateDepth(glm::vec3(0, 0, 0), glm::vec3(dx, 1, 0));
       expectedDepth = sqrt(1 + dx * dx) * depth;
       if (fabs(estimatedDepth - expectedDepth) > expectedDepth * 1e-6) {
         return "EstimateDepth() half-default-depth failed for edge";
@@ -966,16 +968,16 @@ std::string DepthEstimator::Test()
         }
       }
 
-      // Test the depth at the origin, shooting along the -Z axis towards the plane.
-      estimatedDepth = de.EstimateDepth(glm::vec3(0, 0, 0), glm::vec3(0, 0, -1));
+      // Test the depth at the origin, shooting along the +Y axis towards the plane.
+      estimatedDepth = de.EstimateDepth(glm::vec3(0, 0, 0), glm::vec3(0, 1, 0));
       if (fabs(estimatedDepth - centerDepth) > centerDepth * 1e-6) {
         return "EstimateDepth() varying depth failed for origin";
       }
 
-      // Test shooting at a wide angle in X to the -Z axis towards the plane.  The depth should scale
+      // Test shooting at a wide angle in X to the +Y axis towards the plane.  The depth should scale
       // with the length of the long edge of the triangle.
       dx = 2.0;
-      estimatedDepth = de.EstimateDepth(glm::vec3(0, 0, 0), glm::vec3(dx, 0, -1));
+      estimatedDepth = de.EstimateDepth(glm::vec3(0, 0, 0), glm::vec3(dx, 1, 0));
       expectedDepth = sqrt(1 + dx * dx) * depth;
       if (fabs(estimatedDepth - expectedDepth) > expectedDepth * 1e-6) {
         return "EstimateDepth() varying depth failed for slight X angle";
@@ -987,7 +989,7 @@ std::string DepthEstimator::Test()
       dx = tan(glm::radians(de.m_impl->m_cameraPairs[0]->m_fovsDeg[0]) / 2.0) / 2.0 + 0.01;
       double below = sqrt(1 + dx * dx) * depth;
       double above = sqrt(1 + dx * dx) * centerDepth;
-      estimatedDepth = de.EstimateDepth(glm::vec3(0, 0, 0), glm::vec3(dx, 0, -1));
+      estimatedDepth = de.EstimateDepth(glm::vec3(0, 0, 0), glm::vec3(dx, 1, 0));
       if (estimatedDepth <= below || estimatedDepth >= above) {
         return "EstimateDepth() varying depth failed for interpolating between two points";
       }
