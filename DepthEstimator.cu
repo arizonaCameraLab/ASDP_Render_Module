@@ -350,9 +350,11 @@ public:
           for (size_t i = 0; i < 3; i++) {
             vri.viewpoint[i] = cpi.m_position[i];
           }
-          for (size_t i = 0; i < 4; i++) {
-            vri.orientation[i] = cpi.m_orientation[i];
-          }
+          // The vri.orientation quaternion is in WXYZ order, but the glm quaternion is in XYZW order.
+          vri.orientation[0] = cpi.m_orientation.w;
+          vri.orientation[1] = cpi.m_orientation.x;
+          vri.orientation[2] = cpi.m_orientation.y;
+          vri.orientation[3] = cpi.m_orientation.z;
           vri.leftHalfFOV = -cpi.m_fovsDeg[0]/2.0f;
           vri.rightHalfFOV = cpi.m_fovsDeg[0] / 2.0f;
           vri.bottomHalfFOV = -cpi.m_fovsDeg[1]/2.0f;
