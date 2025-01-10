@@ -1108,8 +1108,10 @@ void CompositeCameras::RenderView(asdp::Time scanOutTime, const float* viewProje
     // image acquisition.
     glm::dmat4 shiftPoints = glm::dmat4(1.0);
     if (scanOutTime > Time(0, m_renderOffsetMicroseconds)) {
+      Time imageTime = {};
+      if (m_images[c] != nullptr) { imageTime = m_images[c]->imageCenterTime; }
       shiftPoints = m_poseAdjuster->GetTransform(scanOutTime - Time(0, m_renderOffsetMicroseconds),
-        m_images[c]->imageCenterTime);
+        imageTime);
     }
     const double* data = glm::value_ptr(shiftPoints);
     float fShift[16];
@@ -1139,11 +1141,13 @@ void CompositeCameras::RenderView(asdp::Time scanOutTime, const float* viewProje
     // Scale gain by image exposure and gain if they are nonzero.  We divide by each -- higher gain
     // and longer exposure both brighten the values in the pixels, so we must darken the image to mix
     // with other cameras.
-    float exposureValue = m_images[c]->exposure;
+    float exposureValue = 0;
+    if (m_images[c] != nullptr) { exposureValue = m_images[c]->exposure; }
     if (exposureValue != 0) {
       gain /= exposureValue;
     }
-    float gainValue = m_images[c]->gain;
+    float gainValue = 0;
+    if (m_images[c] != nullptr) { gainValue = m_images[c]->gain; }
     if (gainValue != 0) {
       gain /= gainValue;
     }
