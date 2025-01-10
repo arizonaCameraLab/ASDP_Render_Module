@@ -253,7 +253,9 @@ public:
     // one set for the left camera and one for the right camera.  The two sets for each depth will be rendered
     // separately into a pair of frame buffers with the same (average of the two cameras) view frustum
     // and then compared to estimate the depth.
-    ToneMap toneMap;  /// @todo Optimize the tone map so that we get good contrast, but it must be monochrome
+    // NOTE: Tonemap must be monochrome because the test code calls all colored pixels background.
+    // The default black-to-white one works.
+    ToneMap toneMap;
     for (unsigned i = 0; i < cameras.size(); i++) {
       // For each pair, create a viewpoint that is halfway between
       // the two cameras with an orientation that is the average of the two.
@@ -874,7 +876,9 @@ std::string DepthEstimator::Test()
       cameras.push_back({ cam1, cam2 });
 
       std::shared_ptr<PoseAdjuster> poseAdjuster = std::make_shared<PoseAdjuster>();
-      Time cameraFrameInterval = 1 / 60.0;
+      // Use the same value for the camera frame interval and the exposure time on the frames
+      // so that we don't engage the time-varying brightness adjustment on the render system.
+      float cameraFrameInterval = 1.0f;
       std::vector<float> testDepths = { 10, 20, 50, 100, 200, 500, 1000 };
       DepthEstimator de(cameras, poseAdjuster, cameraFrameInterval, nx, ny, testDepths);
       if (de.m_constructorStatus != "") {
@@ -1030,7 +1034,6 @@ std::string DepthEstimator::Test()
       // pattern at different depths.  The image starts at the top left, so this is the first part of the
       // image.
 
-      std::vector< std::vector<uint16_t> > images;
       for (size_t c = 0; c < 2; c++) {
         std::vector<uint16_t> im = blankImage;
         for (size_t y = 0; y < height / 2; y++) {
@@ -1058,7 +1061,6 @@ std::string DepthEstimator::Test()
             im[yFlip * width + x] = uint16_t(value);
           }
         }
-        images.push_back(im);
 
 #if 0
         // Write the image to a 16-bit PGM file for debugging, remembering to swap the endianness.
@@ -1082,8 +1084,8 @@ std::string DepthEstimator::Test()
 
         // Add three copies of the image to the image queue after constructing the ImageData object to hold it.
         std::shared_ptr<ImageData> id(new ImageData);
-        id->imageCenterTime = 0;
         id->texture = texture;
+        id->exposure = cameraFrameInterval;
         for (size_t i = 0; i < 3; i++) {
           de.m_impl->m_cameraPairs[0]->m_cameras[c].m_imageQueue->InsertImage(id);
         }
