@@ -1066,15 +1066,18 @@ void CompositeCameras::RenderView(asdp::Time scanOutTime, const float* viewProje
   // or auto-exposing over time and will bring them all into a consistent range.
   std::vector<float> scales;
   for (size_t c = 0; c < m_cameraRenderInfos.size(); c++) {
-    float exposure = m_images[c]->exposure;
-    if (exposure == 0) {
-      continue;
+    float scale = 1.0f;
+    float exposure = 0;
+    if (m_images[c] != nullptr) { exposure = m_images[c]->exposure; }
+    if (exposure != 0) {
+      scale *= exposure;
     }
-    float gain = m_images[c]->gain;
-    if (gain == 0) {
-      continue;
+    float gain = 0;
+    if (m_images[c] != nullptr) { gain = m_images[c]->gain; }
+    if (gain != 0) {
+      scale *= gain;
     }
-    scales.push_back(exposure * gain);
+    scales.push_back(scale);
   }
   // Select the median of the scales to use as the global gain.  Then blend it with the
   // stored one to smooth out changes.
