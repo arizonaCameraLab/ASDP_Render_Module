@@ -2,6 +2,7 @@
  * Copyright (C) 2024: Arizona Board of Regents on Behalf of the University of Arizona
  */
 
+#include <iostream>   /// @todo Remove this
 #include <memory>
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
@@ -15,72 +16,101 @@ using namespace asdp;
 using namespace asdp::render;
 
 /// Maximum block size for the CUDA kernel, which matches the maximum number of samples in X or Y.
+/// This is the size of the image that each block of threads will process.  This includes all of
+/// the passes for the block, so it is the number of pixels in X and Y divided by the number of
+/// regions in X and Y.
 static const size_t MAX_BLOCK_SIZE = 100;
 
 /// @brief CUDA kernel to compute the differences between two surfaces (OpenGL textures).
+/// @details The kernel computes the mean squared difference between the corresponding pixels in two
+/// RGBA or BGRA textures.  The kernel is designed to be run in blocks of threads, with each block
+/// processing a region of the image.  Because the number of pixels in a block is larger than the
+/// maximum number of threads in a block, each thread may handle pixels from multiple rows.  To minimize
+/// calculations in the kernel, the number of iterations is a parameter to the kernel, as is the number
+/// of rows in an iteration and the number of rows in each block.  The number of columns in the block is
+/// always the same as the X block dimension.  The kernel uses shared memory to store the results for
+/// each thread in the block and then computes the sum and count of the valid values in each row in a
+/// subset of the threads.  It the sums the sums and counts and computes the final average using a
+/// single thread.
 /// @param surface1, surface2 The surfaces to compare. They are RGBA or BGRA textures.
 /// @param out The per-region array of output values to write.
-/// @param nx The total width of the image.
-/// @param ny The total height of the image.
+/// @param iterations The number of iterations to run.
+/// @param rowsPerIteration The number of rows to process in each iteration.
+/// @param rowsPerBlock The number of rows to process in each block.
 __global__ void CompareSurfacesKernel(cudaSurfaceObject_t surface1, cudaSurfaceObject_t surface2, float* out,
-  uint16_t nx, uint16_t ny)
+  unsigned iterations, unsigned rowsPerIteration, unsigned rowsPerBlock)
 {
   /// Block of memory to store the within-block results.
   __shared__ float sharedMem[MAX_BLOCK_SIZE][MAX_BLOCK_SIZE];
   __shared__ float rowSums[MAX_BLOCK_SIZE];
   __shared__ int rowCounts[MAX_BLOCK_SIZE];
 
-  uint16_t x = blockIdx.x * blockDim.x + threadIdx.x;
-  uint16_t y = blockIdx.y * blockDim.y + threadIdx.y;
-  // The block size evenly divides the image size, so we don't need to check for out-of-bounds.
-  /* if (x < nx && y < ny) */
-  {
-    // Read the data from both surfaces. The x coordinate is in bytes, so we need to multiply by the
-    // size of the data type.
-    uchar4 val1, val2;
-    surf2Dread(&val1, surface1, x * sizeof(val1), y);
-    surf2Dread(&val2, surface2, x * sizeof(val2), y);
+  // Global coordinates in the images. We skip by total block size, not thread-block size.
+  unsigned x = blockIdx.x * blockDim.x + threadIdx.x;
+  unsigned y = blockIdx.y * rowsPerBlock + threadIdx.y;
 
-    // If the first and third colors are not the same in either of the values, then the region is outside
-    // of the projected area (the pixel is blue), so we record -1 as the value.  Otherwise, we record the
-    // squared difference between the first color in each value.
-    if (val1.x != val1.z || val2.x != val2.z) {
-      sharedMem[threadIdx.y][threadIdx.x] = -1.0f;
-    } else {
-      float diff = val1.x - val2.x;
-      sharedMem[threadIdx.y][threadIdx.x] = diff * diff;
+  unsigned xLocal = threadIdx.x;
+  for (unsigned iter = 0; iter < iterations; iter++) {
+    unsigned yLocal = threadIdx.y + iter * rowsPerIteration;
+    // The block size matches the number of threads in X, so we don't need to check bounds on that axis.
+    if (yLocal < rowsPerBlock) {
+      // Read the data from both surfaces. The x coordinate is in bytes, so we need to multiply by the
+      // size of the data type.
+      // The image size is a multiple of the block size, so we don't need to check for out-of-bounds.
+      uchar4 val1, val2;
+      surf2Dread(&val1, surface1, x * sizeof(val1), y);
+      surf2Dread(&val2, surface2, x * sizeof(val2), y);
+
+      // If the first and third colors are not the same in either of the values, then the region is outside
+      // of the projected area (the pixel is blue), so we record -1 as the value.  Otherwise, we record the
+      // squared difference between the first color in each value.  We have enough entries for all threads
+      // in the block, we use the thread index to determine where to write.
+      if (val1.x != val1.z || val2.x != val2.z) {
+        sharedMem[yLocal][xLocal] = -1.0f;
+      } else {
+        float diff = val1.x - val2.x;
+        sharedMem[yLocal][xLocal] = diff * diff;
+      }
     }
+  }
 
-    // Wait until all threads in the block have completed and then have the first thread in each
-    // row compute the sum and count of the valid values in the row.
-    __syncthreads();
-    if (threadIdx.x == 0) {
-      rowSums[threadIdx.y] = 0.0f;
-      rowCounts[threadIdx.y] = 0;
-      for (size_t i = 0; i < blockDim.y; i++) {
-        float val = sharedMem[threadIdx.y][i];
-        if (val >= 0.0f) {
-          rowSums[threadIdx.y] += val;
-          rowCounts[threadIdx.y]++;
+  // Wait until all threads in the block have completed and then have the first thread in each
+  // row compute the sum and count of the valid values in the row.
+  __syncthreads();
+  for (unsigned iter = 0; iter < iterations; iter++) {
+    unsigned yLocal = threadIdx.y + iter * rowsPerIteration;
+    // The block size matches the number of threads in X, so we don't need to check bounds on that axis.
+    if (yLocal < rowsPerBlock) {
+      // @todo We can get better utilization if we have threads in different columns handle
+      // the different rows.
+      if (threadIdx.x == 0) {
+        rowSums[yLocal] = 0.0f;
+        rowCounts[yLocal] = 0;
+        for (size_t i = 0; i < blockDim.x; i++) {
+          float val = sharedMem[yLocal][i];
+          if (val >= 0.0f) {
+            rowSums[yLocal] += val;
+            rowCounts[yLocal]++;
+          }
         }
       }
     }
+  }
 
-    // Wait until all threads in the block have completed and then have one thread sum the
-    // sum and counts and compute the final average.
-    __syncthreads();
-    if (threadIdx.x == 0 && threadIdx.y == 0) {
-      float sum = 0.0f;
-      int count = 0;
-      for (size_t i = 0; i < blockDim.y; i++) {
-        sum += rowSums[i];
-        count += rowCounts[i];
-      }
-
-      // Avoid division by zero, return 0 in the case of no valid values.
-      if (count == 0) { count = 1; }
-      out[blockIdx.x + blockIdx.y * gridDim.x] = sum / count;
+  // Wait until all threads in the block have completed and then have one thread sum the
+  // sum and counts and compute the final average.
+  __syncthreads();
+  if (threadIdx.x == 0 && threadIdx.y == 0) {
+    float sum = 0.0f;
+    int count = 0;
+    for (size_t i = 0; i < blockDim.y; i++) {
+      sum += rowSums[i];
+      count += rowCounts[i];
     }
+
+    // Avoid division by zero, return 0 in the case of no valid values.
+    if (count == 0) { count = 1; }
+    out[blockIdx.x + blockIdx.y * gridDim.x] = sum / count;
   }
 }
 
@@ -357,9 +387,9 @@ public:
           vri.orientation[1] = cpi.m_orientation.x;
           vri.orientation[2] = cpi.m_orientation.y;
           vri.orientation[3] = cpi.m_orientation.z;
-          vri.leftHalfFOV = -cpi.m_fovsDeg[0]/2.0f;
+          vri.leftHalfFOV = -cpi.m_fovsDeg[0] / 2.0f;
           vri.rightHalfFOV = cpi.m_fovsDeg[0] / 2.0f;
-          vri.bottomHalfFOV = -cpi.m_fovsDeg[1]/2.0f;
+          vri.bottomHalfFOV = -cpi.m_fovsDeg[1] / 2.0f;
           vri.topHalfFOV = cpi.m_fovsDeg[1] / 2.0f;
           vri.frameBuffer = cpi.m_perDepths[d].m_frameBuffers[b];
           vri.colorBuffer = cpi.m_perDepths[d].m_colorBuffers[b];
@@ -378,13 +408,17 @@ public:
       fences.push_back(cFences);
     }
 
-    // Vector of surface objects to destroy once we're done with them.
-    std::vector<cudaSurfaceObject_t> surfObjs;
-
     // Loop back through the camera pairs and depths, waiting for both fences to complete
     // and then mapping the color buffers to CUDA and running the depth estimation.
     for (size_t c = 0; c < m_cameraPairs.size(); c++) {
       CameraPairInfo& cpi = *m_cameraPairs[c];
+
+      // The number of regions is the number of regions in X times the number of regions in Y.
+      size_t numRegions = m_nx * m_ny;
+
+      // Vector of surface objects to destroy once we're done with them.
+      std::vector<cudaSurfaceObject_t> surfObjs;
+
       for (size_t d = 0; d < cpi.m_perDepths.size(); d++) {
         CameraPairInfo::PerDepth &pd = cpi.m_perDepths[d];
 
@@ -393,7 +427,7 @@ public:
           // 1-second timeout.
           GLenum ret = glClientWaitSync(fences[c][d][b], 0, 1000000000);
           if (ret != GL_ALREADY_SIGNALED && ret != GL_CONDITION_SATISFIED) {
-            return "ComputeDepthEstimate: glClientWaitSync() failed for pair " + std::to_string(c)
+            return "glClientWaitSync() failed for pair " + std::to_string(c)
               + " depth " + std::to_string(d) + " camera " + std::to_string(b);
           }
         }
@@ -402,7 +436,6 @@ public:
         // mapped array values.
         std::array< cudaArray*, 2> arrays;
         for (size_t b = 0; b < 2; b++) {
-
 #if 0
           // Read back the texture to a CPU buffer.
           // Write a debugging PPM file named for the camera pair, depth, and camera.
@@ -410,7 +443,7 @@ public:
             // Check for OpenGL errors.
             GLenum err = glGetError();
             if (err != GL_NO_ERROR) {
-              return "ComputeDepthEstimate: OpenGL error before reading back texture for pair " + std::to_string(c)
+              return "OpenGL error before reading back texture for pair " + std::to_string(c)
                 + " depth " + std::to_string(d) + " camera " + std::to_string(b) + ": "
                 + std::to_string(err);
             }
@@ -421,8 +454,10 @@ public:
             std::ofstream ppmFile("depthEstimator" + std::to_string(c) + "_" + std::to_string(d) + "_" + std::to_string(b) + ".ppm");
             ppmFile << "P3\n" << cpi.m_pixelCounts[0] << " " << cpi.m_pixelCounts[1] << "\n255\n";
             for (size_t y = 0; y < cpi.m_pixelCounts[1]; y++) {
+              // The texture has lower-left corner first, but the PPM file has upper-left first.
+              size_t flipY = (cpi.m_pixelCounts[1] - 1) - y;
               for (size_t x = 0; x < cpi.m_pixelCounts[0]; x++) {
-                uchar4 val = pixels[x + y * cpi.m_pixelCounts[0]];
+                uchar4 val = pixels[x + flipY * cpi.m_pixelCounts[0]];
                 ppmFile << (int)val.x << " " << (int)val.y << " " << (int)val.z << " ";
               }
               ppmFile << "\n";
@@ -432,13 +467,13 @@ public:
 
           cudaError_t res = cudaGraphicsMapResources(1, &pd.m_cudaColorBuffers[b], *(pd.m_stream));
           if (res != cudaSuccess) {
-            return "ComputeDepthEstimate: cudaGraphicsMapResources() failed for pair " + std::to_string(c)
+            return "cudaGraphicsMapResources() failed for pair " + std::to_string(c)
               + " depth " + std::to_string(d) + " camera " + std::to_string(b) + ": "
               + std::string(cudaGetErrorString(res));
           }
           res = cudaGraphicsSubResourceGetMappedArray(&arrays[b], pd.m_cudaColorBuffers[b], 0, 0);
           if (res != cudaSuccess) {
-            return "ComputeDepthEstimate: cudaGraphicsSubResourceGetMappedArray() failed for pair " + std::to_string(c)
+            return "cudaGraphicsSubResourceGetMappedArray() failed for pair " + std::to_string(c)
               + " depth " + std::to_string(d) + " camera " + std::to_string(b) + ": "
               + std::string(cudaGetErrorString(res));
           }
@@ -452,124 +487,130 @@ public:
         resDesc.res.array.array = arrays[0];
         cudaError_t res = cudaCreateSurfaceObject(&surfObj1, &resDesc);
         if (res != cudaSuccess) {
-          return "ComputeDepthEstimate: cudaCreateSurfaceObject() failed for pair " + std::to_string(c)
+          return "cudaCreateSurfaceObject() failed for pair " + std::to_string(c)
             + " depth " + std::to_string(d) + " camera 0: " + std::string(cudaGetErrorString(res));
         }
         surfObjs.push_back(surfObj1);
         resDesc.res.array.array = arrays[1];
         res = cudaCreateSurfaceObject(&surfObj2, &resDesc);
         if (res != cudaSuccess) {
-          return "ComputeDepthEstimate: cudaCreateSurfaceObject() failed for pair " + std::to_string(c)
+          return "cudaCreateSurfaceObject() failed for pair " + std::to_string(c)
             + " depth " + std::to_string(d) + " camera 1: " + std::string(cudaGetErrorString(res));
         }
         surfObjs.push_back(surfObj2);
 
         // Ensure that we have CPU and GPU buffers for the depth estimation.
-        if (pd.m_CPURegionBuffer.size() != m_nx * m_ny) {
-          pd.m_CPURegionBuffer.resize(m_nx * m_ny);
+        if (pd.m_CPURegionBuffer.size() != numRegions) {
+          pd.m_CPURegionBuffer.resize(numRegions);
         }
         if (pd.m_GPURegionBuffer == nullptr) {
-          res = cudaMalloc(&pd.m_GPURegionBuffer, m_nx * m_ny * sizeof(float));
+          res = cudaMalloc(&pd.m_GPURegionBuffer, numRegions * sizeof(float));
           if (res != cudaSuccess) {
-            return "ComputeDepthEstimate: cudaMalloc() failed for pair " + std::to_string(c)
+            return "cudaMalloc() failed for pair " + std::to_string(c)
               + " depth " + std::to_string(d) + ": " + std::string(cudaGetErrorString(res));
           }
         }
 
         // Run the depth estimation kernels, which must handle portions of a region that are outside
-        // of the projected area (they will be blue).
-        dim3 blockSize(m_nx, m_ny);
-        dim3 gridSize(cpi.m_pixelCounts[0] / m_nx, cpi.m_pixelCounts[1] / m_ny);
+        // of the projected area (they will be blue).  The grid size is the number of regions in X and Y
+        // and the block size is the number of pixels per block in X and Y.  The image size is guaranteed
+        // to be an even multiple of the block size.
+        // Because the number of pixels in a block is larger than the maximum number of threads in a block,
+        // each thread may handle pixels from multiple rows.  To minimize calculations in the kernel, the
+        // number of iterations is a parameter to the kernel, as is the number of rows in an iteration and
+        // the number of rows in each block.  The number of columns in the block is always the same as the X
+        // block dimension.
+        dim3 blockSize(cpi.m_pixelCounts[0] / m_nx, cpi.m_pixelCounts[1] / m_ny);
+        dim3 gridSize(m_nx, m_ny);
+        unsigned rowsPerIteration = blockSize.x;
+        unsigned iterations = 1;
+        unsigned rowsPerBlock = blockSize.y;
+        if (blockSize.x * blockSize.y > 1024) {
+          rowsPerIteration = 1024 / blockSize.x;
+          iterations = blockSize.y / rowsPerIteration;
+          if (blockSize.y > iterations * rowsPerIteration) {
+            iterations++;
+          }
+        }
+        blockSize.y = rowsPerIteration;
         CompareSurfacesKernel << <gridSize, blockSize, 0, *(pd.m_stream)>> > (
           surfObj1, surfObj2, pd.m_GPURegionBuffer,
-          cpi.m_pixelCounts[0], cpi.m_pixelCounts[1]);
+          iterations, rowsPerIteration, rowsPerBlock);
 
         // Copy the results back to CPU memory.
         res = cudaMemcpyAsync(pd.m_CPURegionBuffer.data(), pd.m_GPURegionBuffer,
-          m_nx * m_ny * sizeof(float), cudaMemcpyDeviceToHost,
+          numRegions * sizeof(float), cudaMemcpyDeviceToHost,
           *(pd.m_stream));
         if (res != cudaSuccess) {
-          return "ComputeDepthEstimate: cudaMemcpy() failed for pair " + std::to_string(c)
+          return "cudaMemcpy() failed for pair " + std::to_string(c)
             + " depth " + std::to_string(d) + ": " + std::string(cudaGetErrorString(res));
         }
       }
-    }
 
-    // Wait for all the CUDA streams to complete.
-    for (auto cpi : m_cameraPairs) {
-      for (auto pd : cpi->m_perDepths) {
+      // Wait for all the CUDA streams to complete.
+      for (auto pd : cpi.m_perDepths) {
         cudaStreamSynchronize(*(pd.m_stream));
       }
-    }
 
-    // Done with the surface objects.
-    for (cudaSurfaceObject_t surfObj : surfObjs) {
-      cudaDestroySurfaceObject(surfObj);
-    }
+      // Done with the surface objects.
+      for (cudaSurfaceObject_t surfObj : surfObjs) {
+        cudaDestroySurfaceObject(surfObj);
+      }
 
-    // Loop back through the camera pairs and depths, unmap the color buffers from CUDA.
-    for (size_t c = 0; c < m_cameraPairs.size(); c++) {
-      CameraPairInfo& cpi = *m_cameraPairs[c];
+      // Loop back through the depths, unmap the color buffers from CUDA.
       for (size_t d = 0; d < cpi.m_perDepths.size(); d++) {
         CameraPairInfo::PerDepth& pd = cpi.m_perDepths[d];
         for (size_t b = 0; b < 2; b++) {
           cudaError_t res = cudaGraphicsUnmapResources(1, &pd.m_cudaColorBuffers[b], *(pd.m_stream));
           if (res != cudaSuccess) {
-            return "ComputeDepthEstimate: cudaGraphicsUnmapResources() failed for pair " + std::to_string(c)
+            return "cudaGraphicsUnmapResources() failed for pair " + std::to_string(c)
               + " depth " + std::to_string(d) + " camera " + std::to_string(b) + ": "
               + std::string(cudaGetErrorString(res));
           }
         }
       }
-    }
 
-    // Wait for all the CUDA streams to complete.
-    for (auto cpi : m_cameraPairs) {
-      for (auto pd : cpi->m_perDepths) {
-        cudaStreamSynchronize(*(pd.m_stream));
-      }
-    }
-
-    // Find the best depth value for each region.
-    // Determine the best-matched and worse-matched scores at each location.
-    std::vector<float> bestDepths(m_nx * m_ny);
-    std::vector<float> bestDepthValues(m_nx* m_ny, 1e30);
-    std::vector<float> worstDepthValues(m_nx * m_ny, -1e30);
-    std::vector<float> qualityOfFit(m_nx * m_ny, 0.0f);
-    for (size_t c = 0; c < m_cameraPairs.size(); c++) {
-      CameraPairInfo& cpi = *m_cameraPairs[c];
-      for (size_t d = 0; d < cpi.m_perDepths.size(); d++) {
-        CameraPairInfo::PerDepth& pd = cpi.m_perDepths[d];
-        float depth = pd.m_depth;
-        for (size_t i = 0; i < pd.m_CPURegionBuffer.size(); i++) {
-          float score = pd.m_CPURegionBuffer[i];
-          if (score < bestDepthValues[i]) {
-            bestDepths[i] = depth;
-            bestDepthValues[i] = score;
-          }
-          if (score > worstDepthValues[i]) {
-            worstDepthValues[i] = score;
+      // Find the best depth value for each region.
+      // Determine the best-matched and worse-matched scores at each location.
+      std::vector<float> bestDepths(numRegions);
+      std::vector<float> bestDepthValues(numRegions, 1e30);
+      std::vector<float> worstDepthValues(numRegions, -1e30);
+      std::vector<float> qualityOfFit(numRegions, 0.0f);
+      for (size_t c = 0; c < m_cameraPairs.size(); c++) {
+        CameraPairInfo& cpi = *m_cameraPairs[c];
+        for (CameraPairInfo::PerDepth& pd : cpi.m_perDepths) {
+          float depth = pd.m_depth;
+          for (size_t i = 0; i < pd.m_CPURegionBuffer.size(); i++) {
+            float score = pd.m_CPURegionBuffer[i];
+            if (score < bestDepthValues[i]) {
+              bestDepths[i] = depth;
+              bestDepthValues[i] = score;
+            }
+            if (score > worstDepthValues[i]) {
+              worstDepthValues[i] = score;
+            }
           }
         }
       }
-    }
-    // Determine the difference between the best-matched and worst-matched scores as a certainty/quality of fit measure.
-    for (size_t i = 0; i < m_nx * m_ny; i++) {
-      // The largest possible average squared difference is 255^2 (65535), but the largest likely
-      // value will be more like 200 or lower.  The minimum possible is 0, but with noise the minimum
-      // likely would be more like 4.
-      // The metric must be resilient to the best being 0 and to best and worst being the same.
-      // It must also be be properly scaled compared to the distances between points (which are on
-      // an integer lattice).
-      qualityOfFit[i] = worstDepthValues[i] - bestDepthValues[i];
-    }
 
-    // We want to use the default if a region is not well fit.  Otherwise, we use the best depth.
-    for (size_t i = 0; i < m_nx * m_ny; i++) {
-      if (qualityOfFit[i] < m_fitnessThreshold) {
-        m_depths[i] = m_defaultDepth;
-      } else {
-        m_depths[i] = bestDepths[i];
+      // Determine the difference between the best-matched and worst-matched scores as a certainty/quality of fit measure.
+      for (size_t i = 0; i < numRegions; i++) {
+        // The largest possible average squared difference is 255^2 (65535), but the largest likely
+        // value will be more like 200 or lower.  The minimum possible is 0, but with noise the minimum
+        // likely would be more like 4.
+        // The metric must be resilient to the best being 0 and to best and worst being the same.
+        // It must also be be properly scaled compared to the distances between points (which are on
+        // an integer lattice).
+        qualityOfFit[i] = worstDepthValues[i] - bestDepthValues[i];
+      }
+
+      // We want to use the default if a region is not well fit.  Otherwise, we use the best depth.
+      for (size_t i = 0; i < numRegions; i++) {
+        if (qualityOfFit[i] < m_fitnessThreshold) {
+          m_depths[i] = m_defaultDepth;
+        } else {
+          m_depths[i] = bestDepths[i];
+        }
       }
     }
 
@@ -641,7 +682,7 @@ DepthEstimator::DepthEstimator(std::vector< std::array<CameraRenderInfo, 2> > ca
 std::string DepthEstimator::ComputeDepthEstimate(Time time)
 {
   if (!m_constructorStatus.empty()) {
-    return "DepthEstimator::ComputeDepthEstimate(): constructor failed: " + m_constructorStatus;
+    return "Constructor failed: " + m_constructorStatus;
   }
 
   return m_impl->ComputeDepthEstimate(time);
