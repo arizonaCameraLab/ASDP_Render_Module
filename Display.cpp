@@ -301,9 +301,9 @@ void DisplayWindow::SetViewportSizeAndFOVs(ViewRenderInfo& viewInfo, int width, 
   // is the in-plane width divided by the in-plane height.  The horizontal and vertical fields of view
   // are based on the tangents.
   double aspectRatio = static_cast<double>(viewInfo.height) / static_cast<double>(viewInfo.width);
-  double halfWidth = tan( (m_impl->m_horizontalFOVDegrees / 2.0) * (M_PI / 180.0));
+  double halfWidth = tan(glm::radians(m_impl->m_horizontalFOVDegrees / 2.0));
   double halfHeight = halfWidth * aspectRatio;
-  double halfAngle = atan(halfHeight) * (180.0 / M_PI);
+  double halfAngle = glm::degrees(atan(halfHeight));
   viewInfo.bottomHalfFOV = -halfAngle;
   viewInfo.topHalfFOV = halfAngle;
 }
