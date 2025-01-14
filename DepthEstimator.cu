@@ -124,7 +124,7 @@ public:
     glm::dvec3 position, glm::dquat orientation,
     std::array<float, 2> fovsDeg, std::array<unsigned, 2> pixelCounts,
     std::shared_ptr<PoseAdjuster> poseAdjuster, Time cameraFrameInterval,
-    std::vector<float> depths)
+    std::vector<float> depths, float defaultDepth)
     : m_cameras({camera1, camera2})
     , m_position(position)
     , m_orientation(orientation)
@@ -201,6 +201,9 @@ public:
       depthInfo.m_GPURegionBuffer = nullptr;
 
       m_perDepths.push_back(depthInfo);
+
+      // Fill in the default depth for all regions.
+      m_depths.resize(pixelCounts[0] * pixelCounts[1], defaultDepth);
     }
   }
 
@@ -247,6 +250,9 @@ public:
 
   std::vector<PerDepth> m_perDepths;
 
+  /// Computed estimated depth at every region location.
+  std::vector<float> m_depths;
+
   std::string m_constructorStatus;
 };
 
@@ -276,9 +282,6 @@ public:
       m_defaultDepth = depths.back();
     }
 
-    // Fill in the default depth for all regions.
-    m_depths.resize(nx * ny, m_defaultDepth);
-
     // Generate CameraPairInfo (two sets of CompositeCameras covering all depths) for each pair of cameras,
     // one set for the left camera and one for the right camera.  The two sets for each depth will be rendered
     // separately into a pair of frame buffers with the same (average of the two cameras) view frustum
@@ -287,6 +290,7 @@ public:
     // The default black-to-white one works.
     ToneMap toneMap;
     for (unsigned i = 0; i < cameras.size(); i++) {
+
       // For each pair, create a viewpoint that is halfway between
       // the two cameras with an orientation that is the average of the two.
       // We store the rotation as a quaternion and convert the Euler angles
@@ -354,7 +358,7 @@ public:
       std::shared_ptr<CameraPairInfo> cameraPairInfo = std::make_shared<CameraPairInfo>(
         toneMap, cameras[i][0], cameras[i][1],
         position, orientation, fovsDeg, pixelCounts,
-        poseAdjuster, cameraFrameInterval, depths);
+        poseAdjuster, cameraFrameInterval, depths, m_defaultDepth);
       if (!cameraPairInfo->m_constructorStatus.empty()) {
         m_constructorStatus = cameraPairInfo->m_constructorStatus;
         return;
@@ -607,9 +611,9 @@ public:
       // We want to use the default if a region is not well fit.  Otherwise, we use the best depth.
       for (size_t i = 0; i < numRegions; i++) {
         if (qualityOfFit[i] < m_fitnessThreshold) {
-          m_depths[i] = m_defaultDepth;
+          cpi.m_depths[i] = m_defaultDepth;
         } else {
-          m_depths[i] = bestDepths[i];
+          cpi.m_depths[i] = bestDepths[i];
         }
       }
     }
@@ -631,9 +635,6 @@ public:
 
   /// Default depth to use if the depth cannot be estimated.
   float m_defaultDepth;
-
-  /// Computed estimated depth at every region location.
-  std::vector<float> m_depths;
 
   /// Fitness threshold for determining if a region is well fit.
   float m_fitnessThreshold;
@@ -781,10 +782,10 @@ float DepthEstimator::EstimateDepth(const glm::vec3& point, const glm::vec3& dir
   size_t yCeil = size_t(ceil(yCoord));
   double xFrac = xCoord - xFloor;
   double yFrac = yCoord - yFloor;
-  double depthFF = m_impl->m_depths[yFloor * m_impl->m_nx + xFloor];
-  double depthFC = m_impl->m_depths[yFloor * m_impl->m_nx + xCeil];
-  double depthCF = m_impl->m_depths[yCeil * m_impl->m_nx + xFloor];
-  double depthCC = m_impl->m_depths[yCeil * m_impl->m_nx + xCeil];
+  double depthFF = m_impl->m_cameraPairs[bestPair]->m_depths[yFloor * m_impl->m_nx + xFloor];
+  double depthFC = m_impl->m_cameraPairs[bestPair]->m_depths[yFloor * m_impl->m_nx + xCeil];
+  double depthCF = m_impl->m_cameraPairs[bestPair]->m_depths[yCeil * m_impl->m_nx + xFloor];
+  double depthCC = m_impl->m_cameraPairs[bestPair]->m_depths[yCeil * m_impl->m_nx + xCeil];
   double depth = (1 - xFrac) * (1 - yFrac) * depthFF + xFrac * (1 - yFrac) * depthFC +
     (1 - xFrac) * yFrac * depthCF + xFrac * yFrac * depthCC;
 
@@ -931,8 +932,8 @@ std::string DepthEstimator::Test()
       // our geometric transformations work properly.
       float defaultDepth = de.m_impl->m_defaultDepth;
       float depth = defaultDepth;
-      de.m_impl->m_depths.clear();
-      de.m_impl->m_depths.resize(nx * ny, depth);
+      de.m_impl->m_cameraPairs[0]->m_depths.clear();
+      de.m_impl->m_cameraPairs[0]->m_depths.resize(nx * ny, depth);
 
       // Test the depth at the origin, shooting along the +Y axis towards the plane.
       float estimatedDepth = de.EstimateDepth(glm::vec3(0, 0, 0), glm::vec3(0, 1, 0));
@@ -970,8 +971,8 @@ std::string DepthEstimator::Test()
       //================================================================================================
       // Fill in half of the default depth for all regions and test EstimateDepth() again.
       depth /= 2;
-      de.m_impl->m_depths.clear();
-      de.m_impl->m_depths.resize(nx * ny, depth);
+      de.m_impl->m_cameraPairs[0]->m_depths.clear();
+      de.m_impl->m_cameraPairs[0]->m_depths.resize(nx * ny, depth);
 
       // Test the depth at the origin, shooting along the - axis away from the plane.
       // This should return the default depth because there is not intersection.
@@ -1011,7 +1012,7 @@ std::string DepthEstimator::Test()
       double centerDepth = depth * 1.5;
       for (size_t x = nx/4; x < 3*nx/4; x++) {
         for (size_t y = 0; y < 3*ny/4; y++) {
-          de.m_impl->m_depths[y * nx + x] = centerDepth;
+          de.m_impl->m_cameraPairs[0]->m_depths[y * nx + x] = centerDepth;
         }
       }
 
@@ -1147,9 +1148,9 @@ std::string DepthEstimator::Test()
         }
         for (size_t x = 0; x < nx; x++) {
           size_t i = y * nx + x;
-          if (fabs(de.m_impl->m_depths[i] - depth) > depth * 1e-6) {
+          if (fabs(de.m_impl->m_cameraPairs[0]->m_depths[i] - depth) > depth * 1e-6) {
             return "ComputeDepthEstimate() failed for region " + std::to_string(i)
-              + ", found " + std::to_string(de.m_impl->m_depths[i]) + " expected " + std::to_string(depth);
+              + ", found " + std::to_string(de.m_impl->m_cameraPairs[0]->m_depths[i]) + " expected " + std::to_string(depth);
           }
         }
       }
