@@ -47,11 +47,13 @@ __global__ void CompareSurfacesKernel(cudaSurfaceObject_t surface1, cudaSurfaceO
 
   // Global coordinates in the images. We skip by total block size, not thread-block size.
   unsigned x = blockIdx.x * blockDim.x + threadIdx.x;
-  unsigned y = blockIdx.y * rowsPerBlock + threadIdx.y;
+  unsigned yBase = blockIdx.y * rowsPerBlock + threadIdx.y;
 
   unsigned xLocal = threadIdx.x;
   for (unsigned iter = 0; iter < iterations; iter++) {
     unsigned yLocal = threadIdx.y + iter * rowsPerIteration;
+    unsigned y = yBase + iter * rowsPerIteration;
+
     // The block size matches the number of threads in X, so we don't need to check bounds on that axis.
     if (yLocal < rowsPerBlock) {
       // Read the data from both surfaces. The x coordinate is in bytes, so we need to multiply by the
@@ -615,6 +617,7 @@ public:
         } else {
           cpi.m_depths[i] = bestDepths[i];
         }
+        //std::cout << "XXX region " << i << " best " << bestDepthValues[i] << ", worst " << worstDepthValues[i] << ", pick " << cpi.m_depths[i] << std::endl;
       }
     }
 
