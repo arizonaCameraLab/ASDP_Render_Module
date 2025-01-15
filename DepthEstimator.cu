@@ -304,14 +304,14 @@ public:
       position = 0.5 * (glm::dvec3(p1[0], p1[1], p1[2]) + glm::dvec3(p2[0], p2[1], p2[2]));
 
       glm::quat orientation;
-      glm::quat rotx = glm::angleAxis(cameras[i][0].m_orientationDegrees[0], glm::dvec3(1, 0, 0));
-      glm::quat roty = glm::angleAxis(cameras[i][0].m_orientationDegrees[1], glm::dvec3(0, 1, 0));
-      glm::quat rotz = glm::angleAxis(cameras[i][0].m_orientationDegrees[2], glm::dvec3(0, 0, 1));
+      glm::quat rotx = glm::angleAxis(glm::radians(cameras[i][0].m_orientationDegrees[0]), glm::dvec3(1, 0, 0));
+      glm::quat roty = glm::angleAxis(glm::radians(cameras[i][0].m_orientationDegrees[1]), glm::dvec3(0, 1, 0));
+      glm::quat rotz = glm::angleAxis(glm::radians(cameras[i][0].m_orientationDegrees[2]), glm::dvec3(0, 0, 1));
       glm::quat rot1 = rotz * roty * rotx;
 
-      rotx = glm::angleAxis(cameras[i][1].m_orientationDegrees[0], glm::dvec3(1, 0, 0));
-      roty = glm::angleAxis(cameras[i][1].m_orientationDegrees[1], glm::dvec3(0, 1, 0));
-      rotz = glm::angleAxis(cameras[i][1].m_orientationDegrees[2], glm::dvec3(0, 0, 1));
+      rotx = glm::angleAxis(glm::radians(cameras[i][1].m_orientationDegrees[0]), glm::dvec3(1, 0, 0));
+      roty = glm::angleAxis(glm::radians(cameras[i][1].m_orientationDegrees[1]), glm::dvec3(0, 1, 0));
+      rotz = glm::angleAxis(glm::radians(cameras[i][1].m_orientationDegrees[2]), glm::dvec3(0, 0, 1));
       glm::quat rot2 = rotz * roty * rotx;
 
       orientation = glm::slerp(rot1, rot2, 0.5f);
@@ -1075,9 +1075,8 @@ std::string DepthEstimator::Test()
       // Start with a grey-filled single-color image.  This will be the background.
       std::vector<uint16_t> blankImage(width * height, 32768);
 
-      // Make a copy of the blue image for the each camera and then fill its upper half with the test
-      // pattern at different depths.  The image starts at the top left, so this is the first part of the
-      // image.
+      // Make a copy of the background image for the each camera and then fill its lower half with the test
+      // pattern at different depths.
 
       for (size_t c = 0; c < 2; c++) {
         std::vector<uint16_t> im = blankImage;
@@ -1158,12 +1157,44 @@ std::string DepthEstimator::Test()
         }
       }
 
-      // Check the depth estimates using probe rays.
-      /// @todo
+      // Check the depth estimates using probe rays, ensuring different results for different camera pairs.
+      // We make two camera pairs with different default depths, one pair pointed 45 degrees to the right and
+      // the other 45 degrees to the left.  We then shoot rays from the origin to the center of the image and
+      // make sure that the depths are correct.
+      // We don't actually do depth estimation, so we just re-use the same (ignored) image data.
+      std::vector< std::array<CameraRenderInfo, 2> > probeCameras;
+      CameraRenderInfo cam1Probe(1, { -1, 1, 0 }, { 0, 0, -45 }, { width, height }, { 90.0, 90.0 },
+        distortion, vignette, queues[0]);
+      CameraRenderInfo cam2Probe(2, { 1, -1, 0 }, { 0, 0, -45 }, { width, height }, { 90.0, 90.0 },
+        distortion, vignette, queues[1]);
+      probeCameras.push_back({ cam1Probe, cam2Probe });
+      CameraRenderInfo cam3Probe(1, { -1, -1, 0 }, { 0, 0, 45 }, { width, height }, { 90.0, 90.0 },
+        distortion, vignette, queues[0]);
+      CameraRenderInfo cam4Probe(2, { 1, 1, 0 }, { 0, 0, 45 }, { width, height }, { 90.0, 90.0 },
+        distortion, vignette, queues[1]);
+      probeCameras.push_back({ cam3Probe, cam4Probe });
+      DepthEstimator deProbe(probeCameras, poseAdjuster, cameraFrameInterval, nx, ny, testDepths);
+      if (deProbe.m_constructorStatus != "") {
+        return "DepthEstimator constructor failed for probe: " + deProbe.m_constructorStatus;
+      }
 
+      // Fill in left camera pair with a depth of 100 and the right with a depth of 200.
+      deProbe.m_impl->m_cameraPairs[0]->m_depths.clear();
+      deProbe.m_impl->m_cameraPairs[0]->m_depths.resize(nx * ny, 100);
+      deProbe.m_impl->m_cameraPairs[1]->m_depths.clear();
+      deProbe.m_impl->m_cameraPairs[1]->m_depths.resize(nx * ny, 200);
+
+      // Test the depth from the origin, shooting along the 45-degree directions towards each plane.
+      estimatedDepth = deProbe.EstimateDepth(glm::vec3(0, 0, 0), glm::vec3(1, 1, 0));
+      if (fabs(estimatedDepth - 100) > 100 * 1e-6) {
+        return "EstimateDepth() probe failed for origin to right plane: expected 100, got " + std::to_string(estimatedDepth);
+      }
+      estimatedDepth = deProbe.EstimateDepth(glm::vec3(0, 0, 0), glm::vec3(-1, 1, 0));
+      if (fabs(estimatedDepth - 200) > 200 * 1e-6) {
+        return "EstimateDepth() probe failed for origin to left plane: expected 200, got " + std::to_string(estimatedDepth);
+      }
     }
   }
 
-
-  return "@todo Write more tests for DepthEstimator";
+  return "";
 }
