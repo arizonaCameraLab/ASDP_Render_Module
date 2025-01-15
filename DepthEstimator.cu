@@ -2,7 +2,7 @@
  * Copyright (C) 2024: Arizona Board of Regents on Behalf of the University of Arizona
  */
 
-#include <iostream>   /// @todo Remove this
+#include <chrono>
 #include <memory>
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
@@ -664,7 +664,7 @@ DepthEstimator::DepthEstimator(std::vector< std::array<CameraRenderInfo, 2> > ca
   }
   if (cameras[0][0].m_resolutionPixels[0] / nx > MAX_BLOCK_SIZE) {
     m_constructorStatus = "DepthEstimator::DepthEstimator(): Block size must be less than or equal to "
-      + std::to_string(MAX_BLOCK_SIZE);
+      + std::to_string(MAX_BLOCK_SIZE) + " (add more regions)";
     return;
   }
   if (ny == 0) {
@@ -673,7 +673,7 @@ DepthEstimator::DepthEstimator(std::vector< std::array<CameraRenderInfo, 2> > ca
   }
   if (cameras[0][0].m_resolutionPixels[1] / ny > MAX_BLOCK_SIZE) {
     m_constructorStatus = "DepthEstimator::DepthEstimator(): Block size must be less than or equal to "
-      + std::to_string(MAX_BLOCK_SIZE);
+      + std::to_string(MAX_BLOCK_SIZE) + " (add more regions)";
     return;
   }
 
@@ -839,6 +839,142 @@ static void fixEndian(std::vector<uint16_t>& data) {
       value = (value >> 8) | (value << 8);
     }
   }
+}
+
+void DepthEstimator::BuildGradientImages(DepthEstimator& de, uint16_t width, uint16_t height,
+  uint16_t nx, uint16_t ny, float cameraFrameInterval, std::vector<float> testDepths)
+{
+
+  // Start with a grey-filled single-color image.  This will be the background.
+  std::vector<uint16_t> blankImage(width * height, 32768);
+
+  // Make a copy of the background image for the each camera and then fill its lower half with the test
+  // pattern at different depths.
+
+  for (size_t c = 0; c < 2; c++) {
+    std::vector<uint16_t> im = blankImage;
+    for (size_t y = 0; y < height / 2; y++) {
+      // Flip the Y axis so the near ground is on the bottom.
+      size_t yFlip = height - y - 1;
+
+      // The depth changes for every height/ny pixels and it comes from the list of
+      // depths.
+      double depth = testDepths[(y / (height / ny)) % testDepths.size()];
+
+      // Find the X piercing points for the depth at the left and right edges of the image
+      // and then compute the scale and offset that will map the image pixels correctly.
+      // Remember that the pixel centers are half a pixel in from the edges.
+      double halfX = depth * tan(glm::radians(de.m_impl->m_cameraPairs[0]->m_cameras[c].m_fovDegrees[0] / 2));
+      double xLeft = -halfX * (double(width) / (width - 1));
+      double xRight = halfX * (double(width) / (width - 1));
+      double scale = (xRight - xLeft) / (width - 1);
+      double offset = -xLeft + (0.5 * scale);
+
+      // Add the camera's X center to the offset.
+      offset += de.m_impl->m_cameraPairs[0]->m_cameras[c].m_positionMeters[0];
+
+      for (size_t x = 0; x < width; x++) {
+        double value = 65535 * TestPattern(x * scale + offset);
+        im[yFlip * width + x] = uint16_t(value);
+      }
+    }
+
+#if 0
+    // Write the image to a 16-bit PGM file for debugging, remembering to swap the endianness.
+    std::ofstream file("DepthEstimatorTest" + std::to_string(c) + ".pgm", std::ios::binary);
+    file << "P5\n" << width << " " << height << "\n65535\n";
+    std::vector<uint16_t> fixedImage = im;
+    fixEndian(fixedImage);
+    file.write(reinterpret_cast<char*>(fixedImage.data()), fixedImage.size() * sizeof(uint16_t));
+#endif
+
+    // Construct an OpenGL texture and copy the image into it.
+    GLuint texture;
+    glGenTextures(1, &texture);
+    glBindTexture(GL_TEXTURE_2D, texture);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_R16, width, height, 0, GL_RED, GL_UNSIGNED_SHORT, im.data());
+    glBindTexture(GL_TEXTURE_2D, 0);
+
+    // Add three copies of the image to the image queue after constructing the ImageData object to hold it.
+    std::shared_ptr<ImageData> id(new ImageData);
+    id->texture = texture;
+    id->exposure = cameraFrameInterval;
+    for (size_t i = 0; i < 3; i++) {
+      de.m_impl->m_cameraPairs[0]->m_cameras[c].m_imageQueue->InsertImage(id);
+    }
+  }
+}
+
+float DepthEstimator::SpeedTestSingleEstimation(uint16_t width, uint16_t height, uint16_t nx, uint16_t ny)
+{
+  // Create a window and OpenGL context.
+  if (!glfwInit()) {
+    return -1;
+  }
+  glfwWindowHint(GLFW_VISIBLE, false);
+  std::shared_ptr<GLFWwindow> window(glfwCreateWindow(640, 480, "DepthEstimator Test", NULL, NULL), glfwDestroyWindow);
+  if (!window) {
+    return -1;
+  }
+  glfwMakeContextCurrent(window.get());
+
+  // Initialize GLEW in our context. It is okay to initialize it more than once.
+  glewExperimental = true;
+  if (glewInit() != GLEW_OK) {
+    return -1;
+  }
+
+  // Construct a DepthEstimator after making the objects required to construct it.
+  std::vector< std::array<CameraRenderInfo, 2> > cameras;
+  DistortionNone* dNone = new DistortionNone();
+  std::shared_ptr<Distortion> distortion(dNone);
+  VignetteNone* vNone = new VignetteNone();
+  std::shared_ptr<Vignette> vignette(vNone);
+  std::shared_ptr<ImageQueue> queue1(new ImageQueue);
+  std::shared_ptr<ImageQueue> queue2(new ImageQueue);
+  std::vector< std::shared_ptr<ImageQueue> > queues;
+  queues.push_back(queue1);
+  queues.push_back(queue2);
+  CameraRenderInfo cam1(1, { -1, 0, 0 }, { 0, 0, 0 }, { width, height }, { 90.0, 90.0 },
+    distortion, vignette, queues[0]);
+  CameraRenderInfo cam2(2, { 1, 0, 0 }, { 0, 0, 0 }, { width, height }, { 90.0, 90.0 },
+    distortion, vignette, queues[1]);
+  cameras.push_back({ cam1, cam2 });
+  std::shared_ptr<PoseAdjuster> poseAdjuster = std::make_shared<PoseAdjuster>();
+  // Use the same value for the camera frame interval and the exposure time on the frames
+  // so that we don't engage the time-varying brightness adjustment on the render system.
+  float cameraFrameInterval = 1.0f;
+  std::vector<float> testDepths = { 10, 20, 50, 100, 200, 500, 1000 };
+  DepthEstimator de(cameras, poseAdjuster, cameraFrameInterval, nx, ny, testDepths);
+  if (de.m_constructorStatus != "") {
+    return -1;
+  }
+
+  // Fill in test images for the cameras that will exercise the depth estimation.
+  BuildGradientImages(de, width, height, nx, ny, cameraFrameInterval, testDepths);
+
+  // Compute the depth estimate once to cause it to build all required structures.
+  std::string res = de.ComputeDepthEstimate(0);
+  if (res != "") {
+    return -1;
+  }
+
+  // Run timing on a number of iterations and report the average.
+  const size_t iterations = 100;
+  std::chrono::high_resolution_clock::time_point start = std::chrono::high_resolution_clock::now();
+  for (size_t i = 0; i < iterations; i++) {
+    res = de.ComputeDepthEstimate(0);
+    if (res != "") {
+      return -1;
+    }
+  }
+  std::chrono::high_resolution_clock::time_point end = std::chrono::high_resolution_clock::now();
+  std::chrono::duration<double> elapsed = end - start;
+  return elapsed.count() / iterations;
 }
 
 std::string DepthEstimator::Test()
@@ -1057,7 +1193,7 @@ std::string DepthEstimator::Test()
         return "EstimateDepth() varying depth failed for interpolating between two points in +Y";
       }
 
-      // Test in -Y screen (-Z world) and make sure that the answer is the centerDepth.
+      // Test in -Y screen (-Z world) and make sure that the answer is centerDepth.
       dz = -dz;
       expectedDepth = sqrt(1 + dz * dz) * centerDepth;
       estimatedDepth = de.EstimateDepth(glm::vec3(0, 0, 0), glm::vec3(0, 1, dz));
@@ -1071,69 +1207,7 @@ std::string DepthEstimator::Test()
       // each of the ny samples is completely at the same depth.  We use a sum of sinusoids at relatively
       // prime frequencies with different phases to make the image have contrast and a specific alignment.
       // We move this pattern to different Z depths for each region in the Y camera axis.
-
-      // Start with a grey-filled single-color image.  This will be the background.
-      std::vector<uint16_t> blankImage(width * height, 32768);
-
-      // Make a copy of the background image for the each camera and then fill its lower half with the test
-      // pattern at different depths.
-
-      for (size_t c = 0; c < 2; c++) {
-        std::vector<uint16_t> im = blankImage;
-        for (size_t y = 0; y < height / 2; y++) {
-          // Flip the Y axis so the near ground is on the bottom.
-          size_t yFlip = height - y - 1;
-
-          // The depth changes for every height/ny pixels and it comes from the list of
-          // depths.
-          double depth = testDepths[(y / (height / ny)) % testDepths.size()];
-
-          // Find the X piercing points for the depth at the left and right edges of the image
-          // and then compute the scale and offset that will map the image pixels correctly.
-          // Remember that the pixel centers are half a pixel in from the edges.
-          double halfX = depth * tan(glm::radians(de.m_impl->m_cameraPairs[0]->m_cameras[c].m_fovDegrees[0] / 2));
-          double xLeft = -halfX * (double(width) / (width - 1));
-          double xRight = halfX * (double(width) / (width - 1));
-          double scale = (xRight - xLeft) / (width - 1);
-          double offset = -xLeft + (0.5 * scale);
-
-          // Add the camera's X center to the offset.
-          offset += de.m_impl->m_cameraPairs[0]->m_cameras[c].m_positionMeters[0];
-
-          for (size_t x = 0; x < width; x++) {
-            double value = 65535 * TestPattern(x * scale + offset);
-            im[yFlip * width + x] = uint16_t(value);
-          }
-        }
-
-#if 0
-        // Write the image to a 16-bit PGM file for debugging, remembering to swap the endianness.
-        std::ofstream file("DepthEstimatorTest" + std::to_string(c) + ".pgm", std::ios::binary);
-        file << "P5\n" << width << " " << height << "\n65535\n";
-        std::vector<uint16_t> fixedImage = im;
-        fixEndian(fixedImage);
-        file.write(reinterpret_cast<char*>(fixedImage.data()), fixedImage.size() * sizeof(uint16_t));
-#endif
-
-        // Construct an OpenGL texture and copy the image into it.
-        GLuint texture;
-        glGenTextures(1, &texture);
-        glBindTexture(GL_TEXTURE_2D, texture);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_R16, width, height, 0, GL_RED, GL_UNSIGNED_SHORT, im.data());
-        glBindTexture(GL_TEXTURE_2D, 0);
-
-        // Add three copies of the image to the image queue after constructing the ImageData object to hold it.
-        std::shared_ptr<ImageData> id(new ImageData);
-        id->texture = texture;
-        id->exposure = cameraFrameInterval;
-        for (size_t i = 0; i < 3; i++) {
-          de.m_impl->m_cameraPairs[0]->m_cameras[c].m_imageQueue->InsertImage(id);
-        }
-      }
+      BuildGradientImages(de, width, height, nx, ny, cameraFrameInterval, testDepths);
 
       // Compute the depth estimate.
       std::string res = de.ComputeDepthEstimate(0);

@@ -71,6 +71,18 @@ namespace asdp {
       /// @return Empty string on success, string with error message on failure.
       static std::string Test();
 
+      /// @brief Speed test function to test the class.
+      /// @details Remember that the maximum region size is 100x100 and that nx and ny must evenly
+      /// divide the image size.
+      /// @param[in] width Width of the images to render.
+      /// @param[in] height Height of the images to render.
+      /// @param[in] nx Number of points to create in the X direction for each camera pair.
+      /// @param[in] ny Number of points to create in the Y direction for each camera pair.
+      /// @return The average time in seconds to estimate depth on a single camera pair, ignoring
+      /// the initial estimation where things are being allocated and configured.  Returns -1 on
+      /// failure.
+      static float SpeedTestSingleEstimation(uint16_t width, uint16_t height, uint16_t nx, uint16_t ny);
+
     protected:
 
       /// Used to hide the implementation details and avoid the need for client code to #include
@@ -79,6 +91,23 @@ namespace asdp {
       std::unique_ptr<DepthEstimatorImpl> m_impl;
 
       std::string m_constructorStatus;  ///< Status of the constructor, empty if successful, error message if not.
+
+      /// @brief Produce a set of images with known depths for each camera.
+      /// @details We analytically render the images with different depths for different image regions in Y so that
+      /// each of the ny samples is completely at the same depth.  We use a sum of sinusoids at relatively
+      /// prime frequencies with different phases to make the image have contrast and a specific alignment.
+      /// We move this pattern to different Z depths for each region in the Y camera axis.
+      /// @param[in] de Depth estimator to modify.
+      /// @param[in] width Width of the images to render.
+      /// @param[in] height Height of the images to render.
+      /// @param[in] nx Number of points to create in the X direction for each camera pair.
+      /// @param[in] ny Number of points to create in the Y direction for each camera pair.
+      /// @param[in] cameraFrameInterval The time between frames in the camera images.
+      /// @param[in] testDepths List of depths in meters to use in increasing distance order.
+      /// The first half are used to adjust the bottom half of the image and the top is left blank.
+      static void BuildGradientImages(DepthEstimator& de, uint16_t width, uint16_t height,
+        uint16_t nx, uint16_t ny, float cameraFrameInterval,
+        std::vector<float> testDepths);
     };
 
   } // namespace render

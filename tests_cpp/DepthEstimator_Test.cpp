@@ -14,6 +14,14 @@ int main()
     return 1;
   }
 
+  // Run a speed test with a reasonable image size and report on the results.
+  float fps = asdp::render::DepthEstimator::SpeedTestSingleEstimation(2000, 1200, 20, 12);
+  if (fps < 0) {
+    std::cerr << "Error in DepthEstimator::SpeedTestSingleEstimation()"<< std::endl;
+    return 2;
+  }
+  std::cout << "Speed test: " << fps*1.0e3 << "ms per estimation for 2000x1200 image with 20x12 total regions" << std::endl;
+
   // Clean up resources and exit
   std::cout << "Success" << std::endl;
   return 0;
