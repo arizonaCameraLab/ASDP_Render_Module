@@ -513,30 +513,35 @@ bool CompositeCube::SetupRendering()
   // platforms, this can cause a spurious error 1280.
   glGetError();
 
-  // Construct the shader programs.
-  GLuint vertexShaderId = glCreateShader(GL_VERTEX_SHADER);
-  GLuint fragmentShaderId = glCreateShader(GL_FRAGMENT_SHADER);
+  try {
+    // Construct the shader programs.
+    GLuint vertexShaderId = glCreateShader(GL_VERTEX_SHADER);
+    GLuint fragmentShaderId = glCreateShader(GL_FRAGMENT_SHADER);
 
-  // vertex shader
-  glShaderSource(vertexShaderId, 1, &cubeVertexShader, NULL);
-  glCompileShader(vertexShaderId);
-  checkShaderError(vertexShaderId, "Vertex shader compilation failed.");
+    // vertex shader
+    glShaderSource(vertexShaderId, 1, &cubeVertexShader, NULL);
+    glCompileShader(vertexShaderId);
+    checkShaderError(vertexShaderId, "Vertex shader compilation failed.");
 
-  // fragment shader
-  glShaderSource(fragmentShaderId, 1, &cubeFragmentShader, NULL);
-  glCompileShader(fragmentShaderId);
-  checkShaderError(fragmentShaderId, "Fragment shader compilation failed.");
+    // fragment shader
+    glShaderSource(fragmentShaderId, 1, &cubeFragmentShader, NULL);
+    glCompileShader(fragmentShaderId);
+    checkShaderError(fragmentShaderId, "Fragment shader compilation failed.");
 
-  // linking shader program
-  m_programId = glCreateProgram();
-  glAttachShader(m_programId, vertexShaderId);
-  glAttachShader(m_programId, fragmentShaderId);
-  glLinkProgram(m_programId);
-  checkProgramError(m_programId, "Shader program link failed.");
+    // linking shader program
+    m_programId = glCreateProgram();
+    glAttachShader(m_programId, vertexShaderId);
+    glAttachShader(m_programId, fragmentShaderId);
+    glLinkProgram(m_programId);
+    checkProgramError(m_programId, "Shader program link failed.");
 
-  // once linked into a program, we no longer need the shaders.
-  glDeleteShader(vertexShaderId);
-  glDeleteShader(fragmentShaderId);
+    // once linked into a program, we no longer need the shaders.
+    glDeleteShader(vertexShaderId);
+    glDeleteShader(fragmentShaderId);
+  } catch (std::runtime_error& e) {
+    std::cerr << "CompositeCube::SetupRendering(): " << e.what() << std::endl;
+    return false;
+  }
 
   m_modelViewProjectionUniformId = glGetUniformLocation(m_programId, "modelViewProjection");
 
@@ -688,9 +693,12 @@ CompositeCameras::CompositeCameras(std::vector<CameraRenderInfo>& cameraRenderIn
 bool CompositeCameras::SetupRendering()
 {
   // Initialize GLEW in our context. It is okay to initialize it more than once.
+  // NOTE: SetupRendering() is only called once for each object if it works, so we won't be initializing
+  // GLEW every render frame here, only once per CompositeCameras object.
   glewExperimental = true;
-  if (glewInit() != GLEW_OK) {
-    std::cerr << "CompositeCameras::CompositeCameras(): Failed to initialize GLEW" << std::endl;
+  GLenum ret = glewInit();
+  if (ret != GLEW_OK) {
+    std::cerr << "CompositeCameras::CompositeCameras(): Failed to initialize GLEW: " << ret << std::endl;
     return false;
   }
 
@@ -701,26 +709,31 @@ bool CompositeCameras::SetupRendering()
   GLuint vertexShaderId = glCreateShader(GL_VERTEX_SHADER);
   GLuint fragmentShaderId = glCreateShader(GL_FRAGMENT_SHADER);
 
-  // vertex shader
-  glShaderSource(vertexShaderId, 1, &camerasVertexShader, NULL);
-  glCompileShader(vertexShaderId);
-  checkShaderError(vertexShaderId, "Vertex shader compilation failed.");
+  try {
+    // vertex shader
+    glShaderSource(vertexShaderId, 1, &camerasVertexShader, NULL);
+    glCompileShader(vertexShaderId);
+    checkShaderError(vertexShaderId, "Vertex shader compilation failed.");
 
-  // fragment shader
-  glShaderSource(fragmentShaderId, 1, &camerasFragmentShader, NULL);
-  glCompileShader(fragmentShaderId);
-  checkShaderError(fragmentShaderId, "Fragment shader compilation failed.");
+    // fragment shader
+    glShaderSource(fragmentShaderId, 1, &camerasFragmentShader, NULL);
+    glCompileShader(fragmentShaderId);
+    checkShaderError(fragmentShaderId, "Fragment shader compilation failed.");
 
-  // linking shader program
-  m_programId = glCreateProgram();
-  glAttachShader(m_programId, vertexShaderId);
-  glAttachShader(m_programId, fragmentShaderId);
-  glLinkProgram(m_programId);
-  checkProgramError(m_programId, "Shader program link failed.");
+    // linking shader program
+    m_programId = glCreateProgram();
+    glAttachShader(m_programId, vertexShaderId);
+    glAttachShader(m_programId, fragmentShaderId);
+    glLinkProgram(m_programId);
+    checkProgramError(m_programId, "Shader program link failed.");
 
-  // once linked into a program, we no longer need the shaders.
-  glDeleteShader(vertexShaderId);
-  glDeleteShader(fragmentShaderId);
+    // once linked into a program, we no longer need the shaders.
+    glDeleteShader(vertexShaderId);
+    glDeleteShader(fragmentShaderId);
+  } catch (std::runtime_error& e) {
+    std::cerr << "CompositeCameras::SetupRendering(): " << e.what() << std::endl;
+    return false;
+  }
 
   // Get the IDs for all of the uniform parameters we will want to change.
   m_viewProjectionUniformId = glGetUniformLocation(m_programId, "viewProjection");
