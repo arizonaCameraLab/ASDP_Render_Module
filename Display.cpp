@@ -444,6 +444,10 @@ void DisplayWindow::DisplayThread(std::string windowName,
     // thread swapped out for longer than we want.
     while (std::chrono::steady_clock::now() < m_impl->m_nextDepthTime) {
     }
+    GLenum err = glGetError();
+    if (err != GL_NO_ERROR) {
+      std::cerr << "OpenGL error before checking whether to call ComputeDepth: " << err << std::endl;
+    }
     if (m_eventHandlers && m_eventHandlers->ComputeDepth) {
       m_eventHandlers->ComputeDepth(renderTime, m_userData);
     }

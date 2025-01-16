@@ -701,7 +701,6 @@ bool CompositeCameras::SetupRendering()
     std::cerr << "CompositeCameras::CompositeCameras(): Failed to initialize GLEW: " << ret << std::endl;
     return false;
   }
-
   // Clear any GL error that Glew caused.  Apparently on Non-Windows
   // platforms, this can cause a spurious error 1280.
   glGetError();

@@ -1347,10 +1347,16 @@ int main(int argc, char** argv)
         std::cerr << "Failed to initialize GLEW before DepthTexture" << std::endl;
         return false;
       }
+      // Clear any GL error that Glew caused.  Apparently on Non-Windows
+      // platforms, this can cause a spurious error 1280.
+      glGetError();
 
       g_depthEstimator = std::make_shared<DepthEstimator>(cameras, poseAdjuster, float(1.0/cameraFPS),
         g_depthCameras[0].m_resolutionPixels[0] * 2 / 100, g_depthCameras[0].m_resolutionPixels[1] * 2 / 100);
       std::cout << "Constructed DepthEstimator with " << cameras.size() << " camera pairs." << std::endl;
+
+      // Compute a depth estimate to get all of the machinery set up and GLEW initialized on this thread.
+      g_depthEstimator->ComputeDepthEstimate(0);
 
       if (!displayTexture->ReturnContext()) {
         std::cerr << "Error returning context to displayTexture for DepthEstimator." << std::endl;

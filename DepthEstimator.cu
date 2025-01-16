@@ -2,6 +2,7 @@
  * Copyright (C) 2024: Arizona Board of Regents on Behalf of the University of Arizona
  */
 
+#include <iostream>
 #include <chrono>
 #include <memory>
 #include <GL/glew.h>
@@ -371,6 +372,11 @@ public:
 
   std::string ComputeDepthEstimate(Time time)
   {
+    GLenum err = glGetError();
+    if (err != GL_NO_ERROR) {
+      return "OpenGL error at start of ComputeDepthEstimate(): " + std::to_string(err);
+    }
+
     // OpenGL fence objects to let us ensure that we're done with OpenGL rendering before we
     // start to map the buffers to CUDA and do the depth estimation.  There is one entry
     // for each camera with one entry for each depth with an entry for each of the pair of cameras.
@@ -406,8 +412,26 @@ public:
           vri.height = cpi.m_pixelCounts[1];
 
           // Render the composite camera and construct a fence to indicate completion.
+          err = glGetError();
+          if (err != GL_NO_ERROR) {
+            return "OpenGL error before Render() for pair " + std::to_string(c)
+              + " depth " + std::to_string(d) + " camera " + std::to_string(b) + ": "
+              + std::to_string(err);
+          }
           cpi.m_perDepths[d].m_composites[b]->Render(time, {vri});
+          err = glGetError();
+          if (err != GL_NO_ERROR) {
+            return "OpenGL error before fence for pair " + std::to_string(c)
+              + " depth " + std::to_string(d) + " camera " + std::to_string(b) + ": "
+              + std::to_string(err);
+          }
           dFences[b] = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
+          if (dFences[b] == nullptr) {
+            err = glGetError();
+            return "glFenceSync() failed for pair " + std::to_string(c)
+              + " depth " + std::to_string(d) + " camera " + std::to_string(b)
+              + ": error " + std::to_string(err);
+          }
         }
         cFences.push_back(dFences);
       }
@@ -434,7 +458,8 @@ public:
           GLenum ret = glClientWaitSync(fences[c][d][b], 0, 1000000000);
           if (ret != GL_ALREADY_SIGNALED && ret != GL_CONDITION_SATISFIED) {
             return "glClientWaitSync() failed for pair " + std::to_string(c)
-              + " depth " + std::to_string(d) + " camera " + std::to_string(b);
+              + " depth " + std::to_string(d) + " camera " + std::to_string(b)
+              + ": code " + std::to_string(ret);
           }
         }
 
@@ -939,6 +964,9 @@ float DepthEstimator::SpeedTestSingleEstimation(uint16_t width, uint16_t height,
   if (glewInit() != GLEW_OK) {
     return -1;
   }
+  // Clear any GL error that Glew caused.  Apparently on Non-Windows
+  // platforms, this can cause a spurious error 1280.
+  glGetError();
 
   // Construct a DepthEstimator after making the objects required to construct it.
   std::vector< std::array<CameraRenderInfo, 2> > cameras;
@@ -1042,6 +1070,9 @@ std::string DepthEstimator::Test()
     if (glewInit() != GLEW_OK) {
       return "Failed to initialize GLEW";
     }
+    // Clear any GL error that Glew caused.  Apparently on Non-Windows
+    // platforms, this can cause a spurious error 1280.
+    glGetError();
 
     // Put into a block so that we destroy things in here before we destroy the context.
     {
