@@ -444,15 +444,15 @@ void DisplayWindow::DisplayThread(std::string windowName,
     // thread swapped out for longer than we want.
     while (std::chrono::steady_clock::now() < m_impl->m_nextDepthTime) {
     }
-    GLenum err = glGetError();
-    if (err != GL_NO_ERROR) {
-      std::cerr << "OpenGL error before checking whether to call ComputeDepth: " << err << std::endl;
-    }
     if (m_eventHandlers && m_eventHandlers->ComputeDepth) {
       // Make the window's context current
       std::lock_guard<std::mutex> lock(Display::m_impl->m_contextMutex);
       glfwMakeContextCurrent(Display::m_impl->m_window);
 
+      GLenum err = glGetError();
+      if (err != GL_NO_ERROR) {
+        std::cerr << "OpenGL error before checking whether to call ComputeDepth: " << err << std::endl;
+      }
       m_eventHandlers->ComputeDepth(renderTime, m_userData);
 
       // Release the window's current context in case another Display wants to borrow it.
