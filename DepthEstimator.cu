@@ -803,6 +803,18 @@ float DepthEstimator::EstimateDepth(const glm::vec3& point, const glm::vec3& dir
   return glm::length(glm::vec3(contactPoint - rayStart));
 }
 
+void DepthEstimator::UpdateMesh(CameraRenderInfo& cam)
+{
+  // Lock the mutex to protect the mesh data.
+  std::lock_guard<std::mutex> lock(cam.m_meshMutex);
+
+  // Look up the depth for each vertex in the mesh and update the depth in the mesh.
+  glm::vec3 cameraPosition(cam.m_positionMeters[0], cam.m_positionMeters[1], cam.m_positionMeters[2]);
+  for (VertexInfo& v : cam.m_mesh.vertexInfo) {
+    v.depth = EstimateDepth(cameraPosition, v.normalizedOffset);
+  }
+}
+
 //================================================================================================
 // Testing and its helper functions and classes.
 

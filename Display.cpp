@@ -72,6 +72,7 @@ public:
 
 Display::Display(std::shared_ptr<Composite> composite,
   std::shared_ptr<CoreClient> client, uint8_t triggerID, uint32_t triggerAheadMicroseconds,
+  uint32_t depthAheadMicroseconds,
   std::shared_ptr<EventHandlers> handlers, void* userData)
   : m_composite(composite)
   , m_eventHandlers(handlers)
@@ -80,6 +81,7 @@ Display::Display(std::shared_ptr<Composite> composite,
   , m_client(client)
   , m_triggerID(triggerID)
   , m_offsetMicroseconds(triggerAheadMicroseconds)
+  , m_depthAheadMicroseconds(depthAheadMicroseconds)
   , m_done(false)
   , m_impl(new DisplayImpl)
 {
@@ -220,6 +222,12 @@ public:
   std::chrono::steady_clock::time_point m_lastMouseMotion;
 
   /// Time point to start rendering the next frame.
+  std::chrono::steady_clock::time_point m_nextRenderTime;
+
+  /// Time point to start computing the depth for the next frame;
+  std::chrono::steady_clock::time_point m_nextDepthTime;
+
+  /// Time point in the middle of the next frame we will render.
   std::chrono::steady_clock::time_point m_nextFrameTime;
 
   /// Whether the space bar was pressed during the last loop, used to toggle play/pause.
@@ -237,13 +245,14 @@ public:
 
 DisplayWindow::DisplayWindow(std::string windowName, std::shared_ptr<Composite> composite,
     std::shared_ptr<CoreClient> client, uint8_t triggerID, uint32_t triggerAheadMicroseconds,
+    uint32_t depthAheadMicroseconds,
     float fps, uint32_t renderAheadMicroseconds,
     int desiredWidth, int desiredHeight, float horizontalFOVDegrees,
     std::string joystick, Display* sharedWindow,
     bool fullScreen, int desiredDisplay, bool hidden,
     std::shared_ptr<EventHandlers> handlers, void* userData,
     RenderTimingInfo* timingInfo, bool replaying)
-  : Display(composite, client, triggerID, triggerAheadMicroseconds, handlers, userData)
+  : Display(composite, client, triggerID, triggerAheadMicroseconds, depthAheadMicroseconds, handlers, userData)
   , m_timingInfo(timingInfo)
   , m_replaying(replaying)
   , m_impl(new DisplayWindowImpl)
@@ -419,10 +428,6 @@ void DisplayWindow::DisplayThread(std::string windowName,
   bool frameCompleted = false;
   auto lastJoystickCheck = std::chrono::steady_clock::now();
   while (!m_done) {
-    // Wait until it is time to render the next frame.  We must busy-wait here to avoid having our
-    // thread swapped out for longer than we want.
-    while (std::chrono::steady_clock::now() < m_impl->m_nextFrameTime) {
-    }
 
     // Determine the scan-out time of the frame (center of the image).
     double frameTime = 1.0 / fps;
@@ -433,6 +438,19 @@ void DisplayWindow::DisplayThread(std::string windowName,
       uint32_t seconds = static_cast<uint32_t>(middleOfNextFrameOffset);
       uint32_t microseconds = (middleOfNextFrameOffset - seconds) * 1e6;
       renderTime += Time(seconds, microseconds);
+    }
+
+    // Wait until it is time to compute depth for the next frmae.  We must busy-wait here to avoid having our
+    // thread swapped out for longer than we want.
+    while (std::chrono::steady_clock::now() < m_impl->m_nextDepthTime) {
+    }
+    if (m_eventHandlers && m_eventHandlers->ComputeDepth) {
+      m_eventHandlers->ComputeDepth(renderTime, m_userData);
+    }
+
+    // Wait until it is time to render the next frame.  We must busy-wait here to avoid having our
+    // thread swapped out for longer than we want.
+    while (std::chrono::steady_clock::now() < m_impl->m_nextRenderTime) {
     }
 
     // Grab the context mutex for the duration of the loop.  Once we have it, we know
@@ -498,8 +516,12 @@ void DisplayWindow::DisplayThread(std::string windowName,
     // Swap front and back buffers and wait for it to complete, then compute the next frame time.
     glfwSwapBuffers(Display::m_impl->m_window);
     glFinish();
-    m_impl->m_nextFrameTime = std::chrono::steady_clock::now() +
+    m_impl->m_nextRenderTime = std::chrono::steady_clock::now() +
       std::chrono::microseconds(static_cast<long long>(1e6/fps) - renderAheadMicroseconds);
+    m_impl->m_nextDepthTime = m_impl->m_nextRenderTime - std::chrono::microseconds(m_depthAheadMicroseconds);
+    // Half way through the next frame, which is when we want the geometry adjusted for.
+    m_impl->m_nextFrameTime = std::chrono::steady_clock::now() +
+      std::chrono::microseconds(static_cast<long long>(1e6/fps)*3/2);
 
     // Poll for and process events
     glfwPollEvents();
@@ -662,7 +684,7 @@ public:
 };
 
 DisplayTexture::DisplayTexture(Display* sharedWindow)
-  : Display(std::shared_ptr<CompositeCube>(), std::shared_ptr<CoreClient>(), 0, 0)
+  : Display(std::shared_ptr<CompositeCube>(), std::shared_ptr<CoreClient>(), 0, 0, 0)
   , m_impl(new DisplayTextureImpl)
 {
   {
@@ -857,6 +879,9 @@ public:
 
   /// Pointer to time when we started pausing, nullptr if not pausing.
   std::unique_ptr<Time> m_pauseTime;
+
+  /// Stored estimated frame duration, initialize based on 90fps.
+  XrDuration m_frameDurationNS{ XrDuration(1.0e9/90) };
 
   void OpenXRCreateInstance();
   void OpenXRInitializeSystem(Display* sharedWindow);
@@ -1769,6 +1794,21 @@ void asdp::render::DisplayOpenXR::DisplayOpenXRImpl::OpenXRRenderFrame()
 {
   CHECK(m_session != XR_NULL_HANDLE);
 
+  // Wait for the time to compute depths for the next frame.
+  /// @todo We don't have an easy way to do that, so we compute it right away.
+
+  // Call the depth handler if we have one.
+  if (m_display->m_eventHandlers && m_display->m_eventHandlers->ComputeDepth) {
+    // Compute the time of the middle of next frame and pass it to the handler.
+    // We estimate this by taking the current time and adding the time to the middle of next frame.
+    std::chrono::steady_clock::time_point renderTime = std::chrono::steady_clock::now();
+    renderTime += std::chrono::nanoseconds(m_frameDurationNS * 3 / 2);
+    Time coreTime;
+    Status status = m_display->m_timer->GetCoreTime(coreTime, renderTime);
+    m_display->m_eventHandlers->ComputeDepth(coreTime, m_display->m_userData);
+  }
+
+  // Wait for the time to render the next frame
   XrFrameWaitInfo frameWaitInfo{ XR_TYPE_FRAME_WAIT_INFO };
   XrFrameState frameState{ XR_TYPE_FRAME_STATE };
   CHECK_XRCMD(xrWaitFrame(m_session, &frameWaitInfo, &frameState));
@@ -1879,10 +1919,11 @@ void asdp::render::DisplayOpenXR::DisplayOpenXRImpl::OpenXRTearDown()
 
 DisplayOpenXR::DisplayOpenXR(std::shared_ptr<Composite> composite, Display* sharedWindow,
     std::shared_ptr<CoreClient> client, uint8_t triggerID, uint32_t triggerAheadMicroseconds,
+    uint32_t depthAheadMicroseconds,
     uint32_t renderAheadMicroseconds, int verbosity,
     std::shared_ptr<EventHandlers> handlers, void* userData,
     RenderTimingInfo* timingInfo, bool replaying)
-  : Display(composite, client, triggerID, triggerAheadMicroseconds, handlers, userData)
+  : Display(composite, client, triggerID, triggerAheadMicroseconds, depthAheadMicroseconds, handlers, userData)
   , m_timingInfo(timingInfo)
   , m_replaying(replaying)
 {
@@ -1985,10 +2026,11 @@ public:
 
 DisplayOpenXR::DisplayOpenXR(std::shared_ptr<Composite> composite, Display* sharedWindow,
     std::shared_ptr<CoreClient> client, uint8_t triggerID, uint32_t triggerAheadMicroseconds,
+    uint32_t depthAheadMicroseconds,
     uint32_t renderAheadMicroseconds, int verbosity,
     std::shared_ptr<EventHandlers> handlers, void* userData,
     RenderTimingInfo* timingInfo, bool replaying)
-  : Display(composite, client, triggerID, triggerAheadMicroseconds, handlers, userData)
+  : Display(composite, client, triggerID, triggerAheadMicroseconds, depthAheadMicroseconds, handlers, userData)
   , m_timingInfo(timingInfo)
   , m_replaying(replaying)
 {

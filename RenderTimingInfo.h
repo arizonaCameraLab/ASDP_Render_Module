@@ -28,6 +28,9 @@ namespace asdp {
       };
       std::vector<camera> cameras;  ///< The timing information for each camera.
 
+      std::vector<std::chrono::steady_clock::time_point> depthStartTimes;   ///< The times for the start of depth calc.
+      std::vector<std::chrono::steady_clock::time_point> depthEndTimes;     ///< The times for the end of depth calc.
+
       std::vector<std::chrono::steady_clock::time_point> renderStartTimes;  ///< The times for the start of rendering.
       std::vector<std::chrono::steady_clock::time_point> renderSubmitTimes; ///< The times for the render frame submission.
 

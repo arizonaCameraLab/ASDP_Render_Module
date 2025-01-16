@@ -31,6 +31,10 @@ namespace asdp {
       /// Request that the play/pause state be changed to match nowPlaying.
       /// (See SetNowPlaying() comments for details of pause/replay implementation.)
       void (*ChangePlayPause)(bool nowPlaying, void *userData) = nullptr;
+
+      /// Compute the depth maps for the cameras given the next frame time (center pixel time).
+      /// (Only used with CompositeCameras when we have a DepthEstimator.)
+      void (*ComputeDepth)(Time nextFrameTime, void *userData) = nullptr;
     };
 
     /// @brief Display base class that defines the interface that all Displays use.
@@ -44,12 +48,14 @@ namespace asdp {
       /// a null pointer for none.
       /// @param triggerID The ID of the trigger to use to trigger the cameras, 1 or higher.  If set to 0,
       /// no triggers will be sent to the cameras.
-      /// @param triggerAheadMicroseconds The offset in microseconds to subtract from the time of frame swapping.
+      /// @param triggerAheadMicroseconds The offset in microseconds to subtract from the time of render start.
       /// This is to ensure that the frames make it all the way through the Composite object before being needed.
       /// It is expected to be read from a configuration file and tuned for the specific hardware and software.
+      /// @param depthAheadMicroseconds The offset in microseconds to subtract from the time of render start.
       /// @param composite The Composite used to generate textured geometry.
       Display(std::shared_ptr<Composite> composite,
         std::shared_ptr<CoreClient> client, uint8_t triggerID, uint32_t triggerAheadMicroseconds,
+        uint32_t depthAheadMicroseconds,
         std::shared_ptr<EventHandlers> handlers = nullptr, void* userData = nullptr);
 
       /// @brief Destructor, virtual so that derived classes can have their destructors called from pointers.
@@ -104,7 +110,10 @@ protected:
 
       std::shared_ptr<CoreClient> m_client; ///< CoreClient to use, filled in by the constructor.
       uint8_t m_triggerID; ///< Trigger ID to use, filled in by the constructor.
-      uint32_t m_offsetMicroseconds; ///< Offset in microseconds to subtract from the time of frame swapping.
+      uint32_t m_offsetMicroseconds; ///< Offset in microseconds to subtract from the time of render start.
+
+      /// Offset in microseconds to subtract from the time of render start.
+      uint32_t m_depthAheadMicroseconds;
 
       /// Timer from the client object, filled in by the constructor
       std::shared_ptr<Timer> m_timer;
@@ -151,9 +160,10 @@ protected:
       /// in here so that it will be destroyed before the window closes.
       /// @param client The CoreClient used to communicate with the Core to cause software triggers.
       /// @param triggerID The ID of the trigger to use to trigger the cameras.
-      /// @param triggerAheadMicroseconds The offset in microseconds to subtract from the time of frame swapping.
+      /// @param triggerAheadMicroseconds The offset in microseconds to subtract from the time of render start.
       /// This is to ensure that the frames make it all the way through the Composite object before being needed.
       /// It is expected to be read from a configuration file and tuned for the specific hardware and software.
+      /// @param depthAheadMicroseconds The offset in microseconds to subtract from the time of render start.
       /// @param fps The number of frames per second requested for a full-screen window.  The system will busy-wait
       /// to achieve at most this frame rate.  For full-screen windows, this is the frame rate we ask for
       /// on the monitor.  For windows that are not full screen, this should be set to the actual monitor
@@ -177,6 +187,7 @@ protected:
       /// @param replaying True if the display is replaying a recording, false if not.
       DisplayWindow(std::string windowName, std::shared_ptr<Composite> composite,
         std::shared_ptr<CoreClient> client, uint8_t triggerID, uint32_t triggerAheadMicroseconds,
+        uint32_t depthAheadMicroseconds,
         float fps = 60, uint32_t renderAheadMicroseconds = 2500,
         int desiredWidth = 1280, int desiredHeight = 1024, float horizontalFOVDegrees = 90.0,
         std::string joystick = "", Display *sharedWindow = nullptr,
@@ -259,9 +270,10 @@ protected:
       /// @param client The CoreClient used to communicate with the Core to cause software triggers,
       /// a null pointer for none.
       /// @param triggerID The ID of the trigger to use to trigger the cameras.
-      /// @param triggerAheadMicroseconds The offset in microseconds to subtract from the time of frame swapping.
+      /// @param triggerAheadMicroseconds The offset in microseconds to subtract from the time of render start.
       /// This is to ensure that the frames make it all the way through the Composite object before being needed.
       /// It is expected to be read from a configuration file and tuned for the specific hardware and software.
+      /// @param depthAheadMicroseconds The offset in microseconds to subtract from the time of render start.
       /// @param composite The Composite used to generate textured geometry.
       /// @param sharedWindow A pointer to a DisplayWindow to share the OpenGL objects with, or nullptr if none.
       /// @param renderAheadMicroseconds The number of microseconds ahead of the next swap time to begin
@@ -276,6 +288,7 @@ protected:
       /// @param replaying True if the display is replaying a recording, false if not.
       DisplayOpenXR(std::shared_ptr<Composite> composite, Display* sharedWindow,
         std::shared_ptr<CoreClient> client, uint8_t triggerID, uint32_t triggerAheadMicroseconds,
+        uint32_t depthAheadMicroseconds,
         uint32_t renderAheadMicroseconds = 2500, int verbosity = 0,
         std::shared_ptr<EventHandlers> handlers = nullptr, void* userData = nullptr,
         RenderTimingInfo* timingInfo = nullptr, bool replaying = false);

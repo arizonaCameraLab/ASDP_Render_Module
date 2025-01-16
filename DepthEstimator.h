@@ -35,8 +35,14 @@ namespace asdp {
       /// @param[in] cameras List of pairs of cameras to use to estimate depth.
       /// @param[in] poseAdjuster Pose adjuster to use to adjust the poses of the cameras to the same time.
       /// @param[in] cameraFrameInterval The time between frames in the camera images.
-      /// @param[in] nx Number of points to create in the X direction for each camera pair.
-      /// @param[in] ny Number of points to create in the Y direction for each camera pair.
+      /// @param[in] nx Number of points to create in the X direction for each camera pair. The maximum size
+      /// for each region is 100x100, so these should be enough to ensure that the combined distortion-adjusted
+      /// ideal camera has fewer than this many pixels. One approach is to double the number of pixels for the
+      /// original camera and divide by 100 to get the number of points in each direction.
+      /// @param[in] ny Number of points to create in the Y direction for each camera pair.  The maximum size
+      /// for each region is 100x100, so these should be enough to ensure that the combined distortion-adjusted
+      /// ideal camera has fewer than this many pixels. One approach is to double the number of pixels for the
+      /// original camera and divide by 100 to get the number of points in each direction.
       /// @param[in] depths List of depths to check in meters in increasing distance order.
       /// @param[in] fitnessThreshold The threshold for fitness of the depth manifold.  If the
       ///            difference between the average squared difference between the region in the
@@ -54,7 +60,8 @@ namespace asdp {
       /// @details This function estimates the depth manifold in Helicopter space to project images onto.
       /// It fills in internal data structures for a specified time.  The actual depths should be
       /// queried using EstimateDepth() after this function is called.
-      /// @param[in] time Time to estimate the depth at.
+      /// @param[in] time Time to estimate the depth at.  This should be the center pixel time for the
+      /// scan out for the display.
       /// @return Empty string on success, string describing the error on failure.
       std::string ComputeDepthEstimate(Time time);
 
@@ -66,6 +73,13 @@ namespace asdp {
       /// @param[in] direction The direction of the ray in Helicopter space.
       /// @return The estimated distance from ray start in Helicopter space to an object, -1e6 if there is an error.
       float EstimateDepth(const glm::vec3 &point, const glm::vec3 &direction) const;
+
+      /// @brief Update the mesh associated with a camera using calls to EstimateDepth().
+      /// @details This method is used to update a different camera mesh than the ones used to estimate
+      /// the depth.  It uses the depth estimates to update the mesh for the specified camera.
+      /// A successfull call to ComputeDepthEstimate() must be made before calling this function.
+      /// @param cam Camera whose mesh we are to update.
+      void UpdateMesh(CameraRenderInfo& cam);
 
       /// @brief Test function to test the class.
       /// @return Empty string on success, string with error message on failure.

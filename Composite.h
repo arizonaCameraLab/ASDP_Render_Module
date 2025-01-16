@@ -217,14 +217,14 @@ namespace asdp {
 
       /// @brief Thread-safe access to the color offset and gain, which must be consistent.
       void GetColorOffsetGain(float& colorOffset, float& colorGain) const {
-        std::lock_guard<std::mutex> lock(m_mutex);
+        std::lock_guard<std::mutex> lock(m_colorMutex);
         colorOffset = m_colorOffset;
         colorGain = m_colorGain;
       }
 
       /// @brief Thread-safe set of the color offset and gain, which must be consistent.
       void SetColorOffsetGain(float colorOffset, float colorGain) {
-        std::lock_guard<std::mutex> lock(m_mutex);
+        std::lock_guard<std::mutex> lock(m_colorMutex);
         m_colorOffset = colorOffset;
         m_colorGain = colorGain;
       }
@@ -251,6 +251,7 @@ namespace asdp {
 
       /// The mesh to use to render the camera's image. Can be constructed using ComputePlanarCameraMeshInfo.
       MeshInfo m_mesh;
+      mutable std::mutex m_meshMutex;  ///< Mutex to control access to information that must be read as a single unit.
 
       /// @brief Compute the values needed to create the vertices for the render mesh for a camera.
       /// @details This function computes the vertices for a quadrilateral that will be used to display
@@ -264,7 +265,7 @@ namespace asdp {
       void ComputePlanarCameraMeshInfo(size_t nx = 100, size_t ny = 100, GLfloat depth = 900);
 
     protected:
-      mutable std::mutex m_mutex;      ///< Mutex to control access to information that must be read as a single unit.
+      mutable std::mutex m_colorMutex; ///< Mutex to control access to information that must be read as a single unit.
       float m_colorOffset = 0;         ///< Color = (original + offset) * gain.
       float m_colorGain = 1;           ///< Color = (original + offset) * gain.
     };
@@ -290,6 +291,13 @@ namespace asdp {
         std::shared_ptr<PoseAdjuster> poseAdjuster, Time cameraFrameInterval,
         uint32_t renderOffsetMicroseconds = 0,
         Time renderFrameInterval = Time(), RenderTimingInfo *renderTimingInfo = nullptr);
+
+      /// @brief Update the vertex buffer object for a camera based on its current depth information.
+      /// @details This function updates the vertex buffer object for a camera based on the current depth
+      /// information in the cameraRenderInfo object.  It uses the mesh information stored in the
+      /// m_cameraBufferInfos object to update the vertex buffer object with the new depth information.
+      /// NOTE: This does not call glFinish() to ensure that that data has been written before returning.
+      void UpdateVertexBuffer(const CameraRenderInfo& cameraRenderInfo);
 
       /// @brief Destructor
       ~CompositeCameras();
@@ -357,13 +365,6 @@ namespace asdp {
       /// @param mesh The mesh information for the camera.
       /// @sideeffect The buffer objects are created and added to m_cameraBufferInfos.
       void CreateBufferInfo(const CameraRenderInfo& cameraRenderInfo, MeshInfo const &mesh);
-
-      /// @brief Update the vertex buffer object for a camera based on its current depth information.
-      /// @details This function updates the vertex buffer object for a camera based on the current depth
-      /// information in the cameraRenderInfo object.  It uses the mesh information stored in the
-      /// m_cameraBufferInfos object to update the vertex buffer object with the new depth information.
-      /// NOTE: This does not call glFinish() to ensure that that data has been written before returning.
-      void UpdateVertexBuffer(const CameraRenderInfo& cameraRenderInfo);
 
       // Overridden methods
       bool SetupRendering() override;

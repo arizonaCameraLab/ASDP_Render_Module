@@ -775,6 +775,9 @@ static double radians(double degrees) {
 
 void CameraRenderInfo::ComputePlanarCameraMeshInfo(size_t nx, size_t ny, GLfloat depth)
 {
+  // Lock the mutex to protect the mesh data.
+  std::lock_guard<std::mutex> lock(m_meshMutex);
+
   // Pre-divide so we can use multiplications instead of divisions in the loop, which is faster.
   double fnxInv = 1 / static_cast<GLfloat>(nx);
   double fnyInv = 1 / static_cast<GLfloat>(ny);
@@ -921,23 +924,29 @@ void CompositeCameras::CreateBufferInfo(CameraRenderInfo const& cameraRenderInfo
 
 void CompositeCameras::UpdateVertexBuffer(CameraRenderInfo const& cameraRenderInfo)
 {
-  // Find the mesh information for this camera.
-  CameraBufferInfo const &cbi = m_cameraBufferInfos[cameraRenderInfo.m_ID];
-  MeshInfo const &mesh = cbi.mesh;
-
-  // Create the vertices including the texture coordinates by scaling the normalized offsets
-  // in the mesh by their current depth values and adding the camera center.
+  CameraBufferInfo const& cbi = m_cameraBufferInfos[cameraRenderInfo.m_ID];
   std::vector<GLfloat> vertices;
-  vertices.reserve(6 * mesh.vertexInfo.size());
-  for (VertexInfo const& v : mesh.vertexInfo) {
-    // Add the vertex description
-    // Offset the points by the camera position in the helicopter view space.
-    vertices.push_back(v.normalizedOffset[0] * v.depth + cameraRenderInfo.m_positionMeters[0]);
-    vertices.push_back(v.normalizedOffset[1] * v.depth + cameraRenderInfo.m_positionMeters[1]);
-    vertices.push_back(v.normalizedOffset[2] * v.depth + cameraRenderInfo.m_positionMeters[2]);
-    vertices.push_back(v.texCoord[0]);
-    vertices.push_back(v.texCoord[1]);
-    vertices.push_back(v.vignetteGain);
+
+  {
+    // Lock the mutex to protect the mesh data.
+    std::lock_guard<std::mutex> lock(cameraRenderInfo.m_meshMutex);
+
+    // Find the mesh information for this camera.
+    MeshInfo const& mesh = cbi.mesh;
+
+    // Create the vertices including the texture coordinates by scaling the normalized offsets
+    // in the mesh by their current depth values and adding the camera center.
+    vertices.reserve(6 * mesh.vertexInfo.size());
+    for (VertexInfo const& v : mesh.vertexInfo) {
+      // Add the vertex description
+      // Offset the points by the camera position in the helicopter view space.
+      vertices.push_back(v.normalizedOffset[0] * v.depth + cameraRenderInfo.m_positionMeters[0]);
+      vertices.push_back(v.normalizedOffset[1] * v.depth + cameraRenderInfo.m_positionMeters[1]);
+      vertices.push_back(v.normalizedOffset[2] * v.depth + cameraRenderInfo.m_positionMeters[2]);
+      vertices.push_back(v.texCoord[0]);
+      vertices.push_back(v.texCoord[1]);
+      vertices.push_back(v.vignetteGain);
+    }
   }
 
   // Unbind any vertex array object, we won't be using these because they are not shared between contexts.
@@ -1091,9 +1100,6 @@ void CompositeCameras::RenderView(asdp::Time scanOutTime, const float* viewProje
   for (size_t c = 0; c < m_cameraRenderInfos.size(); c++) {
 
     uint16_t cameraID = m_cameraRenderInfos[c].m_ID;
-
-    /// @todo Update the depth texture, recomputing the vertices, if we're doing depth estimation.
-    //UpdateVertexBuffer(m_cameraRenderInfos[c]);
 
     // If there is no texture, bind the default texture for the image to texture unit 0.
     // Otherwise, bind the stored texture.

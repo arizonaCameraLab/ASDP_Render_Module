@@ -40,6 +40,7 @@
 #include <Display.h>
 #include <CPUDataToTextureHandler.h>
 #include <PoseAdjuster.h>
+#include <DepthEstimator.h>
 #include <cuda.h>
 #include <cuda_runtime.h>
 #include <cuda_gl_interop.h>
@@ -59,11 +60,40 @@ std::atomic<bool> g_paused(false);
 /// @brief Global variable to hold the timing information for the program.
 asdp::render::RenderTimingInfo g_timingInfo;
 
+/// @brief Global variable to hold the depth estimator.
+std::shared_ptr<DepthEstimator> g_depthEstimator;
+
+/// @brief Global variables to hold the visible and depth cameras.
+std::vector<asdp::render::CameraRenderInfo> g_visibleCameras, g_depthCameras;
+
+/// @brief Global variable to hold the composite cameras.
+std::shared_ptr<CompositeCameras> g_composite;
+
 /// @brief Callback handler to toggle play and pause.
 static void ChangePlayPause(bool nowPlaying, void* /* unused */)
 {
   g_paused = !nowPlaying;
   std::cout << "Toggled play/pause to: " << (g_paused ? "paused" : "playing") << std::endl;
+}
+
+/// @brief Callback handler to compute depth information for the cameras.
+static void ComputeDepth(Time renderTime, void* /* unused */)
+{
+  g_timingInfo.depthStartTimes.push_back(std::chrono::steady_clock::now());
+
+  // Make a snapshot of the images from all cameras at the same time and store it into
+  // the custom ImageQueue we're using.
+  /// @todo
+
+  // Compute the depth and then use it to adjust the mesh for all rendered cameras and
+  // then update the vertex buffer for the camera on the Composite.
+  g_depthEstimator->ComputeDepthEstimate(renderTime);
+  for (CameraRenderInfo& cri : g_visibleCameras) {
+    g_depthEstimator->UpdateMesh(cri);
+    g_composite->UpdateVertexBuffer(cri);
+  }
+
+  g_timingInfo.depthEndTimes.push_back(std::chrono::steady_clock::now());
 }
 
 /// @brief Helper function to pull information from a FRAME_BEGIN message.
@@ -839,6 +869,7 @@ void usage(std::string name)
   std::cerr << "  --noPoses                           Do not stream poses from the server, so no latency adjustment." << std::endl;
   std::cerr << "  --dumpTiming <file name base>       Write timing on quit to CSV files with the specified base name." << std::endl;
   std::cerr << "  --triggerAheadMicroseconds <int>    Microseconds ahead of render to trigger camera (default 22000)." << std::endl;
+  std::cerr << "  --depthAheadMicroseconds <int>      Microseconds ahead of render to compute depth (default 8000)." << std::endl;
   std::cerr << "  --lockRotation                      Lock the rotation of the viewer to the initial helicopter pose." << std::endl;
   std::cerr << "  --disableLatencyCompensation        Disable latency compensation." << std::endl;
 };
@@ -860,6 +891,7 @@ int main(int argc, char** argv)
   bool doStreamPoses = true;      ///< Stream poses from the server, so we can adjust for latency.
   std::string dumpTimingFileName; ///< The base name for the timing files.
   unsigned triggerAheadMicroseconds = 22000; ///< Microseconds ahead of render to trigger camera.
+  unsigned depthAheadMicroseconds = 8000;    ///< Microseconds ahead of render to compute depth.
   bool lockRotation = false;      ///< Lock the rotation of the viewer to the initial helicopter pose.
   bool disableLatencyCompensation = false; ///< Disable latency compensation.
   double cameraFPS = 0.0;         ///< The frames per second to run the camera at, 0 defaults to camera-specified maximum.
@@ -963,6 +995,12 @@ int main(int argc, char** argv)
         return 2;
       }
       triggerAheadMicroseconds = std::stoi(argv[i]);
+    } else if (std::string("--depthAheadMicroseconds") == argv[i]) {
+      if (++i >= argc) {
+        usage(argv[0]);
+        return 2;
+      }
+      depthAheadMicroseconds = std::stoi(argv[i]);
     } else if (std::string("--lockRotation") == argv[i]) {
       lockRotation = true;
     } else if (std::string("--disableLatencyCompensation") == argv[i]) {
@@ -1272,19 +1310,38 @@ int main(int argc, char** argv)
 
     // Separate the cameras into two groups: those with IDs less than 22 are visible cameras and those
     // with larger ones are depth-estimation cameras.
-    std::vector<asdp::render::CameraRenderInfo> visibleCameras, depthCameras;
     for (size_t j = 0; j < cameraRenderInfos.size(); j++) {
       if (cameraRenderInfos[j].m_ID < 22) {
-        visibleCameras.push_back(cameraRenderInfos[j]);
+        g_visibleCameras.push_back(cameraRenderInfos[j]);
       }
       else {
-        depthCameras.push_back(cameraRenderInfos[j]);
+        g_depthCameras.push_back(cameraRenderInfos[j]);
       }
+    }
+
+    // Construct a depth-estimation object if there are any depth-estimation cameras.
+    // There must be sets of two camera pairs for depth estimation.
+    if (g_depthCameras.size() > 0) {
+      if (g_depthCameras.size() % 2 != 0) {
+        std::cerr << "Error: There must be an even number of depth-estimation cameras." << std::endl;
+        return 20;
+      }
+      std::vector< std::array<CameraRenderInfo, 2> > cameras;
+      for (size_t i = 0; i < g_depthCameras.size(); i += 2) {
+        std::array<CameraRenderInfo, 2> pair = { g_depthCameras[i], g_depthCameras[i + 1] };
+        cameras.push_back(pair);
+      }
+
+      g_depthEstimator = std::make_shared<DepthEstimator>(cameras, poseAdjuster, float(1.0/cameraFPS),
+        g_depthCameras[0].m_resolutionPixels[0] * 2 / 100, g_depthCameras[0].m_resolutionPixels[1] * 2 / 100);
     }
 
     // Configure an event structure to handle callbacks for the display windows.
     std::shared_ptr<EventHandlers> handlers = std::make_shared<EventHandlers>();
     handlers->ChangePlayPause = ChangePlayPause;
+    if (g_depthEstimator) {
+      handlers->ComputeDepth = ComputeDepth;
+    }
 
     // Construct one or more Display objects to render the cameras.  They all share objects with the texture Display.
     std::vector<std::shared_ptr<Display>> displays;
@@ -1294,27 +1351,27 @@ int main(int argc, char** argv)
       // Construct a Tone Map texture to use for rendering the cameras.
       if (!displayTexture->BorrowContext()) {
         std::cerr << "Error borrowing context from displayTexture for ToneMap." << std::endl;
-        return 20;
+        return 21;
       }
       GLuint toneMapTexture = displayInfos[i].toneMap.GenerateTexture();
       toneMapTextures.push_back(toneMapTexture);
       if (toneMapTexture == 0) {
         std::cerr << "Error generating texture for ToneMap." << std::endl;
-        return 21;
+        return 22;
       }
       if (!displayTexture->ReturnContext()) {
         std::cerr << "Error returning context to displayTexture for ToneMap." << std::endl;
-        return 21;
+        return 23;
       }
 
       // Construct a Composite object to render the visible cameras.  We need a separate Composite per Display so that each
       // can cache consistent camera images for the whole frame while views are being rendered.
-      // Two displays cannot share a SetupRenderFramfe() call because they may have different frame rates.
+      // Two displays cannot share a SetupRenderFrame() call because they may have different frame rates.
       std::shared_ptr<Timer> timer;
       status = client->GetTimer(timer);
       if (status != OKAY) {
         std::cerr << "Failed to get timer: " << ErrorMessage(status) << std::endl;
-        return 22;
+        return 24;
       }
       uint32_t renderOffsetMicroseconds = 0;
       if (replayStreamID != 0) {
@@ -1322,19 +1379,19 @@ int main(int argc, char** argv)
         // smoother than a single frame behind and slightly smoother than 2 frames.
         renderOffsetMicroseconds = 1.5 * (1000000 / cameraFPS);
       }
-      std::shared_ptr<Composite> composite = std::make_shared<CompositeCameras>(
-        visibleCameras, toneMapTexture, poseAdjuster, Time(1/cameraFPS),
+      g_composite = std::make_shared<CompositeCameras>(
+        g_visibleCameras, toneMapTexture, poseAdjuster, Time(1/cameraFPS),
         renderOffsetMicroseconds,
         Time(0, 1000000 / displayInfos[i].fps), (i == 0) ? (&g_timingInfo) : nullptr);
 
       // Only time the first listed display, to avoid race conditions
       if (displayInfos[i].useOpenXR) {
-        displays.push_back(std::make_shared<DisplayOpenXR>(composite, displayTexture.get(),
-          client, triggerID, triggerAheadMicroseconds, 2500, 1, handlers, nullptr,
+        displays.push_back(std::make_shared<DisplayOpenXR>(g_composite, displayTexture.get(),
+          client, triggerID, triggerAheadMicroseconds, depthAheadMicroseconds, 2500, 1, handlers, nullptr,
           (i == 0) ? (&g_timingInfo) : nullptr, replayStreamID != 0));
       } else {
         displays.push_back(std::make_shared<DisplayWindow>("ASDP Render Module " + std::to_string(i),
-          composite, client, triggerID, triggerAheadMicroseconds, displayInfos[i].fps, 2500,
+          g_composite, client, triggerID, triggerAheadMicroseconds, depthAheadMicroseconds, displayInfos[i].fps, 2500,
           displayInfos[i].width, displayInfos[i].height,
           displayInfos[i].hFOV, displayInfos[i].joystick, displayTexture.get(),
           displayInfos[i].fullScreen, displayInfos[i].fullScreenDisplay, false, handlers, nullptr,
@@ -1343,11 +1400,11 @@ int main(int argc, char** argv)
       if (displays.back()->GetStatus() != "") {
         std::cerr << "Error constructing Display " << i << ": " << displays.back()->GetStatus() << std::endl;
         displays.clear();
-        return 22;
+        return 25;
       }
     }
 
-    // Construct shared pointers to the data structures that we'll need to do rendering, with the
+    // Construct shared pointers to the data structures that we'll need to do rendering, with
     // custom destructors that will clean up when the shared_ptr is destroyed.
     std::atomic<bool> done(false);
     std::vector< std::shared_ptr<PinnedBufferPool> > cpuPinnedImageBuffers;
@@ -1363,7 +1420,7 @@ int main(int argc, char** argv)
         gpuImageBuffers.push_back(std::make_shared<GPUBufferPool>(cameras[i].width* cameras[i].height * sizeof(uint16_t), 5));
       } catch (std::exception &e) {
         std::cerr << "Error creating buffer pools: " << e.what() << std::endl;
-        return 24;
+        return 26;
       }
 
       // Create a stream for the GPU to use.
@@ -1377,7 +1434,7 @@ int main(int argc, char** argv)
       std::shared_ptr<ReceiverUDP> receiverUDP = std::make_shared<ReceiverUDP>(ip_address);
       if (receiverUDP->GetConstructorStatus() != OKAY) {
         std::cerr << "Error constructing ReceiverUDP: " << ErrorMessage(receiverUDP->GetConstructorStatus()) << std::endl;
-        return 25;
+        return 27;
       }
       UDPReceivers.push_back(receiverUDP);
     }
@@ -1434,7 +1491,7 @@ int main(int argc, char** argv)
       status = client->SendCommandPacket(CommandPacketStreamPoses());
       if (status != OKAY) {
         std::cerr << "Failed to request pose data: " << ErrorMessage(status) << std::endl;
-        return 26;
+        return 28;
       }
     }
     if (hasTemperatures) {
@@ -1442,7 +1499,7 @@ int main(int argc, char** argv)
       status = client->SendCommandPacket(CommandPacketStreamTemperatures());
       if (status != OKAY) {
         std::cerr << "Failed to request temperature data: " << ErrorMessage(status) << std::endl;
-        return 27;
+        return 29;
       }
     }
 
@@ -1462,7 +1519,7 @@ int main(int argc, char** argv)
       status = client->SendCommandPacket(CommandPacketConfigureTrigger(ti));
       if (status != OKAY) {
         std::cerr << "Failed to configure trigger: " << ErrorMessage(status) << std::endl;
-        return 29;
+        return 30;
       }
       std::cout << std::setprecision(10) << "  Configured trigger for camera " << camID << " with period " << ti.period << " seconds" << std::endl;
 
@@ -1471,7 +1528,7 @@ int main(int argc, char** argv)
       status = UDPReceivers[i]->GetPort(port);
       if (status != OKAY) {
         std::cerr << "Failed to get port: " << ErrorMessage(status) << std::endl;
-        return 30;
+        return 31;
       }
       StreamEndpoint endpoint(ip_address, port);
       SubregionDescription region;
@@ -1494,14 +1551,14 @@ int main(int argc, char** argv)
     if (replayStreamID) {
       if (!hasStorage) {
         std::cerr << "Error: Storage API not available when replay requested." << std::endl;
-        return 1001;
+        return 33;
       }
       std::cout << "Requesting replay of stream " << replayStreamID << std::endl;
       // Set the initial time to be above zero so that we never predict backwards to negative time.
       status = client->SendCommandPacket(CommandPacketStartReplay(replayStreamID, Time(10,0)));
       if (status != OKAY) {
         std::cerr << "Failed to start replay: " << ErrorMessage(status) << std::endl;
-        return 1002;
+        return 34;
       }
     }
 
@@ -1511,7 +1568,7 @@ int main(int argc, char** argv)
     status = client->GetTimer(timer);
     if (status != OKAY) {
       std::cerr << "Failed to get timer: " << ErrorMessage(status) << std::endl;
-      return 33;
+      return 35;
     }
 
     // Create a ClockSynchronizer that will manage adjusting the timer based on clock-sync messages.
@@ -1613,14 +1670,14 @@ int main(int argc, char** argv)
     // Now borrow the context from the displayTexture so that we can delete the textures.
     if (!displayTexture->BorrowContext()) {
       std::cerr << "Error borrowing context from displayTexture." << std::endl;
-      return 33;
+      return 36;
     }
     cameraRenderInfos.clear();
 
     glDeleteTextures(toneMapTextures.size(), toneMapTextures.data());
     if (!displayTexture->ReturnContext()) {
       std::cerr << "Error returning context to displayTexture." << std::endl;
-      return 34;
+      return 37;
     }
 
     // If we've been asked to dump the timing information, do so.
@@ -1633,6 +1690,12 @@ int main(int argc, char** argv)
       }
       if (g_timingInfo.renderSubmitTimes.size() > maxEntries) {
         maxEntries = g_timingInfo.renderSubmitTimes.size();
+      }
+      if (g_timingInfo.depthStartTimes.size() > maxEntries) {
+        maxEntries = g_timingInfo.depthStartTimes.size();
+      }
+      if (g_timingInfo.depthEndTimes.size() > maxEntries) {
+        maxEntries = g_timingInfo.depthEndTimes.size();
       }
       for (size_t i = 0; i < g_timingInfo.cameras.size(); i++) {
         if (g_timingInfo.cameras[i].frameBeginTimes.size() > maxEntries) {
@@ -1651,7 +1714,7 @@ int main(int argc, char** argv)
       std::string rawTimingFileName = dumpTimingFileName + ".csv";
       std::ofstream dumpTimingFile(rawTimingFileName);
       std::cout << "Dumping " << maxEntries << " raw timing information to " << rawTimingFileName << std::endl;
-      dumpTimingFile << "Render start,Render submit";
+      dumpTimingFile << "Depth Start,Depth End,Render start,Render submit";
       for (size_t i = 0; i < g_timingInfo.cameras.size(); i++) {
         dumpTimingFile << ",Camera " << i+1 << " frame begin,Camera " << i+1
           << " frame end,Camera " << i+1 << " texture complete,Camera " << i+1
@@ -1660,6 +1723,14 @@ int main(int argc, char** argv)
       dumpTimingFile << std::endl;
       dumpTimingFile << std::setprecision(20);
       for (size_t i = 0; i < maxEntries; i++) {
+        if (i < g_timingInfo.depthStartTimes.size()) {
+          dumpTimingFile << TimeIntervalToStringMilliseconds(g_timingInfo.depthStartTimes[i] - g_timingInfo.startTime);
+        }
+        dumpTimingFile << ",";
+        if (i < g_timingInfo.depthEndTimes.size()) {
+          dumpTimingFile << TimeIntervalToStringMilliseconds(g_timingInfo.depthEndTimes[i] - g_timingInfo.startTime);
+        }
+        dumpTimingFile << ",";
         if (i < g_timingInfo.renderStartTimes.size()) {
           dumpTimingFile << TimeIntervalToStringMilliseconds(g_timingInfo.renderStartTimes[i] - g_timingInfo.startTime);
         }
@@ -1699,7 +1770,7 @@ int main(int argc, char** argv)
       std::string intervalTimingFileName = dumpTimingFileName + "_intervals.csv";
       std::ofstream intervalTimingFile(intervalTimingFileName);
       std::cout << "Dumping " << maxEntries-1 << " interval timing information to " << intervalTimingFileName << std::endl;
-      intervalTimingFile << "Render start interval,Render submit interval";
+      intervalTimingFile << "Depth start interval,Depth end interval,Render start interval,Render submit interval";
       for (size_t i = 0; i < g_timingInfo.cameras.size(); i++) {
         intervalTimingFile << ",Camera " << i+1 << " frame begin interval, " << i+1 << " frame end interval,Camera"
           << i+1 << " texture complete interval,Camera " << i+1 << " center time interval";
@@ -1707,6 +1778,14 @@ int main(int argc, char** argv)
       intervalTimingFile << std::endl;
       intervalTimingFile << std::setprecision(20);
       for (size_t i = 1; i < maxEntries; i++) {
+        if (i < g_timingInfo.depthStartTimes.size()) {
+          intervalTimingFile << TimeIntervalToStringMilliseconds(g_timingInfo.depthStartTimes[i] - g_timingInfo.depthStartTimes[i - 1]);
+        }
+        intervalTimingFile << ",";
+        if (i < g_timingInfo.depthEndTimes.size()) {
+          intervalTimingFile << TimeIntervalToStringMilliseconds(g_timingInfo.depthEndTimes[i] - g_timingInfo.depthEndTimes[i - 1]);
+        }
+        intervalTimingFile << ",";
         if (i < g_timingInfo.renderStartTimes.size()) {
           intervalTimingFile << TimeIntervalToStringMilliseconds(g_timingInfo.renderStartTimes[i] - g_timingInfo.renderStartTimes[i - 1]);
         }
@@ -1744,11 +1823,18 @@ int main(int argc, char** argv)
       std::string summaryTimingFileName = dumpTimingFileName + "_summary.csv";
       std::ofstream summaryTimingFile(summaryTimingFileName);
       std::cout << "Dumping summary timing information to " << summaryTimingFileName << std::endl;
-      summaryTimingFile << "Render start to submit,Render start interval,Min camera end to render"
+      summaryTimingFile << "Depth start to depth end,Depth end to render start,Render start to submit,Render start interval,Min camera end to render"
         << ",Max camera end to render, Min camera texture to render, Max camera texture to render"
         << ",Min center interval,Max center interval" << std::endl;
       summaryTimingFile << std::setprecision(20);
       for (size_t i = 1; i < g_timingInfo.renderStartTimes.size(); i++) {
+        if (i < g_timingInfo.depthStartTimes.size() && i < g_timingInfo.depthEndTimes.size()) {
+          summaryTimingFile << TimeIntervalToStringMilliseconds(g_timingInfo.depthEndTimes[i] - g_timingInfo.depthStartTimes[i]);
+        }
+        summaryTimingFile << ",";
+        if (i < g_timingInfo.depthEndTimes.size() && i < g_timingInfo.renderStartTimes.size()) {
+          summaryTimingFile << TimeIntervalToStringMilliseconds(g_timingInfo.renderStartTimes[i] - g_timingInfo.depthEndTimes[i]);
+        }
         if (i < g_timingInfo.renderSubmitTimes.size()) {
           summaryTimingFile << TimeIntervalToStringMilliseconds(g_timingInfo.renderSubmitTimes[i] - g_timingInfo.renderStartTimes[i]);
         }

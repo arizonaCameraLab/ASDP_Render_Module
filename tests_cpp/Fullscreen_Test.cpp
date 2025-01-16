@@ -31,7 +31,7 @@ int main()
     std::shared_ptr<asdp::render::CompositeCube> composite = std::make_shared<asdp::render::CompositeCube>(10);
 
     // Create a full-screen Display window to show the CompositeCube object.
-    asdp::render::DisplayWindow window("Fullscreen_Test", composite, client, 0, 0, fps, 2500, width, height,
+    asdp::render::DisplayWindow window("Fullscreen_Test", composite, client, 0, 0, 0, fps, 2500, width, height,
       90, "", nullptr, true);
     if (window.GetStatus() != "") {
       std::cerr << "Error opening first display: " << window.GetStatus() << std::endl;
