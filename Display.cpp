@@ -449,7 +449,14 @@ void DisplayWindow::DisplayThread(std::string windowName,
       std::cerr << "OpenGL error before checking whether to call ComputeDepth: " << err << std::endl;
     }
     if (m_eventHandlers && m_eventHandlers->ComputeDepth) {
+      // Make the window's context current
+      std::lock_guard<std::mutex> lock(Display::m_impl->m_contextMutex);
+      glfwMakeContextCurrent(Display::m_impl->m_window);
+
       m_eventHandlers->ComputeDepth(renderTime, m_userData);
+
+      // Release the window's current context in case another Display wants to borrow it.
+      glfwMakeContextCurrent(nullptr);
     }
 
     // Wait until it is time to render the next frame.  We must busy-wait here to avoid having our
