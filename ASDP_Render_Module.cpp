@@ -82,7 +82,7 @@ static void ComputeDepth(Time renderTime, void* /* unused */)
   g_timingInfo.depthStartTimes.push_back(std::chrono::steady_clock::now());
 
   // Make a snapshot of the images from all cameras at the same time and store it into
-  // the custom ImageQueue we're using.
+  // a custom ImageQueue that has a single entry from the same time for all of them.
   /// @todo
 
   // Compute the depth and then use it to adjust the mesh for all rendered cameras and
@@ -1334,6 +1334,7 @@ int main(int argc, char** argv)
 
       g_depthEstimator = std::make_shared<DepthEstimator>(cameras, poseAdjuster, float(1.0/cameraFPS),
         g_depthCameras[0].m_resolutionPixels[0] * 2 / 100, g_depthCameras[0].m_resolutionPixels[1] * 2 / 100);
+      std::cout << "Constructed DepthEstimator with " << cameras.size() << " camera pairs." << std::endl;
     }
 
     // Configure an event structure to handle callbacks for the display windows.
