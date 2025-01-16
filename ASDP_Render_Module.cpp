@@ -87,10 +87,14 @@ static void ComputeDepth(Time renderTime, void* /* unused */)
 
   // Compute the depth and then use it to adjust the mesh for all rendered cameras and
   // then update the vertex buffer for the camera on the Composite.
-  g_depthEstimator->ComputeDepthEstimate(renderTime);
-  for (CameraRenderInfo& cri : g_visibleCameras) {
-    g_depthEstimator->UpdateMesh(cri);
-    g_composite->UpdateVertexBuffer(cri);
+  std::string ret = g_depthEstimator->ComputeDepthEstimate(renderTime);
+  if (ret != "") {
+    std::cerr << "Error computing depth estimate: " << ret << std::endl;
+  } else {
+    for (CameraRenderInfo& cri : g_visibleCameras) {
+      g_depthEstimator->UpdateMesh(cri);
+      g_composite->UpdateVertexBuffer(cri);
+    }
   }
 
   g_timingInfo.depthEndTimes.push_back(std::chrono::steady_clock::now());
@@ -1332,9 +1336,26 @@ int main(int argc, char** argv)
         cameras.push_back(pair);
       }
 
+      if (!displayTexture->BorrowContext()) {
+        std::cerr << "Error borrowing context from displayTexture for DepthEstimator." << std::endl;
+        return 100;
+      }
+
+      // Initialize GLEW in our context. It is okay to initialize it more than once.
+      glewExperimental = true;
+      if (glewInit() != GLEW_OK) {
+        std::cerr << "Failed to initialize GLEW before DepthTexture" << std::endl;
+        return false;
+      }
+
       g_depthEstimator = std::make_shared<DepthEstimator>(cameras, poseAdjuster, float(1.0/cameraFPS),
         g_depthCameras[0].m_resolutionPixels[0] * 2 / 100, g_depthCameras[0].m_resolutionPixels[1] * 2 / 100);
       std::cout << "Constructed DepthEstimator with " << cameras.size() << " camera pairs." << std::endl;
+
+      if (!displayTexture->ReturnContext()) {
+        std::cerr << "Error returning context to displayTexture for DepthEstimator." << std::endl;
+        return 101;
+      }
     }
 
     // Configure an event structure to handle callbacks for the display windows.
