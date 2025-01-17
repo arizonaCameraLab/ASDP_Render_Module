@@ -357,6 +357,12 @@ public:
       pixelCounts[1] = maxY * maxYRatio;
       if (pixelCounts[1] % m_ny != 0) { pixelCounts[1] += m_ny - (pixelCounts[1] % m_ny); }
 
+      //std::cout << "XXX Position: " << position.x << " " << position.y << " " << position.z
+      //  << ", Orientation: " << orientation.w << " " << orientation.x << " " << orientation.y << " " << orientation.z
+      //  << ", Pixel counts: " << pixelCounts[0] << " " << pixelCounts[1]
+      //  << ", Regions: " << m_nx << " " << m_ny
+      //  << std::endl;
+
       // Make the camera pair info.
       std::shared_ptr<CameraPairInfo> cameraPairInfo = std::make_shared<CameraPairInfo>(
         toneMap, cameras[i][0], cameras[i][1],
