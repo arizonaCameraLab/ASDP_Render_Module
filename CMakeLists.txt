@@ -306,6 +306,7 @@ if(BUILD_TESTS)
 
   set (CU_TESTS
     CUDA_To_Texture_Test
+    Sum_and_Squared_Speed_Test
   )
   foreach (BASE ${CU_TESTS})
     set (APP ${BASE})
