@@ -14,9 +14,6 @@ using namespace asdp::render;
 /// @param offy The y offset to apply to the coordinate (added to the y coordinate in pixels).
 /// @param nx The total width of the image.
 /// @param ny The total height of the image.
-/// @param offset The offset to apply to the data (added to the data before scaling, normally negative in the range
-/// 0 to -65535).
-/// @param scale The scale to apply to the data (multiplied by the data after offsetting, should be positive).
 __global__ void WriteSurfaceKernel(cudaSurfaceObject_t surface, uint16_t* buffer,
   uint16_t offy, uint16_t nx, uint16_t ny)
 {
