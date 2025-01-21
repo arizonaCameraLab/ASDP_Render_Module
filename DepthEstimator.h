@@ -102,7 +102,7 @@ namespace asdp {
       /// Used to hide the implementation details and avoid the need for client code to #include
       /// all of the files needed to implement the class.
       class DepthEstimatorImpl;
-      std::unique_ptr<DepthEstimatorImpl> m_impl;
+      std::shared_ptr<DepthEstimatorImpl> m_impl;
 
       std::string m_constructorStatus;  ///< Status of the constructor, empty if successful, error message if not.
 
