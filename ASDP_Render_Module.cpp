@@ -1895,6 +1895,7 @@ int main(int argc, char** argv)
         if (i < g_timingInfo.depthEndTimes.size() && i < g_timingInfo.renderStartTimes.size()) {
           summaryTimingFile << TimeIntervalToStringMilliseconds(g_timingInfo.renderStartTimes[i] - g_timingInfo.depthEndTimes[i]);
         }
+        summaryTimingFile << ",";
         if (i < g_timingInfo.renderSubmitTimes.size()) {
           summaryTimingFile << TimeIntervalToStringMilliseconds(g_timingInfo.renderSubmitTimes[i] - g_timingInfo.renderStartTimes[i]);
         }
