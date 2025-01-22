@@ -1215,9 +1215,11 @@ int main(int argc, char** argv)
         }
 
         std::shared_ptr<Vignette> vig(new VignetteNone);
-        try {
+        if (camera.contains("vignette")) try {
           json vignette = camera["vignette"];
-          if (vignette["type"] == "evenPolynomial") {
+          if (!vignette.contains("type")) {
+            // No vignette specified, so use the default.
+          } else if (vignette["type"] == "evenPolynomial") {
             json parameters = vignette["parameters"];
             std::array<double, 2> center = parameters["COP"];
             std::array<double, 2> cArray = parameters["coefficients"];
@@ -1225,11 +1227,7 @@ int main(int argc, char** argv)
             VignetteRadialPolynomail* vignette = new VignetteRadialPolynomail(center,
               camera["fieldOfViewDegrees"], coefficients);
             vig = std::shared_ptr<Vignette>(vignette);
-          }
-          else if (vignette["type"] == nullptr) {
-            // No vignette specified, so use the default.
-          }
-          else {
+          } else {
             std::cerr << "Error: Unknown vignette type: " << vignette["type"] << std::endl;
             return 18;
           }
