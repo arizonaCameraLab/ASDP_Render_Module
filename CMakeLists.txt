@@ -103,6 +103,7 @@ set (Render_Module_HEADERS
   PoseAdjuster.h
   DepthEstimator.h
   Vignette.h
+  ImageStatistics.h
 )
 set (Render_Module_SOURCES
   Composite.cpp
@@ -116,6 +117,7 @@ set (Render_Module_SOURCES
   PoseAdjuster.cpp
   DepthEstimator.cu
   Vignette.cpp
+  ImageStatistics.cu
 )
 add_library(Render_Module STATIC ${Render_Module_SOURCES} ${Render_Module_HEADERS})
 target_include_directories(Render_Module PUBLIC
@@ -286,6 +288,7 @@ if(BUILD_TESTS)
     PoseAdjuster_Test
     DepthEstimator_Test
     Vignette_Test
+    ImageStatistics_Test
   )
   foreach (BASE ${CPP_TESTS})
     set (APP ${BASE})
