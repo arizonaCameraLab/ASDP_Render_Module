@@ -160,11 +160,11 @@ public:
     }
 
     // Zero the sum and sum of squares.
-    res = cudaMemset(m_sum, 0, sizeof(uint64_t));
+    res = cudaMemsetAsync(m_sum, 0, sizeof(uint64_t), *m_stream);
     if (res != cudaSuccess) {
       return "cudaMemset() failed: " + std::string(cudaGetErrorString(res));
     }
-    res = cudaMemset(m_sumOfSquares, 0, sizeof(uint64_t));
+    res = cudaMemsetAsync(m_sumOfSquares, 0, sizeof(uint64_t), *m_stream);
     if (res != cudaSuccess) {
       return "cudaMemset() failed: " + std::string(cudaGetErrorString(res));
     }
@@ -173,21 +173,22 @@ public:
     dim3 blockSize(BLOCK_SIZE, BLOCK_SIZE);
     dim3 gridSize(m_width / BLOCK_SIZE, m_height / BLOCK_SIZE);
     ComputeMeanStdKernel << <gridSize, blockSize, 0, *m_stream >> > (surfObj, m_sum, m_sumOfSquares);
-    cudaDeviceSynchronize();
+    cudaStreamSynchronize(*m_stream);
 
     // Unlock the image.
     m_camera->m_imageQueue->UnlockImage(image);
 
     // Read back the results.
     uint64_t sum, sumOfSquares;
-    res = cudaMemcpy(&sum, m_sum, sizeof(uint64_t), cudaMemcpyDeviceToHost);
+    res = cudaMemcpyAsync(&sum, m_sum, sizeof(uint64_t), cudaMemcpyDeviceToHost, *m_stream);
     if (res != cudaSuccess) {
       return "cudaMemcpy() failed: " + std::string(cudaGetErrorString(res));
     }
-    res = cudaMemcpy(&sumOfSquares, m_sumOfSquares, sizeof(uint64_t), cudaMemcpyDeviceToHost);
+    res = cudaMemcpyAsync(&sumOfSquares, m_sumOfSquares, sizeof(uint64_t), cudaMemcpyDeviceToHost, *m_stream);
     if (res != cudaSuccess) {
       return "cudaMemcpy() failed: " + std::string(cudaGetErrorString(res));
     }
+    cudaStreamSynchronize(*m_stream);
 
     // Compute the mean and standard deviation knowing the number of pixels.
     double numPixels = m_width * m_height;
