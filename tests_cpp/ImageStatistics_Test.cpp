@@ -12,14 +12,20 @@ int main()
   float fps = asdp::render::imageStatistics::MeanStd::SpeedTestSingleCalculation(1280, 1024);
   if (fps < 0) {
     std::cerr << "Error in MeanStd::SpeedTestSingleEstimation()" << std::endl;
-    return 2;
+    return 1;
   }
   std::cout << "Speed test: " << fps * 1.0e3 << "ms per estimation for 1280x1024 image" << std::endl;
 
   std::string ret = asdp::render::imageStatistics::MeanStd::Test();
   if (ret.size() > 0) {
     std::cerr << "Error in MeanStd::Test(): " << ret << std::endl;
-    return 1;
+    return 2;
+  }
+
+  ret = asdp::render::imageStatistics::MeanStdGroup::Test();
+  if (ret.size() > 0) {
+    std::cerr << "Error in MeanStdGroup::Test(): " << ret << std::endl;
+    return 3;
   }
 
   // Clean up resources and exit

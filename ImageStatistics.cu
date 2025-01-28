@@ -5,6 +5,7 @@
 #include <iostream>
 #include <chrono>
 #include <memory>
+#include <thread>
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
 #include <ImageStatistics.h>
@@ -173,7 +174,6 @@ public:
     dim3 blockSize(BLOCK_SIZE, BLOCK_SIZE);
     dim3 gridSize(m_width / BLOCK_SIZE, m_height / BLOCK_SIZE);
     ComputeMeanStdKernel << <gridSize, blockSize, 0, *m_stream >> > (surfObj, m_sum, m_sumOfSquares);
-    cudaStreamSynchronize(*m_stream);
 
     // Unlock the image.
     m_camera->m_imageQueue->UnlockImage(image);
@@ -188,7 +188,6 @@ public:
     if (res != cudaSuccess) {
       return "cudaMemcpy() failed: " + std::string(cudaGetErrorString(res));
     }
-    cudaStreamSynchronize(*m_stream);
 
     // Compute the mean and standard deviation knowing the number of pixels.
     double numPixels = m_width * m_height;
@@ -242,6 +241,129 @@ std::string MeanStd::Compute(double& mean, double& stddev) const
   return m_impl->Compute(mean, stddev);
 }
 
+
+MeanStdGroup::MeanStdGroup(std::vector< std::shared_ptr<asdp::render::CameraRenderInfo> > cameras,
+    std::shared_ptr<asdp::render::Display> display,
+    double updateInterval)
+  : m_cameras(cameras)
+  , m_display(display)
+  , m_updateInterval(updateInterval)
+{
+  // Start the thread that will update the statistics.
+  m_stopThread = false;
+  m_updateThread = std::thread(&MeanStdGroup::UpdateThread, this);
+}
+
+MeanStdGroup::~MeanStdGroup()
+{
+  // Signal the thread to stop and wait for it to finish.
+  m_stopThread = true;
+  if (m_updateThread.joinable()) {
+    m_updateThread.join();
+  }
+}
+
+std::string MeanStdGroup::GetMeanStd(double& mean, double& stddev) const
+{
+  if (m_status != "") {
+    return "Class failed: " + m_status;
+  }
+
+  // Lock the mutex to access the vectors.
+  std::lock_guard<std::mutex> lock(m_mutex);
+
+  // If we have no entries yet, return 0.0 for mean and stddev.
+  if (m_means.size() == 0) {
+    mean = stddev = 0.0;
+    return "";
+  }
+
+  // Compute the mean of the means and the max of the standard deviations in the vectors.
+  double sum = 0.0;
+  double maxStddev = 0.0;
+  for (size_t i = 0; i < m_means.size(); i++) {
+    sum += m_means[i];
+    if (m_stds[i] > maxStddev) {
+      maxStddev = m_stds[i];
+    }
+  }
+  mean = sum / m_means.size();
+
+  // Compute the standard deviation of the means and add it to the maximum of the standard
+  // deviations to compute the aggregate standard deviation.
+  double sumOfSquares = 0.0;
+  for (size_t i = 0; i < m_means.size(); i++) {
+    sumOfSquares += (m_means[i] - mean) * (m_means[i] - mean);
+  }
+  stddev = sqrt(sumOfSquares / m_means.size()) + maxStddev;
+
+  return "";
+}
+
+void MeanStdGroup::UpdateThread()
+{
+  // Start with the first camera.
+  size_t nextCamera = 0;
+
+  // Get the start time and compute the next time to update.
+  std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
+  long long durationMicroseconds = m_updateInterval * 1e6;
+  std::chrono::steady_clock::time_point nextUpdate = now + std::chrono::microseconds(durationMicroseconds);
+
+  // Loop until we are told to stop.
+  while (!m_stopThread) {
+
+    // Sleep until the next update time and then increase the update time by the duration.
+    std::this_thread::sleep_until(nextUpdate);
+    nextUpdate += std::chrono::microseconds(durationMicroseconds);
+
+    // Find out which is the next camera to update. If we have fewer entries than cameras, add a new one.
+    // Otherwise, loop through the cameras.
+    nextCamera = (nextCamera + 1) % m_cameras.size();
+    if (m_means.size() < m_cameras.size()) {
+      std::lock_guard<std::mutex> lock(m_mutex);
+      m_means.push_back(0.0);
+      m_stds.push_back(0.0);
+      nextCamera = m_means.size() - 1;
+      // Make the new entry to compute the mean and standard deviation.
+      m_meanStds.push_back(std::make_shared<MeanStd>(m_cameras[nextCamera]));
+    }
+
+    // Compute the mean and standard deviation for the camera, borrowing the context needed
+    if (!m_display->BorrowContext()) {
+      std::lock_guard<std::mutex> lock(m_mutex);
+      m_status = "MeanStdGroup::UpdateThread(): BorrowContext() failed";
+      break;
+    }
+    double mean, stddev;
+    std::string res = m_meanStds[nextCamera]->Compute(mean, stddev);
+    if (res != "") {
+      std::lock_guard<std::mutex> lock(m_mutex);
+      m_status = "MeanStdGroup::UpdateThread(): MeanStd::Compute() failed: " + res;
+      break;
+    }
+    if (!m_display->ReturnContext()) {
+      std::lock_guard<std::mutex> lock(m_mutex);
+      m_status = "MeanStdGroup::UpdateThread(): ReturnContext() failed";
+      break;
+    }
+
+    // Convert the mean and standard deviation to common units by adjusting by the
+    // camera offset and gain. We multiply both by the gain and add the offset to the mean.
+    float offset, gain;
+    m_cameras[nextCamera]->GetColorOffsetGain(offset, gain);
+    mean = (mean + offset) * gain;
+    stddev = stddev * gain;
+
+    // Overwrite the mean and standard deviation in the vectors.
+    {
+      std::lock_guard<std::mutex> lock(m_mutex);
+      m_means[nextCamera] = mean;
+      m_stds[nextCamera] = stddev;
+    }
+  }
+}
+
 //================================================================================================
 // Testing and its helper functions and classes.
 
@@ -252,7 +374,7 @@ float MeanStd::SpeedTestSingleCalculation(uint16_t width, uint16_t height)
     return -1;
   }
   glfwWindowHint(GLFW_VISIBLE, false);
-  std::shared_ptr<GLFWwindow> window(glfwCreateWindow(640, 480, "DepthEstimator Test", NULL, NULL), glfwDestroyWindow);
+  std::shared_ptr<GLFWwindow> window(glfwCreateWindow(640, 480, "MeanStd Test", NULL, NULL), glfwDestroyWindow);
   if (!window) {
     return -1;
   }
@@ -426,6 +548,224 @@ std::string MeanStd::Test()
       return "MeanStd constructor failed to detect non-even multiple of block size";
     }
 
+  }
+
+  return "";
+}
+
+std::string MeanStdGroup::Test()
+{
+  // Create a window and OpenGL context.
+  if (!glfwInit()) {
+    return "Could not initialize GLFW";
+  }
+  glfwWindowHint(GLFW_VISIBLE, false);
+  std::shared_ptr<GLFWwindow> window(glfwCreateWindow(640, 480, "MeanStdGroup Test", NULL, NULL), glfwDestroyWindow);
+  if (!window) {
+    return "Could not create GLFW window";
+  }
+  glfwMakeContextCurrent(window.get());
+
+  // Initialize GLEW in our context. It is okay to initialize it more than once.
+  glewExperimental = true;
+  if (glewInit() != GLEW_OK) {
+    return "Could not initialize GLEW";
+  }
+  // Clear any GL error that Glew caused.  Apparently on Non-Windows
+  // platforms, this can cause a spurious error 1280.
+  glGetError();
+
+  // Make the display object that we'll use and borrow its context.
+  std::shared_ptr<asdp::render::Display> display(new asdp::render::DisplayTexture());
+  if (!display->BorrowContext()) {
+    return "Display::BorrowContext() failed";
+  }
+
+
+  // Make four cameras with different offsets and gains and with different distributions of pixel values.
+  // The first camera has a constant image of 10000 with an offset of 0 and gain of 1.
+  // The second has a constant image of 20000 with an offset of 10000 and gain of 1 (making its values 30000).
+  // The third has a constant image of 2000 with an offset of 3000 and gain of 2 (making its values 10000).
+  // The fourth has a half and half image of 40000 and 20000 with an offset of 0 and gain of 1, making its mean
+  // values 30000 and its variance 10000.
+  // The total mean should be 20000 and the total standard deviation should be 10000 + 10000 = 20000.
+  {
+    // Test the constructor.
+    uint16_t width = 1280;
+    uint16_t height = 1024;
+    DistortionNone* dNone = new DistortionNone();
+    std::shared_ptr<Distortion> distortion(dNone);
+    VignetteNone* vNone = new VignetteNone();
+    std::shared_ptr<Vignette> vignette(vNone);
+
+    // Make first camera.
+    std::shared_ptr<asdp::render::ImageData> image1(new ImageData);
+    std::shared_ptr<ImageQueue> queue1(new ImageQueue);
+    asdp::render::CameraRenderInfo* camera1 = new asdp::render::CameraRenderInfo(
+      1, { 0, 0, 0 }, { 0, 0, 0 }, { width, height }, { 90.0, 90.0 }, distortion, vignette, queue1);
+    std::shared_ptr<asdp::render::CameraRenderInfo> camera1Ptr(camera1);
+
+    // Add an image to the queue.
+    // Construct an OpenGL texture and copy the image into it.
+    std::vector<uint16_t> image10K(width * height, 10000);
+    GLuint texture1;
+    glGenTextures(1, &texture1);
+    glBindTexture(GL_TEXTURE_2D, texture1);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_R16, width, height, 0, GL_RED, GL_UNSIGNED_SHORT, image10K.data());
+    glBindTexture(GL_TEXTURE_2D, 0);
+    image1->texture = texture1;
+    queue1->InsertImage(image1);
+
+    // Make the second camera.
+    std::shared_ptr<asdp::render::ImageData> image2(new ImageData);
+    std::shared_ptr<ImageQueue> queue2(new ImageQueue);
+    asdp::render::CameraRenderInfo* camera2 = new asdp::render::CameraRenderInfo(
+      1, { 0, 0, 0 }, { 0, 0, 0 }, { width, height }, { 90.0, 90.0 }, distortion, vignette, queue2);
+    camera2->SetColorOffsetGain(10000.0, 1.0);
+    std::shared_ptr<asdp::render::CameraRenderInfo> camera2Ptr(camera2);
+
+    // Add an image to the queue.
+    // Construct an OpenGL texture and copy the image into it.
+    std::vector<uint16_t> image20K(width * height, 20000);
+    GLuint texture2;
+    glGenTextures(1, &texture2);
+    glBindTexture(GL_TEXTURE_2D, texture2);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_R16, width, height, 0, GL_RED, GL_UNSIGNED_SHORT, image20K.data());
+    glBindTexture(GL_TEXTURE_2D, 0);
+    image2->texture = texture2;
+    queue2->InsertImage(image2);
+
+    // Make the third camera.
+    std::shared_ptr<asdp::render::ImageData> image3(new ImageData);
+    std::shared_ptr<ImageQueue> queue3(new ImageQueue);
+    asdp::render::CameraRenderInfo* camera3 = new asdp::render::CameraRenderInfo(
+      1, { 0, 0, 0 }, { 0, 0, 0 }, { width, height }, { 90.0, 90.0 }, distortion, vignette, queue3);
+    camera3->SetColorOffsetGain(3000.0, 2.0);
+    std::shared_ptr<asdp::render::CameraRenderInfo> camera3Ptr(camera3);
+
+    // Add an image to the queue.
+    // Construct an OpenGL texture and copy the image into it.
+    std::vector<uint16_t> image2K(width * height, 2000);
+    GLuint texture3;
+    glGenTextures(1, &texture3);
+    glBindTexture(GL_TEXTURE_2D, texture3);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_R16, width, height, 0, GL_RED, GL_UNSIGNED_SHORT, image2K.data());
+    glBindTexture(GL_TEXTURE_2D, 0);
+    image3->texture = texture3;
+    queue3->InsertImage(image3);
+
+    // Make the fourth camera.
+    std::shared_ptr<asdp::render::ImageData> image4(new ImageData);
+    std::shared_ptr<ImageQueue> queue4(new ImageQueue);
+    asdp::render::CameraRenderInfo* camera4 = new asdp::render::CameraRenderInfo(
+      1, { 0, 0, 0 }, { 0, 0, 0 }, { width, height }, { 90.0, 90.0 }, distortion, vignette, queue4);
+    std::shared_ptr<asdp::render::CameraRenderInfo> camera4Ptr(camera4);
+
+    // Add an image to the queue.
+    // Construct an OpenGL texture and copy the image into it.
+    size_t imgSize = static_cast<size_t>(width) * height;
+    std::vector<uint16_t> image40K20K(imgSize, 20000);
+    for (size_t i = 0; i < imgSize / 2; i++) {
+      image40K20K[i] = 40000;
+    }
+    GLuint texture4;
+    glGenTextures(1, &texture4);
+    glBindTexture(GL_TEXTURE_2D, texture4);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_R16, width, height, 0, GL_RED, GL_UNSIGNED_SHORT, image40K20K.data());
+    glBindTexture(GL_TEXTURE_2D, 0);
+    image4->texture = texture4;
+    queue4->InsertImage(image4);
+
+    // Done with the display context.
+    if (!display->ReturnContext()) {
+      return "Display::ReturnContext() failed";
+    }
+
+    // Make a vector of cameras and construct the MeanStdGroup with a 0.1-second iteration time.
+    std::vector< std::shared_ptr<asdp::render::CameraRenderInfo> > cameras = {
+      camera1Ptr, camera2Ptr, camera3Ptr, camera4Ptr };
+    MeanStdGroup meanStdGroup(cameras, display, 0.1);
+
+    // When we first start, the mean and standard deviation should be 0 and there should be no
+    // entries in the vectors.
+    double mean, stddev;
+    std::string res = meanStdGroup.GetMeanStd(mean, stddev);
+    if (res != "") {
+      return "MeanStdGroup::GetMeanStd() failed at start: " + res;
+    }
+    if (mean != 0.0) {
+      return "MeanStdGroup::GetMeanStd() failed at start: mean is not 0.0";
+    }
+    if (stddev != 0.0) {
+      return "MeanStdGroup::GetMeanStd() failed at start: stddev is not 0.0";
+    }
+
+    // Wait until 0.05 seconds after there is one entry in the vectors so that the calculation
+    // has time to complete. The mean should be 10000 and the standard deviation should be 0.
+    while (meanStdGroup.m_means.size() < 1) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    res = meanStdGroup.GetMeanStd(mean, stddev);
+    if (res != "") {
+      return "MeanStdGroup::GetMeanStd() failed for first camera: " + res;
+    }
+    if (mean != 10000.0) {
+      return "MeanStdGroup::GetMeanStd() failed for first camera: mean is not 10000.0";
+    }
+    if (stddev != 0.0) {
+      return "MeanStdGroup::GetMeanStd() failed for first camera: stddev is not 0.0";
+    }
+
+    // Wait until 0.05 seconds after there are two entries in the vectors so that the calculation
+    // has time to complete. The mean should be 20000 and the standard deviation should be 10000.
+    while (meanStdGroup.m_means.size() < 2) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    res = meanStdGroup.GetMeanStd(mean, stddev);
+    if (res != "") {
+      return "MeanStdGroup::GetMeanStd() failed for second camera: " + res;
+    }
+    if (mean != 20000.0) {
+      return "MeanStdGroup::GetMeanStd() failed for second camera: mean is not 20000.0";
+    }
+    if (stddev != 10000.0) {
+      return "MeanStdGroup::GetMeanStd() failed for second camera: stddev is not 10000.0";
+    }
+
+    // Wait until 0.05 seconds after there are four cameras so that the calculation
+    // has time to complete. The mean should be 20000 and the standard deviation should be 30000.
+    while (meanStdGroup.m_means.size() < 4) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    res = meanStdGroup.GetMeanStd(mean, stddev);
+    if (res != "") {
+      return "MeanStdGroup::GetMeanStd() failed for all cameras: " + res;
+    }
+    if (mean != 20000.0) {
+      return "MeanStdGroup::GetMeanStd() failed for all cameras: mean is not 20000.0 but " + std::to_string(mean);
+    }
+    if (stddev != 20000.0) {
+      return "MeanStdGroup::GetMeanStd() failed for all cameras: stddev is not 20000.0 but " + std::to_string(stddev);
+    }
   }
 
   return "";
