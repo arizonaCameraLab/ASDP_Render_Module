@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2024: Arizona Board of Regents on Behalf of the University of Arizona
+ * Copyright (C) 2025: Arizona Board of Regents on Behalf of the University of Arizona
  */
 
  /**
@@ -17,11 +17,14 @@
 #include <memory>
 #include <mutex>
 #include <atomic>
-#include <Composite.h>
-#include <Display.h>
+#include <CameraRenderInfo.h>
 
 namespace asdp {
   namespace render {
+
+    // Forward declaration to avoid #include loop.
+    class Display;
+
     namespace imageStatistics {
 
       /// @brief Class that computes the mean and standard deviation of pixel values for an image.
@@ -32,7 +35,7 @@ namespace asdp {
         /// @details The caller must have a valid OpenGL context on the calling thread when calling any of the
         /// functions in this class, including the constructor. This context must have had glewInit() called on it.
         /// @param camera Camera to use for the image.
-        MeanStd(asdp::render::CameraRenderInfo camera);
+        MeanStd(CameraRenderInfo camera);
 
         /// @brief Virtual destructor so that proper deconstruction happens on pointers.
         virtual ~MeanStd() = default;
@@ -83,8 +86,8 @@ namespace asdp {
         /// will be updated at each interval in a round-robin fashion, so it will take as many intervals as there
         /// are cameras to complete a totally new estimate. This is done incrementally, using N-1 old camera values
         /// along with the new value each interval.
-        MeanStdGroup(std::vector<asdp::render::CameraRenderInfo> cameras,
-          std::shared_ptr<asdp::render::Display> display,
+        MeanStdGroup(std::vector<CameraRenderInfo> cameras,
+          std::shared_ptr<Display> display,
           double updateInterval = 1.0/60);
 
         /// @brief Virtual destructor so that proper deconstruction happens on pointers.
@@ -101,8 +104,8 @@ namespace asdp {
         static std::string Test();
 
       protected:
-        std::vector<asdp::render::CameraRenderInfo> m_cameras; ///< Cameras to use for the images.
-        std::shared_ptr<asdp::render::Display> m_display; ///< Display to borrow the OpenGL context from.
+        std::vector<CameraRenderInfo> m_cameras; ///< Cameras to use for the images.
+        std::shared_ptr<Display> m_display; ///< Display to borrow the OpenGL context from.
         double m_updateInterval;          ///< Interval in seconds to update the mean and standard deviation values.
         std::string m_status;             ///< Status filled in by the constructor and other methods.
 

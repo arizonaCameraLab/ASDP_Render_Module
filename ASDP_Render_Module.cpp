@@ -36,11 +36,14 @@
 #include <GL/glew.h>
 #include <ToneMap.h>
 #include <RenderTimingInfo.h>
+#include <CameraRenderInfo.h>
 #include <Composite.h>
 #include <Display.h>
 #include <CPUDataToTextureHandler.h>
 #include <PoseAdjuster.h>
 #include <DepthEstimator.h>
+#include <ImageStatistics.h>
+#include <RangeEstimator.h>
 #include <cuda.h>
 #include <cuda_runtime.h>
 #include <cuda_gl_interop.h>
@@ -856,6 +859,7 @@ void usage(std::string name)
   std::cerr << "Usage: " << name << " [options] <ip_address>" << std::endl;
   std::cerr << "  <ip_address>                        The IP address to listen for servers on." << std::endl;
   std::cerr << "  Options:" << std::endl;
+  std::cerr << "  --help                              Print this help message." << std::endl;
   std::cerr << "  --frameStride <frame stride>        Read one out of every this many frames. Set to 1 for every frame." << std::endl;
   std::cerr << "  --toneMap <tone map>                The tone map to use.  Options are: linear blackbody bluesky" << std::endl;
   std::cerr << "  --addDisplay                        Add another display with defaults that can be overridden" << std::endl;
@@ -876,6 +880,7 @@ void usage(std::string name)
   std::cerr << "  --depthAheadMicroseconds <int>      Microseconds ahead of render to compute depth (default 8000)." << std::endl;
   std::cerr << "  --lockRotation                      Lock the rotation of the viewer to the initial helicopter pose." << std::endl;
   std::cerr << "  --disableLatencyCompensation        Disable latency compensation." << std::endl;
+  std::cerr << "  --autoRangeStd <below> <above>      Adjust color range to specified standard deviations above and below the mean." << std::endl;
 };
 
 int main(int argc, char** argv)
@@ -899,6 +904,8 @@ int main(int argc, char** argv)
   bool lockRotation = false;      ///< Lock the rotation of the viewer to the initial helicopter pose.
   bool disableLatencyCompensation = false; ///< Disable latency compensation.
   double cameraFPS = 0.0;         ///< The frames per second to run the camera at, 0 defaults to camera-specified maximum.
+  double autoRangeStdBelow = 0.0; ///< Adjust color range to this many standard deviations below the mean.
+  double autoRangeStdAbove = 0.0; ///< Adjust color range to this many standard deviations above the mean.
   size_t realParams = 0;          ///< The number of non-flag parameters we've seen.
 
   // Parse the command line arguments, with the first non-flag argument being the
@@ -1009,6 +1016,17 @@ int main(int argc, char** argv)
       lockRotation = true;
     } else if (std::string("--disableLatencyCompensation") == argv[i]) {
       disableLatencyCompensation = true;
+    } else if (std::string("--autoRangeStd") == argv[i]) {
+      if (++i >= argc) {
+        usage(argv[0]);
+        return 2;
+      }
+      autoRangeStdBelow = std::stod(argv[i]);
+      if (++i >= argc) {
+        usage(argv[0]);
+        return 2;
+      }
+      autoRangeStdAbove = std::stod(argv[i]);
     } else if (argv[i][0] == '-') {
       usage(argv[0]);
       return 1;
@@ -1324,6 +1342,20 @@ int main(int argc, char** argv)
       }
     }
 
+    // If we've been asked to do standard-deviation-based auto-ranging, set that up.
+    std::shared_ptr<asdp::render::imageStatistics::MeanStdGroup> meanStdGroup;
+    std::shared_ptr<RangeEstimator> rangeEstimator = std::make_shared<RangeEstimatorFixed>();
+    if (autoRangeStdAbove > autoRangeStdBelow) {
+      // Make a display object that shares textures with the others.
+      std::shared_ptr<Display> display = std::make_shared<DisplayTexture>(displayTexture.get());
+      // Make a MeanStdGroup object to handle the statistics.
+      meanStdGroup = std::make_shared<asdp::render::imageStatistics::MeanStdGroup>(g_visibleCameras,
+        display, 1.0/cameraFPS);
+      // Make a RangeEstimator object to handle the range.
+      rangeEstimator = std::make_shared<RangeEstimatorStdRanges>(meanStdGroup,
+        autoRangeStdBelow, autoRangeStdAbove);
+    }
+
     // Construct a depth-estimation object if there are any depth-estimation cameras.
     // There must be sets of two camera pairs for depth estimation.
     if (g_depthCameras.size() > 0) {
@@ -1411,7 +1443,8 @@ int main(int argc, char** argv)
       g_composite = std::make_shared<CompositeCameras>(
         g_visibleCameras, toneMapTexture, poseAdjuster, Time(1/cameraFPS),
         renderOffsetMicroseconds,
-        Time(0, 1000000 / displayInfos[i].fps), (i == 0) ? (&g_timingInfo) : nullptr);
+        Time(0, 1000000 / displayInfos[i].fps), (i == 0) ? (&g_timingInfo) : nullptr,
+        rangeEstimator);
 
       // Only time the first listed display, to avoid race conditions
       if (displayInfos[i].useOpenXR) {
