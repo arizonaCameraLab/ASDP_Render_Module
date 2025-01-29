@@ -1083,7 +1083,7 @@ void CompositeCameras::RenderView(asdp::Time scanOutTime, const float* viewProje
     }
     // Then get the rescale min and max values and determine the gain and offset to apply to map
     // the specified minVal and maxVal to 0 and 1.
-    {
+    if (m_rangeEstimator) {
       double minVal, maxVal;
       std::string ret = m_rangeEstimator->GetCurrentRange(minVal, maxVal);
       if (ret.empty()) {
