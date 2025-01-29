@@ -98,7 +98,11 @@ void CameraRenderInfo::ComputePlanarCameraMeshInfo(size_t nx, size_t ny, GLfloat
       vertex.texCoord = glm::vec2(u, v);
       vertex.normalizedOffset = glm::normalize(transformedPoint);
       vertex.depth = glm::length(transformedPoint);
-      vertex.vignetteGain = m_vignette->EvaluateAtPoint({ xn, yn });
+      vertex.vignetteGain = 1.0;
+      if (m_vignette != nullptr) {
+        // Compute the vignette gain at the point (xn, yn)
+        vertex.vignetteGain = m_vignette->EvaluateAtPoint({ xn, yn });
+      }
       vertices.push_back(vertex);
     }
   }
