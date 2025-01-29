@@ -69,17 +69,17 @@ class MeanStd::MeanStdImpl {
 public:
   friend class MeanStd;
   MeanStdImpl() = delete;
-  MeanStdImpl(MeanStd *parent, std::shared_ptr<asdp::render::CameraRenderInfo> camera)
+  MeanStdImpl(MeanStd *parent, asdp::render::CameraRenderInfo camera)
     : m_parent(parent)
     , m_camera(camera)
   {
     // Make sure the image is an even multiple of the block size in each dimension.
-    if (camera->m_resolutionPixels[0] % BLOCK_SIZE != 0 || camera->m_resolutionPixels[1] % BLOCK_SIZE != 0) {
+    if (camera.m_resolutionPixels[0] % BLOCK_SIZE != 0 || camera.m_resolutionPixels[1] % BLOCK_SIZE != 0) {
       m_constructorStatus = "Image dimensions must be an even multiple of the block size";
       return;
     }
-    m_width = camera->m_resolutionPixels[0];
-    m_height = camera->m_resolutionPixels[1];
+    m_width = camera.m_resolutionPixels[0];
+    m_height = camera.m_resolutionPixels[1];
 
     // Make an auto-deleted CUDA stream.
     cudaStream_t* streamPtr = new cudaStream_t;
@@ -130,7 +130,7 @@ public:
     }
 
     // Lock a texture for CUDA to use and then map it to CUDA.
-    std::list< std::shared_ptr<ImageData> > images = m_camera->m_imageQueue->LockNewestImages(1);
+    std::list< std::shared_ptr<ImageData> > images = m_camera.m_imageQueue->LockNewestImages(1);
     if (images.size() == 0) {
       return "No images available";
     }
@@ -176,7 +176,7 @@ public:
     ComputeMeanStdKernel << <gridSize, blockSize, 0, *m_stream >> > (surfObj, m_sum, m_sumOfSquares);
 
     // Unlock the image.
-    m_camera->m_imageQueue->UnlockImage(image);
+    m_camera.m_imageQueue->UnlockImage(image);
 
     // Read back the results.
     uint64_t sum, sumOfSquares;
@@ -214,7 +214,7 @@ public:
 
   MeanStd* m_parent = nullptr;
   std::string m_constructorStatus;
-  std::shared_ptr<asdp::render::CameraRenderInfo> m_camera; ///< Camera to use.
+  asdp::render::CameraRenderInfo m_camera; ///< Camera to use.
 
   uint16_t m_width = 0; ///< Width of the image, stored from the camera info.
   uint16_t m_height = 0; ///< Height of the image, stored from the camera info.
@@ -225,7 +225,7 @@ public:
   uint64_t* m_sumOfSquares = nullptr; ///< Device pointer to sum of squares of pixel values.
 };
 
-MeanStd::MeanStd(std::shared_ptr<asdp::render::CameraRenderInfo> camera)
+MeanStd::MeanStd(asdp::render::CameraRenderInfo camera)
 {
   // Create the implementation.
   m_impl = std::make_unique<MeanStdImpl>(this, camera);
@@ -242,7 +242,7 @@ std::string MeanStd::Compute(double& mean, double& stddev) const
 }
 
 
-MeanStdGroup::MeanStdGroup(std::vector< std::shared_ptr<asdp::render::CameraRenderInfo> > cameras,
+MeanStdGroup::MeanStdGroup(std::vector<asdp::render::CameraRenderInfo> cameras,
     std::shared_ptr<asdp::render::Display> display,
     double updateInterval)
   : m_cameras(cameras)
@@ -351,7 +351,7 @@ void MeanStdGroup::UpdateThread()
     // Convert the mean and standard deviation to common units by adjusting by the
     // camera offset and gain. We multiply both by the gain and add the offset to the mean.
     float offset, gain;
-    m_cameras[nextCamera]->GetColorOffsetGain(offset, gain);
+    m_cameras[nextCamera].GetColorOffsetGain(offset, gain);
     mean = (mean + offset) * gain;
     stddev = stddev * gain;
 
@@ -396,10 +396,9 @@ float MeanStd::SpeedTestSingleCalculation(uint16_t width, uint16_t height)
   std::shared_ptr<Vignette> vignette(vNone);
   std::shared_ptr<ImageQueue> queue(new ImageQueue);
 
-  asdp::render::CameraRenderInfo* camera = new asdp::render::CameraRenderInfo(
+  asdp::render::CameraRenderInfo camera(
     1, { 0, 0, 0 }, { 0, 0, 0 }, { width, height }, { 90.0, 90.0 }, distortion, vignette, queue);
-  std::shared_ptr<asdp::render::CameraRenderInfo> cameraPtr(camera);
-  MeanStd meanStd(cameraPtr);
+  MeanStd meanStd(camera);
   if (meanStd.m_constructorStatus != "") {
     return -1;
   }
@@ -470,10 +469,9 @@ std::string MeanStd::Test()
     std::shared_ptr<Vignette> vignette(vNone);
     std::shared_ptr<ImageQueue> queue(new ImageQueue);
 
-    asdp::render::CameraRenderInfo* camera = new asdp::render::CameraRenderInfo(
+    asdp::render::CameraRenderInfo camera(
       1, { 0, 0, 0 }, { 0, 0, 0 }, { width, height }, { 90.0, 90.0 }, distortion, vignette, queue);
-    std::shared_ptr<asdp::render::CameraRenderInfo> cameraPtr(camera);
-    MeanStd meanStd(cameraPtr);
+    MeanStd meanStd(camera);
     if (meanStd.m_constructorStatus != "") {
       return "MeanStd constructor failed: " + meanStd.m_constructorStatus;
     }
@@ -540,10 +538,9 @@ std::string MeanStd::Test()
     std::shared_ptr<Vignette> vignette(vNone);
     std::shared_ptr<ImageQueue> queue(new ImageQueue);
 
-    asdp::render::CameraRenderInfo* camera = new asdp::render::CameraRenderInfo(
+    asdp::render::CameraRenderInfo camera(
       1, { 0, 0, 0 }, { 0, 0, 0 }, { width, height }, { 90.0, 90.0 }, distortion, vignette, queue);
-    std::shared_ptr<asdp::render::CameraRenderInfo> cameraPtr(camera);
-    MeanStd meanStd(cameraPtr);
+    MeanStd meanStd(camera);
     if (meanStd.m_constructorStatus != "Image dimensions must be an even multiple of the block size") {
       return "MeanStd constructor failed to detect non-even multiple of block size";
     }
@@ -601,9 +598,8 @@ std::string MeanStdGroup::Test()
     // Make first camera.
     std::shared_ptr<asdp::render::ImageData> image1(new ImageData);
     std::shared_ptr<ImageQueue> queue1(new ImageQueue);
-    asdp::render::CameraRenderInfo* camera1 = new asdp::render::CameraRenderInfo(
+    asdp::render::CameraRenderInfo camera1(
       1, { 0, 0, 0 }, { 0, 0, 0 }, { width, height }, { 90.0, 90.0 }, distortion, vignette, queue1);
-    std::shared_ptr<asdp::render::CameraRenderInfo> camera1Ptr(camera1);
 
     // Add an image to the queue.
     // Construct an OpenGL texture and copy the image into it.
@@ -623,10 +619,9 @@ std::string MeanStdGroup::Test()
     // Make the second camera.
     std::shared_ptr<asdp::render::ImageData> image2(new ImageData);
     std::shared_ptr<ImageQueue> queue2(new ImageQueue);
-    asdp::render::CameraRenderInfo* camera2 = new asdp::render::CameraRenderInfo(
+    asdp::render::CameraRenderInfo camera2(
       1, { 0, 0, 0 }, { 0, 0, 0 }, { width, height }, { 90.0, 90.0 }, distortion, vignette, queue2);
-    camera2->SetColorOffsetGain(10000.0, 1.0);
-    std::shared_ptr<asdp::render::CameraRenderInfo> camera2Ptr(camera2);
+    camera2.SetColorOffsetGain(10000.0, 1.0);
 
     // Add an image to the queue.
     // Construct an OpenGL texture and copy the image into it.
@@ -646,10 +641,9 @@ std::string MeanStdGroup::Test()
     // Make the third camera.
     std::shared_ptr<asdp::render::ImageData> image3(new ImageData);
     std::shared_ptr<ImageQueue> queue3(new ImageQueue);
-    asdp::render::CameraRenderInfo* camera3 = new asdp::render::CameraRenderInfo(
+    asdp::render::CameraRenderInfo camera3(
       1, { 0, 0, 0 }, { 0, 0, 0 }, { width, height }, { 90.0, 90.0 }, distortion, vignette, queue3);
-    camera3->SetColorOffsetGain(3000.0, 2.0);
-    std::shared_ptr<asdp::render::CameraRenderInfo> camera3Ptr(camera3);
+    camera3.SetColorOffsetGain(3000.0, 2.0);
 
     // Add an image to the queue.
     // Construct an OpenGL texture and copy the image into it.
@@ -669,9 +663,8 @@ std::string MeanStdGroup::Test()
     // Make the fourth camera.
     std::shared_ptr<asdp::render::ImageData> image4(new ImageData);
     std::shared_ptr<ImageQueue> queue4(new ImageQueue);
-    asdp::render::CameraRenderInfo* camera4 = new asdp::render::CameraRenderInfo(
+    asdp::render::CameraRenderInfo camera4(
       1, { 0, 0, 0 }, { 0, 0, 0 }, { width, height }, { 90.0, 90.0 }, distortion, vignette, queue4);
-    std::shared_ptr<asdp::render::CameraRenderInfo> camera4Ptr(camera4);
 
     // Add an image to the queue.
     // Construct an OpenGL texture and copy the image into it.
@@ -698,8 +691,8 @@ std::string MeanStdGroup::Test()
     }
 
     // Make a vector of cameras and construct the MeanStdGroup with a 0.1-second iteration time.
-    std::vector< std::shared_ptr<asdp::render::CameraRenderInfo> > cameras = {
-      camera1Ptr, camera2Ptr, camera3Ptr, camera4Ptr };
+    std::vector<asdp::render::CameraRenderInfo> cameras = {
+      camera1, camera2, camera3, camera4 };
     MeanStdGroup meanStdGroup(cameras, display, 0.1);
 
     // When we first start, the mean and standard deviation should be 0 and there should be no

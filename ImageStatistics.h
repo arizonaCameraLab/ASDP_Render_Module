@@ -32,7 +32,7 @@ namespace asdp {
         /// @details The caller must have a valid OpenGL context on the calling thread when calling any of the
         /// functions in this class, including the constructor. This context must have had glewInit() called on it.
         /// @param camera Camera to use for the image.
-        MeanStd(std::shared_ptr<asdp::render::CameraRenderInfo> camera);
+        MeanStd(asdp::render::CameraRenderInfo camera);
 
         /// @brief Virtual destructor so that proper deconstruction happens on pointers.
         virtual ~MeanStd() = default;
@@ -79,8 +79,11 @@ namespace asdp {
         /// manner.
         /// @param cameras Cameras to use for the images.
         /// @param display Display to borrow the OpenGL context from.
-        /// @param updateInterval Interval in seconds to update the mean and standard deviation values.
-        MeanStdGroup(std::vector< std::shared_ptr<asdp::render::CameraRenderInfo> > cameras,
+        /// @param updateInterval Interval in seconds to update the mean and standard deviation values.  One camera
+        /// will be updated at each interval in a round-robin fashion, so it will take as many intervals as there
+        /// are cameras to complete a totally new estimate. This is done incrementally, using N-1 old camera values
+        /// along with the new value each interval.
+        MeanStdGroup(std::vector<asdp::render::CameraRenderInfo> cameras,
           std::shared_ptr<asdp::render::Display> display,
           double updateInterval = 1.0/60);
 
@@ -98,7 +101,7 @@ namespace asdp {
         static std::string Test();
 
       protected:
-        std::vector< std::shared_ptr<asdp::render::CameraRenderInfo> > m_cameras; ///< Cameras to use for the images.
+        std::vector<asdp::render::CameraRenderInfo> m_cameras; ///< Cameras to use for the images.
         std::shared_ptr<asdp::render::Display> m_display; ///< Display to borrow the OpenGL context from.
         double m_updateInterval;          ///< Interval in seconds to update the mean and standard deviation values.
         std::string m_status;             ///< Status filled in by the constructor and other methods.
