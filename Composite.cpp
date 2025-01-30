@@ -150,6 +150,7 @@ void Composite::checkProgramError(GLuint programId, const std::string& exception
 //==================================================================================================
 // Objects needed by the CompositeCube class.
 
+/// @brief Helper class that handles defining and drawing a cube.
 class asdp::render::CompositeCube::MeshCube {
 public:
   MeshCube(GLfloat scale, size_t numTriangles = 6 * 2 * 15 * 15) {

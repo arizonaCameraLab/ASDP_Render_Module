@@ -106,6 +106,7 @@ set (Render_Module_HEADERS
   Vignette.h
   ImageStatistics.h
   RangeEstimator.h
+  RenderTimingInfo.h
 )
 set (Render_Module_SOURCES
   CameraRenderInfo.cpp

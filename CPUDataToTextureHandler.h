@@ -2,6 +2,14 @@
  * Copyright (C) 2024: Arizona Board of Regents on Behalf of the University of Arizona
  */
 
+ /**
+  * @file CPUDataToTextureHandler.h
+  * @brief Apache Strap-Down Pilotage Render/CPUDataToTextureHandler class header file.
+  *
+  * @author ReliaSolve.
+  * @date September 13, 2024.
+  */
+
 #pragma once
 #include <GL/glew.h>
 #include <cuda.h>
@@ -13,11 +21,14 @@
 #include <ASDP_Core_API.h>
 #include "ImageQueue.h"
 
- /// @brief Summary of information from image messages, including start, data, and end.
- /// @details This enables us to retain the information about what messages were in a packet
- /// so that the data can be processed in the other thread without needing to keep around the
- /// stream packet object or re-parse it. This is necessary to avoid causing a bottleneck in the
- /// ReceiveDataThread.
+namespace asdp {
+  namespace render {
+
+/// @brief Summary of information from image messages, including start, data, and end.
+/// @details This enables us to retain the information about what messages were in a packet
+/// so that the data can be processed in the other thread without needing to keep around the
+/// stream packet object or re-parse it. This is necessary to avoid causing a bottleneck in the
+/// ReceiveDataThread.
 struct MessageSummary {
   asdp::MessageID messageType = asdp::DISCOVERY;  ///< The type of message (filling in an arbitrary one here)
   asdp::Time time;                  ///< The time associated with the message
@@ -33,9 +44,9 @@ struct MessageSummary {
 };
 
 /// @brief Structure to hold the data needed to send data to the GPU and run the kernel.
- /// @details These will all have been constructed by the thread that is pushing them onto the queue,
- /// with custom destructors as needed to free the memory when the shared_ptr is destroyed.
- /// This has all of the information needed to get the image all the way into the texture to be rendered.
+/// @details These will all have been constructed by the thread that is pushing them onto the queue,
+/// with custom destructors as needed to free the memory when the shared_ptr is destroyed.
+/// This has all of the information needed to get the image all the way into the texture to be rendered.
 struct DataToSendToGPU {
   std::vector<MessageSummary> messages;   ///< Summaries of the messages included in this data packet
   std::shared_ptr<unsigned char> cpuImageBufferPtr;///< The pinned-memory buffer on the CPU that holds the image data
@@ -101,3 +112,6 @@ protected:
   /// @return Empty string on success, description of error on failure.
   std::string SendToGPU();
 };
+
+  } // namespace render
+} // namespace asdp

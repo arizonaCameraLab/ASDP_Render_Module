@@ -3,7 +3,7 @@
  */
 
  /**
-  * @file Distortion.h
+  * @file ImageStatistics.h
   * @brief Apache Strap-Down Pilotage Render/Image Statistics classes header file.
   *
   * @author ReliaSolve.

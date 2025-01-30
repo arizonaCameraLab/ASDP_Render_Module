@@ -8,6 +8,9 @@
 #include <cmath>
 #include <iostream>
 
+namespace asdp {
+  namespace render {
+
 // Constants for WGS84
 const double a = 6378137.0; // Semi-major axis in meters
 const double e = 0.081819190842622; // First eccentricity
@@ -35,9 +38,6 @@ static ECEF convertLLAtoECEF(double latitude, double longitude, double altitude)
 
   return { x, y, z };
 }
-
-using namespace asdp::render;
-using namespace asdp;
 
 PoseAdjuster::PoseAdjuster(size_t maxCount, PoseAdjusterCoordinates coordinates, bool ignoreTimeDifference)
   : m_maxCount(maxCount)
@@ -595,3 +595,6 @@ std::string PoseAdjuster::Test()
 
   return "";
 }
+
+  } // namespace render
+} // namespace asdp
