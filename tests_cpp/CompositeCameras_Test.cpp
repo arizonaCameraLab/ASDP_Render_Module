@@ -10,6 +10,7 @@
 #include <GL/glew.h>
 #include <ToneMap.h>
 #include <Composite.h>
+#include <RangeEstimator.h>
 #include <ASDP_Core_API.h>
 #include <GLFW/glfw3.h>
 
@@ -147,7 +148,8 @@ int main()
 
   // Make a tenth camera that will be used to test the color offset and gain parameters.
   // It will be smaller and drawn in the center in front of the other cameras (its position
-  // will be negative Y).
+  // will be negative Y). Its values will be adjusted by the offset and gain to stretch the
+  // whole value across the image.
   {
     std::array<double, 3> position = { 0.0, -0.5, 0.0 };
     std::array<double, 3> orientation = { 0.0, 0.0, 0.0 };
@@ -169,10 +171,12 @@ int main()
   // Use the default tone-map texture for the cameras.
   asdp::render::ToneMap toneMap;
   GLuint toneMapTexture = toneMap.GenerateTexture();
-
+  std::shared_ptr<asdp::render::RangeEstimatorFixed> rangeEstimator =
+    std::make_shared<asdp::render::RangeEstimatorFixed>(0.0, 1.0);
   // Create a CompositeCameras object to render once the window is open and the context is active.
   std::shared_ptr<asdp::render::PoseAdjuster> poseAdjuster = std::make_shared<asdp::render::PoseAdjuster>();
-  asdp::render::CompositeCameras composite(cameras, toneMapTexture, poseAdjuster, asdp::Time());
+  asdp::render::CompositeCameras composite(cameras, toneMapTexture, poseAdjuster, asdp::Time(),
+    0, asdp::Time(), nullptr, rangeEstimator);
 
   // Loop until the user closes the window.
   std::cout << "You should see a row of three distorted dark boxes horizontally across" << std::endl;
@@ -182,9 +186,21 @@ int main()
   std::cout << "The extensions meet at dark and then bright boundaries from left to right." << std::endl;
   std::cout << "A smaller box should be in the center of the view, black at bottom to white at top." << std::endl;
   std::cout << "" << std::endl;
+  std::cout << "Press the space bar to toggle between the whole color range and only the" << std::endl;
+  std::cout << "range 0.25 through 0.75." << std::endl;
+  std::cout << "" << std::endl;
   std::cout << "Close the window to exit." << std::endl;
   auto start = std::chrono::steady_clock::now();
+  bool rangeZoomed = false;
+  bool spacePressed = false;
   while (!glfwWindowShouldClose(window)) {
+
+    // Set the range to be the whole color range or only the quarter of it above the middle.
+    if (rangeZoomed) {
+      rangeEstimator->SetCurrentRange(0.25, 0.75);
+    } else {
+      rangeEstimator->SetCurrentRange(0.0, 1.0);
+    }
 
     // Render here
     composite.Render(asdp::Time(), views);
@@ -194,6 +210,18 @@ int main()
 
     // Poll for and process events
     glfwPollEvents();
+
+    // When the space key is pressed, toggle between a range that covers the whole color range and one that
+    // covers only the quarter of it above the middle.
+    if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS) {
+      if (!spacePressed) {
+        rangeZoomed = !rangeZoomed;
+        std::cout << "Range " << (rangeZoomed ? "" : "not ") << "zoomed" << std::endl;
+        spacePressed = true;
+      }
+    } else {
+      spacePressed = false;
+    }
   }
 
   // Clean up resources and exit

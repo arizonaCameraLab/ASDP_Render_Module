@@ -8,14 +8,19 @@
 #include <cmath>
 #include <iostream>
 
+namespace asdp {
+  namespace render {
+
 // Constants for WGS84
 const double a = 6378137.0; // Semi-major axis in meters
 const double e = 0.081819190842622; // First eccentricity
 
+/// @brief Earth-Centered Earth-Fixed (ECEF) coordinates.
+/// @details https://en.wikipedia.org/wiki/Earth-centered,_Earth-fixed_coordinate_system
 struct ECEF {
-  double x;
-  double y;
-  double z;
+  double x;   ///< Pointing towards the Prime Meridian
+  double y;   ///< Pointing towards 90 degrees East longitude
+  double z;   ///< Pointing towards the North Pole
 };
 
 static ECEF convertLLAtoECEF(double latitude, double longitude, double altitude) {
@@ -33,9 +38,6 @@ static ECEF convertLLAtoECEF(double latitude, double longitude, double altitude)
 
   return { x, y, z };
 }
-
-using namespace asdp::render;
-using namespace asdp;
 
 PoseAdjuster::PoseAdjuster(size_t maxCount, PoseAdjusterCoordinates coordinates, bool ignoreTimeDifference)
   : m_maxCount(maxCount)
@@ -593,3 +595,6 @@ std::string PoseAdjuster::Test()
 
   return "";
 }
+
+  } // namespace render
+} // namespace asdp

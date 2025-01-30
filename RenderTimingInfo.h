@@ -19,6 +19,7 @@ namespace asdp {
     /// @brief Data structure to hold timing information for helping with system tuning.
     struct RenderTimingInfo
     {
+      /// @brief Data structure to hold timing information for a single camera.
       struct camera {
         std::vector<std::chrono::steady_clock::time_point> frameBeginTimes;   ///< The times for the begin frame message receipts.
         std::vector<std::chrono::steady_clock::time_point> frameEndTimes;     ///< The times for the end frame message receipts.

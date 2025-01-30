@@ -30,6 +30,8 @@
 #include <Vignette.h>
 #include <PoseAdjuster.h>
 #include <RenderTimingInfo.h>
+#include <CameraRenderInfo.h>
+#include <RangeEstimator.h>
 
 namespace asdp {
   namespace render {
@@ -164,112 +166,6 @@ namespace asdp {
       void TearDownRenderFrame() override;
     };
 
-    /// @brief Information needed per vertex to generate the vertices for the render mesh for a camera.
-    struct VertexInfo {
-      glm::vec2 texCoord; ///< The texture coordinates for the vertex.
-      glm::vec3 offset; ///< The offset from the camera origin to the point on the plane at a specified depth.
-      float vignetteGain = 1.0f; ///< The scale factor for the vignette effect.
-      /// The length of the offset vector (distance from the camera).  This is initialized to the length
-      /// of the offset vector in ComputeCameraMeshInfo, but can be updated by depth calculations later to
-      /// adjust the distance along the normalizedOffset direction to push a point.
-      float depth;
-      glm::vec3 normalizedOffset; ///< The normalized offset from the camera origin.
-    };
-
-    /// @brief Information needed to generate the vertices for the render mesh for a camera.
-    struct MeshInfo {
-      std::vector<VertexInfo> vertexInfo; ///< The vertex information for the camera.
-      size_t nx = 0;                      ///< The number of vertices in the X direction.
-      size_t ny = 0;                      ///< The number of vertices in the Y direction.
-    };
-
-    /// @brief Information about a single camera needed to produce a renderable view from it.
-    struct CameraRenderInfo {
-      CameraRenderInfo() = delete;
-
-      /// @brief Constructor
-      CameraRenderInfo(uint16_t id, std::array<double, 3> positionMeters,
-          std::array<double, 3> orientationDegrees,
-          std::array<uint16_t, 2> resolutionPixels, std::array<double, 2> fovDegrees,
-          std::shared_ptr<Distortion> distortion,
-          std::shared_ptr<Vignette> vignette,
-          std::shared_ptr<asdp::render::ImageQueue> imageQueue)
-        : m_ID(id)
-        , m_positionMeters(positionMeters)
-        , m_orientationDegrees(orientationDegrees)
-        , m_resolutionPixels(resolutionPixels)
-        , m_fovDegrees(fovDegrees)
-        , m_distortion(distortion)
-        , m_vignette(vignette)
-        , m_imageQueue(imageQueue) {}
-
-      CameraRenderInfo(const CameraRenderInfo& other)
-        :CameraRenderInfo(other.m_ID, other.m_positionMeters, other.m_orientationDegrees,
-          other.m_resolutionPixels, other.m_fovDegrees, other.m_distortion, other.m_vignette,
-          other.m_imageQueue)
-      {
-        float offset, gain;
-        other.GetColorOffsetGain(offset, gain);
-        SetColorOffsetGain(offset, gain);
-
-        m_mesh = other.m_mesh;
-      };
-
-      /// @brief Thread-safe access to the color offset and gain, which must be consistent.
-      void GetColorOffsetGain(float& colorOffset, float& colorGain) const {
-        std::lock_guard<std::mutex> lock(m_colorMutex);
-        colorOffset = m_colorOffset;
-        colorGain = m_colorGain;
-      }
-
-      /// @brief Thread-safe set of the color offset and gain, which must be consistent.
-      void SetColorOffsetGain(float colorOffset, float colorGain) {
-        std::lock_guard<std::mutex> lock(m_colorMutex);
-        m_colorOffset = colorOffset;
-        m_colorGain = colorGain;
-      }
-
-      uint16_t m_ID = 0;                              ///< ID of the camera.
-      /// Position of the camera's center of projection in meters from the camera device origin.
-      /// The canonical orientation is in the local helicopter coordinate system, with +X pointing
-      /// right, +Y pointing forwards, and +Z pointing up.  The camera is translated in the
-      /// helicopter frame of reference and then rotated around its new center.
-      std::array<double, 3> m_positionMeters = {};
-      /// Orientation of the camera in degrees, Euler rotation around X, then Y, then Z.
-      /// The canonical orientation is in the local helicopter coordinate system, with +X pointing
-      /// right, +Y pointing forwards, and +Z pointing up.  The camera is translated in the
-      /// helicopter frame of reference and then rotated around its new center.
-      std::array<double, 3> m_orientationDegrees = {};
-      std::array<uint16_t, 2> m_resolutionPixels = {};///< Resolution of the camera in pixels, X then Y.
-      std::array<double, 2> m_fovDegrees = {};        ///< Field of view of the camera in degrees, horizontal then vertical.
-      /// Distortion correction object for the camera.
-      std::shared_ptr<Distortion> m_distortion;
-      /// Vignette correction object for the camera.
-      std::shared_ptr<Vignette> m_vignette;
-      /// Queue of images from the camera.  The newest image is the one to render.
-      std::shared_ptr<asdp::render::ImageQueue> m_imageQueue;
-
-      /// The mesh to use to render the camera's image. Can be constructed using ComputePlanarCameraMeshInfo.
-      MeshInfo m_mesh;
-      mutable std::mutex m_meshMutex;  ///< Mutex to control access to information that must be read as a single unit.
-
-      /// @brief Compute the values needed to create the vertices for the render mesh for a camera.
-      /// @details This function computes the vertices for a quadrilateral that will be used to display
-      /// the image from the camera.  The quadrilateral is at a specified depth from the camera and
-      /// is centered on the camera's view direction.  This is used to create a fixed-depth planar
-      /// mesh that can be used to render the camera's image.
-      /// @param nx The number of vertices in the X direction.
-      /// @param ny The number of vertices in the Y direction.
-      /// @param depth The distance from the camera to the quadrilateral displaying the image.
-      /// @return Information about the mesh that was constructed.
-      void ComputePlanarCameraMeshInfo(size_t nx = 100, size_t ny = 100, GLfloat depth = 900);
-
-    protected:
-      mutable std::mutex m_colorMutex; ///< Mutex to control access to information that must be read as a single unit.
-      float m_colorOffset = 0;         ///< Color = (original + offset) * gain.
-      float m_colorGain = 1;           ///< Color = (original + offset) * gain.
-    };
-
     /// @brief Composite class that renders a set of camera views.
     /// @details This is the class that is most likely to be used in
     /// an application.
@@ -287,10 +183,13 @@ namespace asdp {
       /// capture.
       /// @param renderFrameInterval The interval between rendered frames to use for replay mode.
       /// @param renderTimingInfo A pointer to the render timing information to fill in.
+      /// @param rangeEstimator A shared pointer to the range estimator to use for tone-map range determination.
       CompositeCameras(std::vector<CameraRenderInfo>& cameraRenderInfo, GLuint toneMapTexture,
         std::shared_ptr<PoseAdjuster> poseAdjuster, Time cameraFrameInterval,
         uint32_t renderOffsetMicroseconds = 0,
-        Time renderFrameInterval = Time(), RenderTimingInfo *renderTimingInfo = nullptr);
+        Time renderFrameInterval = Time(),
+        RenderTimingInfo *renderTimingInfo = nullptr,
+        std::shared_ptr<asdp::render::RangeEstimator> rangeEstimator = nullptr);
 
       /// @brief Update the vertex buffer object for a camera based on its current depth information.
       /// @details This function updates the vertex buffer object for a camera based on the current depth
@@ -313,6 +212,7 @@ namespace asdp {
       Time m_lastFrameTime;                 ///< The average time of the last frames used.
       Time m_renderFrameInterval;           ///< The interval between render frames to use for replay mode.
       RenderTimingInfo *m_renderTimingInfo; ///< A pointer to the render timing information to fill in.
+      std::shared_ptr<asdp::render::RangeEstimator> m_rangeEstimator;  ///< The range estimator to use for tone-map range determination.
 
       Time m_cameraFrameInterval;           ///< The interval between camera frames to use for distortion correction.
 

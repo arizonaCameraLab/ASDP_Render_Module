@@ -92,6 +92,7 @@ endif (BUILD_DOXYGEN)
 # Build the libraries.
 
 set (Render_Module_HEADERS
+  CameraRenderInfo.h
   Composite.h
   Display.h
   ImageQueue.h
@@ -103,8 +104,12 @@ set (Render_Module_HEADERS
   PoseAdjuster.h
   DepthEstimator.h
   Vignette.h
+  ImageStatistics.h
+  RangeEstimator.h
+  RenderTimingInfo.h
 )
 set (Render_Module_SOURCES
+  CameraRenderInfo.cpp
   Composite.cpp
   Display.cpp
   ImageQueue.cpp
@@ -116,6 +121,8 @@ set (Render_Module_SOURCES
   PoseAdjuster.cpp
   DepthEstimator.cu
   Vignette.cpp
+  ImageStatistics.cu
+  RangeEstimator.cpp
 )
 add_library(Render_Module STATIC ${Render_Module_SOURCES} ${Render_Module_HEADERS})
 target_include_directories(Render_Module PUBLIC
@@ -286,6 +293,8 @@ if(BUILD_TESTS)
     PoseAdjuster_Test
     DepthEstimator_Test
     Vignette_Test
+    ImageStatistics_Test
+    RangeEstimator_Test
   )
   foreach (BASE ${CPP_TESTS})
     set (APP ${BASE})
@@ -306,6 +315,7 @@ if(BUILD_TESTS)
 
   set (CU_TESTS
     CUDA_To_Texture_Test
+    Sum_and_Squared_Speed_Test
   )
   foreach (BASE ${CU_TESTS})
     set (APP ${BASE})

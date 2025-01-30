@@ -24,8 +24,10 @@
 
 using namespace asdp::render;
 
-// Static class member to ensure that GLFW is initialized and terminated when this library is
-// loaded and unloaded.
+namespace asdp {
+  namespace render {
+/// @brief Static class member to ensure that GLFW is initialized and terminated when this library is
+/// loaded and unloaded.
 class GLFWInitializer {
   public:
   GLFWInitializer() {
@@ -38,6 +40,8 @@ class GLFWInitializer {
   }
 };
 static GLFWInitializer initGLFW;
+  } // namespace render
+} // namespace asdp}
 
 /// Ensure that we only create one window at a time.
 std::mutex Display::m_windowMutex;
@@ -45,6 +49,7 @@ std::mutex Display::m_windowMutex;
 //==============================================================================
 // Structures and methods for Display class.
 
+/// @brief Implementation details for the Display class to hide #includes from users of the Display class.
 class asdp::render::Display::DisplayImpl {
 public:
   /// Window that will be used to display the view.
@@ -68,7 +73,6 @@ public:
   // so that another thread can get a chance to lock the mutex.
   std::mutex m_contextMutex;
 };
-
 
 Display::Display(std::shared_ptr<Composite> composite,
   std::shared_ptr<CoreClient> client, uint8_t triggerID, uint32_t triggerAheadMicroseconds,
@@ -195,6 +199,7 @@ bool Display::ReturnContext()
 //==============================================================================
 // Structures and methods for DisplayWindow class.
 
+/// @brief Implementation details for the DisplayWindow class to hide #includes from users of the DisplayWindow class.
 class asdp::render::DisplayWindow::DisplayWindowImpl {
 public:
   /// Horizontal field of view in degrees.
@@ -689,6 +694,7 @@ void DisplayWindow::ComputeAndClampViewOrientation()
 //==============================================================================
 // Structures and methods for DisplayTexture class.
 
+/// @brief Implementation details for the DisplayTexture class to hide #includes from users of the DisplayTexture class.
 class asdp::render::DisplayTexture::DisplayTextureImpl {
 public:
   // Nothing here, we re-use base-class objects for everything we need.
@@ -806,6 +812,7 @@ namespace Side {
   const int COUNT = 2;
 }  // namespace Side
 
+/// @brief Implementation details for the DisplayOpenXR class to hide #includes from users of the DisplayOpenXR class.
 class asdp::render::DisplayOpenXR::DisplayOpenXRImpl {
 public:
   DisplayOpenXRImpl(asdp::render::DisplayOpenXR* display)
@@ -2031,6 +2038,7 @@ void DisplayOpenXR::DisplayThread(Display* sharedWindow, uint32_t renderAheadMic
 
 #else // USE_OPENXR
 
+/// @brief Implementation details for the DisplayOpenXR class to hide #includes from users of the DisplayOpenXR class.
 class asdp::render::DisplayOpenXR::DisplayOpenXRImpl {
 public:
 };

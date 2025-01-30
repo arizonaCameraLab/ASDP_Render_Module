@@ -108,8 +108,8 @@ namespace asdp {
 
       bool m_ignoreTimeDifference;                    ///< If true, ignore the time difference between the start and end times when calculating the transform.
 
-      /// Structure describing a helicopter pose, including the position, orientation, and velocities.
-      /// Its entries must be double precision to avoid numerical instability with the large Earth radius included in position.
+      /// @brief Structure describing a helicopter pose, including the position, orientation, and velocities.
+      /// @details Its entries must be double precision to avoid numerical instability with the large Earth radius included in position.
       struct Pose {
         glm::dvec3 position = { 0, 0, 0 };            ///< Position of the helicopter in 3D space w.r.t. Earth center with Z north spin axis and X towards (0,0) lat/long.
                                                       /// Takes point in helicopter space to Earth space.
