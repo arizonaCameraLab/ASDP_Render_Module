@@ -52,7 +52,7 @@ using namespace asdp;
 using namespace asdp::render;
 using json = nlohmann::json;
 
-static std::string VERSION = "2.18.0";
+static std::string VERSION = "2.19.0";
 
 /// @brief The path to the configuration file. Defined in the CMakeLists file.
 std::filesystem::path g_dirPath = CONFIG_FILE_PATH;
@@ -1345,7 +1345,7 @@ int main(int argc, char** argv)
     // If we've been asked to do standard-deviation-based auto-ranging, set that up.
     std::shared_ptr<asdp::render::imageStatistics::MeanStdGroup> meanStdGroup;
     std::shared_ptr<RangeEstimator> rangeEstimator = std::make_shared<RangeEstimatorFixed>();
-    if (autoRangeStdAbove > autoRangeStdBelow) {
+    if (autoRangeStdAbove != 0 || autoRangeStdBelow != 0) {
       // Make a display object that shares textures with the others.
       std::shared_ptr<Display> display = std::make_shared<DisplayTexture>(displayTexture.get());
       // Make a MeanStdGroup object to handle the statistics.
