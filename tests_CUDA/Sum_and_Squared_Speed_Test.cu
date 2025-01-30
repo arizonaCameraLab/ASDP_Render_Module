@@ -55,31 +55,31 @@ __global__ void sumFloatKernelReduce(const uint16_t* image, float* sum, float* s
   }
 }
 
-__global__ void sumUint64KernelAtomic(const uint16_t* image, uint64_t* sum, uint64_t* sumOfSquares, int width, int height) {
+__global__ void sumUint64KernelAtomic(const uint16_t* image, unsigned long long* sum, unsigned long long* sumOfSquares, int width, int height) {
   int idx = blockIdx.x * blockDim.x + threadIdx.x;
   int idy = blockIdx.y * blockDim.y + threadIdx.y;
   int index = idy * width + idx;
 
   if (idx < width && idy < height) {
-    atomicAdd(sum, static_cast<uint64_t>(image[index]));
-    atomicAdd(sumOfSquares, static_cast<uint64_t>(image[index]) * static_cast<uint64_t>(image[index]));
+    atomicAdd(sum, static_cast<unsigned long long>(image[index]));
+    atomicAdd(sumOfSquares, static_cast<unsigned long long>(image[index]) * static_cast<unsigned long long>(image[index]));
   }
 }
 
-__global__ void sumUint64KernelReduce(const uint16_t* image, uint64_t* sum, uint64_t* sumOfSquares, int width, int height) {
-  __shared__ uint64_t sharedSum[256];
-  __shared__ uint64_t sharedSumOfSquares[256];
+__global__ void sumUint64KernelReduce(const uint16_t* image, unsigned long long* sum, unsigned long long* sumOfSquares, int width, int height) {
+  __shared__ unsigned long long sharedSum[256];
+  __shared__ unsigned long long sharedSumOfSquares[256];
 
   int idx = blockIdx.x * blockDim.x + threadIdx.x;
   int idy = blockIdx.y * blockDim.y + threadIdx.y;
   int index = idy * width + idx;
   int tid = threadIdx.y * blockDim.x + threadIdx.x;
 
-  uint64_t pixelValue = 0;
-  uint64_t pixelValueSquared = 0;
+  unsigned long long pixelValue = 0;
+  unsigned long long pixelValueSquared = 0;
 
   if (idx < width && idy < height) {
-    pixelValue = static_cast<uint64_t>(image[index]);
+    pixelValue = static_cast<unsigned long long>(image[index]);
     pixelValueSquared = pixelValue * pixelValue;
   }
 
@@ -139,11 +139,11 @@ void benchmarkSumFloat(const uint16_t* d_image, int width, int height, int count
 }
 
 void benchmarkSumUint64(const uint16_t* d_image, int width, int height, int count) {
-  uint64_t* d_sum, * d_sumOfSquares;
-  cudaMalloc(&d_sum, sizeof(uint64_t));
-  cudaMalloc(&d_sumOfSquares, sizeof(uint64_t));
-  cudaMemset(d_sum, 0, sizeof(uint64_t));
-  cudaMemset(d_sumOfSquares, 0, sizeof(uint64_t));
+  unsigned long long* d_sum, * d_sumOfSquares;
+  cudaMalloc(&d_sum, sizeof(unsigned long long));
+  cudaMalloc(&d_sumOfSquares, sizeof(unsigned long long));
+  cudaMemset(d_sum, 0, sizeof(unsigned long long));
+  cudaMemset(d_sumOfSquares, 0, sizeof(unsigned long long));
 
   dim3 blockSize(16, 16);
   dim3 gridSize((width + blockSize.x - 1) / blockSize.x, (height + blockSize.y - 1) / blockSize.y);

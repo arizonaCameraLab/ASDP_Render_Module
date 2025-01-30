@@ -28,11 +28,11 @@ static const size_t BLOCK_SIZE = 32;
 /// @param surface The surface object for the image.
 /// @param outSum The sum of the pixel values.
 /// @param outSumOfSquares The sum of the squares of the pixel values.
-__global__ void ComputeMeanStdKernel(cudaSurfaceObject_t surface, uint64_t* outSum, uint64_t* outSumOfSquares)
+__global__ void ComputeMeanStdKernel(cudaSurfaceObject_t surface, unsigned long long* outSum, unsigned long long* outSumOfSquares)
 {
   /// Block of memory to store the within-block results.
-  __shared__ uint64_t sharedSum[BLOCK_SIZE * BLOCK_SIZE];
-  __shared__ uint64_t sharedSquareSum[BLOCK_SIZE * BLOCK_SIZE];
+  __shared__ unsigned long long sharedSum[BLOCK_SIZE * BLOCK_SIZE];
+  __shared__ unsigned long long sharedSquareSum[BLOCK_SIZE * BLOCK_SIZE];
 
   // Global coordinates in the surface.
   int idx = blockIdx.x * blockDim.x + threadIdx.x;
@@ -43,7 +43,7 @@ __global__ void ComputeMeanStdKernel(cudaSurfaceObject_t surface, uint64_t* outS
   uint16_t pixelValue;
   surf2Dread(&pixelValue, surface, idx * sizeof(pixelValue), idy);
   // Compute the square of the pixel value.
-  uint64_t pixelValueSquared = uint64_t(pixelValue) * pixelValue;
+  unsigned long long pixelValueSquared = ((unsigned long long)(pixelValue)) * pixelValue;
   sharedSum[tid] = pixelValue;
   sharedSquareSum[tid] = pixelValueSquared;
 
@@ -94,12 +94,12 @@ public:
     m_stream = stream;
 
     // Allocate the output variables on the device side.
-    res = cudaMalloc(&m_sum, sizeof(uint64_t));
+    res = cudaMalloc(&m_sum, sizeof(unsigned long long));
     if (res != cudaSuccess) {
       m_constructorStatus = "cudaMalloc() failed: " + std::string(cudaGetErrorString(res));
       return;
     }
-    res = cudaMalloc(&m_sumOfSquares, sizeof(uint64_t));
+    res = cudaMalloc(&m_sumOfSquares, sizeof(unsigned long long));
     if (res != cudaSuccess) {
       m_constructorStatus = "cudaMalloc() failed: " + std::string(cudaGetErrorString(res));
       return;
@@ -162,11 +162,11 @@ public:
     }
 
     // Zero the sum and sum of squares.
-    res = cudaMemsetAsync(m_sum, 0, sizeof(uint64_t), *m_stream);
+    res = cudaMemsetAsync(m_sum, 0, sizeof(unsigned long long), *m_stream);
     if (res != cudaSuccess) {
       return "cudaMemset() failed: " + std::string(cudaGetErrorString(res));
     }
-    res = cudaMemsetAsync(m_sumOfSquares, 0, sizeof(uint64_t), *m_stream);
+    res = cudaMemsetAsync(m_sumOfSquares, 0, sizeof(unsigned long long), *m_stream);
     if (res != cudaSuccess) {
       return "cudaMemset() failed: " + std::string(cudaGetErrorString(res));
     }
@@ -180,12 +180,12 @@ public:
     m_camera.m_imageQueue->UnlockImage(image);
 
     // Read back the results.
-    uint64_t sum, sumOfSquares;
-    res = cudaMemcpyAsync(&sum, m_sum, sizeof(uint64_t), cudaMemcpyDeviceToHost, *m_stream);
+    unsigned long long sum, sumOfSquares;
+    res = cudaMemcpyAsync(&sum, m_sum, sizeof(unsigned long long), cudaMemcpyDeviceToHost, *m_stream);
     if (res != cudaSuccess) {
       return "cudaMemcpy() failed: " + std::string(cudaGetErrorString(res));
     }
-    res = cudaMemcpyAsync(&sumOfSquares, m_sumOfSquares, sizeof(uint64_t), cudaMemcpyDeviceToHost, *m_stream);
+    res = cudaMemcpyAsync(&sumOfSquares, m_sumOfSquares, sizeof(unsigned long long), cudaMemcpyDeviceToHost, *m_stream);
     if (res != cudaSuccess) {
       return "cudaMemcpy() failed: " + std::string(cudaGetErrorString(res));
     }
@@ -222,8 +222,8 @@ public:
 
   std::shared_ptr<cudaStream_t> m_stream; ///< CUDA stream to use.
 
-  uint64_t* m_sum = nullptr; ///< Device poitner to sum of pixel values.
-  uint64_t* m_sumOfSquares = nullptr; ///< Device pointer to sum of squares of pixel values.
+  unsigned long long* m_sum = nullptr; ///< Device poitner to sum of pixel values.
+  unsigned long long* m_sumOfSquares = nullptr; ///< Device pointer to sum of squares of pixel values.
 };
 
 MeanStd::MeanStd(CameraRenderInfo camera)
