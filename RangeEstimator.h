@@ -13,6 +13,7 @@
 #pragma once
 #include <string>
 #include <memory>
+#include <mutex>
 #include <ImageStatistics.h>
 
 namespace asdp {
@@ -43,7 +44,10 @@ namespace asdp {
 
       std::string GetCurrentRange(double& minVal, double& maxVal) override;
 
+      std::string SetCurrentRange(double minVal, double maxVal);
+
     protected:
+      std::mutex m_mutex; ///< Mutex to protect the range values.
       double m_minVal; ///< The low end of the range.
       double m_maxVal; ///< The high end of the range.
     };

@@ -23,8 +23,23 @@ using namespace asdp::render::imageStatistics;
 
 std::string RangeEstimatorFixed::GetCurrentRange(double& minVal, double& maxVal)
 {
+  std::lock_guard<std::mutex> lock(m_mutex);
   minVal = m_minVal;
   maxVal = m_maxVal;
+  return "";
+}
+
+std::string RangeEstimatorFixed::SetCurrentRange(double minVal, double maxVal)
+{
+  if (minVal < 0) {
+    return "minVal must be >= 0";
+  }
+  if (maxVal > 1) {
+    return "maxVal must be <= 1";
+  }
+  std::lock_guard<std::mutex> lock(m_mutex);
+  m_minVal = minVal;
+  m_maxVal = maxVal;
   return "";
 }
 
@@ -80,6 +95,15 @@ std::string RangeEstimator::Test()
   }
   if (minVal != 0.0 || maxVal != 1.0) {
     return "RangeEstimatorFixed::GetCurrentRange default returned incorrect values.";
+  }
+
+  fixedDefault.SetCurrentRange(0.2, 0.7);
+  error = fixedDefault.GetCurrentRange(minVal, maxVal);
+  if (!error.empty()) {
+    return "RangeEstimatorFixed::SetCurrentRange failed.";
+  }
+  if (minVal != 0.2 || maxVal != 0.7) {
+    return "RangeEstimatorFixed::SetCurrentRange set incorrect values.";
   }
 
   //================================================================================================

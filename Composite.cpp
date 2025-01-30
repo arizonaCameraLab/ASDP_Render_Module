@@ -1081,17 +1081,21 @@ void CompositeCameras::RenderView(asdp::Time scanOutTime, const float* viewProje
     if (m_globalExposureGain > 0) {
       gain *= m_globalExposureGain;
     }
-    // Then get the rescale min and max values and determine the gain and offset to apply to map
+    // Get the rescale min and max values and determine the gain and offset to apply to map
     // the specified minVal and maxVal to 0 and 1.
+    // The current offset is added to the value and then the gain is applied.
+    // The current gain is scaled by the inverse of the fraction of the range that is used to map that
+    // fraction to the range 0-1.
+    // The current offset must offset by the new offset divided by the original gain (because it will
+    // be multiplied by it along the way).
     if (m_rangeEstimator) {
       double minVal, maxVal;
       std::string ret = m_rangeEstimator->GetCurrentRange(minVal, maxVal);
       if (ret.empty()) {
         // Only adjust if we have no error.
         if (maxVal > minVal) {
+          offset = offset - minVal/gain;
           gain /= (maxVal - minVal);
-          offset -= minVal;
-          offset /= (maxVal - minVal);
         }
       } else {
         std::cerr << "CompositeCameras::RenderView(): Failed to get range estimate: " << ret << std::endl;
