@@ -85,7 +85,7 @@ namespace asdp {
       /// @return Empty string on success, string with error message on failure.
       static std::string Test();
 
-      /// @brief Speed test function to test the class.
+      /// @brief Speed test function for the class.
       /// @details Remember that the maximum region size is 100x100 and that nx and ny must evenly
       /// divide the image size.
       /// @param[in] width Width of the images to render.
