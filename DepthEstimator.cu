@@ -335,8 +335,8 @@ public:
         std::array<double, 3> corner = { xHalfWidth, yHalfWidth, -depthForFOV };
         std::array<double, 3> distortedCorner = cameras[i][c].m_distortion->MapPoint(corner);
 
-        double hFOV = glm::degrees(2.0 * atan(fabs(distortedCorner[2]) / distortedCorner[0]));
-        double vFOV = glm::degrees(2.0 * atan(fabs(distortedCorner[2]) / distortedCorner[1]));
+        double hFOV = glm::degrees(2.0 * atan(fabs(distortedCorner[0] / distortedCorner[2])));
+        double vFOV = glm::degrees(2.0 * atan(fabs(distortedCorner[1] / distortedCorner[2])));
 
         maxHFOV = std::max(maxHFOV, hFOV);
         maxVFOV = std::max(maxVFOV, vFOV);
@@ -388,7 +388,7 @@ public:
     // for each camera with one entry for each depth with an entry for each of the pair of cameras.
     std::vector < std::vector< std::array<GLsync, 2> > > fences;
 
-    // For each camera pair and depth, render the two cameras into the frame buffers and keep track of the fences.
+    // For each camera pair and depth, render the two cameras into their frame buffers and keep track of the fences.
     for (size_t c = 0; c < m_cameraPairs.size(); c++) {
       CameraPairInfo& cpi = *m_cameraPairs[c];
       std::vector< std::array<GLsync, 2> > cFences;
