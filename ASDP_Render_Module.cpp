@@ -1256,8 +1256,6 @@ int main(int argc, char** argv)
 
         //==================================================================================================
         // Fill in three textures for this camera, all gray and at time zero.
-        // This creates one for the display to be using, one for the texture thread to write to, and
-        // one to lie fallow so that there is a buffer between the two when the writing thread switches.
         // We must borrow the context from the displayTexture so that we can create the textures.
         if (!displayTexture->BorrowContext()) {
           std::cerr << "Error borrowing context from displayTexture." << std::endl;
