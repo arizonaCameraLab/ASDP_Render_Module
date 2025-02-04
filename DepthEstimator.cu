@@ -1308,6 +1308,7 @@ std::string DepthEstimator::Test()
       deProbe.m_impl->m_cameraPairs[1]->m_depths.resize(nx * ny, 200);
 
       // Test the depth from the origin, shooting along the 45-degree directions towards each plane.
+      // Also take a step up in Z to check for the correct offset.
       estimatedDepth = deProbe.EstimateDepth(glm::vec3(0, 0, 0), glm::vec3(1, 1, 0));
       if (fabs(estimatedDepth - 100) > 100 * 1e-6) {
         return "EstimateDepth() probe failed for origin to right plane: expected 100, got " + std::to_string(estimatedDepth);
@@ -1315,6 +1316,45 @@ std::string DepthEstimator::Test()
       estimatedDepth = deProbe.EstimateDepth(glm::vec3(0, 0, 0), glm::vec3(-1, 1, 0));
       if (fabs(estimatedDepth - 200) > 200 * 1e-6) {
         return "EstimateDepth() probe failed for origin to left plane: expected 200, got " + std::to_string(estimatedDepth);
+      }
+
+      //================================================================================================
+      // Rotate the cameras by N degrees around the Y axis so that we test the rotation code.
+      // Also translate the cameras in Z so that we can test the position offset.
+      double degN = 10.0;
+      double cosN = cos(glm::radians(degN));
+      double sinN = sin(glm::radians(degN));
+      CameraRenderInfo camRot1(1, { -cosN, -sinN, 1 }, { 0, 0, degN }, { width, height }, { 90.0, 90.0 },
+        distortion, vignette, queues[0]);
+      CameraRenderInfo camRot2(2, { cosN, sinN, 1 }, { 0, 0, degN }, { width, height }, { 90.0, 90.0 },
+        distortion, vignette, queues[1]);
+      cameras.clear();
+      cameras.push_back({ camRot1, camRot2 });
+      DepthEstimator deRotated(cameras, poseAdjuster, cameraFrameInterval, nx, ny, testDepths);
+      if (deRotated.m_constructorStatus != "") {
+        return "DepthEstimator constructor failed for rotated: " + deRotated.m_constructorStatus;
+      }
+
+      // Compute the depth estimate.
+      res = deRotated.ComputeDepthEstimate(0);
+      if (res != "") {
+        return "ComputeDepthEstimate() failed for rotated: " + res;
+      }
+
+      // Test the depth estimates directly.
+      for (size_t y = 0; y < ny; y++) {
+        double depth = testDepths[y % testDepths.size()];
+        if (y >= ny / 2) {
+          // In the top half of the image, there are no features, so it should be the default depth.
+          depth = testDepths.back();
+        }
+        for (size_t x = 0; x < nx; x++) {
+          size_t i = y * nx + x;
+          if (fabs(deRotated.m_impl->m_cameraPairs[0]->m_depths[i] - depth) > depth * 1e-6) {
+            return "ComputeDepthEstimate() failed for rotated region " + std::to_string(i)
+              + ", found " + std::to_string(deRotated.m_impl->m_cameraPairs[0]->m_depths[i]) + " expected " + std::to_string(depth);
+          }
+        }
       }
     }
   }

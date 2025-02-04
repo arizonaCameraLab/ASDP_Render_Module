@@ -57,7 +57,7 @@ int main()
     // Set the viewpoint here
     auto now = std::chrono::steady_clock::now();
     auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - start).count();
-    double angle = -degreesPerSecond * (elapsed / 1000.0);
+    double angle = degreesPerSecond * (elapsed / 1000.0);
 
     // Offset the viewpoint center and rotate around the Z axis so we can verify correct behavior.
     // Also rotate slowly around the X axis.
@@ -68,7 +68,7 @@ int main()
     float dz = glm::radians(angle); // Rotate 30 degrees around the Z axis
     glm::quat rotationX = glm::angleAxis(dx, glm::vec3(1.0f, 0.0f, 0.0f));
     glm::quat rotationZ = glm::angleAxis(dz, glm::vec3(0.0f, 0.0f, 1.0f));
-    glm::quat combinedRotation = rotationZ * rotationX;
+    glm::quat combinedRotation = rotationX * rotationZ;
     views[0].orientation[0] = combinedRotation.w;
     views[0].orientation[1] = combinedRotation.x;
     views[0].orientation[2] = combinedRotation.y;

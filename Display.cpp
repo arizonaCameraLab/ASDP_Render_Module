@@ -675,14 +675,11 @@ void DisplayWindow::ComputeAndClampViewOrientation()
 
   glm::mat4 combinedRotation = rotationX;
 
-  // Find the inverse matrix
-  glm::mat4 inverseRotation = glm::inverse(combinedRotation);
-
   // Decompose the combined rotation matrix to get the quaternion.
   glm::vec3 scale, translation, skew;
   glm::vec4 perspective;
   glm::quat orientation;
-  glm::decompose(inverseRotation, scale, orientation, translation, skew, perspective);
+  glm::decompose(combinedRotation, scale, orientation, translation, skew, perspective);
 
   // Store the quaternion.
   m_impl->m_views[0].orientation[0] = orientation.w;
@@ -1684,9 +1681,6 @@ bool asdp::render::DisplayOpenXR::DisplayOpenXRImpl::OpenXRRenderLayer(XrTime pr
     glm::quat rotationQuat = glm::angleAxis(angle, axis);
     glm::quat inverseRotationQuat = glm::angleAxis(-angle, axis);
     quat = inverseRotationQuat * quat * rotationQuat;
-
-    // Find the inverse rotation
-    quat = glm::inverse(quat);
 
     // Construct the ViewRenderInfo for the current view and push it onto the vector.
     ViewRenderInfo vri;

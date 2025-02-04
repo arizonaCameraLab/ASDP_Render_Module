@@ -85,10 +85,11 @@ void Composite::Render(asdp::Time scanOutTime, std::vector<ViewRenderInfo> views
     // NOTE: We also do the order of operations in reverse because we're moving the world rather
     // than the camera.
     glm::quat rotQuat;
-    rotQuat.w = -view.orientation[0];
-    rotQuat.x = -view.orientation[1];
-    rotQuat.y = -view.orientation[2];
-    rotQuat.z = -view.orientation[3];
+    rotQuat.w = view.orientation[0];
+    rotQuat.x = view.orientation[1];
+    rotQuat.y = view.orientation[2];
+    rotQuat.z = view.orientation[3];
+    rotQuat = glm::inverse(rotQuat);
     glm::mat4 ViewRotate = HelicopterRotateX * glm::toMat4(rotQuat);
 
     // Translate the view based on the specified viewpoint (negative due to world vs. camera).
