@@ -667,7 +667,7 @@ R"(#version 330 core
       FragColor = texture(toneMapTexture, intensity);
    })";
 
-CompositeCameras::CompositeCameras(std::vector<CameraRenderInfo>& cameraRenderInfo, GLuint toneMaptexture,
+CompositeCameras::CompositeCameras(std::vector< std::shared_ptr<CameraRenderInfo> >& cameraRenderInfo, GLuint toneMaptexture,
   std::shared_ptr<PoseAdjuster> poseAdjuster, Time cameraFrameInterval,
   uint32_t renderOffsetMicroseconds, Time renderFrameInterval, RenderTimingInfo *renderTimingInfo,
   std::shared_ptr<asdp::render::RangeEstimator> rangeEstimator)
@@ -768,10 +768,10 @@ bool CompositeCameras::SetupRendering()
   // texture coordinates along with the indices, along with a count of index buffer entries.  Make
   // the mesh if it has not already been filled in.
   for (auto &cameraRenderInfo : m_cameraRenderInfos) {
-    if (cameraRenderInfo.m_mesh.nx == 0) {
-      cameraRenderInfo.ComputePlanarCameraMeshInfo();
+    if (cameraRenderInfo->m_mesh.nx == 0) {
+      cameraRenderInfo->ComputePlanarCameraMeshInfo();
     }
-    CreateBufferInfo(cameraRenderInfo, cameraRenderInfo.m_mesh);
+    CreateBufferInfo(*cameraRenderInfo, cameraRenderInfo->m_mesh);
   }
   return true;
 }
@@ -896,7 +896,7 @@ void CompositeCameras::SetupRenderFrame(asdp::Time scanOutTime)
   // two images from each queue and then select a set of consistent ones.
   std::vector< std::list< std::shared_ptr<ImageData> > > images;
   for (auto const& cameraRenderInfo : m_cameraRenderInfos) {
-    images.push_back(cameraRenderInfo.m_imageQueue->LockNewestImages(2));
+    images.push_back(cameraRenderInfo->m_imageQueue->LockNewestImages(2));
     if (images.back().size() != 2) {
       std::cerr << "Composite::SetupRenderFrame(): Could not get image pair, skipping frame" << std::endl;
       return;
@@ -941,10 +941,10 @@ void CompositeCameras::SetupRenderFrame(asdp::Time scanOutTime)
 
     if (diff0 < diff1) {
       m_images.push_back(images[i].front());
-      m_cameraRenderInfos[i].m_imageQueue->UnlockImage(images[i].back());
+      m_cameraRenderInfos[i]->m_imageQueue->UnlockImage(images[i].back());
     } else {
       m_images.push_back(images[i].back());
-      m_cameraRenderInfos[i].m_imageQueue->UnlockImage(images[i].front());
+      m_cameraRenderInfos[i]->m_imageQueue->UnlockImage(images[i].front());
     }
   }
 
@@ -1018,7 +1018,7 @@ void CompositeCameras::RenderView(asdp::Time scanOutTime, const float* viewProje
   // Draw each camera, using the appropriate texture.
   for (size_t c = 0; c < m_cameraRenderInfos.size(); c++) {
 
-    uint16_t cameraID = m_cameraRenderInfos[c].m_ID;
+    uint16_t cameraID = m_cameraRenderInfos[c]->m_ID;
 
     // If there is no texture, bind the default texture for the image to texture unit 0.
     // Otherwise, bind the stored texture.
@@ -1063,7 +1063,7 @@ void CompositeCameras::RenderView(asdp::Time scanOutTime, const float* viewProje
     glUniform3fv(m_fAxisUniformID, 1, fAxis.data());
     glUniform1f(m_fAngleUniformID, fAngle);
     float offset, gain;
-    m_cameraRenderInfos[c].GetColorOffsetGain(offset, gain);
+    m_cameraRenderInfos[c]->GetColorOffsetGain(offset, gain);
     // Scale offset by the maximum color value to get it into 0-1 range.
     offset /= 65535.0f;
     // Scale gain by image exposure and gain if they are nonzero.  We divide by each -- higher gain
@@ -1129,7 +1129,7 @@ void CompositeCameras::TearDownRenderFrame()
   // Make sure we've finished using our textures before returning them.
   glFinish();
   for (size_t i = 0; i < m_cameraRenderInfos.size(); i++) {
-    CameraRenderInfo const& CRI = m_cameraRenderInfos[i];
+    CameraRenderInfo const& CRI = *m_cameraRenderInfos[i];
     if (m_images[i] != nullptr) {
       CRI.m_imageQueue->UnlockImage(m_images[i]);
     }

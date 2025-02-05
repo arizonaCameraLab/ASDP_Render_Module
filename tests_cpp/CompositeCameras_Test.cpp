@@ -103,7 +103,7 @@ int main()
 
   // Construct the cameras to render.
   // Construct the image queues to render, one per camera.
-  std::vector<asdp::render::CameraRenderInfo> cameras;
+  std::vector< std::shared_ptr<asdp::render::CameraRenderInfo> > cameras;
   for (int x = 0; x < nx; x++) {
     uint16_t minVal = static_cast<uint16_t>(x * (65535.0/3) / nx);
     for (int y = 0; y < ny; y++) {
@@ -137,10 +137,10 @@ int main()
       iq->InsertImage(image);
 
       // Give each camera a unique ID
-      asdp::render::CameraRenderInfo camera(x * ny + y,
+      std::shared_ptr<asdp::render::CameraRenderInfo> camera(new asdp::render::CameraRenderInfo(x * ny + y,
         std::array<double, 3>(), orientationDegrees,
         std::array<uint16_t, 2>(), std::array<double, 2>({ hFOV, vFOV }),
-        nullptr, nullptr, iq);
+        nullptr, nullptr, iq));
 
       cameras.push_back(camera);
     }
@@ -161,10 +161,10 @@ int main()
     // We must insert two images because the renderer will grab the newest two images.
     iq->InsertImage(image);
     iq->InsertImage(image);
-    asdp::render::CameraRenderInfo camera(9, position, orientation, std::array<uint16_t, 2>(), fieldOfView,
-      nullptr, nullptr, iq);
+    std::shared_ptr<asdp::render::CameraRenderInfo> camera(new asdp::render::CameraRenderInfo(9, position, orientation, std::array<uint16_t, 2>(), fieldOfView,
+      nullptr, nullptr, iq));
     // Color values run from half of the image value to 3/4 of the image value.
-    camera.SetColorOffsetGain(-0.5f * 65535, 4);
+    camera->SetColorOffsetGain(-0.5f * 65535, 4);
     cameras.push_back(camera);
   }
 

@@ -52,7 +52,7 @@ using namespace asdp;
 using namespace asdp::render;
 using json = nlohmann::json;
 
-static std::string VERSION = "2.20.0";
+static std::string VERSION = "2.21.0";
 
 /// @brief The path to the configuration file. Defined in the CMakeLists file.
 std::filesystem::path g_dirPath = CONFIG_FILE_PATH;
@@ -67,7 +67,7 @@ asdp::render::RenderTimingInfo g_timingInfo;
 std::shared_ptr<DepthEstimator> g_depthEstimator;
 
 /// @brief Global variables to hold the visible and depth cameras.
-std::vector<asdp::render::CameraRenderInfo> g_visibleCameras, g_depthCameras;
+std::vector< std::shared_ptr<asdp::render::CameraRenderInfo> > g_visibleCameras, g_depthCameras;
 
 /// @brief Global variable to hold the composite cameras.
 std::shared_ptr<CompositeCameras> g_composite;
@@ -94,9 +94,9 @@ static void ComputeDepth(Time renderTime, void* /* unused */)
   if (ret != "") {
     std::cerr << "Error computing depth estimate: " << ret << std::endl;
   } else {
-    for (CameraRenderInfo& cri : g_visibleCameras) {
-      g_depthEstimator->UpdateMesh(cri);
-      g_composite->UpdateVertexBuffer(cri);
+    for (std::shared_ptr<asdp::render::CameraRenderInfo> cri : g_visibleCameras) {
+      g_depthEstimator->UpdateMesh(*cri);
+      g_composite->UpdateVertexBuffer(*cri);
     }
   }
 
@@ -1187,7 +1187,7 @@ int main(int argc, char** argv)
 
     // Construct a vector of CameraRenderInfo objects from the configuration file, adding an image
     // queue to each.
-    std::vector<asdp::render::CameraRenderInfo> cameraRenderInfos;
+    std::vector< std::shared_ptr<asdp::render::CameraRenderInfo> > cameraRenderInfos;
     try {
       for (const auto& camera : config["cameras"]) {
         std::shared_ptr<Distortion> dist;
@@ -1236,7 +1236,8 @@ int main(int argc, char** argv)
           // No vignette specified, so use the default.
         }
 
-        asdp::render::CameraRenderInfo info(camera["id"],
+          std::shared_ptr<asdp::render::CameraRenderInfo> info =
+            std::make_shared<CameraRenderInfo>(camera["id"],
           camera["positionMeters"], camera["orientationDegrees"],
           camera["resolutionPixels"], camera["fieldOfViewDegrees"],
           dist, vig, std::make_shared<asdp::render::ImageQueue>());
@@ -1251,7 +1252,7 @@ int main(int argc, char** argv)
           if (camera["color"].contains("gain")) {
             gain = camera["color"]["gain"];
           }
-          info.SetColorOffsetGain(offset, gain);
+          info->SetColorOffsetGain(offset, gain);
         }
 
         //==================================================================================================
@@ -1262,8 +1263,8 @@ int main(int argc, char** argv)
           return 17;
         }
 
-        unsigned int width = info.m_resolutionPixels[0];
-        unsigned int height = info.m_resolutionPixels[1];
+        unsigned int width = info->m_resolutionPixels[0];
+        unsigned int height = info->m_resolutionPixels[1];
         std::vector<uint16_t> image(width * height, 32767);
 
         // Create the textures for the camera. Make two for each Composite to pull when it is looking
@@ -1287,7 +1288,7 @@ int main(int argc, char** argv)
           glBindTexture(GL_TEXTURE_2D, 0);
 
           imageData->texture = texture;
-          info.m_imageQueue->InsertImage(imageData);
+          info->m_imageQueue->InsertImage(imageData);
         }
 
         if (!displayTexture->ReturnContext()) {
@@ -1307,7 +1308,7 @@ int main(int argc, char** argv)
 
     std::vector<uint32_t> cameraIDs; ///< The camera IDs to render, in the same order as the records in the configuration file.
     for (uint32_t i = 0; i < cameraRenderInfos.size(); i++) {
-      cameraIDs.push_back(cameraRenderInfos[i].m_ID);
+      cameraIDs.push_back(cameraRenderInfos[i]->m_ID);
     }
 
     // If the camera FPS is not set, find the minimum period for one of the cameras and use that.
@@ -1330,7 +1331,7 @@ int main(int argc, char** argv)
     // Separate the cameras into two groups: those with IDs less than 22 are visible cameras and those
     // with larger ones are depth-estimation cameras.
     for (size_t j = 0; j < cameraRenderInfos.size(); j++) {
-      if (cameraRenderInfos[j].m_ID < 22) {
+      if (cameraRenderInfos[j]->m_ID < 22) {
         g_visibleCameras.push_back(cameraRenderInfos[j]);
       }
       else {
@@ -1359,9 +1360,9 @@ int main(int argc, char** argv)
         std::cerr << "Error: There must be an even number of depth-estimation cameras." << std::endl;
         return 20;
       }
-      std::vector< std::array<CameraRenderInfo, 2> > cameras;
+      std::vector< std::array<std::shared_ptr<asdp::render::CameraRenderInfo>, 2> > cameras;
       for (size_t i = 0; i < g_depthCameras.size(); i += 2) {
-        std::array<CameraRenderInfo, 2> pair = { g_depthCameras[i], g_depthCameras[i + 1] };
+        std::array<std::shared_ptr<asdp::render::CameraRenderInfo>, 2> pair = { g_depthCameras[i], g_depthCameras[i + 1] };
         cameras.push_back(pair);
       }
 
@@ -1381,7 +1382,7 @@ int main(int argc, char** argv)
       glGetError();
 
       g_depthEstimator = std::make_shared<DepthEstimator>(cameras, poseAdjuster, float(1.0/cameraFPS),
-        g_depthCameras[0].m_resolutionPixels[0] * 2 / 100, g_depthCameras[0].m_resolutionPixels[1] * 2 / 100);
+        g_depthCameras[0]->m_resolutionPixels[0] * 2 / 100, g_depthCameras[0]->m_resolutionPixels[1] * 2 / 100);
       std::cout << "Constructed DepthEstimator with " << cameras.size() << " camera pairs." << std::endl;
 
       // Compute a depth estimate to get all of the machinery set up and GLEW initialized on this thread.
@@ -1538,7 +1539,7 @@ int main(int argc, char** argv)
     std::vector<std::thread> receiveDataThreads;
     for (size_t i = 0; i < cameras.size(); i++) {
       receiveDataThreads.push_back(std::thread(ReceiveDataThread, std::ref(*UDPReceivers[i]), 9000,
-        std::ref(done), cpuPinnedImageBuffers[i], gpuImageBuffers[i], streams[i], cameraRenderInfos[i].m_imageQueue,
+        std::ref(done), cpuPinnedImageBuffers[i], gpuImageBuffers[i], streams[i], cameraRenderInfos[i]->m_imageQueue,
         dataQueues[i % NUM_TEXTURE_THREADS],
         std::ref(g_timingInfo.cameras[i].frameBeginTimes), std::ref(g_timingInfo.cameras[i].frameEndTimes)));
     }
@@ -1954,7 +1955,13 @@ int main(int argc, char** argv)
       }
       summaryTimingFile.close();
     }
-  }
+  } // End of block that causes destruction of all objects before returning.
+
+  // Clean up the global objects.
+  g_visibleCameras.clear();
+  g_depthCameras.clear();
+  g_depthEstimator.reset();
+  g_composite.reset();
 
   return 0;
 }

@@ -48,7 +48,7 @@ namespace asdp {
       ///            difference between the average squared difference between the region in the
       ///            best and worst matched conditions is less than this, use the default depth
       ///            because there is not enough distinction.
-      DepthEstimator(std::vector< std::array<CameraRenderInfo, 2> > cameras,
+      DepthEstimator(std::vector< std::array<std::shared_ptr<CameraRenderInfo>, 2> > cameras,
         std::shared_ptr<PoseAdjuster> poseAdjuster, Time cameraFrameInterval,
         unsigned nx, unsigned ny,
         std::vector<float> depths = {10, 20, 50, 100, 200, 500, 1000},

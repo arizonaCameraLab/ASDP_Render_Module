@@ -184,7 +184,7 @@ namespace asdp {
       /// @param renderFrameInterval The interval between rendered frames to use for replay mode.
       /// @param renderTimingInfo A pointer to the render timing information to fill in.
       /// @param rangeEstimator A shared pointer to the range estimator to use for tone-map range determination.
-      CompositeCameras(std::vector<CameraRenderInfo>& cameraRenderInfo, GLuint toneMapTexture,
+      CompositeCameras(std::vector< std::shared_ptr<CameraRenderInfo> >& cameraRenderInfo, GLuint toneMapTexture,
         std::shared_ptr<PoseAdjuster> poseAdjuster, Time cameraFrameInterval,
         uint32_t renderOffsetMicroseconds = 0,
         Time renderFrameInterval = Time(),
@@ -203,7 +203,7 @@ namespace asdp {
 
     protected:
       /// Information about the cameras, filled in by the constructor.
-      std::vector<CameraRenderInfo> m_cameraRenderInfos;
+      std::vector< std::shared_ptr<CameraRenderInfo> > m_cameraRenderInfos;
       GLuint m_toneMapTexture; ///< The OpenGL texture ID of the tone map to use.
       std::shared_ptr<PoseAdjuster> m_poseAdjuster; ///< A shared pointer to the pose adjuster to use for transforming points.
 

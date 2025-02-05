@@ -123,7 +123,7 @@ __global__ void CompareSurfacesKernel(cudaSurfaceObject_t surface1, cudaSurfaceO
 class CameraPairInfo {
 public:
   CameraPairInfo() = delete;
-  CameraPairInfo(ToneMap const &toneMap, CameraRenderInfo camera1, CameraRenderInfo camera2,
+  CameraPairInfo(ToneMap const &toneMap, std::shared_ptr<CameraRenderInfo> camera1, std::shared_ptr<CameraRenderInfo> camera2,
     glm::dvec3 position, glm::dquat orientation,
     std::array<float, 2> fovsDeg, std::array<unsigned, 2> pixelCounts,
     std::shared_ptr<PoseAdjuster> poseAdjuster, Time cameraFrameInterval,
@@ -144,16 +144,17 @@ public:
 
       depthInfo.m_depth = depth;
 
-      CameraRenderInfo depth1 = camera1;
-      depth1.ComputePlanarCameraMeshInfo(100, 100, depth);
-      std::vector<CameraRenderInfo> composites1;
+      // We make a copy of each camera and then adjust the copy to the depth.
+      std::shared_ptr<CameraRenderInfo> depth1(new CameraRenderInfo(*camera1));
+      depth1->ComputePlanarCameraMeshInfo(100, 100, depth);
+      std::vector< std::shared_ptr<CameraRenderInfo> > composites1;
       composites1.push_back(depth1);
       depthInfo.m_composites[0] = std::make_shared<CompositeCameras>(composites1, m_toneMapTexture,
         m_poseAdjuster, cameraFrameInterval);
 
-      CameraRenderInfo depth2 = camera2;
-      depth2.ComputePlanarCameraMeshInfo(100, 100, depth);
-      std::vector<CameraRenderInfo> composites2;
+      std::shared_ptr<CameraRenderInfo> depth2(new CameraRenderInfo(*camera2));
+      depth2->ComputePlanarCameraMeshInfo(100, 100, depth);
+      std::vector< std::shared_ptr<CameraRenderInfo> > composites2;
       composites2.push_back(depth2);
       depthInfo.m_composites[1] = std::make_shared<CompositeCameras>(composites2, m_toneMapTexture,
         m_poseAdjuster, cameraFrameInterval);
@@ -230,7 +231,7 @@ public:
     }
   }
 
-  std::array<CameraRenderInfo,2 > m_cameras;
+  std::array<std::shared_ptr<CameraRenderInfo>,2 > m_cameras;
   std::shared_ptr<PoseAdjuster> m_poseAdjuster;
   glm::dvec3 m_position;
   glm::dquat m_orientation;
@@ -265,7 +266,7 @@ public:
   friend class DepthEstimator;
   DepthEstimatorImpl() = delete;
   DepthEstimatorImpl(DepthEstimator *parent,
-      std::vector< std::array<CameraRenderInfo, 2> > cameras,
+      std::vector< std::array<std::shared_ptr<CameraRenderInfo>, 2> > cameras,
       std::shared_ptr<PoseAdjuster> poseAdjuster,
       Time cameraFrameInterval,
       unsigned nx, unsigned ny,
@@ -300,19 +301,19 @@ public:
       // to quaternions to average them.
       glm::dvec3 position;
 
-      std::array<double, 3> const& p1 = cameras[i][0].m_positionMeters;
-      std::array<double, 3> const& p2 = cameras[i][1].m_positionMeters;
+      std::array<double, 3> const& p1 = cameras[i][0]->m_positionMeters;
+      std::array<double, 3> const& p2 = cameras[i][1]->m_positionMeters;
       position = 0.5 * (glm::dvec3(p1[0], p1[1], p1[2]) + glm::dvec3(p2[0], p2[1], p2[2]));
 
       glm::quat orientation;
-      glm::quat rotx = glm::angleAxis(glm::radians(cameras[i][0].m_orientationDegrees[0]), glm::dvec3(1, 0, 0));
-      glm::quat roty = glm::angleAxis(glm::radians(cameras[i][0].m_orientationDegrees[1]), glm::dvec3(0, 1, 0));
-      glm::quat rotz = glm::angleAxis(glm::radians(cameras[i][0].m_orientationDegrees[2]), glm::dvec3(0, 0, 1));
+      glm::quat rotx = glm::angleAxis(glm::radians(cameras[i][0]->m_orientationDegrees[0]), glm::dvec3(1, 0, 0));
+      glm::quat roty = glm::angleAxis(glm::radians(cameras[i][0]->m_orientationDegrees[1]), glm::dvec3(0, 1, 0));
+      glm::quat rotz = glm::angleAxis(glm::radians(cameras[i][0]->m_orientationDegrees[2]), glm::dvec3(0, 0, 1));
       glm::quat rot1 = rotz * roty * rotx;
 
-      rotx = glm::angleAxis(glm::radians(cameras[i][1].m_orientationDegrees[0]), glm::dvec3(1, 0, 0));
-      roty = glm::angleAxis(glm::radians(cameras[i][1].m_orientationDegrees[1]), glm::dvec3(0, 1, 0));
-      rotz = glm::angleAxis(glm::radians(cameras[i][1].m_orientationDegrees[2]), glm::dvec3(0, 0, 1));
+      rotx = glm::angleAxis(glm::radians(cameras[i][1]->m_orientationDegrees[0]), glm::dvec3(1, 0, 0));
+      roty = glm::angleAxis(glm::radians(cameras[i][1]->m_orientationDegrees[1]), glm::dvec3(0, 1, 0));
+      rotz = glm::angleAxis(glm::radians(cameras[i][1]->m_orientationDegrees[2]), glm::dvec3(0, 0, 1));
       glm::quat rot2 = rotz * roty * rotx;
 
       orientation = glm::slerp(rot1, rot2, 0.5f);
@@ -329,11 +330,11 @@ public:
       double maxHFOV = 0, maxVFOV = 0;
       double maxXRatio = 1.0, maxYRatio = 1.0;
       for (size_t c = 0; c < 2; c++) {
-        double xHalfWidth = tan(glm::radians(cameras[i][c].m_fovDegrees[0]) * 0.5) * depthForFOV;
-        double yHalfWidth = tan(glm::radians(cameras[i][c].m_fovDegrees[1]) * 0.5) * depthForFOV;
+        double xHalfWidth = tan(glm::radians(cameras[i][c]->m_fovDegrees[0]) * 0.5) * depthForFOV;
+        double yHalfWidth = tan(glm::radians(cameras[i][c]->m_fovDegrees[1]) * 0.5) * depthForFOV;
 
         std::array<double, 3> corner = { xHalfWidth, yHalfWidth, -depthForFOV };
-        std::array<double, 3> distortedCorner = cameras[i][c].m_distortion->MapPoint(corner);
+        std::array<double, 3> distortedCorner = cameras[i][c]->m_distortion->MapPoint(corner);
 
         double hFOV = glm::degrees(2.0 * atan(fabs(distortedCorner[0] / distortedCorner[2])));
         double vFOV = glm::degrees(2.0 * atan(fabs(distortedCorner[1] / distortedCorner[2])));
@@ -350,8 +351,8 @@ public:
       // Use the ratio of the new and original fields of view to scale the pixel count, making sure that
       // the results are an even multiple of the number of samples in X and Y.
       std::array<unsigned, 2> pixelCounts;
-      uint16_t maxX = std::max(cameras[i][0].m_resolutionPixels[0], cameras[i][1].m_resolutionPixels[0]);
-      uint16_t maxY = std::max(cameras[i][0].m_resolutionPixels[1], cameras[i][1].m_resolutionPixels[1]);
+      uint16_t maxX = std::max(cameras[i][0]->m_resolutionPixels[0], cameras[i][1]->m_resolutionPixels[0]);
+      uint16_t maxY = std::max(cameras[i][0]->m_resolutionPixels[1], cameras[i][1]->m_resolutionPixels[1]);
       pixelCounts[0] = maxX * maxXRatio;
       if (pixelCounts[0] % m_nx != 0) { pixelCounts[0] += m_nx - (pixelCounts[0] % m_nx); }
       pixelCounts[1] = maxY * maxYRatio;
@@ -674,7 +675,7 @@ public:
   float m_fitnessThreshold;
 };
 
-DepthEstimator::DepthEstimator(std::vector< std::array<CameraRenderInfo, 2> > cameras,
+DepthEstimator::DepthEstimator(std::vector< std::array<std::shared_ptr<CameraRenderInfo>, 2> > cameras,
   std::shared_ptr<PoseAdjuster> poseAdjuster, Time cameraFrameInterval,
   unsigned nx, unsigned ny,
   std::vector<float> depths,
@@ -693,7 +694,7 @@ DepthEstimator::DepthEstimator(std::vector< std::array<CameraRenderInfo, 2> > ca
     m_constructorStatus = "DepthEstimator::DepthEstimator(): nx must be greater than 0";
     return;
   }
-  if (cameras[0][0].m_resolutionPixels[0] / nx > MAX_BLOCK_SIZE) {
+  if (cameras[0][0]->m_resolutionPixels[0] / nx > MAX_BLOCK_SIZE) {
     m_constructorStatus = "DepthEstimator::DepthEstimator(): Block size must be less than or equal to "
       + std::to_string(MAX_BLOCK_SIZE) + " (add more regions)";
     return;
@@ -702,7 +703,7 @@ DepthEstimator::DepthEstimator(std::vector< std::array<CameraRenderInfo, 2> > ca
     m_constructorStatus = "DepthEstimator::DepthEstimator(): ny must be greater than 0";
     return;
   }
-  if (cameras[0][0].m_resolutionPixels[1] / ny > MAX_BLOCK_SIZE) {
+  if (cameras[0][0]->m_resolutionPixels[1] / ny > MAX_BLOCK_SIZE) {
     m_constructorStatus = "DepthEstimator::DepthEstimator(): Block size must be less than or equal to "
       + std::to_string(MAX_BLOCK_SIZE) + " (add more regions)";
     return;
@@ -907,14 +908,14 @@ void DepthEstimator::BuildGradientImages(DepthEstimator& de, uint16_t width, uin
       // Find the X piercing points for the depth at the left and right edges of the image
       // and then compute the scale and offset that will map the image pixels correctly.
       // Remember that the pixel centers are half a pixel in from the edges.
-      double halfX = depth * tan(glm::radians(de.m_impl->m_cameraPairs[0]->m_cameras[c].m_fovDegrees[0] / 2));
+      double halfX = depth * tan(glm::radians(de.m_impl->m_cameraPairs[0]->m_cameras[c]->m_fovDegrees[0] / 2));
       double xLeft = -halfX * (double(width) / (width - 1));
       double xRight = halfX * (double(width) / (width - 1));
       double scale = (xRight - xLeft) / (width - 1);
       double offset = -xLeft + (0.5 * scale);
 
       // Add the camera's X center to the offset.
-      offset += de.m_impl->m_cameraPairs[0]->m_cameras[c].m_positionMeters[0];
+      offset += de.m_impl->m_cameraPairs[0]->m_cameras[c]->m_positionMeters[0];
 
       for (size_t x = 0; x < width; x++) {
         double value = 65535 * TestPattern(x * scale + offset);
@@ -947,7 +948,7 @@ void DepthEstimator::BuildGradientImages(DepthEstimator& de, uint16_t width, uin
     id->texture = texture;
     id->exposure = cameraFrameInterval;
     for (size_t i = 0; i < 3; i++) {
-      de.m_impl->m_cameraPairs[0]->m_cameras[c].m_imageQueue->InsertImage(id);
+      de.m_impl->m_cameraPairs[0]->m_cameras[c]->m_imageQueue->InsertImage(id);
     }
   }
 }
@@ -975,7 +976,7 @@ float DepthEstimator::SpeedTestSingleEstimation(uint16_t width, uint16_t height,
   glGetError();
 
   // Construct a DepthEstimator after making the objects required to construct it.
-  std::vector< std::array<CameraRenderInfo, 2> > cameras;
+  std::vector< std::array<std::shared_ptr<CameraRenderInfo>, 2> > cameras;
   DistortionNone* dNone = new DistortionNone();
   std::shared_ptr<Distortion> distortion(dNone);
   VignetteNone* vNone = new VignetteNone();
@@ -985,10 +986,10 @@ float DepthEstimator::SpeedTestSingleEstimation(uint16_t width, uint16_t height,
   std::vector< std::shared_ptr<ImageQueue> > queues;
   queues.push_back(queue1);
   queues.push_back(queue2);
-  CameraRenderInfo cam1(1, { -1, 0, 0 }, { 0, 0, 0 }, { width, height }, { 90.0, 90.0 },
-    distortion, vignette, queues[0]);
-  CameraRenderInfo cam2(2, { 1, 0, 0 }, { 0, 0, 0 }, { width, height }, { 90.0, 90.0 },
-    distortion, vignette, queues[1]);
+  std::shared_ptr<CameraRenderInfo> cam1(new CameraRenderInfo(1, { -1, 0, 0 }, { 0, 0, 0 }, { width, height }, { 90.0, 90.0 },
+    distortion, vignette, queues[0]));
+  std::shared_ptr<CameraRenderInfo> cam2(new CameraRenderInfo(2, { 1, 0, 0 }, { 0, 0, 0 }, { width, height }, { 90.0, 90.0 },
+    distortion, vignette, queues[1]));
   cameras.push_back({ cam1, cam2 });
   std::shared_ptr<PoseAdjuster> poseAdjuster = std::make_shared<PoseAdjuster>();
   // Use the same value for the camera frame interval and the exposure time on the frames
@@ -1089,7 +1090,7 @@ std::string DepthEstimator::Test()
       uint16_t height = 50*ny; ///< Height of the frame buffer.  Must be divisible by ny for our tests below.
 
       // Construct a DepthEstimator after making the objects required to construct it.
-      std::vector< std::array<CameraRenderInfo, 2> > cameras;
+      std::vector< std::array<std::shared_ptr<CameraRenderInfo>, 2> > cameras;
       DistortionNone* dNone = new DistortionNone();
       std::shared_ptr<Distortion> distortion(dNone);
       VignetteNone* vNone = new VignetteNone();
@@ -1099,10 +1100,10 @@ std::string DepthEstimator::Test()
       std::vector< std::shared_ptr<ImageQueue> > queues;
       queues.push_back(queue1);
       queues.push_back(queue2);
-      CameraRenderInfo cam1(1, { -1, 0, 0 }, { 0, 0, 0 }, { width, height}, { 90.0, 90.0 },
-        distortion, vignette, queues[0]);
-      CameraRenderInfo cam2(2, { 1, 0, 0 }, { 0, 0, 0 }, { width, height}, { 90.0, 90.0 },
-        distortion, vignette, queues[1]);
+      std::shared_ptr<CameraRenderInfo> cam1(new CameraRenderInfo(1, { -1, 0, 0 }, { 0, 0, 0 }, { width, height}, { 90.0, 90.0 },
+        distortion, vignette, queues[0]));
+      std::shared_ptr<CameraRenderInfo> cam2(new CameraRenderInfo(2, { 1, 0, 0 }, { 0, 0, 0 }, { width, height}, { 90.0, 90.0 },
+        distortion, vignette, queues[1]));
       cameras.push_back({ cam1, cam2 });
 
       std::shared_ptr<PoseAdjuster> poseAdjuster = std::make_shared<PoseAdjuster>();
@@ -1285,16 +1286,16 @@ std::string DepthEstimator::Test()
       // the other 45 degrees to the left.  We then shoot rays from the origin to the center of the image and
       // make sure that the depths are correct.
       // We don't actually do depth estimation, so we just re-use the same (ignored) image data.
-      std::vector< std::array<CameraRenderInfo, 2> > probeCameras;
-      CameraRenderInfo cam1Probe(1, { -1, 1, 0 }, { 0, 0, -45 }, { width, height }, { 90.0, 90.0 },
-        distortion, vignette, queues[0]);
-      CameraRenderInfo cam2Probe(2, { 1, -1, 0 }, { 0, 0, -45 }, { width, height }, { 90.0, 90.0 },
-        distortion, vignette, queues[1]);
+      std::vector< std::array<std::shared_ptr<CameraRenderInfo>, 2> > probeCameras;
+      std::shared_ptr<CameraRenderInfo> cam1Probe(new CameraRenderInfo(1, { -1, 1, 0 }, { 0, 0, -45 }, { width, height }, { 90.0, 90.0 },
+        distortion, vignette, queues[0]));
+      std::shared_ptr<CameraRenderInfo> cam2Probe(new CameraRenderInfo(2, { 1, -1, 0 }, { 0, 0, -45 }, { width, height }, { 90.0, 90.0 },
+        distortion, vignette, queues[1]));
       probeCameras.push_back({ cam1Probe, cam2Probe });
-      CameraRenderInfo cam3Probe(1, { -1, -1, 0 }, { 0, 0, 45 }, { width, height }, { 90.0, 90.0 },
-        distortion, vignette, queues[0]);
-      CameraRenderInfo cam4Probe(2, { 1, 1, 0 }, { 0, 0, 45 }, { width, height }, { 90.0, 90.0 },
-        distortion, vignette, queues[1]);
+      std::shared_ptr<CameraRenderInfo> cam3Probe(new CameraRenderInfo(1, { -1, -1, 0 }, { 0, 0, 45 }, { width, height }, { 90.0, 90.0 },
+        distortion, vignette, queues[0]));
+      std::shared_ptr<CameraRenderInfo> cam4Probe(new CameraRenderInfo(2, { 1, 1, 0 }, { 0, 0, 45 }, { width, height }, { 90.0, 90.0 },
+        distortion, vignette, queues[1]));
       probeCameras.push_back({ cam3Probe, cam4Probe });
       DepthEstimator deProbe(probeCameras, poseAdjuster, cameraFrameInterval, nx, ny, testDepths);
       if (deProbe.m_constructorStatus != "") {
@@ -1324,10 +1325,10 @@ std::string DepthEstimator::Test()
       double degN = 10.0;
       double cosN = cos(glm::radians(degN));
       double sinN = sin(glm::radians(degN));
-      CameraRenderInfo camRot1(1, { -cosN, -sinN, 1 }, { 0, 0, degN }, { width, height }, { 90.0, 90.0 },
-        distortion, vignette, queues[0]);
-      CameraRenderInfo camRot2(2, { cosN, sinN, 1 }, { 0, 0, degN }, { width, height }, { 90.0, 90.0 },
-        distortion, vignette, queues[1]);
+      std::shared_ptr<CameraRenderInfo> camRot1(new CameraRenderInfo(1, { -cosN, -sinN, 1 }, { 0, 0, degN }, { width, height }, { 90.0, 90.0 },
+        distortion, vignette, queues[0]));
+      std::shared_ptr<CameraRenderInfo> camRot2(new CameraRenderInfo(2, { cosN, sinN, 1 }, { 0, 0, degN }, { width, height }, { 90.0, 90.0 },
+        distortion, vignette, queues[1]));
       cameras.clear();
       cameras.push_back({ camRot1, camRot2 });
       DepthEstimator deRotated(cameras, poseAdjuster, cameraFrameInterval, nx, ny, testDepths);
