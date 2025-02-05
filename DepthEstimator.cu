@@ -410,6 +410,8 @@ public:
           vri.rightHalfFOV = cpi.m_fovsDeg[0] / 2.0f;
           vri.bottomHalfFOV = -cpi.m_fovsDeg[1] / 2.0f;
           vri.topHalfFOV = cpi.m_fovsDeg[1] / 2.0f;
+          vri.nearClip = cpi.m_perDepths[d].m_depth / 2;
+          vri.farClip = cpi.m_perDepths[d].m_depth * 2;
           vri.frameBuffer = cpi.m_perDepths[d].m_frameBuffers[b];
           vri.colorBuffer = cpi.m_perDepths[d].m_colorBuffers[b];
           vri.depthBuffer = cpi.m_perDepths[d].m_depthBuffers[b];
