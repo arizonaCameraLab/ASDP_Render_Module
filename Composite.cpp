@@ -834,7 +834,6 @@ void CompositeCameras::CreateBufferInfo(CameraRenderInfo const& cameraRenderInfo
 
   // Save the camera buffer information for this camera, filling in all of its elements.
   CameraBufferInfo cbi;
-  cbi.mesh = mesh;
   cbi.vertexBufferObject = vertexBufferObject;
   cbi.indexBufferObject = indexBufferObject;
   cbi.numIndices = indices.size();
@@ -851,7 +850,7 @@ void CompositeCameras::UpdateVertexBuffer(CameraRenderInfo const& cameraRenderIn
     std::lock_guard<std::mutex> lock(cameraRenderInfo.m_meshMutex);
 
     // Find the mesh information for this camera.
-    MeshInfo const& mesh = cbi.mesh;
+    MeshInfo const& mesh = cameraRenderInfo.m_mesh;
 
     // Create the vertices including the texture coordinates by scaling the normalized offsets
     // in the mesh by their current depth values and adding the camera center.
