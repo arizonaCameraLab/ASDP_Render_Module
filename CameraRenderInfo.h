@@ -101,18 +101,20 @@ namespace asdp {
       }
 
       uint16_t m_ID = 0;                              ///< ID of the camera.
-      /// Position of the camera's center of projection in meters from the camera device origin.
-      /// The canonical orientation is in the local helicopter coordinate system, with +X pointing
+
+      /// @brief Position of the camera's center of projection in meters from the camera device origin.
+      /// @details The canonical orientation is in the local helicopter coordinate system, with +X pointing
       /// right, +Y pointing forwards, and +Z pointing up.  The camera is translated in the
       /// helicopter frame of reference and then rotated around its new center.
       std::array<double, 3> m_positionMeters = {};
-      /// Orientation of the camera in degrees, Euler rotation around X, then Y, then Z.
-      /// The canonical orientation is in the local helicopter coordinate system, with +X pointing
+      /// @brief Orientation of the camera in degrees, Euler rotation around X, then Y, then Z.
+      /// @details The canonical orientation is in the local helicopter coordinate system, with +X pointing
       /// right, +Y pointing forwards, and +Z pointing up.  The camera is translated in the
       /// helicopter frame of reference and then rotated around its new center.
       std::array<double, 3> m_orientationDegrees = {};
       std::array<uint16_t, 2> m_resolutionPixels = {};///< Resolution of the camera in pixels, X then Y.
       std::array<double, 2> m_fovDegrees = {};        ///< Field of view of the camera in degrees, horizontal then vertical.
+
       /// Distortion correction object for the camera.
       std::shared_ptr<Distortion> m_distortion;
       /// Vignette correction object for the camera.
@@ -124,8 +126,8 @@ namespace asdp {
       MeshInfo m_mesh;
       mutable std::mutex m_meshMutex;  ///< Mutex to control access to information that must be read as a single unit.
 
-      /// Depth scale to use for this view, -1 disables and > 0 sets color based on scaled depth.  This is used
-      /// for debugging purposes to show the depth of the scene in the camera view.
+      /// @brief Depth scale to use for this view, -1 disables and > 0 sets color based on scaled depth.
+      /// @details This is used for debugging purposes to show the depth of the scene in the camera view.
       GLfloat m_depthScale = -1.0;
 
       /// @brief Compute the values needed to create the vertices for the render mesh for a camera.

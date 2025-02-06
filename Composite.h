@@ -38,32 +38,32 @@ namespace asdp {
 
     /// @brief Information about the rendering of a single viewpoint, enabling multiple views to be requested at the same time.
     struct ViewRenderInfo {
-      /// Position of the viewpoint in meters from the camera device origin.
-      /// Specifies the center of the view frustum in the camera coordinate system.
+      /// @brief Position of the viewpoint in meters from the camera device origin.
+      /// @details Specifies the center of the view frustum in the camera coordinate system.
       /// The canonical orientation is in the local helicopter coordinate system, with +X pointing
       /// right, +Y pointing forwards, and +Z pointing up.  The camera is translated in the
       /// helicopter frame of reference and then rotated around its new center.  A rotation around
       /// the +X axis will tip the camera's view up, and a rotation around the +Y axis will pan the
       /// camera's view left.
       std::array<float, 3> viewpoint = {};
-      /// Orientation of the viewpoint in degrees, Quaternion in (W,X,Y,Z) order.
-      /// The canonical orientation is in the local helicopter coordinate system, with +X pointing
+      /// @brief Orientation of the viewpoint in degrees, Quaternion in (W,X,Y,Z) order.
+      /// @details The canonical orientation is in the local helicopter coordinate system, with +X pointing
       /// right, +Y pointing forwards, and +Z pointing up.  The camera is translated in the
       /// helicopter frame of reference and then rotated around its new center.
       /// The camera is looking out the front of the helicopter (along the +Y axis) with its "up" vector
       /// pointing above the helicopter (along the +Z axis) when the orientation is (1,0,0,0).
       std::array<float, 4> orientation = {1, 0, 0, 0};
-      /// Left edge of the view in degrees from the principal ray (this will be half the horizontal FOV).
-      /// Left and right are different for off-center projection.
+      /// @brief Left edge of the view in degrees from the principal ray (this will be half the horizontal FOV).
+      /// @details Left and right are different for off-center projection.
       float leftHalfFOV = -45;
-      /// Right edge of the view in degrees from the principal ray (this will be half the horizontal FOV).
-      /// Left and right are different for off-center projection.
+      /// @brief Right edge of the view in degrees from the principal ray (this will be half the horizontal FOV).
+      /// @details Left and right are different for off-center projection.
       float rightHalfFOV = 45;
-      /// Top edge of the view in degrees from the principal ray (this will be half the vertical FOV).
-      /// Top and bottom are different for off-center projection.
+      /// @brief Top edge of the view in degrees from the principal ray (this will be half the vertical FOV).
+      /// @details Top and bottom are different for off-center projection.
       float topHalfFOV = 45;
-      /// Bottom edge of the view in degrees from the principal ray (this will be half the vertical FOV).
-      /// Top and bottom are different for off-center projection.
+      /// @brief Bottom edge of the view in degrees from the principal ray (this will be half the vertical FOV).
+      /// @details Top and bottom are different for off-center projection.
       float bottomHalfFOV = -45;
       float nearClip = 0.7;                 ///< Near clipping plane in meters.
       float farClip = 4000;                 ///< Far clipping plane in meters. Must be > max Composite depth
