@@ -237,6 +237,9 @@ namespace asdp {
       GLuint m_offsetUniformID;      ///< The Uniform ID of the color offset.
       GLuint m_gainUniformID;        ///< The Uniform ID of the color gain.
 
+      /// The identifier for the depth-scale uniform.
+      GLuint m_depthScaleUniformID;
+
       /// Global scale based on the product of exposure and gain for all cameras being rendered.
       /// This is averaged over time to enable autoexposure and autogain without causing flickering
       /// if they change rapidly.

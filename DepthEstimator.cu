@@ -1006,9 +1006,9 @@ float DepthEstimator::SpeedTestSingleEstimation(uint16_t width, uint16_t height,
   queues.push_back(queue1);
   queues.push_back(queue2);
   std::shared_ptr<CameraRenderInfo> cam1(new CameraRenderInfo(1, { -1, 0, 0 }, { 0, 0, 0 }, { width, height }, { 90.0, 90.0 },
-    distortion, vignette, queues[0]));
+    distortion, vignette, queues[0], -1.0f));
   std::shared_ptr<CameraRenderInfo> cam2(new CameraRenderInfo(2, { 1, 0, 0 }, { 0, 0, 0 }, { width, height }, { 90.0, 90.0 },
-    distortion, vignette, queues[1]));
+    distortion, vignette, queues[1], -1.0f));
   cameras.push_back({ cam1, cam2 });
   std::shared_ptr<PoseAdjuster> poseAdjuster = std::make_shared<PoseAdjuster>();
   // Use the same value for the camera frame interval and the exposure time on the frames
@@ -1120,9 +1120,9 @@ std::string DepthEstimator::Test()
       queues.push_back(queue1);
       queues.push_back(queue2);
       std::shared_ptr<CameraRenderInfo> cam1(new CameraRenderInfo(1, { -1, 0, 0 }, { 0, 0, 0 }, { width, height}, { 90.0, 90.0 },
-        distortion, vignette, queues[0]));
+        distortion, vignette, queues[0], -1.0f));
       std::shared_ptr<CameraRenderInfo> cam2(new CameraRenderInfo(2, { 1, 0, 0 }, { 0, 0, 0 }, { width, height}, { 90.0, 90.0 },
-        distortion, vignette, queues[1]));
+        distortion, vignette, queues[1], -1.0f));
       cameras.push_back({ cam1, cam2 });
 
       std::shared_ptr<PoseAdjuster> poseAdjuster = std::make_shared<PoseAdjuster>();
@@ -1307,14 +1307,14 @@ std::string DepthEstimator::Test()
       // We don't actually do depth estimation, so we just re-use the same (ignored) image data.
       std::vector< std::array<std::shared_ptr<CameraRenderInfo>, 2> > probeCameras;
       std::shared_ptr<CameraRenderInfo> cam1Probe(new CameraRenderInfo(1, { -1, 1, 0 }, { 0, 0, -45 }, { width, height }, { 90.0, 90.0 },
-        distortion, vignette, queues[0]));
+        distortion, vignette, queues[0], -1.0f));
       std::shared_ptr<CameraRenderInfo> cam2Probe(new CameraRenderInfo(2, { 1, -1, 0 }, { 0, 0, -45 }, { width, height }, { 90.0, 90.0 },
-        distortion, vignette, queues[1]));
+        distortion, vignette, queues[1], -1.0f));
       probeCameras.push_back({ cam1Probe, cam2Probe });
       std::shared_ptr<CameraRenderInfo> cam3Probe(new CameraRenderInfo(1, { -1, -1, 0 }, { 0, 0, 45 }, { width, height }, { 90.0, 90.0 },
-        distortion, vignette, queues[0]));
+        distortion, vignette, queues[0], -1.0f));
       std::shared_ptr<CameraRenderInfo> cam4Probe(new CameraRenderInfo(2, { 1, 1, 0 }, { 0, 0, 45 }, { width, height }, { 90.0, 90.0 },
-        distortion, vignette, queues[1]));
+        distortion, vignette, queues[1], -1.0f));
       probeCameras.push_back({ cam3Probe, cam4Probe });
       DepthEstimator deProbe(probeCameras, poseAdjuster, cameraFrameInterval, nx, ny, testDepths);
       if (deProbe.m_constructorStatus != "") {
@@ -1345,9 +1345,9 @@ std::string DepthEstimator::Test()
       double cosN = cos(glm::radians(degN));
       double sinN = sin(glm::radians(degN));
       std::shared_ptr<CameraRenderInfo> camRot1(new CameraRenderInfo(1, { -cosN, -sinN, 1 }, { 0, 0, degN }, { width, height }, { 90.0, 90.0 },
-        distortion, vignette, queues[0]));
+        distortion, vignette, queues[0], -1.0f));
       std::shared_ptr<CameraRenderInfo> camRot2(new CameraRenderInfo(2, { cosN, sinN, 1 }, { 0, 0, degN }, { width, height }, { 90.0, 90.0 },
-        distortion, vignette, queues[1]));
+        distortion, vignette, queues[1], -1.0f));
       cameras.clear();
       cameras.push_back({ camRot1, camRot2 });
       DepthEstimator deRotated(cameras, poseAdjuster, cameraFrameInterval, nx, ny, testDepths);

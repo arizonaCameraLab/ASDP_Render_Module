@@ -147,7 +147,7 @@ std::string RangeEstimator::Test()
   std::shared_ptr<ImageData> image1(new ImageData);
   std::shared_ptr<ImageQueue> queue1(new ImageQueue);
   std::shared_ptr<CameraRenderInfo> camera1(new CameraRenderInfo(
-    1, { 0, 0, 0 }, { 0, 0, 0 }, { width, height }, { 90.0, 90.0 }, distortion, vignette, queue1));
+    1, { 0, 0, 0 }, { 0, 0, 0 }, { width, height }, { 90.0, 90.0 }, distortion, vignette, queue1, -1.0f));
 
   // Add an image to the queue that has half values of 20000 and half of 40000.
   size_t imgSize = static_cast<size_t>(width) * height;

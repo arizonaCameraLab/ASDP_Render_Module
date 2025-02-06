@@ -398,7 +398,7 @@ float MeanStd::SpeedTestSingleCalculation(uint16_t width, uint16_t height)
   std::shared_ptr<ImageQueue> queue(new ImageQueue);
 
   std::shared_ptr<CameraRenderInfo> camera(new CameraRenderInfo(
-    1, { 0, 0, 0 }, { 0, 0, 0 }, { width, height }, { 90.0, 90.0 }, distortion, vignette, queue));
+    1, { 0, 0, 0 }, { 0, 0, 0 }, { width, height }, { 90.0, 90.0 }, distortion, vignette, queue, -1.0f));
   MeanStd meanStd(camera);
   if (meanStd.m_constructorStatus != "") {
     return -1;
@@ -471,7 +471,7 @@ std::string MeanStd::Test()
     std::shared_ptr<ImageQueue> queue(new ImageQueue);
 
     std::shared_ptr<CameraRenderInfo> camera(new CameraRenderInfo(
-      1, { 0, 0, 0 }, { 0, 0, 0 }, { width, height }, { 90.0, 90.0 }, distortion, vignette, queue));
+      1, { 0, 0, 0 }, { 0, 0, 0 }, { width, height }, { 90.0, 90.0 }, distortion, vignette, queue, -1.0f));
     MeanStd meanStd(camera);
     if (meanStd.m_constructorStatus != "") {
       return "MeanStd constructor failed: " + meanStd.m_constructorStatus;
@@ -540,7 +540,7 @@ std::string MeanStd::Test()
     std::shared_ptr<ImageQueue> queue(new ImageQueue);
 
     std::shared_ptr<CameraRenderInfo> camera(new CameraRenderInfo(
-      1, { 0, 0, 0 }, { 0, 0, 0 }, { width, height }, { 90.0, 90.0 }, distortion, vignette, queue));
+      1, { 0, 0, 0 }, { 0, 0, 0 }, { width, height }, { 90.0, 90.0 }, distortion, vignette, queue, -1.0f));
     MeanStd meanStd(camera);
     if (meanStd.m_constructorStatus != "Image dimensions must be an even multiple of the block size") {
       return "MeanStd constructor failed to detect non-even multiple of block size";
@@ -600,7 +600,7 @@ std::string MeanStdGroup::Test()
     std::shared_ptr<ImageData> image1(new ImageData);
     std::shared_ptr<ImageQueue> queue1(new ImageQueue);
     std::shared_ptr<CameraRenderInfo> camera1(new CameraRenderInfo(
-      1, { 0, 0, 0 }, { 0, 0, 0 }, { width, height }, { 90.0, 90.0 }, distortion, vignette, queue1));
+      1, { 0, 0, 0 }, { 0, 0, 0 }, { width, height }, { 90.0, 90.0 }, distortion, vignette, queue1, -1.0f));
 
     // Add an image to the queue.
     // Construct an OpenGL texture and copy the image into it.
@@ -621,7 +621,7 @@ std::string MeanStdGroup::Test()
     std::shared_ptr<ImageData> image2(new ImageData);
     std::shared_ptr<ImageQueue> queue2(new ImageQueue);
     std::shared_ptr<CameraRenderInfo> camera2(new CameraRenderInfo(
-      1, { 0, 0, 0 }, { 0, 0, 0 }, { width, height }, { 90.0, 90.0 }, distortion, vignette, queue2));
+      1, { 0, 0, 0 }, { 0, 0, 0 }, { width, height }, { 90.0, 90.0 }, distortion, vignette, queue2, -1.0f));
     camera2->SetColorOffsetGain(10000.0, 1.0);
 
     // Add an image to the queue.
@@ -643,7 +643,7 @@ std::string MeanStdGroup::Test()
     std::shared_ptr<ImageData> image3(new ImageData);
     std::shared_ptr<ImageQueue> queue3(new ImageQueue);
     std::shared_ptr<CameraRenderInfo> camera3(new CameraRenderInfo(
-      1, { 0, 0, 0 }, { 0, 0, 0 }, { width, height }, { 90.0, 90.0 }, distortion, vignette, queue3));
+      1, { 0, 0, 0 }, { 0, 0, 0 }, { width, height }, { 90.0, 90.0 }, distortion, vignette, queue3, -1.0f));
     camera3->SetColorOffsetGain(3000.0, 2.0);
 
     // Add an image to the queue.
@@ -665,7 +665,7 @@ std::string MeanStdGroup::Test()
     std::shared_ptr<ImageData> image4(new ImageData);
     std::shared_ptr<ImageQueue> queue4(new ImageQueue);
     std::shared_ptr<CameraRenderInfo> camera4(new CameraRenderInfo(
-      1, { 0, 0, 0 }, { 0, 0, 0 }, { width, height }, { 90.0, 90.0 }, distortion, vignette, queue4));
+      1, { 0, 0, 0 }, { 0, 0, 0 }, { width, height }, { 90.0, 90.0 }, distortion, vignette, queue4, -1.0f));
 
     // Add an image to the queue.
     // Construct an OpenGL texture and copy the image into it.

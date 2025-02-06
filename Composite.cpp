@@ -617,6 +617,7 @@ R"(#version 330 core
    layout (location = 2) in float aVignetteGain;
    out vec2 TexCoord;
    out float vignetteGain;
+   out float depthColor;
    uniform mat4 viewProjection;
    uniform mat4 poseAdjust;   ///< Moves points in helicopter space to their capture-time positions.
    // The following are for the camera rotation and translation during the frame, and they are
@@ -624,6 +625,7 @@ R"(#version 330 core
    uniform vec3 fVelocity;   ///< The change in position over a frame time from frame center
    uniform vec3 fAxis;       ///< The axis around which the camera is rotating during the frame
    uniform float fAngle;     ///< The angle of rotation around the axis during a frame time in radians
+   uniform float depthScale; ///< If this is > 0, scales the depth by this amount and sends to fragment shader.
    void main()
    {
       // Determine the time within a frame that this vertex is being rendered.
@@ -648,6 +650,9 @@ R"(#version 330 core
       // Pass the texture coordinate and vignette gain to the fragment shader.
       TexCoord = vec2(aTexCoord.x, aTexCoord.y);
       vignetteGain = aVignetteGain;
+
+      // If we are scaling the depth, do it here. Otherwise, send -1
+      depthColor = depthScale > 0.0 ? gl_Position.z * depthScale : -1.0f;
    })";
 
 static const GLchar* camerasFragmentShader =
@@ -655,16 +660,22 @@ R"(#version 330 core
    out vec4 FragColor;
    in vec2 TexCoord;
    in float vignetteGain;
+   in float depthColor;
    uniform sampler2D imageTexture;
    uniform sampler1D toneMapTexture;
    uniform float offset;
    uniform float gain;
    void main()
    {
-      // Look up the intensity from the image texture and then use the tone map to get the color.
-      // Apply offset, gain, and vignette gain.  The texture sampler should be set to GL_CLAMP_TO_EDGE.
-      float intensity = vignetteGain * gain * (offset + texture(imageTexture, TexCoord).r);
-      FragColor = texture(toneMapTexture, intensity);
+      if (depthColor >= 0.0) {
+        // If the depth value has been set to a non-negative value, use it as the color.
+        FragColor = vec4(depthColor, depthColor, depthColor, 1.0);
+      } else {
+        // Look up the intensity from the image texture and then use the tone map to get the color.
+        // Apply offset, gain, and vignette gain.  The texture sampler should be set to GL_CLAMP_TO_EDGE.
+        float intensity = vignetteGain * gain * (offset + texture(imageTexture, TexCoord).r);
+        FragColor = texture(toneMapTexture, intensity);
+      }
    })";
 
 CompositeCameras::CompositeCameras(std::vector< std::shared_ptr<CameraRenderInfo> >& cameraRenderInfo, GLuint toneMaptexture,
@@ -688,6 +699,7 @@ CompositeCameras::CompositeCameras(std::vector< std::shared_ptr<CameraRenderInfo
   , m_fAngleUniformID(0)
   , m_offsetUniformID(0)
   , m_gainUniformID(0)
+  , m_depthScaleUniformID(0)
   , m_globalExposureGain(cameraFrameInterval.seconds + cameraFrameInterval.microseconds * 1e-6)
   , m_imageTextureId(0)
   , m_toneMapTextureId(0)
@@ -746,11 +758,12 @@ bool CompositeCameras::SetupRendering()
   m_fAngleUniformID = glGetUniformLocation(m_programId, "fAngle");
   m_offsetUniformID = glGetUniformLocation(m_programId, "offset");
   m_gainUniformID = glGetUniformLocation(m_programId, "gain");
+  m_depthScaleUniformID = glGetUniformLocation(m_programId, "depthScale");
   m_imageTextureId = glGetUniformLocation(m_programId, "imageTexture");
   m_toneMapTextureId = glGetUniformLocation(m_programId, "toneMapTexture");
   if (m_viewProjectionUniformId == -1 || m_poseAdjustUniformId == -1 || m_fVelocityUniformID == -1 ||
     m_fAxisUniformID == -1 || m_fAngleUniformID == -1 || m_imageTextureId == -1 || m_toneMapTextureId == -1 ||
-    m_offsetUniformID == -1 || m_gainUniformID == -1) {
+    m_offsetUniformID == -1 || m_gainUniformID == -1 || m_depthScaleUniformID == -1) {
     std::cerr << "CompositeCameras::SetupRendering(): Failed to get uniform IDs" << std::endl;
     std::cerr << "  viewProjection: " << m_viewProjectionUniformId << std::endl;
     std::cerr << "  poseAdjust: " << m_poseAdjustUniformId << std::endl;
@@ -758,6 +771,7 @@ bool CompositeCameras::SetupRendering()
     std::cerr << "  fAxis: " << m_fAxisUniformID << std::endl;
     std::cerr << "  fAngle: " << m_fAngleUniformID << std::endl;
     std::cerr << "  offset: " << m_offsetUniformID << std::endl;
+    std::cerr << "  depthScale: " << m_depthScaleUniformID << std::endl;
     std::cerr << "  gain: " << m_gainUniformID << std::endl;
     std::cerr << "  imageTexture: " << m_imageTextureId << std::endl;
     std::cerr << "  toneMapTexture: " << m_toneMapTextureId << std::endl;
@@ -1104,6 +1118,7 @@ void CompositeCameras::RenderView(asdp::Time scanOutTime, const float* viewProje
     }
     glUniform1f(m_offsetUniformID, offset);
     glUniform1f(m_gainUniformID, gain);
+    glUniform1f(m_depthScaleUniformID, m_cameraRenderInfos[c]->m_depthScale);
 
     // Draw the camera using its vertex buffer objects after specifying its layout.
     glBindBuffer(GL_ARRAY_BUFFER, m_cameraBufferInfos[cameraID].vertexBufferObject);

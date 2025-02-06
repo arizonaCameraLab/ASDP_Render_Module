@@ -35,6 +35,10 @@ namespace asdp {
       /// Compute the depth maps for the cameras given the next frame time (center pixel time).
       /// (Only used with CompositeCameras when we have a DepthEstimator.)
       void (*ComputeDepth)(Time nextFrameTime, void *userData) = nullptr;
+
+      /// Set the depth scale for the cameras to be rendered so that they show depth.
+      /// (Only used with CompositeCameras when we have a DepthEstimator.)
+      void (*SetToRenderDepth)(bool renderDepth, void *userData) = nullptr;
     };
 
     /// @brief Display base class that defines the interface that all Displays use.

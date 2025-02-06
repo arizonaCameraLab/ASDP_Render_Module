@@ -52,7 +52,7 @@ using namespace asdp;
 using namespace asdp::render;
 using json = nlohmann::json;
 
-static std::string VERSION = "2.23.0";
+static std::string VERSION = "2.24.0";
 
 /// @brief The path to the configuration file. Defined in the CMakeLists file.
 std::filesystem::path g_dirPath = CONFIG_FILE_PATH;
@@ -101,6 +101,20 @@ static void ComputeDepth(Time renderTime, void* /* unused */)
   }
 
   g_timingInfo.depthEndTimes.push_back(std::chrono::steady_clock::now());
+}
+
+/// @brief Callback handler to turn on and off depth rendering on the visible cameras.
+static void ChangeDepthRendering(bool depthRendering, void* /* unused */)
+{
+  for (std::shared_ptr<asdp::render::CameraRenderInfo> cri : g_visibleCameras) {
+    if (depthRendering) {
+      // Set to clamp to white at a distance of 200 meters, to give us some resolution below that.
+      cri->m_depthScale = 1.0f / 200;
+    } else {
+      cri->m_depthScale = -1.0f;
+    }
+  }
+  std::cout << "Toggled depth rendering to: " << (depthRendering ? "on" : "off") << std::endl;
 }
 
 /// @brief Helper function to pull information from a FRAME_BEGIN message.
@@ -1249,11 +1263,11 @@ int main(int argc, char** argv)
           // No vignette specified, so use the default.
         }
 
-          std::shared_ptr<asdp::render::CameraRenderInfo> info =
-            std::make_shared<CameraRenderInfo>(camera["id"],
-          camera["positionMeters"], camera["orientationDegrees"],
-          camera["resolutionPixels"], camera["fieldOfViewDegrees"],
-          dist, vig, std::make_shared<asdp::render::ImageQueue>());
+        std::shared_ptr<asdp::render::CameraRenderInfo> info =
+          std::make_shared<CameraRenderInfo>(camera["id"],
+        camera["positionMeters"], camera["orientationDegrees"],
+        camera["resolutionPixels"], camera["fieldOfViewDegrees"],
+        dist, vig, std::make_shared<asdp::render::ImageQueue>(), -1.0f);
 
         // Read the offset and gain from the color object if it is present and they are present.
         // Override the default values if they are present.
@@ -1413,6 +1427,7 @@ int main(int argc, char** argv)
     if (g_depthEstimator) {
       handlers->ComputeDepth = ComputeDepth;
     }
+    handlers->SetToRenderDepth = ChangeDepthRendering;
 
     // Construct one or more Display objects to render the cameras.  They all share objects with the texture Display.
     std::vector<std::shared_ptr<Display>> displays;

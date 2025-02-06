@@ -155,7 +155,7 @@ int main(int argc, char** argv)
       asdp::render::CameraRenderInfo info(camera["id"],
         camera["positionMeters"], camera["orientationDegrees"],
         camera["resolutionPixels"], camera["fieldOfViewDegrees"],
-        dist, vig, std::make_shared<asdp::render::ImageQueue>());
+        dist, vig, std::make_shared<asdp::render::ImageQueue>(), -1.0f);
       info.ComputePlanarCameraMeshInfo(100, 100, depth);
       cameraRenderInfos1.push_back(info);
     }
@@ -207,7 +207,7 @@ int main(int argc, char** argv)
       asdp::render::CameraRenderInfo info(camera["id"],
         camera["positionMeters"], camera["orientationDegrees"],
         camera["resolutionPixels"], camera["fieldOfViewDegrees"],
-        dist, vig, std::make_shared<asdp::render::ImageQueue>());
+        dist, vig, std::make_shared<asdp::render::ImageQueue>(), -1.0f);
       info.ComputePlanarCameraMeshInfo(100, 100, depth);
       cameraRenderInfos2.push_back(info);
     }

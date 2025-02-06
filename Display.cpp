@@ -238,6 +238,10 @@ public:
   /// Whether the space bar was pressed during the last loop, used to toggle play/pause.
   bool m_spacePressed = false;
 
+  /// Whether or no the 'd' key was pressed during the last loop, used to toggle depth computation.
+  bool m_dPressed = false;
+  bool m_displayingDepth = false;
+
   /// Index of the joystick to use, or -1 if no joystick is to be used.
   int m_glfwJoystickIndex = -1;
 
@@ -583,18 +587,22 @@ void DisplayWindow::HandleKeyboard()
   if (glfwGetKey(Display::m_impl->m_window, GLFW_KEY_UP) == GLFW_PRESS) {
     m_impl->m_rotationXDegrees += DegreesPerSecond * elapsed.count();
   }
+
   // Rotate to look down when the down key is pressed
   if (glfwGetKey(Display::m_impl->m_window, GLFW_KEY_DOWN) == GLFW_PRESS) {
     m_impl->m_rotationXDegrees -= DegreesPerSecond * elapsed.count();
   }
+
   // Rotate to look right when the right key is pressed
   if (glfwGetKey(Display::m_impl->m_window, GLFW_KEY_RIGHT) == GLFW_PRESS) {
     m_impl->m_rotationZDegrees -= DegreesPerSecond * elapsed.count();
   }
+
   // Rotate to look left when the left key is pressed
   if (glfwGetKey(Display::m_impl->m_window, GLFW_KEY_LEFT) == GLFW_PRESS) {
     m_impl->m_rotationZDegrees += DegreesPerSecond * elapsed.count();
   }
+
   // Toggle play/pause when the space key is pressed (once per press/release cycle).
   bool spacePressed = (glfwGetKey(Display::m_impl->m_window, GLFW_KEY_SPACE) == GLFW_PRESS);
   if (spacePressed && !m_impl->m_spacePressed) {
@@ -603,6 +611,16 @@ void DisplayWindow::HandleKeyboard()
     }
   }
   m_impl->m_spacePressed = spacePressed;
+
+  // Toggle depth computation when the 'd' key is pressed (once per press/release cycle).
+  bool dPressed = (glfwGetKey(Display::m_impl->m_window, GLFW_KEY_D) == GLFW_PRESS);
+  if (dPressed && !m_impl->m_dPressed) {
+    m_impl->m_displayingDepth = !m_impl->m_displayingDepth;
+    if (m_eventHandlers && m_eventHandlers->SetToRenderDepth) {
+      m_eventHandlers->SetToRenderDepth(m_impl->m_displayingDepth, m_userData);
+    }
+  }
+  m_impl->m_dPressed = dPressed;
 }
 
 void DisplayWindow::HandleMouse()

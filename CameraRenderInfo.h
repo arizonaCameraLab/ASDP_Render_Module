@@ -61,7 +61,8 @@ namespace asdp {
           std::array<uint16_t, 2> resolutionPixels, std::array<double, 2> fovDegrees,
           std::shared_ptr<Distortion> distortion,
           std::shared_ptr<Vignette> vignette,
-          std::shared_ptr<asdp::render::ImageQueue> imageQueue)
+          std::shared_ptr<asdp::render::ImageQueue> imageQueue,
+          float depthScale)
         : m_ID(id)
         , m_positionMeters(positionMeters)
         , m_orientationDegrees(orientationDegrees)
@@ -69,12 +70,14 @@ namespace asdp {
         , m_fovDegrees(fovDegrees)
         , m_distortion(distortion)
         , m_vignette(vignette)
-        , m_imageQueue(imageQueue) {}
+        , m_imageQueue(imageQueue)
+        , m_depthScale(depthScale)
+        {}
 
       CameraRenderInfo(const CameraRenderInfo& other)
         :CameraRenderInfo(other.m_ID, other.m_positionMeters, other.m_orientationDegrees,
           other.m_resolutionPixels, other.m_fovDegrees, other.m_distortion, other.m_vignette,
-          other.m_imageQueue)
+          other.m_imageQueue, other.m_depthScale)
       {
         float offset, gain;
         other.GetColorOffsetGain(offset, gain);
@@ -120,6 +123,10 @@ namespace asdp {
       /// The mesh to use to render the camera's image. Can be constructed using ComputePlanarCameraMeshInfo.
       MeshInfo m_mesh;
       mutable std::mutex m_meshMutex;  ///< Mutex to control access to information that must be read as a single unit.
+
+      /// Depth scale to use for this view, -1 disables and > 0 sets color based on scaled depth.  This is used
+      /// for debugging purposes to show the depth of the scene in the camera view.
+      GLfloat m_depthScale = -1.0;
 
       /// @brief Compute the values needed to create the vertices for the render mesh for a camera.
       /// @details This function computes the vertices for a quadrilateral that will be used to display

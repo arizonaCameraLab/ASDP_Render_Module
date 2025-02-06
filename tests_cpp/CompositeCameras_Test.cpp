@@ -140,7 +140,7 @@ int main()
       std::shared_ptr<asdp::render::CameraRenderInfo> camera(new asdp::render::CameraRenderInfo(x * ny + y,
         std::array<double, 3>(), orientationDegrees,
         std::array<uint16_t, 2>(), std::array<double, 2>({ hFOV, vFOV }),
-        nullptr, nullptr, iq));
+        nullptr, nullptr, iq, -1.0f));
 
       cameras.push_back(camera);
     }
@@ -162,7 +162,7 @@ int main()
     iq->InsertImage(image);
     iq->InsertImage(image);
     std::shared_ptr<asdp::render::CameraRenderInfo> camera(new asdp::render::CameraRenderInfo(9, position, orientation, std::array<uint16_t, 2>(), fieldOfView,
-      nullptr, nullptr, iq));
+      nullptr, nullptr, iq, -1.0f));
     // Color values run from half of the image value to 3/4 of the image value.
     camera->SetColorOffsetGain(-0.5f * 65535, 4);
     cameras.push_back(camera);
