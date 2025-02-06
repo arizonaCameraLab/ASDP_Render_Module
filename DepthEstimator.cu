@@ -842,27 +842,28 @@ void DepthEstimator::UpdateMesh(CameraRenderInfo& cam)
   // Lock the mutex to protect the mesh data.
   std::lock_guard<std::mutex> lock(cam.m_meshMutex);
 
+  // Record the camera position offset.
+  glm::vec3 cameraPosition(cam.m_positionMeters[0], cam.m_positionMeters[1], cam.m_positionMeters[2]);
+
   // Look up the depth for each vertex in the mesh and update the depth in the mesh.
-  //for (VertexInfo& v : cam.m_mesh.vertexInfo) {
-  //  v.depth = EstimateDepth(cameraPosition, v.normalizedOffset);
-  //}
   // We add a small offset based on how far the mesh point is from the center of the camera
   // so that the visible triangle at a location is from the camera whose center of projection
   // is closest.
-  glm::vec3 cameraPosition(cam.m_positionMeters[0], cam.m_positionMeters[1], cam.m_positionMeters[2]);
   const double offsetScale = 0.01;
   double xCenter = cam.m_mesh.nx / 2.0;
   double yCenter = cam.m_mesh.ny / 2.0;
   for (int x = 0; x < cam.m_mesh.nx; x++) {
+    double xOff = x - xCenter;
     for (int y = 0; y < cam.m_mesh.ny; y++) {
-      VertexInfo& v = cam.m_mesh.vertexInfo[y * cam.m_mesh.nx + x];
-      double xOff = x - xCenter;
       double yOff = y - yCenter;
-      double offset = offsetScale * sqrt(xOff * xOff + yOff * yOff);
-      // Scale proportionally to the depth; we have less resolution far away.
-      v.depth = EstimateDepth(cameraPosition, v.normalizedOffset) * (1 + offset);
+      VertexInfo& v = cam.m_mesh.vertexInfo[y * cam.m_mesh.nx + x];
+      double offsetFactor = 1.0 + offsetScale * sqrt(xOff * xOff + yOff * yOff);
+      v.depth = EstimateDepth(cameraPosition, v.normalizedOffset) * offsetFactor;
     }
   }
+  //for (VertexInfo& v : cam.m_mesh.vertexInfo) {
+  //  v.depth = EstimateDepth(cameraPosition, v.normalizedOffset);
+  //}
 }
 
 //================================================================================================
