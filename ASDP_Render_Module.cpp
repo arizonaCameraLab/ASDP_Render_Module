@@ -52,7 +52,7 @@ using namespace asdp;
 using namespace asdp::render;
 using json = nlohmann::json;
 
-static std::string VERSION = "2.22.0";
+static std::string VERSION = "2.23.0";
 
 /// @brief The path to the configuration file. Defined in the CMakeLists file.
 std::filesystem::path g_dirPath = CONFIG_FILE_PATH;
@@ -881,6 +881,7 @@ void usage(std::string name)
   std::cerr << "  --lockRotation                      Lock the rotation of the viewer to the initial helicopter pose." << std::endl;
   std::cerr << "  --disableLatencyCompensation        Disable latency compensation." << std::endl;
   std::cerr << "  --autoRangeStd <below> <above>      Adjust color range to specified standard deviations above and below the mean." << std::endl;
+  std::cerr << "  --noDepth                           Do not compute depth even when stereo cameras are available." << std::endl;
 };
 
 int main(int argc, char** argv)
@@ -906,6 +907,7 @@ int main(int argc, char** argv)
   double cameraFPS = 0.0;         ///< The frames per second to run the camera at, 0 defaults to camera-specified maximum.
   double autoRangeStdBelow = 0.0; ///< Adjust color range to this many standard deviations below the mean.
   double autoRangeStdAbove = 0.0; ///< Adjust color range to this many standard deviations above the mean.
+  bool computeDepth = true;       ///< Compute depth even when stereo cameras are available.
   size_t realParams = 0;          ///< The number of non-flag parameters we've seen.
 
   // Parse the command line arguments, with the first non-flag argument being the
@@ -1027,6 +1029,17 @@ int main(int argc, char** argv)
         return 2;
       }
       autoRangeStdAbove = std::stod(argv[i]);
+    } else if (std::string("--noDepth") == argv[i]) {
+      computeDepth = false;
+    } else if (std::string("--cameraFPS") == argv[i]) {
+      if (++i >= argc) {
+        usage(argv[0]);
+        return 2;
+      }
+      cameraFPS = std::stod(argv[i]);
+    } else if (std::string("--help") == argv[i]) {
+      usage(argv[0]);
+      return 0;
     } else if (argv[i][0] == '-') {
       usage(argv[0]);
       return 1;
@@ -1334,7 +1347,7 @@ int main(int argc, char** argv)
       if (cameraRenderInfos[j]->m_ID < 22) {
         g_visibleCameras.push_back(cameraRenderInfos[j]);
       }
-      else {
+      else if (computeDepth) {
         g_depthCameras.push_back(cameraRenderInfos[j]);
       }
     }
