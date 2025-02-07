@@ -171,6 +171,19 @@ the file to *0.json* in the install directory before running the program.
         "type" : "none",
         "parameters" : {}
       }
+    },
+    {
+      "id" : 3,
+      "positionMeters" : [0.0, 0.0, 0.0],
+      "orientationDegrees" : [-30.0, 0.0, 0.0],
+      "resolutionPixels" : [1280, 1024],
+      "fieldOfViewDegrees" : [40.0, 32.5],
+      "distortion" : {
+        "type" : "bagOfMappings",
+        "parameters" : {
+          "map" : [ [[0, 0], [0, 0]], [[1, 1], [2, 2]], [[-1, 1], [-2, 2]], [[-1, -1], [-2, -2]], [[1, -1], [2, -2]] ]
+        }
+      }
     }
   ]
 }
@@ -180,18 +193,23 @@ The cameras are placed in the helicopter coordinate system described below.
 
 The **distortion** field is an object that has a *type* field that specifies the type of distortion
 and a *parameters* field that specifies the parameters of the distortion.  The type field can be
-"none" for no distortion or "radial" for radial distortion (other approaches may be added).  The
-parameters field depends on the type of distortion.  For none distortion, the parameters are empty.
-For radial distortion, the parameters are as follows:
-- **COP:** The center of projection of the camera in fraction of the sensor in the range [-1..1] for
-  each axis.  This is the point in the image that is not distorted.  A value of [0.0, 0.0] is the center of the image.
-  A value of [1.0, 1.0] is the upper right corner of the image.  A value of [-1.0, -1.0] is the lower left corner.
-- **map:** A list of points with the first one being [0,0] and the later ones in increasing order that specify
-  the ideal-camera radius and its distorted radius.  These are for points that are projected onto the
-  Z = -1 plane.  They must span the entire range of the image (including the corners).  For example, a
-  distortion that increased the distance by a factor of 2 could be specified by the list [[0,0], [1,2]] for
-  a camera whose field of view is less than 45 degrees at its corners, with the second entry changed to
-  [3, 6] for a wider field of view.
+"none" for no distortion, "radial" for radial distortion, or "bagOfMappings" for an arbitrary 2D
+distortion field (other approaches may be added).  The parameters field depends on the type of distortion:
+- For *none* distortion, the parameters are empty.
+- For *radial* distortion, the parameters are as follows:
+    - **COP** The center of projection of the camera in fraction of the sensor in the range [-1..1] for
+      each axis.  This is the point in the image that is not distorted.  A value of [0.0, 0.0] is the center of the image.
+      A value of [1.0, 1.0] is the upper right corner of the image.  A value of [-1.0, -1.0] is the lower left corner.
+    - **map** A list of points with the first one being [0,0] and the later ones in increasing order that specify
+      the ideal-camera radius and its distorted radius.  These are for points that are projected onto the
+      Z = -1 plane.  They must span the entire range of the image (including the corners).  For example, a
+      distortion that increased the distance by a factor of 2 could be specified by the list [[0,0], [1,2]] for
+      a camera whose field of view is less than 45 degrees at its corners, with the second entry changed to
+      [3, 6] for a wider field of view.
+- For *bagOfMappings* distortion, the parameter has a single entry:
+    - **map** A list of mappings, where each mapping has a pair of 2D locations on the Z = -1 plane.
+      The first in each pair is the undistorted location and the second is the distorted location.
+      The same undistorted location must not appear more than once in the list.
 
 The **color** field is an optional object that can specify the global offset and gain to apply to the image.  The
 default offset is in pixel counts and is 0.0.  The default gain is 1.0.  The offset is added and the result
@@ -299,12 +317,12 @@ bottom. The expected image is shown below.
 
 ![Test of shared OpenGL contexts](SharedContext_Test.png "Test of shared OpenGL contexts")
 
-**Display_Test:** This displays two windows, each with a keyboard-controllable cube.  The arrow keys
-control cube rotation, as do up to two plugged-in joysticks.
+**Display_Test:** This displays two windows, each with a view-controllable cube.  The arrow keys
+control cube rotation, as does pressing and dragging with the left mouse button, as do up to two plugged-in joysticks.
 The expected initial image in each window is shown below.
 
 ![Test of the Display class](Display_Test.png "Test of the Display class")
 
-**Fullscreen_Test:** This a full-screen 1280x1024 window at 60Hz with a keyboard-controllable cube.  The arrow keys
-control cube rotation, as do up to two plugged-in joysticks.
+**Fullscreen_Test:** This a full-screen 1280x1024 window at 60Hz with a view-controllable cube.  The arrow keys
+control cube rotation, as does pressing and dragging with the left mouse button, as does the first plugged-in joystick.
 The expected initial image matches that of one window in the Display_Test (shown above).

@@ -52,7 +52,7 @@ using namespace asdp;
 using namespace asdp::render;
 using json = nlohmann::json;
 
-static std::string VERSION = "2.24.0";
+static std::string VERSION = "2.25.0";
 
 /// @brief The path to the configuration file. Defined in the CMakeLists file.
 std::filesystem::path g_dirPath = CONFIG_FILE_PATH;
@@ -1235,6 +1235,11 @@ int main(int argc, char** argv)
           json map = parameters["map"];
           std::vector< std::array<double, 2> > mapPoints = map;
           DistortionRadialLERP* distortion = new DistortionRadialLERP(center, mapPoints);
+          dist = std::shared_ptr<Distortion>(distortion);
+        } else if (distortion["type"] == "bagOfMappings") {
+          json parameters = distortion["parameters"];
+          DistortionBagOfMappings::Bag map = parameters["map"];
+          DistortionBagOfMappings* distortion = new DistortionBagOfMappings(map);
           dist = std::shared_ptr<Distortion>(distortion);
         } else {
           std::cerr << "Error: Unknown distortion type: " << distortion["type"] << std::endl;
