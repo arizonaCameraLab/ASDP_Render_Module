@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2024: Arizona Board of Regents on Behalf of the University of Arizona
+ * Copyright (C) 2024-2025: Arizona Board of Regents on Behalf of the University of Arizona
  */
 
  /**
@@ -74,7 +74,89 @@ namespace asdp {
 
     protected:
       std::array<double, 2> m_COP;
-      std::vector<std::array<double, 2>> m_ControlPoints;
+      std::vector<std::array<double, 2>> m_controlPoints;
+    };
+
+    /// @brief Distortion model that uses a bag mappins from projection-plane points from the ideal camera to the distorted camera.
+    /// @details This model is constructed with a vector of mappings from 2D points in the ideal camera's
+    /// projection plane to points in the distorted camera's projection plane.  The points do not have to be
+    /// in a grid or in any particular order.  The mapping is done by finding the closest three non-collinear
+    /// points in the bag and using them to perform a linear interpolation or extrapolation of the distortion.
+    class DistortionBagOfMappings : public Distortion {
+    public:
+      /// @brief A 2D point location in the projection plane.
+      typedef std::array<double, 2> Point2D;
+      /// @brief A mapping from a point in the ideal camera's projection plane to a distorted point also in the projection plane.
+      typedef std::array<Point2D, 2> Mapping;
+      /// @brief A row of points in the projection plane. Every row most have the same number of points.
+      typedef std::vector<Mapping> Bag;
+
+      /// @brief Constructor that takes the bag of points in the projection plane.
+      /// @param mappings A bag of mappings from undistorted point to distorted points in the Z=-1 plane.
+      /// The same undistorted point must not appear more than once in the bag or points near it may not be
+      /// distorted.
+      DistortionBagOfMappings(Bag const& mappings);
+
+      std::array<double, 3> MapPoint(std::array<double, 3> point) const override;
+
+    protected:
+      /// @brief Keeps track of all of the points that were passed into the constructor.
+      Bag m_mappings;
+
+      /// @brief 2D grid of Bags to help speed up the search for the nearest points.
+      /// @details The first dimension is the X coordinate, the second dimension is the Y coordinate.
+      static const size_t m_numSamplesX = 20, m_numSamplesY = 16;
+      std::array<std::array<Bag, m_numSamplesY>, m_numSamplesX> m_grid;
+
+      /// @brief The range of the grid in X and Y.
+      std::array<double, 2> m_rangeX, m_rangeY;
+
+      /// @brief Find the distance between two 2D points.
+      /// @param p1 First point.
+      /// @param p2 Second point.
+      /// @return The distance between the two points.
+      inline static double PointDistance(Point2D const& p1, Point2D const& p2)
+      {
+        double dx = p2[0] - p1[0];
+        double dy = p2[1] - p1[1];
+        return std::sqrt(dx * dx + dy * dy);
+      }
+
+      /// @brief Determine if three points are nearly collinear.  If so, they are not suitable for interpolation.
+      /// @param p1 First point.
+      /// @param p2 Second point.
+      /// @param p3 Third point.
+      /// @return True if the points are nearly collinear, false otherwise.
+      static bool NearlyCollinear(DistortionBagOfMappings::Point2D const& p1,
+        DistortionBagOfMappings::Point2D const& p2,
+        DistortionBagOfMappings::Point2D const& p3);
+
+      /// @brief Find the three nearest non-collinear points in the bag to a given point.
+      /// @param p Point to find the three nearest points to.
+      /// @param points Bag of points to search.
+      /// @return Bag of the three nearest points unless there are not enough, in which case the
+      /// bag will contain fewer than three points.
+      static Bag FindThreeNearestPointsInBag(Point2D const& p, Bag const& points);
+
+      /// @brief Interpolate a value given three points with values on a triangle and a fourth point in the plane.
+      /// @details This function interpolates a value at a point in the plane given three points in the plane
+      /// and their values.  The value is interpolated using a linear interpolation of the values at the three
+      /// points.  It can also extrapolate outside of the triangle.
+      /// @param p1 First point in the triangle.
+      /// @param v1 Value at the first point.
+      /// @param p2 Second point in the triangle.
+      /// @param v2 Value at the second point.
+      /// @param p3 Third point in the triangle.
+      /// @param v3 Value at the third point.
+      /// @param p Fourth point in the plane, where the value will be calculated.
+      /// @return The interpolated value at the fourth point.  Returns the value at the first point if the triangle
+      /// is degenerate.
+      static double DetermineValue(Point2D const& p1, double v1,
+        Point2D const& p2, double v2,
+        Point2D const& p3, double v3,
+        Point2D const& p);
+
+      friend std::string Distortion::Test();
     };
 
   } // namespace render
