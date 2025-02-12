@@ -1850,6 +1850,8 @@ void asdp::render::DisplayOpenXR::DisplayOpenXRImpl::OpenXRRenderFrame()
   XrCompositionLayerProjection layer{ XR_TYPE_COMPOSITION_LAYER_PROJECTION };
   std::vector<XrCompositionLayerProjectionView> projectionLayerViews;
   if (frameState.shouldRender == XR_TRUE) {
+    // Fill in the display period and then render
+    m_frameDurationNS = frameState.predictedDisplayPeriod;
     if (OpenXRRenderLayer(frameState.predictedDisplayTime, projectionLayerViews, layer)) {
       layers.push_back(reinterpret_cast<XrCompositionLayerBaseHeader*>(&layer));
     }
