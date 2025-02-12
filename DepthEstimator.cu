@@ -175,11 +175,15 @@ public:
         glBindTexture(GL_TEXTURE_2D, 0);
       }
 
-      glGenRenderbuffers(2, depthInfo.m_depthBuffers.data());
+      glGenTextures(2, depthInfo.m_depthBuffers.data());
       for (size_t b = 0; b < depthInfo.m_depthBuffers.size(); b++) {
-        glBindRenderbuffer(GL_RENDERBUFFER, depthInfo.m_depthBuffers[b]);
-        glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, pixelCounts[0], pixelCounts[1]);
-        glBindRenderbuffer(GL_RENDERBUFFER, 0);
+        glBindTexture(GL_TEXTURE_2D, depthInfo.m_depthBuffers[b]);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT32, pixelCounts[0], pixelCounts[1], 0, GL_DEPTH_COMPONENT, GL_FLOAT, nullptr);
+        glBindTexture(GL_TEXTURE_2D, 0);
       }
 
       // Map the CUDA graphics resources for the color buffers.
