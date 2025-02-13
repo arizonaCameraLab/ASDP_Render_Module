@@ -68,7 +68,7 @@ __global__ void CompareSurfacesKernel(cudaSurfaceObject_t surface1, cudaSurfaceO
       // of the projected area (the pixel is blue), so we record -1 as the value.  Otherwise, we record the
       // squared difference between the first color in each value.  We have enough entries for all threads
       // in the block, we use the thread index to determine where to write.
-      if (val1.x != val1.z || val2.x != val2.z) {
+      if ((val1.x != val1.z) || (val2.x != val2.z)) {
         sharedMem[yLocal][xLocal] = -1.0f;
       } else {
         float diff = val1.x - val2.x;
@@ -566,7 +566,7 @@ public:
         // block dimension.
         dim3 blockSize(cpi.m_pixelCounts[0] / m_nx, cpi.m_pixelCounts[1] / m_ny);
         dim3 gridSize(m_nx, m_ny);
-        unsigned rowsPerIteration = blockSize.x;
+        unsigned rowsPerIteration = blockSize.y;
         unsigned iterations = 1;
         unsigned rowsPerBlock = blockSize.y;
         if (blockSize.x * blockSize.y > 1024) {
@@ -649,13 +649,14 @@ public:
       }
 
       // We want to use the default if a region is not well fit.  Otherwise, we use the best depth.
+      //std::cout << "XXX, Pair, X, Y, best, worst, selected" << std::endl;
       for (size_t i = 0; i < numRegions; i++) {
         if (qualityOfFit[i] < m_fitnessThreshold) {
           cpi.m_depths[i] = m_defaultDepth;
         } else {
           cpi.m_depths[i] = bestDepths[i];
         }
-        //std::cout << "XXX region " << i << " best " << bestDepthValues[i] << ", worst " << worstDepthValues[i] << ", pick " << cpi.m_depths[i] << std::endl;
+        //std::cout << "XXX, " << c << ", " << i % m_nx << ", " << i / m_nx << ", " << bestDepthValues[i] << ", " << worstDepthValues[i] << ", " << cpi.m_depths[i] << std::endl;
       }
     }
 
