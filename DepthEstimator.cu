@@ -46,7 +46,12 @@ __global__ void CompareSurfacesKernel(cudaSurfaceObject_t surface1, cudaSurfaceO
   __shared__ float rowSums[MAX_BLOCK_SIZE];
   __shared__ int rowCounts[MAX_BLOCK_SIZE];
 
-  // Global coordinates in the images. We skip by total block size, not thread-block size.
+  // Global coordinates in the images.
+  // There are as many Y threads as there are rows in an iteration, with potentially many iterations
+  // per block.  The number of rows per block is how much should be skipped in Y rather than the
+  // block to cause each block of threads to handle that portion of the image.  We offset each thread
+  // within the first iteration here to compute a base, which is then bumped per iteration.  There is
+  // enough room in shared memory for the entire block (all iterations).
   unsigned x = blockIdx.x * blockDim.x + threadIdx.x;
   unsigned yBase = blockIdx.y * rowsPerBlock + threadIdx.y;
 
@@ -55,7 +60,8 @@ __global__ void CompareSurfacesKernel(cudaSurfaceObject_t surface1, cudaSurfaceO
     unsigned yLocal = threadIdx.y + iter * rowsPerIteration;
     unsigned y = yBase + iter * rowsPerIteration;
 
-    // The block size matches the number of threads in X, so we don't need to check bounds on that axis.
+    // The block size matches the number of threads in X, and the block size evenly divides the image,
+    // so we don't need to check bounds on that axis.
     if (yLocal < rowsPerBlock) {
       // Read the data from both surfaces. The x coordinate is in bytes, so we need to multiply by the
       // size of the data type.
@@ -82,10 +88,9 @@ __global__ void CompareSurfacesKernel(cudaSurfaceObject_t surface1, cudaSurfaceO
   __syncthreads();
   for (unsigned iter = 0; iter < iterations; iter++) {
     unsigned yLocal = threadIdx.y + iter * rowsPerIteration;
-    // The block size matches the number of threads in X, so we don't need to check bounds on that axis.
     if (yLocal < rowsPerBlock) {
       // @todo We can get better utilization if we have threads in different columns handle
-      // the different rows.
+      // the different rows rather than looping over iterations.
       if (threadIdx.x == 0) {
         rowSums[yLocal] = 0.0f;
         rowCounts[yLocal] = 0;
@@ -106,14 +111,15 @@ __global__ void CompareSurfacesKernel(cudaSurfaceObject_t surface1, cudaSurfaceO
   if (threadIdx.x == 0 && threadIdx.y == 0) {
     float sum = 0.0f;
     int count = 0;
-    for (size_t i = 0; i < blockDim.y; i++) {
+    // Sum over the entire block's worth of rows, not just the first iteration's
+    for (size_t i = 0; i < rowsPerBlock; i++) {
       sum += rowSums[i];
       count += rowCounts[i];
     }
 
     // Avoid division by zero, return 0 in the case of no valid values.
     if (count == 0) { count = 1; }
-    out[blockIdx.x + blockIdx.y * gridDim.x] = sum / count;
+    out[blockIdx.x + blockIdx.y * gridDim.x] = sum/count;
   }
 }
 
