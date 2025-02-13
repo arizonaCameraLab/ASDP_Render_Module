@@ -921,7 +921,7 @@ int main(int argc, char** argv)
   double cameraFPS = 0.0;         ///< The frames per second to run the camera at, 0 defaults to camera-specified maximum.
   double autoRangeStdBelow = 0.0; ///< Adjust color range to this many standard deviations below the mean.
   double autoRangeStdAbove = 0.0; ///< Adjust color range to this many standard deviations above the mean.
-  bool computeDepth = true;       ///< Compute depth even when stereo cameras are available.
+  bool computeDepth = true;       ///< Compute depth when stereo cameras are available.
   size_t realParams = 0;          ///< The number of non-flag parameters we've seen.
 
   // Parse the command line arguments, with the first non-flag argument being the
