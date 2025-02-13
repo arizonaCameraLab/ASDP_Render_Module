@@ -52,7 +52,7 @@ namespace asdp {
         std::shared_ptr<PoseAdjuster> poseAdjuster, Time cameraFrameInterval,
         unsigned nx, unsigned ny,
         std::vector<float> depths = {2, 5, 10, 20, 50, 100, 200},
-        float fitnessThreshold = 5.0f);
+        float fitnessThreshold = 10.0f);
 
       virtual ~DepthEstimator() = default;
 
