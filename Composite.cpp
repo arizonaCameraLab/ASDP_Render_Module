@@ -629,7 +629,7 @@ R"(#version 330 core
    uniform vec3 fVelocity;   ///< The change in position over a frame time from frame center
    uniform vec3 fAxis;       ///< The axis around which the camera is rotating during the frame
    uniform float fAngle;     ///< The angle of rotation around the axis during a frame time in radians
-   uniform float depthScale; ///< If this is > 0, scales the depth by this amount and sends to fragment shader.
+   uniform float depthScale; ///< If this is >= 0, scales the depth by this amount and sends to fragment shader.
    void main()
    {
       // Determine the time within a frame that this vertex is being rendered.
@@ -656,7 +656,7 @@ R"(#version 330 core
       vignetteGain = aVignetteGain;
 
       // If we are scaling the depth, do it here. Otherwise, send -1
-      depthColor = depthScale > 0.0 ? gl_Position.z * depthScale : -1.0f;
+      depthColor = depthScale >= 0.0 ? gl_Position.z * depthScale : -1.0f;
    })";
 
 static const GLchar* camerasFragmentShader =
