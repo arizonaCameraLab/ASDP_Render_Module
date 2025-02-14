@@ -625,25 +625,22 @@ public:
       std::vector<float> bestDepths(numRegions);
       std::vector<float> bestDepthValues(numRegions, 1e30);
       std::vector<float> worstDepthValues(numRegions, -1e30);
-      std::vector<float> qualityOfFit(numRegions, 0.0f);
-      for (size_t c = 0; c < m_cameraPairs.size(); c++) {
-        CameraPairInfo& cpi = *m_cameraPairs[c];
-        for (CameraPairInfo::PerDepth& pd : cpi.m_perDepths) {
-          float depth = pd.m_depth;
-          for (size_t i = 0; i < pd.m_CPURegionBuffer.size(); i++) {
-            float score = pd.m_CPURegionBuffer[i];
-            if (score < bestDepthValues[i]) {
-              bestDepths[i] = depth;
-              bestDepthValues[i] = score;
-            }
-            if (score > worstDepthValues[i]) {
-              worstDepthValues[i] = score;
-            }
+      for (CameraPairInfo::PerDepth& pd : cpi.m_perDepths) {
+        float depth = pd.m_depth;
+        for (size_t i = 0; i < pd.m_CPURegionBuffer.size(); i++) {
+          float score = pd.m_CPURegionBuffer[i];
+          if (score < bestDepthValues[i]) {
+            bestDepths[i] = depth;
+            bestDepthValues[i] = score;
+          }
+          if (score > worstDepthValues[i]) {
+            worstDepthValues[i] = score;
           }
         }
       }
 
       // Determine the difference between the best-matched and worst-matched scores as a certainty/quality of fit measure.
+      std::vector<float> qualityOfFit(numRegions, 0.0f);
       for (size_t i = 0; i < numRegions; i++) {
         // The largest possible average squared difference is 255^2 (65535), but the largest likely
         // value will be more like 200 or lower.  The minimum possible is 0, but with noise the minimum
