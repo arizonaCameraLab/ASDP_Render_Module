@@ -12,6 +12,7 @@
 
 #pragma once
 
+#include <cmath>
 #include <array>
 #include <vector>
 #include <string>
