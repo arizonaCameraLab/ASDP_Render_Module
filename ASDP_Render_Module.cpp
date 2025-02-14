@@ -52,7 +52,7 @@ using namespace asdp;
 using namespace asdp::render;
 using json = nlohmann::json;
 
-static std::string VERSION = "2.28.0";
+static std::string VERSION = "2.29.0";
 
 /// @brief The path to the configuration file. Defined in the CMakeLists file.
 std::filesystem::path g_dirPath = CONFIG_FILE_PATH;
@@ -896,6 +896,8 @@ void usage(std::string name)
   std::cerr << "  --disableLatencyCompensation        Disable latency compensation." << std::endl;
   std::cerr << "  --autoRangeStd <below> <above>      Adjust color range to specified standard deviations above and below the mean." << std::endl;
   std::cerr << "  --noDepth                           Do not compute depth even when stereo cameras are available." << std::endl;
+  std::cerr << "  --maxDepth <float>                  Maximum depth to test for in meters (default 200)." << std::endl;
+  std::cerr << "  --depthThreshold <float>            Depth threshold in squared pixel value differences (default 10.0)." << std::endl;
 };
 
 int main(int argc, char** argv)
@@ -922,6 +924,8 @@ int main(int argc, char** argv)
   double autoRangeStdBelow = 0.0; ///< Adjust color range to this many standard deviations below the mean.
   double autoRangeStdAbove = 0.0; ///< Adjust color range to this many standard deviations above the mean.
   bool computeDepth = true;       ///< Compute depth when stereo cameras are available.
+  float maxDepth = 200.0f;        ///< Maximum depth to test for in meters.
+  float depthThreshold = 10.0f;   ///< Depth threshold in squared pixel value differences.
   size_t realParams = 0;          ///< The number of non-flag parameters we've seen.
 
   // Parse the command line arguments, with the first non-flag argument being the
@@ -1045,6 +1049,18 @@ int main(int argc, char** argv)
       autoRangeStdAbove = std::stod(argv[i]);
     } else if (std::string("--noDepth") == argv[i]) {
       computeDepth = false;
+    } else if (std::string("--maxDepth") == argv[i]) {
+      if (++i >= argc) {
+        usage(argv[0]);
+        return 2;
+      }
+      maxDepth = std::stof(argv[i]);
+    } else if (std::string("--depthThreshold") == argv[i]) {
+      if (++i >= argc) {
+        usage(argv[0]);
+        return 2;
+      }
+      depthThreshold = std::stof(argv[i]);
     } else if (std::string("--cameraFPS") == argv[i]) {
       if (++i >= argc) {
         usage(argv[0]);
@@ -1413,8 +1429,15 @@ int main(int argc, char** argv)
       // platforms, this can cause a spurious error 1280.
       glGetError();
 
+      // Determine the range of depths to use for the depth estimater and then construct it.
+      std::vector<float> depths(7);
+      depths[depths.size()-1] = maxDepth;
+      for (int i = depths.size() - 2; i >= 0; i--) {
+        depths[i] = depths[i + 1] / 2;
+      }
       g_depthEstimator = std::make_shared<DepthEstimator>(cameras, poseAdjuster, float(1.0/cameraFPS),
-        g_depthCameras[0]->m_resolutionPixels[0] * 2 / 100, g_depthCameras[0]->m_resolutionPixels[1] * 2 / 100);
+        g_depthCameras[0]->m_resolutionPixels[0] * 2 / 100, g_depthCameras[0]->m_resolutionPixels[1] * 2 / 100,
+        depths, depthThreshold);
       std::cout << "Constructed DepthEstimator with " << cameras.size() << " camera pairs." << std::endl;
 
       // Compute a depth estimate to get all of the machinery set up and GLEW initialized on this thread.
