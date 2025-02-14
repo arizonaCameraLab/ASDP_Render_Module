@@ -669,9 +669,10 @@ R"(#version 330 core
    uniform sampler1D toneMapTexture;
    uniform float offset;
    uniform float gain;
+   uniform float depthScale; ///< If this is >= 0, scales the depth by this amount and sends to fragment shader.
    void main()
    {
-      if (depthColor >= 0.0) {
+      if (depthScale >= 0.0) {
         // If the depth value has been set to a non-negative value, use it as the color.
         FragColor = vec4(depthColor, depthColor, depthColor, 1.0);
       } else {
