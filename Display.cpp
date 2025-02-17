@@ -1619,7 +1619,7 @@ void asdp::render::DisplayOpenXR::DisplayOpenXRImpl::OpenXRPollActions()
         if (!m_lastGrabbedState) {
           // Toggle the play/pause state.
           if (m_display->m_eventHandlers && m_display->m_eventHandlers->ChangePlayPause) {
-            m_display->m_eventHandlers->ChangePlayPause(m_display->m_nowPlaying, m_display->m_userData);
+            m_display->m_eventHandlers->ChangePlayPause(!m_display->m_nowPlaying, m_display->m_userData);
           }
         }
       }
