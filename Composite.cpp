@@ -916,7 +916,7 @@ void CompositeCameras::SetupRenderFrame(asdp::Time scanOutTime)
   for (auto const& cameraRenderInfo : m_cameraRenderInfos) {
     images.push_back(cameraRenderInfo->m_imageQueue->LockNewestImages(2));
     if (images.back().size() != 2) {
-      std::cerr << "Composite::SetupRenderFrame(): Could not get image pair, skipping frame" << std::endl;
+      std::cerr << "Composite::SetupRenderFrame(): Could not get two images, skipping frame" << std::endl;
       return;
     }
   }
@@ -929,7 +929,7 @@ void CompositeCameras::SetupRenderFrame(asdp::Time scanOutTime)
     // Live: select by finding the time of the oldest image among the first (newest) image from
     // all cameras and then selecting from each pair the one whose time is closest to the
     // selected time.
-    asdp::Time desiredTime = images[0].front()->imageCenterTime;
+    desiredTime = images[0].front()->imageCenterTime;
     for (size_t i = 1; i < images.size(); i++) {
       if (images[i].front()->imageCenterTime < desiredTime) {
         desiredTime = images[i].front()->imageCenterTime;
