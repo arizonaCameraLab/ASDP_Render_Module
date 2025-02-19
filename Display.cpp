@@ -449,7 +449,12 @@ void DisplayWindow::DisplayThread(std::string windowName,
       renderTime += Time(seconds, microseconds);
     }
 
-    // Wait until it is time to compute depth for the next frmae.  We must busy-wait here to avoid having our
+    // Adjust render time if we're paused.
+    if (m_pauseTime) {
+      renderTime = *m_pauseTime;
+    }
+
+    // Wait until it is time to compute depth for the next frame.  We must busy-wait here to avoid having our
     // thread swapped out for longer than we want.
     while (std::chrono::steady_clock::now() < m_impl->m_nextDepthTime) {
     }
@@ -522,10 +527,6 @@ void DisplayWindow::DisplayThread(std::string windowName,
       m_timingInfo->renderStartTimes.push_back(std::chrono::steady_clock::now());
     }
 
-    // Render here, pausing if we're paused.
-    if (m_pauseTime) {
-      renderTime = *m_pauseTime;
-    }
     m_composite->Render(renderTime, m_impl->m_views);
 
     // Record the render submit time if we have a place to put it.
@@ -1835,6 +1836,9 @@ void asdp::render::DisplayOpenXR::DisplayOpenXRImpl::OpenXRRenderFrame()
     renderTime += std::chrono::nanoseconds(m_frameDurationNS * 3 / 2);
     Time coreTime;
     Status status = m_display->m_timer->GetCoreTime(coreTime, renderTime);
+    if (m_pauseTime) {
+      coreTime = *m_pauseTime;
+    }
     m_display->m_eventHandlers->ComputeDepth(coreTime, m_display->m_userData);
   }
 
