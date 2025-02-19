@@ -1639,6 +1639,8 @@ void asdp::render::DisplayOpenXR::DisplayOpenXRImpl::OpenXRPollActions()
   CHECK_XRCMD(xrGetActionStateBoolean(m_session, &getInfo, &quitValue));
   if ((quitValue.isActive == XR_TRUE) && (quitValue.changedSinceLastSync == XR_TRUE) && (quitValue.currentState == XR_TRUE)) {
     CHECK_XRCMD(xrRequestExitSession(m_session));
+    m_display->m_composite.reset();
+    m_display->m_status = "Done";
   }
 }
 
