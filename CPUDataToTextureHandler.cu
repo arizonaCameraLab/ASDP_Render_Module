@@ -9,6 +9,8 @@ using namespace asdp;
 using namespace asdp::render;
 
 /// @brief CUDA kernel to write a uint16 image to a surface (OpenGL texture).
+/// @details The number of blocks in Y is just enough to cover the amount of data that we have
+/// to send, with perhaps an overage because we're not writing an even number of blocks of lines.
 /// @param surface The surface to write to.
 /// @param buffer The buffer containing the uint16 data.  This is a pointer to the beginning of the whole-frame data.
 /// @param offy The y offset to apply to the coordinate (added to the y coordinate in pixels).
@@ -34,7 +36,7 @@ CPUDataToTextureHandler::CPUDataToTextureHandler(
   : m_status(""), m_dataPtr(dataPtr)
   , m_width(width), m_height(height), m_batchSize(batchSize)
   , m_exposure(exposure), m_gain(gain)
-  , m_lastLineSent(0), m_largestLineReceived(0)
+  , m_lastLineSent(-1), m_largestLineReceived(0)
   , m_imageData(nullptr), m_resource(nullptr), m_textureData(nullptr), m_surfObj(0)
 {
   cudaError_t cudaStatus;

@@ -97,7 +97,7 @@ protected:
   uint16_t m_width;                           ///< The width of the image data
   uint16_t m_height;                          ///< The height of the image data
   uint16_t m_batchSize;                       ///< The number of lines to send to the GPU at once
-  uint16_t m_lastLineSent;                    ///< The last line sent to the GPU
+  int16_t m_lastLineSent;                     ///< The last line sent to the GPU, starts at -1 which is just below 0
   uint16_t m_largestLineReceived;             ///< The largest line received so far
   asdp::Time m_centerTime;                    ///< The time the image was taken
   float m_exposure;                           ///< The exposure time for the image
