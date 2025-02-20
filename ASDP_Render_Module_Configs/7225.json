@@ -14,7 +14,7 @@
       "cropPixels": {
         "minX": 0,
         "maxX": 1279,
-        "minY": 4,
+        "minY": 0,
         "maxY": 1023
       },
       "orientationDegrees": [
@@ -84,7 +84,7 @@
       "cropPixels": {
         "minX": 0,
         "maxX": 1279,
-        "minY": 4,
+        "minY": 0,
         "maxY": 1023
       },
       "orientationDegrees": [
@@ -154,7 +154,7 @@
       "cropPixels": {
         "minX": 0,
         "maxX": 1279,
-        "minY": 4,
+        "minY": 0,
         "maxY": 1023
       },
       "orientationDegrees": [
@@ -224,7 +224,7 @@
       "cropPixels": {
         "minX": 0,
         "maxX": 1279,
-        "minY": 4,
+        "minY": 0,
         "maxY": 1023
       },
       "orientationDegrees": [
@@ -294,7 +294,7 @@
       "cropPixels": {
         "minX": 0,
         "maxX": 1279,
-        "minY": 4,
+        "minY": 0,
         "maxY": 1023
       },
       "orientationDegrees": [
@@ -364,7 +364,7 @@
       "cropPixels": {
         "minX": 0,
         "maxX": 1279,
-        "minY": 4,
+        "minY": 0,
         "maxY": 1023
       },
       "orientationDegrees": [
@@ -434,7 +434,7 @@
       "cropPixels": {
         "minX": 0,
         "maxX": 1279,
-        "minY": 4,
+        "minY": 0,
         "maxY": 1023
       },
       "orientationDegrees": [
@@ -504,7 +504,7 @@
       "cropPixels": {
         "minX": 0,
         "maxX": 1279,
-        "minY": 4,
+        "minY": 0,
         "maxY": 1023
       },
       "orientationDegrees": [
@@ -574,7 +574,7 @@
       "cropPixels": {
         "minX": 0,
         "maxX": 1279,
-        "minY": 4,
+        "minY": 0,
         "maxY": 1023
       },
       "orientationDegrees": [
@@ -644,7 +644,7 @@
       "cropPixels": {
         "minX": 0,
         "maxX": 1279,
-        "minY": 4,
+        "minY": 0,
         "maxY": 1023
       },
       "orientationDegrees": [
@@ -714,7 +714,7 @@
       "cropPixels": {
         "minX": 0,
         "maxX": 1279,
-        "minY": 4,
+        "minY": 0,
         "maxY": 1023
       },
       "orientationDegrees": [
@@ -784,7 +784,7 @@
       "cropPixels": {
         "minX": 0,
         "maxX": 1279,
-        "minY": 4,
+        "minY": 0,
         "maxY": 1023
       },
       "orientationDegrees": [
@@ -854,7 +854,7 @@
       "cropPixels": {
         "minX": 0,
         "maxX": 1279,
-        "minY": 4,
+        "minY": 0,
         "maxY": 1023
       },
       "orientationDegrees": [
@@ -924,7 +924,7 @@
       "cropPixels": {
         "minX": 0,
         "maxX": 1279,
-        "minY": 4,
+        "minY": 0,
         "maxY": 1023
       },
       "orientationDegrees": [
@@ -994,7 +994,7 @@
       "cropPixels": {
         "minX": 0,
         "maxX": 1279,
-        "minY": 4,
+        "minY": 0,
         "maxY": 1023
       },
       "orientationDegrees": [
@@ -1064,7 +1064,7 @@
       "cropPixels": {
         "minX": 0,
         "maxX": 1279,
-        "minY": 4,
+        "minY": 0,
         "maxY": 1023
       },
       "orientationDegrees": [
@@ -1134,7 +1134,7 @@
       "cropPixels": {
         "minX": 0,
         "maxX": 1279,
-        "minY": 4,
+        "minY": 0,
         "maxY": 1023
       },
       "orientationDegrees": [
@@ -1204,7 +1204,7 @@
       "cropPixels": {
         "minX": 0,
         "maxX": 1279,
-        "minY": 4,
+        "minY": 0,
         "maxY": 1023
       },
       "orientationDegrees": [
@@ -1274,7 +1274,7 @@
       "cropPixels": {
         "minX": 0,
         "maxX": 1279,
-        "minY": 4,
+        "minY": 0,
         "maxY": 1023
       },
       "orientationDegrees": [
@@ -1344,7 +1344,7 @@
       "cropPixels": {
         "minX": 0,
         "maxX": 1279,
-        "minY": 4,
+        "minY": 0,
         "maxY": 1023
       },
       "orientationDegrees": [
@@ -1414,7 +1414,7 @@
       "cropPixels": {
         "minX": 0,
         "maxX": 1279,
-        "minY": 4,
+        "minY": 0,
         "maxY": 1023
       },
       "orientationDegrees": [
@@ -1484,7 +1484,7 @@
       "cropPixels": {
         "minX": 0,
         "maxX": 1279,
-        "minY": 4,
+        "minY": 0,
         "maxY": 1023
       },
       "orientationDegrees": [
@@ -1562,7 +1562,7 @@
       "cropPixels": {
         "minX": 0,
         "maxX": 1279,
-        "minY": 4,
+        "minY": 0,
         "maxY": 1023
       },
       "orientationDegrees": [
@@ -1640,7 +1640,7 @@
       "cropPixels": {
         "minX": 0,
         "maxX": 1279,
-        "minY": 4,
+        "minY": 0,
         "maxY": 1023
       },
       "orientationDegrees": [
@@ -1718,7 +1718,7 @@
       "cropPixels": {
         "minX": 0,
         "maxX": 1279,
-        "minY": 4,
+        "minY": 0,
         "maxY": 1023
       },
       "orientationDegrees": [
