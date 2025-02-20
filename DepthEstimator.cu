@@ -130,6 +130,7 @@ class CameraPairInfo {
 public:
   CameraPairInfo() = delete;
   CameraPairInfo(ToneMap const &toneMap, std::shared_ptr<CameraRenderInfo> camera1, std::shared_ptr<CameraRenderInfo> camera2,
+    std::shared_ptr<asdp::render::RangeEstimator> rangeEstimator,
     glm::dvec3 position, glm::dquat orientation,
     std::array<float, 2> fovsDeg, std::array<unsigned, 2> pixelCounts,
     std::shared_ptr<PoseAdjuster> poseAdjuster, Time cameraFrameInterval,
@@ -150,20 +151,20 @@ public:
 
       depthInfo.m_depth = depth;
 
-      // We make a copy of each camera and then adjust the copy to the depth.
+      // We make a copy of each camera and then adjust the copy to the specific depth it is to use.
       std::shared_ptr<CameraRenderInfo> depth1(new CameraRenderInfo(*camera1));
       depth1->ComputePlanarCameraMeshInfo(100, 100, depth);
       std::vector< std::shared_ptr<CameraRenderInfo> > composites1;
       composites1.push_back(depth1);
       depthInfo.m_composites[0] = std::make_shared<CompositeCameras>(composites1, m_toneMapTexture,
-        m_poseAdjuster, cameraFrameInterval);
+        m_poseAdjuster, cameraFrameInterval, 0, Time(), nullptr, rangeEstimator);
 
       std::shared_ptr<CameraRenderInfo> depth2(new CameraRenderInfo(*camera2));
       depth2->ComputePlanarCameraMeshInfo(100, 100, depth);
       std::vector< std::shared_ptr<CameraRenderInfo> > composites2;
       composites2.push_back(depth2);
       depthInfo.m_composites[1] = std::make_shared<CompositeCameras>(composites2, m_toneMapTexture,
-        m_poseAdjuster, cameraFrameInterval);
+        m_poseAdjuster, cameraFrameInterval, 0, Time(), nullptr, rangeEstimator);
 
       // Generate a pair of frame buffers for the two cameras, with an associated color and depth
       // buffer for each.
@@ -249,7 +250,8 @@ public:
   std::array<unsigned, 2> m_pixelCounts;
   GLuint m_toneMapTexture;
 
-  typedef struct {
+  class PerDepth {
+  public:
     float m_depth = 0.0f;
     std::vector<float> m_CPURegionBuffer;
     float* m_GPURegionBuffer;
@@ -260,7 +262,7 @@ public:
     std::array<GLuint, 2> m_colorBuffers = {};
     std::array<GLuint, 2> m_depthBuffers = {};
     std::array<cudaGraphicsResource*, 2> m_cudaColorBuffers = {};
-  } PerDepth;
+  };
 
   std::vector<PerDepth> m_perDepths;
 
@@ -277,6 +279,7 @@ public:
   DepthEstimatorImpl() = delete;
   DepthEstimatorImpl(DepthEstimator *parent,
       std::vector< std::array<std::shared_ptr<CameraRenderInfo>, 2> > cameras,
+      std::shared_ptr<asdp::render::RangeEstimator> rangeEstimator,
       std::shared_ptr<PoseAdjuster> poseAdjuster,
       Time cameraFrameInterval,
       unsigned nx, unsigned ny,
@@ -376,7 +379,7 @@ public:
 
       // Make the camera pair info.
       std::shared_ptr<CameraPairInfo> cameraPairInfo = std::make_shared<CameraPairInfo>(
-        toneMap, cameras[i][0], cameras[i][1],
+        toneMap, cameras[i][0], cameras[i][1], rangeEstimator,
         position, orientation, fovsDeg, pixelCounts,
         poseAdjuster, cameraFrameInterval, depths, m_defaultDepth);
       if (!cameraPairInfo->m_constructorStatus.empty()) {
@@ -686,6 +689,7 @@ public:
 };
 
 DepthEstimator::DepthEstimator(std::vector< std::array<std::shared_ptr<CameraRenderInfo>, 2> > cameras,
+  std::shared_ptr<asdp::render::RangeEstimator> rangeEstimator,
   std::shared_ptr<PoseAdjuster> poseAdjuster, Time cameraFrameInterval,
   unsigned nx, unsigned ny,
   std::vector<float> depths,
@@ -720,7 +724,7 @@ DepthEstimator::DepthEstimator(std::vector< std::array<std::shared_ptr<CameraRen
   }
 
   // Create the implementation.
-  m_impl = std::make_unique<DepthEstimatorImpl>(this, cameras,
+  m_impl = std::make_unique<DepthEstimatorImpl>(this, cameras, rangeEstimator,
     poseAdjuster, cameraFrameInterval, nx, ny, depths, fitnessThreshold);
   m_constructorStatus = m_impl->m_constructorStatus;
 }
@@ -1023,7 +1027,7 @@ float DepthEstimator::SpeedTestSingleEstimation(uint16_t width, uint16_t height,
   // so that we don't engage the time-varying brightness adjustment on the render system.
   float cameraFrameInterval = 1.0f;
   std::vector<float> testDepths = { 10, 20, 50, 100, 200, 500, 1000 };
-  DepthEstimator de(cameras, poseAdjuster, cameraFrameInterval, nx, ny, testDepths);
+  DepthEstimator de(cameras, nullptr, poseAdjuster, cameraFrameInterval, nx, ny, testDepths);
   if (de.m_constructorStatus != "") {
     return -1;
   }
@@ -1138,7 +1142,7 @@ std::string DepthEstimator::Test()
       // so that we don't engage the time-varying brightness adjustment on the render system.
       float cameraFrameInterval = 1.0f;
       std::vector<float> testDepths = { 10, 20, 50, 100, 200, 500, 1000 };
-      DepthEstimator de(cameras, poseAdjuster, cameraFrameInterval, nx, ny, testDepths);
+      DepthEstimator de(cameras, nullptr, poseAdjuster, cameraFrameInterval, nx, ny, testDepths);
       if (de.m_constructorStatus != "") {
         return "DepthEstimator constructor failed: " + de.m_constructorStatus;
       }
@@ -1324,7 +1328,7 @@ std::string DepthEstimator::Test()
       std::shared_ptr<CameraRenderInfo> cam4Probe(new CameraRenderInfo(2, { 1, 1, 0 }, { 0, 0, 45 }, { width, height }, { 90.0, 90.0 },
         distortion, vignette, queues[1], -1.0f));
       probeCameras.push_back({ cam3Probe, cam4Probe });
-      DepthEstimator deProbe(probeCameras, poseAdjuster, cameraFrameInterval, nx, ny, testDepths);
+      DepthEstimator deProbe(probeCameras, nullptr, poseAdjuster, cameraFrameInterval, nx, ny, testDepths);
       if (deProbe.m_constructorStatus != "") {
         return "DepthEstimator constructor failed for probe: " + deProbe.m_constructorStatus;
       }
@@ -1358,7 +1362,7 @@ std::string DepthEstimator::Test()
         distortion, vignette, queues[1], -1.0f));
       cameras.clear();
       cameras.push_back({ camRot1, camRot2 });
-      DepthEstimator deRotated(cameras, poseAdjuster, cameraFrameInterval, nx, ny, testDepths);
+      DepthEstimator deRotated(cameras, nullptr, poseAdjuster, cameraFrameInterval, nx, ny, testDepths);
       if (deRotated.m_constructorStatus != "") {
         return "DepthEstimator constructor failed for rotated: " + deRotated.m_constructorStatus;
       }

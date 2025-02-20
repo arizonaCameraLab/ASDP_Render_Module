@@ -52,7 +52,7 @@ using namespace asdp;
 using namespace asdp::render;
 using json = nlohmann::json;
 
-static std::string VERSION = "2.30.0";
+static std::string VERSION = "2.31.0";
 
 /// @brief The path to the configuration file. Defined in the CMakeLists file.
 std::filesystem::path g_dirPath = CONFIG_FILE_PATH;
@@ -1435,7 +1435,7 @@ int main(int argc, char** argv)
       for (int i = depths.size() - 2; i >= 0; i--) {
         depths[i] = depths[i + 1] / 2;
       }
-      g_depthEstimator = std::make_shared<DepthEstimator>(cameras, poseAdjuster, float(1.0/cameraFPS),
+      g_depthEstimator = std::make_shared<DepthEstimator>(cameras, rangeEstimator, poseAdjuster, float(1.0/cameraFPS),
         g_depthCameras[0]->m_resolutionPixels[0] * 2 / 100, g_depthCameras[0]->m_resolutionPixels[1] * 2 / 100,
         depths, depthThreshold);
       std::cout << "Constructed DepthEstimator with " << cameras.size() << " camera pairs." << std::endl;

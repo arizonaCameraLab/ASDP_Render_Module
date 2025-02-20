@@ -33,6 +33,7 @@ namespace asdp {
     public:
       /// brief Construct the estimator with a list of cameras.
       /// @param[in] cameras List of pairs of cameras to use to estimate depth.
+      /// @param[in] rangeEstimator Range estimator to use to estimate the range of the tone map.
       /// @param[in] poseAdjuster Pose adjuster to use to adjust the poses of the cameras to the same time.
       /// @param[in] cameraFrameInterval The time between frames in the camera images.
       /// @param[in] nx Number of points to create in the X direction for each camera pair. The maximum size
@@ -49,6 +50,7 @@ namespace asdp {
       ///            best and worst matched conditions is less than this, use the default depth
       ///            because there is not enough distinction.
       DepthEstimator(std::vector< std::array<std::shared_ptr<CameraRenderInfo>, 2> > cameras,
+        std::shared_ptr<asdp::render::RangeEstimator> rangeEstimator,
         std::shared_ptr<PoseAdjuster> poseAdjuster, Time cameraFrameInterval,
         unsigned nx, unsigned ny,
         std::vector<float> depths = {2, 5, 10, 20, 50, 100, 200},

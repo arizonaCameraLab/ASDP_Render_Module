@@ -1048,7 +1048,7 @@ void CompositeCameras::RenderView(asdp::Time scanOutTime, const float* viewProje
     glBindTexture(GL_TEXTURE_2D, texture);
     glUniform1i(m_imageTextureId, 0);
 
-    // Adjust for helicopter motion changes from image acquisition to scan-out.
+    // Adjust for helicopter motion from image acquisition to scan-out.
     // The camera points are in the helicopter coordinate system, so we need to adjust
     // from where they are (canonical position at render time) to where they were at
     // image acquisition.
@@ -1101,14 +1101,14 @@ void CompositeCameras::RenderView(asdp::Time scanOutTime, const float* viewProje
     if (m_globalExposureGain > 0) {
       gain *= m_globalExposureGain;
     }
-    // Get the rescale min and max values and determine the gain and offset to apply to map
-    // the specified minVal and maxVal to 0 and 1.
-    // The current offset is added to the value and then the gain is applied.
-    // The current gain is scaled by the inverse of the fraction of the range that is used to map that
-    // fraction to the range 0-1.
-    // The current offset must offset by the new offset divided by the original gain (because it will
-    // be multiplied by it along the way).
     if (m_rangeEstimator) {
+      // Get the min and max intensity values and determine the gain and offset to apply to map
+      // the specified minVal and maxVal to 0 and 1.
+      // The current offset is added to the value and then the gain is applied.
+      // The current gain is scaled by the inverse of the fraction of the range that is used to map that
+      // fraction to the range 0-1.
+      // The current offset must offset by the new offset divided by the original gain (because it will
+      // be multiplied by it along the way).
       double minVal, maxVal;
       std::string ret = m_rangeEstimator->GetCurrentRange(minVal, maxVal);
       if (ret.empty()) {
