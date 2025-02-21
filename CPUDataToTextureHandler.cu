@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2024: Arizona Board of Regents on Behalf of the University of Arizona
+ * Copyright (C) 2024-2025: Arizona Board of Regents on Behalf of the University of Arizona
  */
 
 #include "CPUDataToTextureHandler.h"
@@ -24,7 +24,7 @@ __global__ void WriteSurfaceKernel(cudaSurfaceObject_t surface, uint16_t* buffer
   if (x < nx && y < ny) {
     // Write the data to the surface. The x coordinate is in bytes, so we need to multiply by the
     // size of the data type.
-    surf2Dwrite(buffer[x + y * nx], surface, x * sizeof(uint16_t), y);
+    surf2Dwrite(buffer[x + y * nx], surface, x * sizeof(buffer[0]), y);
   }
 }
 

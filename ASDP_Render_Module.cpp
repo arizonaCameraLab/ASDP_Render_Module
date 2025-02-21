@@ -518,6 +518,7 @@ static void ReceiveDataThread(ReceiverUDP& receiveSocket, size_t maxBytesPerPack
               done = true;
               return;
             }
+            if (cameraID == 3) std::cout << "XXX first data value: " << (int)data[0] << ":" << (int)data[1] << "; " << (int)(((uint16_t*)data)[0]) << std::endl;
 
             // Copy the data to the pinned CPU memory buffer.
             uint16_t regionWidth = right - left + 1;
