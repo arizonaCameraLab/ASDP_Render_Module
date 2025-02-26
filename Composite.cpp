@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2024: Arizona Board of Regents on Behalf of the University of Arizona
+ * Copyright (C) 2024-2025: Arizona Board of Regents on Behalf of the University of Arizona
  */
 
 #ifdef WIN32
@@ -570,6 +570,7 @@ void CompositeCube::SetupRenderFrame(asdp::Time scanOutTime)
 {
   glUseProgram(m_programId);
   glDisable(GL_CULL_FACE);
+  glEnable(GL_DEPTH_TEST);
 }
 
 void CompositeCube::RenderView(asdp::Time scanOutTime, const float* viewProjection)
@@ -719,7 +720,7 @@ bool CompositeCameras::SetupRendering()
   glewExperimental = true;
   GLenum ret = glewInit();
   if (ret != GLEW_OK) {
-    std::cerr << "CompositeCameras::CompositeCameras(): Failed to initialize GLEW: " << ret << std::endl;
+    std::cerr << "CompositeCameras::SetupRendering(): Failed to initialize GLEW: " << ret << std::endl;
     return false;
   }
   // Clear any GL error that Glew caused.  Apparently on Non-Windows
@@ -908,7 +909,7 @@ void CompositeCameras::SetupRenderFrame(asdp::Time scanOutTime)
 {
   glUseProgram(m_programId);
   glDisable(GL_CULL_FACE);
-
+  glEnable(GL_DEPTH_TEST);
 
   // To ensure that the set of images from all cameras are synchronized, we pull the first
   // two images from each queue and then select a set of consistent ones.
@@ -1154,5 +1155,225 @@ void CompositeCameras::TearDownRenderFrame()
     }
   }
   m_images.clear();
+  glUseProgram(0);
+}
+
+//==================================================================================================
+// Objects needed by the CompositeLineRawData class.
+
+static const GLchar* lineRawDataVertexShader =
+R"(#version 330 core
+
+   layout (location = 0) in vec2 aPos;
+   layout (location = 1) in float aTexCoord;
+
+   out float TexCoord;
+
+   void main()
+   {
+      gl_Position = vec4(aPos, 0.0, 1.0);
+      TexCoord = aTexCoord;
+   })";
+
+static const GLchar* lineRawDataFragmentShader =
+R"(#version 330 core
+   out vec4 FragColor;
+   in float TexCoord;
+
+   uniform sampler1D textureID;
+   void main()
+   {
+      FragColor = texture(textureID, TexCoord);
+   })";
+
+CompositeLineRawData::CompositeLineRawData(GLfloat x0, GLfloat y0, GLfloat x1, GLfloat y1,
+  std::vector<uint8_t> const& valuesRGB)
+  : Composite()
+  , m_x0(x0)
+  , m_y0(y0)
+  , m_x1(x1)
+  , m_y1(y1)
+  , m_numPixels(valuesRGB.size() / 3)
+  , m_programId(0)
+  , m_texture(0)
+  , m_textureId(0)
+{
+  // Check the input parameters
+  if (valuesRGB.size() % 3 != 0) {
+    m_numPixels = 0;
+    throw std::runtime_error("CompositeLineRawData::CompositeLineRawData(): valuesRGB size must be a multiple of 3");
+  }
+
+  // Initialize GLEW in our context. It is okay to initialize it more than once.
+  glewExperimental = true;
+  GLenum ret = glewInit();
+  if (ret != GLEW_OK) {
+    throw std::runtime_error("CompositeLineRawData::SetupRendering(): Failed to initialize GLEW: " + ret);
+  }
+  // Clear any GL error that Glew caused.  Apparently on Non-Windows
+  // platforms, this can cause a spurious error 1280.
+  glGetError();
+
+  // Create the 1D texture from the RGB values
+  glGenTextures(1, &m_texture);
+  if (m_texture == 0) {
+    m_numPixels = 0;
+    throw std::runtime_error("CompositeLineRawData::CompositeLineRawData(): glGenTextures failed");
+  }
+  glBindTexture(GL_TEXTURE_1D, m_texture);
+  glTexImage1D(GL_TEXTURE_1D, 0, GL_RGB, m_numPixels, 0, GL_RGB, GL_UNSIGNED_BYTE, valuesRGB.data());
+  glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+  glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+  glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+  glBindTexture(GL_TEXTURE_1D, 0);
+
+  // Create and fill in the vertex buffer object for the line.
+  glGenBuffers(1, &m_vertexBufferObject);
+  if (m_vertexBufferObject == 0) {
+    m_numPixels = 0;
+    throw std::runtime_error("CompositeLineRawData::CompositeLineRawData(): glGenBuffers failed");
+  }
+}
+
+bool CompositeLineRawData::SetupRendering()
+{
+  GLuint vertexShaderId = glCreateShader(GL_VERTEX_SHADER);
+  GLuint fragmentShaderId = glCreateShader(GL_FRAGMENT_SHADER);
+
+  try {
+    // vertex shader
+    glShaderSource(vertexShaderId, 1, &lineRawDataVertexShader, NULL);
+    glCompileShader(vertexShaderId);
+    checkShaderError(vertexShaderId, "Vertex shader compilation failed.");
+
+    // fragment shader
+    glShaderSource(fragmentShaderId, 1, &lineRawDataFragmentShader, NULL);
+    glCompileShader(fragmentShaderId);
+    checkShaderError(fragmentShaderId, "Fragment shader compilation failed.");
+
+    // linking shader program
+    m_programId = glCreateProgram();
+    glAttachShader(m_programId, vertexShaderId);
+    glAttachShader(m_programId, fragmentShaderId);
+    glLinkProgram(m_programId);
+    checkProgramError(m_programId, "Shader program link failed.");
+
+    // once linked into a program, we no longer need the shaders.
+    glDeleteShader(vertexShaderId);
+    glDeleteShader(fragmentShaderId);
+  }
+  catch (std::runtime_error& e) {
+    std::cerr << "CompositeLineRawData::SetupRendering(): " << e.what() << std::endl;
+    return false;
+  }
+
+  // Get the IDs for all of the uniform parameters we will want to change.
+  m_textureId = glGetUniformLocation(m_programId, "textureID");
+  if (m_textureId == -1) {
+    std::cerr << "CompositeCameras::SetupRendering(): Failed to get uniform texture ID" << std::endl;
+    return false;
+  }
+
+  return true;
+}
+
+bool CompositeLineRawData::UpdateValues(std::vector<uint8_t> const& valuesRGB)
+{
+  // Verify that the number of pixels is the same as the original number of pixels.
+  if (valuesRGB.size() != m_numPixels * 3) {
+    std::cerr << "CompositeLineRawData::UpdateValues(): valuesRGB size must be the same as the original size" << std::endl;
+    return false;
+  }
+
+  // Copy the new values into the image texture.
+  glBindTexture(GL_TEXTURE_1D, m_texture);
+  glTexSubImage1D(GL_TEXTURE_1D, 0, 0, m_numPixels, GL_RGB, GL_UNSIGNED_BYTE, valuesRGB.data());
+  glBindTexture(GL_TEXTURE_1D, 0);
+
+  return true;
+}
+
+CompositeLineRawData::~CompositeLineRawData()
+{
+  // Delete the buffer, texture and shader program (all calls ignore being called on an invalid ID).
+  glDeleteBuffers(1, &m_vertexBufferObject);
+  glDeleteTextures(1, &m_texture);
+  glDeleteProgram(m_programId);
+}
+
+void CompositeLineRawData::ComputeVertexCoordinates(GLint width, GLint height, GLint px0, GLint py0,
+  GLint px1, GLint py1, GLfloat& x0, GLfloat& y0, GLfloat& x1, GLfloat& y1)
+{
+  // Compute the normalized coordinates for the line, keeping in mind that the pixel centers are a half
+  // pixel away from the edges.
+  x0 = 2.0f * (px0 + 0.5f) / width - 1.0f;
+  y0 = 1.0f - 2.0f * (py0 + 0.5f) / height;
+  x1 = 2.0f * (px1 + 0.5f) / width - 1.0f;
+  y1 = 1.0f - 2.0f * (py1 + 0.5f) / height;
+}
+
+void CompositeLineRawData::SetupRenderFrame(asdp::Time /* scanOutTime */)
+{
+  glUseProgram(m_programId);
+  glDisable(GL_CULL_FACE);
+  glDisable(GL_DEPTH_TEST);     ///< Turn off depth testing, we always want to draw the line.
+}
+
+void CompositeLineRawData::RenderView(asdp::Time /* scanOutTime */, const float* /* viewProjection */)
+{
+  // Bind the texture to texture unit 0.
+  glActiveTexture(GL_TEXTURE0);
+  glBindTexture(GL_TEXTURE_1D, m_texture);
+  glUniform1i(m_textureId, 0);
+
+  // Compute the vertex coordinate data for the line.
+  // The vertex coordinate are the start and end of the line, which is based on the constructor
+  // parameters along with the viewport render information.
+
+  // Fill in the vertex data.
+  // There are two spatial coordinates and one texture coordinate per vertex.
+  // The texture coordinates are the normalized position along the line.
+  // We draw the forwards line and then the backwards line because the last
+  // point on the line is not filled in if we only draw forwards or if we
+  // repeat the last point three times to draw a zero-length line.
+  std::vector<GLfloat> vertices;
+  vertices.push_back(m_x0);
+  vertices.push_back(m_y0);
+  vertices.push_back(0.0f);
+  vertices.push_back(m_x1);
+  vertices.push_back(m_y1);
+  vertices.push_back(1.0f);
+  vertices.push_back(m_x1);
+  vertices.push_back(m_y1);
+  vertices.push_back(1.0f);
+  vertices.push_back(m_x0);
+  vertices.push_back(m_y0);
+  vertices.push_back(0.0f);
+
+  // Unbind any currently bound vertex array object.
+  // We cannot use vertex array objects because we're potentially going to be called
+  // from multiple OpenGL contexts in different threads and VAOs are not shared between
+  // contexts.
+  glBindVertexArray(0);
+
+  // Enable the vertex attribute arrays we are going to use
+  glEnableVertexAttribArray(0);
+  glEnableVertexAttribArray(1);
+
+  // Draw the line using its vertex buffer objects after specifying its layout.
+  glBindBuffer(GL_ARRAY_BUFFER, m_vertexBufferObject);
+  glBufferData(GL_ARRAY_BUFFER, sizeof(vertices[0]) * vertices.size(), vertices.data(), GL_DYNAMIC_DRAW);
+  glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 3 * sizeof(GLfloat), (GLvoid*)0);
+  glVertexAttribPointer(1, 1, GL_FLOAT, GL_FALSE, 3 * sizeof(GLfloat), (GLvoid*)(2 * sizeof(GLfloat)));
+  glDrawArrays(GL_LINES, 0, vertices.size() / 3);
+  glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+  // Unbind the image from its texture unit
+  glActiveTexture(GL_TEXTURE0);
+  glBindTexture(GL_TEXTURE_1D, 0);
+}
+
+void CompositeLineRawData::TearDownRenderFrame()
+{
   glUseProgram(0);
 }

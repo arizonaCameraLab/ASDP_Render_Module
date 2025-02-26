@@ -1,0 +1,1475 @@
+{
+  "serialNumber": 10321,
+  "cameras": [
+    {
+      "id": 1,
+      "fieldOfViewDegrees": [
+        40.4,
+        32.825
+      ],
+      "resolutionPixels": [
+        1280,
+        1024
+      ],
+      "cropPixels": {
+        "minX": 0,
+        "maxX": 1279,
+        "minY": 0,
+        "maxY": 1023
+      },
+      "color": {
+        "offset": 0.0,
+        "gain": 1.0
+      },
+      "orientationDegrees": [
+        90.74263155280752,
+        -8.479197711572,
+        125.41284108929791
+      ],
+      "positionMeters": [
+        -0.0,
+        0.0,
+        -0.0
+      ],
+      "vignette": {
+        "type": "evenPolynomial",
+        "parameters": {
+          "COP": [
+            0.0,
+            0.0
+          ],
+          "coefficients": [
+            1.0
+          ]
+        }
+      },
+      "oversizedResolutionPixels": [
+        1280,
+        1024
+      ],
+      "oversizedFieldOfViewDegrees": [
+        40.4,
+        32.825
+      ],
+      "distortion": {
+        "type": "radial",
+        "parameters": {
+          "COP": [
+            0.0,
+            0.0
+          ],
+          "map": [
+            [
+              0,
+              0
+            ],
+            [
+              5,
+              5
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "id": 2,
+      "fieldOfViewDegrees": [
+        40.4,
+        32.825
+      ],
+      "resolutionPixels": [
+        1280,
+        1024
+      ],
+      "cropPixels": {
+        "minX": 0,
+        "maxX": 1279,
+        "minY": 0,
+        "maxY": 1023
+      },
+      "color": {
+        "offset": 0.0,
+        "gain": 1.0
+      },
+      "orientationDegrees": [
+        90.90197224094618,
+        -35.47654398595959,
+        125.82683979579072
+      ],
+      "positionMeters": [
+        -0.0,
+        0.0,
+        -0.0
+      ],
+      "vignette": {
+        "type": "evenPolynomial",
+        "parameters": {
+          "COP": [
+            0.0,
+            0.0
+          ],
+          "coefficients": [
+            1.0
+          ]
+        }
+      },
+      "oversizedResolutionPixels": [
+        1280,
+        1024
+      ],
+      "oversizedFieldOfViewDegrees": [
+        40.4,
+        32.825
+      ],
+      "distortion": {
+        "type": "radial",
+        "parameters": {
+          "COP": [
+            0.0,
+            0.0
+          ],
+          "map": [
+            [
+              0,
+              0
+            ],
+            [
+              5,
+              5
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "id": 3,
+      "fieldOfViewDegrees": [
+        40.4,
+        32.825
+      ],
+      "resolutionPixels": [
+        1280,
+        1024
+      ],
+      "cropPixels": {
+        "minX": 0,
+        "maxX": 1279,
+        "minY": 0,
+        "maxY": 1023
+      },
+      "color": {
+        "offset": 0.0,
+        "gain": 1.0
+      },
+      "orientationDegrees": [
+        91.58933027838525,
+        -62.47086466990745,
+        126.71279086187472
+      ],
+      "positionMeters": [
+        -0.0,
+        0.0,
+        -0.0
+      ],
+      "vignette": {
+        "type": "evenPolynomial",
+        "parameters": {
+          "COP": [
+            0.0,
+            0.0
+          ],
+          "coefficients": [
+            1.0
+          ]
+        }
+      },
+      "oversizedResolutionPixels": [
+        1280,
+        1024
+      ],
+      "oversizedFieldOfViewDegrees": [
+        40.4,
+        32.825
+      ],
+      "distortion": {
+        "type": "radial",
+        "parameters": {
+          "COP": [
+            0.0,
+            0.0
+          ],
+          "map": [
+            [
+              0,
+              0
+            ],
+            [
+              5,
+              5
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "id": 4,
+      "fieldOfViewDegrees": [
+        40.4,
+        32.825
+      ],
+      "resolutionPixels": [
+        1280,
+        1024
+      ],
+      "cropPixels": {
+        "minX": 0,
+        "maxX": 1279,
+        "minY": 0,
+        "maxY": 1023
+      },
+      "color": {
+        "offset": 0.0,
+        "gain": 1.0
+      },
+      "orientationDegrees": [
+        144.70000000000005,
+        -89.1,
+        -179.99999999999997
+      ],
+      "positionMeters": [
+        0.0,
+        0.0,
+        -0.0
+      ],
+      "vignette": {
+        "type": "evenPolynomial",
+        "parameters": {
+          "COP": [
+            0.0,
+            0.0
+          ],
+          "coefficients": [
+            1.0
+          ]
+        }
+      },
+      "oversizedResolutionPixels": [
+        1280,
+        1024
+      ],
+      "oversizedFieldOfViewDegrees": [
+        40.4,
+        32.825
+      ],
+      "distortion": {
+        "type": "radial",
+        "parameters": {
+          "COP": [
+            0.0,
+            0.0
+          ],
+          "map": [
+            [
+              0,
+              0
+            ],
+            [
+              5,
+              5
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "id": 5,
+      "fieldOfViewDegrees": [
+        40.4,
+        32.825
+      ],
+      "resolutionPixels": [
+        1280,
+        1024
+      ],
+      "cropPixels": {
+        "minX": 0,
+        "maxX": 1279,
+        "minY": 0,
+        "maxY": 1023
+      },
+      "color": {
+        "offset": 0.0,
+        "gain": 1.0
+      },
+      "orientationDegrees": [
+        -91.64695738313104,
+        -63.51065072484074,
+        -56.170802267552666
+      ],
+      "positionMeters": [
+        0.0,
+        0.0,
+        -0.0
+      ],
+      "vignette": {
+        "type": "evenPolynomial",
+        "parameters": {
+          "COP": [
+            0.0,
+            0.0
+          ],
+          "coefficients": [
+            1.0
+          ]
+        }
+      },
+      "oversizedResolutionPixels": [
+        1280,
+        1024
+      ],
+      "oversizedFieldOfViewDegrees": [
+        40.4,
+        32.825
+      ],
+      "distortion": {
+        "type": "radial",
+        "parameters": {
+          "COP": [
+            0.0,
+            0.0
+          ],
+          "map": [
+            [
+              0,
+              0
+            ],
+            [
+              5,
+              5
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "id": 6,
+      "fieldOfViewDegrees": [
+        40.4,
+        32.825
+      ],
+      "resolutionPixels": [
+        1280,
+        1024
+      ],
+      "cropPixels": {
+        "minX": 0,
+        "maxX": 1279,
+        "minY": 0,
+        "maxY": 1023
+      },
+      "color": {
+        "offset": 0.0,
+        "gain": 1.0
+      },
+      "orientationDegrees": [
+        -90.91394684807976,
+        -36.51661410082894,
+        -55.24054539040453
+      ],
+      "positionMeters": [
+        0.0,
+        0.0,
+        -0.0
+      ],
+      "vignette": {
+        "type": "evenPolynomial",
+        "parameters": {
+          "COP": [
+            0.0,
+            0.0
+          ],
+          "coefficients": [
+            1.0
+          ]
+        }
+      },
+      "oversizedResolutionPixels": [
+        1280,
+        1024
+      ],
+      "oversizedFieldOfViewDegrees": [
+        40.4,
+        32.825
+      ],
+      "distortion": {
+        "type": "radial",
+        "parameters": {
+          "COP": [
+            0.0,
+            0.0
+          ],
+          "map": [
+            [
+              0,
+              0
+            ],
+            [
+              5,
+              5
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "id": 7,
+      "fieldOfViewDegrees": [
+        40.4,
+        32.825
+      ],
+      "resolutionPixels": [
+        1280,
+        1024
+      ],
+      "cropPixels": {
+        "minX": 0,
+        "maxX": 1279,
+        "minY": 0,
+        "maxY": 1023
+      },
+      "color": {
+        "offset": 0.0,
+        "gain": 1.0
+      },
+      "orientationDegrees": [
+        -90.74476985148041,
+        -9.51931079954973,
+        -54.81984296485131
+      ],
+      "positionMeters": [
+        0.0,
+        0.0,
+        -0.0
+      ],
+      "vignette": {
+        "type": "evenPolynomial",
+        "parameters": {
+          "COP": [
+            0.0,
+            0.0
+          ],
+          "coefficients": [
+            1.0
+          ]
+        }
+      },
+      "oversizedResolutionPixels": [
+        1280,
+        1024
+      ],
+      "oversizedFieldOfViewDegrees": [
+        40.4,
+        32.825
+      ],
+      "distortion": {
+        "type": "radial",
+        "parameters": {
+          "COP": [
+            0.0,
+            0.0
+          ],
+          "map": [
+            [
+              0,
+              0
+            ],
+            [
+              5,
+              5
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "id": 8,
+      "fieldOfViewDegrees": [
+        40.4,
+        32.825
+      ],
+      "resolutionPixels": [
+        1280,
+        1024
+      ],
+      "cropPixels": {
+        "minX": 0,
+        "maxX": 1279,
+        "minY": 0,
+        "maxY": 1023
+      },
+      "color": {
+        "offset": 0.0,
+        "gain": 1.0
+      },
+      "orientationDegrees": [
+        90.91121673327319,
+        -8.998880471115081,
+        90.14253984033024
+      ],
+      "positionMeters": [
+        -0.0,
+        0.0,
+        0.0
+      ],
+      "vignette": {
+        "type": "evenPolynomial",
+        "parameters": {
+          "COP": [
+            0.0,
+            0.0
+          ],
+          "coefficients": [
+            1.0
+          ]
+        }
+      },
+      "oversizedResolutionPixels": [
+        1280,
+        1024
+      ],
+      "oversizedFieldOfViewDegrees": [
+        40.4,
+        32.825
+      ],
+      "distortion": {
+        "type": "radial",
+        "parameters": {
+          "COP": [
+            0.0,
+            0.0
+          ],
+          "map": [
+            [
+              0,
+              0
+            ],
+            [
+              5,
+              5
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "id": 9,
+      "fieldOfViewDegrees": [
+        40.4,
+        32.825
+      ],
+      "resolutionPixels": [
+        1280,
+        1024
+      ],
+      "cropPixels": {
+        "minX": 0,
+        "maxX": 1279,
+        "minY": 0,
+        "maxY": 1023
+      },
+      "color": {
+        "offset": 0.0,
+        "gain": 1.0
+      },
+      "orientationDegrees": [
+        91.11241288831833,
+        -35.99486464629015,
+        90.65383300256886
+      ],
+      "positionMeters": [
+        -0.0,
+        0.0,
+        0.0
+      ],
+      "vignette": {
+        "type": "evenPolynomial",
+        "parameters": {
+          "COP": [
+            0.0,
+            0.0
+          ],
+          "coefficients": [
+            1.0
+          ]
+        }
+      },
+      "oversizedResolutionPixels": [
+        1280,
+        1024
+      ],
+      "oversizedFieldOfViewDegrees": [
+        40.4,
+        32.825
+      ],
+      "distortion": {
+        "type": "radial",
+        "parameters": {
+          "COP": [
+            0.0,
+            0.0
+          ],
+          "map": [
+            [
+              0,
+              0
+            ],
+            [
+              5,
+              5
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "id": 10,
+      "fieldOfViewDegrees": [
+        40.4,
+        32.825
+      ],
+      "resolutionPixels": [
+        1280,
+        1024
+      ],
+      "cropPixels": {
+        "minX": 0,
+        "maxX": 1279,
+        "minY": 0,
+        "maxY": 1023
+      },
+      "color": {
+        "offset": 0.0,
+        "gain": 1.0
+      },
+      "orientationDegrees": [
+        91.98179269393802,
+        -62.98613070343982,
+        91.76571762396416
+      ],
+      "positionMeters": [
+        -0.0,
+        0.0,
+        0.0
+      ],
+      "vignette": {
+        "type": "evenPolynomial",
+        "parameters": {
+          "COP": [
+            0.0,
+            0.0
+          ],
+          "coefficients": [
+            1.0
+          ]
+        }
+      },
+      "oversizedResolutionPixels": [
+        1280,
+        1024
+      ],
+      "oversizedFieldOfViewDegrees": [
+        40.4,
+        32.825
+      ],
+      "distortion": {
+        "type": "radial",
+        "parameters": {
+          "COP": [
+            0.0,
+            0.0
+          ],
+          "map": [
+            [
+              0,
+              0
+            ],
+            [
+              5,
+              5
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "id": 11,
+      "fieldOfViewDegrees": [
+        40.4,
+        32.825
+      ],
+      "resolutionPixels": [
+        1280,
+        1024
+      ],
+      "cropPixels": {
+        "minX": 0,
+        "maxX": 1279,
+        "minY": 0,
+        "maxY": 1023
+      },
+      "color": {
+        "offset": 0.0,
+        "gain": 1.0
+      },
+      "orientationDegrees": [
+        180.0,
+        -89.1,
+        180.0
+      ],
+      "positionMeters": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "vignette": {
+        "type": "evenPolynomial",
+        "parameters": {
+          "COP": [
+            0.0,
+            0.0
+          ],
+          "coefficients": [
+            1.0
+          ]
+        }
+      },
+      "oversizedResolutionPixels": [
+        1280,
+        1024
+      ],
+      "oversizedFieldOfViewDegrees": [
+        40.4,
+        32.825
+      ],
+      "distortion": {
+        "type": "radial",
+        "parameters": {
+          "COP": [
+            0.0,
+            0.0
+          ],
+          "map": [
+            [
+              0,
+              0
+            ],
+            [
+              5,
+              5
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "id": 12,
+      "fieldOfViewDegrees": [
+        40.4,
+        32.825
+      ],
+      "resolutionPixels": [
+        1280,
+        1024
+      ],
+      "cropPixels": {
+        "minX": 0,
+        "maxX": 1279,
+        "minY": 0,
+        "maxY": 1023
+      },
+      "color": {
+        "offset": 0.0,
+        "gain": 1.0
+      },
+      "orientationDegrees": [
+        -91.98179269393802,
+        -62.98613070343982,
+        -91.76571762396416
+      ],
+      "positionMeters": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "vignette": {
+        "type": "evenPolynomial",
+        "parameters": {
+          "COP": [
+            0.0,
+            0.0
+          ],
+          "coefficients": [
+            1.0
+          ]
+        }
+      },
+      "oversizedResolutionPixels": [
+        1280,
+        1024
+      ],
+      "oversizedFieldOfViewDegrees": [
+        40.4,
+        32.825
+      ],
+      "distortion": {
+        "type": "radial",
+        "parameters": {
+          "COP": [
+            0.0,
+            0.0
+          ],
+          "map": [
+            [
+              0,
+              0
+            ],
+            [
+              5,
+              5
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "id": 13,
+      "fieldOfViewDegrees": [
+        40.4,
+        32.825
+      ],
+      "resolutionPixels": [
+        1280,
+        1024
+      ],
+      "cropPixels": {
+        "minX": 0,
+        "maxX": 1279,
+        "minY": 0,
+        "maxY": 1023
+      },
+      "color": {
+        "offset": 0.0,
+        "gain": 1.0
+      },
+      "orientationDegrees": [
+        -91.11241288831833,
+        -35.99486464629017,
+        -90.65383300256886
+      ],
+      "positionMeters": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "vignette": {
+        "type": "evenPolynomial",
+        "parameters": {
+          "COP": [
+            0.0,
+            0.0
+          ],
+          "coefficients": [
+            1.0
+          ]
+        }
+      },
+      "oversizedResolutionPixels": [
+        1280,
+        1024
+      ],
+      "oversizedFieldOfViewDegrees": [
+        40.4,
+        32.825
+      ],
+      "distortion": {
+        "type": "radial",
+        "parameters": {
+          "COP": [
+            0.0,
+            0.0
+          ],
+          "map": [
+            [
+              0,
+              0
+            ],
+            [
+              5,
+              5
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "id": 14,
+      "fieldOfViewDegrees": [
+        40.4,
+        32.825
+      ],
+      "resolutionPixels": [
+        1280,
+        1024
+      ],
+      "cropPixels": {
+        "minX": 0,
+        "maxX": 1279,
+        "minY": 0,
+        "maxY": 1023
+      },
+      "color": {
+        "offset": 0.0,
+        "gain": 1.0
+      },
+      "orientationDegrees": [
+        -90.91121673327319,
+        -8.998880471115093,
+        -90.14253984033024
+      ],
+      "positionMeters": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "vignette": {
+        "type": "evenPolynomial",
+        "parameters": {
+          "COP": [
+            0.0,
+            0.0
+          ],
+          "coefficients": [
+            1.0
+          ]
+        }
+      },
+      "oversizedResolutionPixels": [
+        1280,
+        1024
+      ],
+      "oversizedFieldOfViewDegrees": [
+        40.4,
+        32.825
+      ],
+      "distortion": {
+        "type": "radial",
+        "parameters": {
+          "COP": [
+            0.0,
+            0.0
+          ],
+          "map": [
+            [
+              0,
+              0
+            ],
+            [
+              5,
+              5
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "id": 15,
+      "fieldOfViewDegrees": [
+        40.4,
+        32.825
+      ],
+      "resolutionPixels": [
+        1280,
+        1024
+      ],
+      "cropPixels": {
+        "minX": 0,
+        "maxX": 1279,
+        "minY": 0,
+        "maxY": 1023
+      },
+      "color": {
+        "offset": 0.0,
+        "gain": 1.0
+      },
+      "orientationDegrees": [
+        90.74476985148043,
+        -8.519310799549718,
+        54.8198429648513
+      ],
+      "positionMeters": [
+        -0.0,
+        0.0,
+        0.0
+      ],
+      "vignette": {
+        "type": "evenPolynomial",
+        "parameters": {
+          "COP": [
+            0.0,
+            0.0
+          ],
+          "coefficients": [
+            1.0
+          ]
+        }
+      },
+      "oversizedResolutionPixels": [
+        1280,
+        1024
+      ],
+      "oversizedFieldOfViewDegrees": [
+        40.4,
+        32.825
+      ],
+      "distortion": {
+        "type": "radial",
+        "parameters": {
+          "COP": [
+            0.0,
+            0.0
+          ],
+          "map": [
+            [
+              0,
+              0
+            ],
+            [
+              5,
+              5
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "id": 16,
+      "fieldOfViewDegrees": [
+        40.4,
+        32.825
+      ],
+      "resolutionPixels": [
+        1280,
+        1024
+      ],
+      "cropPixels": {
+        "minX": 0,
+        "maxX": 1279,
+        "minY": 0,
+        "maxY": 1023
+      },
+      "color": {
+        "offset": 0.0,
+        "gain": 1.0
+      },
+      "orientationDegrees": [
+        90.91394684807977,
+        -35.51661410082892,
+        55.24054539040451
+      ],
+      "positionMeters": [
+        -0.0,
+        0.0,
+        0.0
+      ],
+      "vignette": {
+        "type": "evenPolynomial",
+        "parameters": {
+          "COP": [
+            0.0,
+            0.0
+          ],
+          "coefficients": [
+            1.0
+          ]
+        }
+      },
+      "oversizedResolutionPixels": [
+        1280,
+        1024
+      ],
+      "oversizedFieldOfViewDegrees": [
+        40.4,
+        32.825
+      ],
+      "distortion": {
+        "type": "radial",
+        "parameters": {
+          "COP": [
+            0.0,
+            0.0
+          ],
+          "map": [
+            [
+              0,
+              0
+            ],
+            [
+              5,
+              5
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "id": 17,
+      "fieldOfViewDegrees": [
+        40.4,
+        32.825
+      ],
+      "resolutionPixels": [
+        1280,
+        1024
+      ],
+      "cropPixels": {
+        "minX": 0,
+        "maxX": 1279,
+        "minY": 0,
+        "maxY": 1023
+      },
+      "color": {
+        "offset": 0.0,
+        "gain": 1.0
+      },
+      "orientationDegrees": [
+        91.64695738313102,
+        -63.51065072484071,
+        56.17080226755264
+      ],
+      "positionMeters": [
+        -0.0,
+        0.0,
+        0.0
+      ],
+      "vignette": {
+        "type": "evenPolynomial",
+        "parameters": {
+          "COP": [
+            0.0,
+            0.0
+          ],
+          "coefficients": [
+            1.0
+          ]
+        }
+      },
+      "oversizedResolutionPixels": [
+        1280,
+        1024
+      ],
+      "oversizedFieldOfViewDegrees": [
+        40.4,
+        32.825
+      ],
+      "distortion": {
+        "type": "radial",
+        "parameters": {
+          "COP": [
+            0.0,
+            0.0
+          ],
+          "map": [
+            [
+              0,
+              0
+            ],
+            [
+              5,
+              5
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "id": 18,
+      "fieldOfViewDegrees": [
+        40.4,
+        32.825
+      ],
+      "resolutionPixels": [
+        1280,
+        1024
+      ],
+      "cropPixels": {
+        "minX": 0,
+        "maxX": 1279,
+        "minY": 0,
+        "maxY": 1023
+      },
+      "color": {
+        "offset": 0.0,
+        "gain": 1.0
+      },
+      "orientationDegrees": [
+        -144.70000000000005,
+        -89.1,
+        179.99999999999997
+      ],
+      "positionMeters": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "vignette": {
+        "type": "evenPolynomial",
+        "parameters": {
+          "COP": [
+            0.0,
+            0.0
+          ],
+          "coefficients": [
+            1.0
+          ]
+        }
+      },
+      "oversizedResolutionPixels": [
+        1280,
+        1024
+      ],
+      "oversizedFieldOfViewDegrees": [
+        40.4,
+        32.825
+      ],
+      "distortion": {
+        "type": "radial",
+        "parameters": {
+          "COP": [
+            0.0,
+            0.0
+          ],
+          "map": [
+            [
+              0,
+              0
+            ],
+            [
+              5,
+              5
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "id": 19,
+      "fieldOfViewDegrees": [
+        40.4,
+        32.825
+      ],
+      "resolutionPixels": [
+        1280,
+        1024
+      ],
+      "cropPixels": {
+        "minX": 0,
+        "maxX": 1279,
+        "minY": 0,
+        "maxY": 1023
+      },
+      "color": {
+        "offset": 0.0,
+        "gain": 1.0
+      },
+      "orientationDegrees": [
+        -91.58933027838525,
+        -62.47086466990745,
+        -126.71279086187474
+      ],
+      "positionMeters": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "vignette": {
+        "type": "evenPolynomial",
+        "parameters": {
+          "COP": [
+            0.0,
+            0.0
+          ],
+          "coefficients": [
+            1.0
+          ]
+        }
+      },
+      "oversizedResolutionPixels": [
+        1280,
+        1024
+      ],
+      "oversizedFieldOfViewDegrees": [
+        40.4,
+        32.825
+      ],
+      "distortion": {
+        "type": "radial",
+        "parameters": {
+          "COP": [
+            0.0,
+            0.0
+          ],
+          "map": [
+            [
+              0,
+              0
+            ],
+            [
+              5,
+              5
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "id": 20,
+      "fieldOfViewDegrees": [
+        40.4,
+        32.825
+      ],
+      "resolutionPixels": [
+        1280,
+        1024
+      ],
+      "cropPixels": {
+        "minX": 0,
+        "maxX": 1279,
+        "minY": 0,
+        "maxY": 1023
+      },
+      "color": {
+        "offset": 0.0,
+        "gain": 1.0
+      },
+      "orientationDegrees": [
+        -90.9019722409462,
+        -36.4765439859596,
+        -125.82683979579073
+      ],
+      "positionMeters": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "vignette": {
+        "type": "evenPolynomial",
+        "parameters": {
+          "COP": [
+            0.0,
+            0.0
+          ],
+          "coefficients": [
+            1.0
+          ]
+        }
+      },
+      "oversizedResolutionPixels": [
+        1280,
+        1024
+      ],
+      "oversizedFieldOfViewDegrees": [
+        40.4,
+        32.825
+      ],
+      "distortion": {
+        "type": "radial",
+        "parameters": {
+          "COP": [
+            0.0,
+            0.0
+          ],
+          "map": [
+            [
+              0,
+              0
+            ],
+            [
+              5,
+              5
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "id": 21,
+      "fieldOfViewDegrees": [
+        40.4,
+        32.825
+      ],
+      "resolutionPixels": [
+        1280,
+        1024
+      ],
+      "cropPixels": {
+        "minX": 0,
+        "maxX": 1279,
+        "minY": 0,
+        "maxY": 1023
+      },
+      "color": {
+        "offset": 0.0,
+        "gain": 1.0
+      },
+      "orientationDegrees": [
+        -90.74263155280751,
+        -9.479197711572,
+        -125.41284108929794
+      ],
+      "positionMeters": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "vignette": {
+        "type": "evenPolynomial",
+        "parameters": {
+          "COP": [
+            0.0,
+            0.0
+          ],
+          "coefficients": [
+            1.0
+          ]
+        }
+      },
+      "oversizedResolutionPixels": [
+        1280,
+        1024
+      ],
+      "oversizedFieldOfViewDegrees": [
+        40.4,
+        32.825
+      ],
+      "distortion": {
+        "type": "radial",
+        "parameters": {
+          "COP": [
+            0.0,
+            0.0
+          ],
+          "map": [
+            [
+              0,
+              0
+            ],
+            [
+              5,
+              5
+            ]
+          ]
+        }
+      }
+    }
+  ]
+}

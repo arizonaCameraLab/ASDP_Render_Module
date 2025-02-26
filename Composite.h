@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2024: Arizona Board of Regents on Behalf of the University of Arizona
+ * Copyright (C) 2024-2025: Arizona Board of Regents on Behalf of the University of Arizona
  */
 
  /**
@@ -267,6 +267,75 @@ namespace asdp {
       /// @param mesh The mesh information for the camera.
       /// @sideeffect The buffer objects are created and added to m_cameraBufferInfos.
       void CreateBufferInfo(const CameraRenderInfo& cameraRenderInfo, MeshInfo const &mesh);
+
+      // Overridden methods
+      bool SetupRendering() override;
+      void RenderView(asdp::Time scanOutTime, const float* viewProjection) override;
+      void SetupRenderFrame(asdp::Time scanOutTime) override;
+      void TearDownRenderFrame() override;
+    };
+
+    /// @brief Composite class that renders a vector of raw color values into a line of a display.
+    /// @details This is the class that is most likely to be used in
+    /// an application.
+    class CompositeLineRawData : public Composite {
+    public:
+      /// @brief Constructor
+      /// @param x0 The X coordinate of the first point in the line in normalized display coordinates (-1..1).
+      /// @param y0 The Y coordinate of the first point in the line in normalized display coordinates (-1..1).
+      /// @param x1 The X coordinate of the second point in the line in normalized display coordinates (-1..1).
+      /// @param y1 The Y coordinate of the second point in the line in normalized display coordinates (-1..1).
+      /// @param valuesRGB The raw RGB values to insert onto the line.  Must be a multiple of
+      /// three long, with the first three values being the RGB values for the first pixel, etc.  For this to
+      /// align point by point, this must have the same number of triples as pixels covered by the rendered line.
+      /// @param xStart The first pixel in the line to insert data onto.
+      CompositeLineRawData(GLfloat x0, GLfloat y0, GLfloat x1, GLfloat y1, std::vector<uint8_t> const &valuesRGB);
+
+      /// @brief Destructor
+      ~CompositeLineRawData();
+
+      /// @brief Update the values to be rendered.
+      /// @param valuesRGB The raw RGB values to replace on the line.  Must be the same size as the
+      /// parameter passed to the constructor.
+      /// NOTE: This does not call glFinish() to ensure that that data has been written before returning.
+      /// @return True on success, false on failure.
+      bool UpdateValues(std::vector<uint8_t> const& valuesRGB);
+
+      /// @brief Helper function to compute the vertex coordinates based on a buffer size and pixel locations.
+      /// @details This converts from an integer pixel location within a 2D pixel buffer to a normalized
+      /// display coordinate for the vertex buffer.  The pixel locations are the centers of the pixels.
+      /// Pixel coordinates are from the upper-left and are in the range 0..width-1 and 0..height-1.
+      /// Output coordinates are from the lower-left and are in the range -1..1.
+      /// @param width The width of the buffer in pixels.
+      /// @param height The height of the buffer in pixels.
+      /// @param [in] px0 The X coordinate of the first pixel in the line.
+      /// @param [in] py0 The Y coordinate of the first pixel in the line.
+      /// @param [in] px1 The X coordinate of the second pixel in the line.
+      /// @param [in] py1 The Y coordinate of the second pixel in the line.
+      /// @param [out] x0 The X coordinate of the first point in the line in normalized display coordinates (-1..1).
+      /// @param [out] y0 The Y coordinate of the first point in the line in normalized display coordinates (-1..1).
+      /// @param [out] x1 The X coordinate of the second point in the line in normalized display coordinates (-1..1).
+      /// @param [out] y1 The Y coordinate of the second point in the line in normalized display coordinates (-1..1).
+      static void ComputeVertexCoordinates(GLint width, GLint height, GLint px0, GLint py0,
+        GLint px1, GLint py1, GLfloat &x0, GLfloat& y0, GLfloat& x1, GLfloat& y1);
+
+    protected:
+      /// Information about the cameras, filled in by the constructor.
+      std::vector< std::shared_ptr<CameraRenderInfo> > m_cameraRenderInfos;
+      GLfloat m_x0, m_y0, m_x1, m_y1;
+      size_t m_numPixels;
+
+      /// @brief Vertex buffer object for the line data
+      GLuint m_vertexBufferObject;
+
+      /// @brief The OpenGL program ID.
+      GLuint m_programId;
+
+      /// The texture ID for the line data.
+      GLuint m_texture;
+
+      /// The uniform identifier for the texture.
+      GLuint m_textureId;
 
       // Overridden methods
       bool SetupRendering() override;

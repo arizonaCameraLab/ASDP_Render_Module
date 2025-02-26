@@ -282,6 +282,7 @@ if(BUILD_TESTS)
     ImageQueue_Test
     Composite_Test
     CompositeCameras_Test
+    CompositeLineRawData_Test
     SharedContext_Test
     Display_Test
     Fullscreen_Test
