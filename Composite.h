@@ -103,6 +103,10 @@ namespace asdp {
       /// Mutex to control access to initialization.
       std::mutex m_initMutex;
 
+      /// Should we clear the color and/or depth buffers before rendering?
+      /// This can be set to false by derived classes to allow for overlaying images.
+      bool m_doClear = true;
+
       /// @brief Render the geometry for a particular view, assuming all parameters set up.
       /// @details This is a pure virtual function that must be implemented by derived classes.
       /// The Render() method calls it after setting up and clearing the frame buffer color and
@@ -282,13 +286,17 @@ namespace asdp {
     public:
       /// @brief Constructor
       /// @param x0 The X coordinate of the first point in the line in normalized display coordinates (-1..1).
+      /// For the upper-left corner, this will be -1.
       /// @param y0 The Y coordinate of the first point in the line in normalized display coordinates (-1..1).
+      /// For the upper-left corner, this will be 1.
       /// @param x1 The X coordinate of the second point in the line in normalized display coordinates (-1..1).
+      /// For spanning the entire first line, this will be 1.
       /// @param y1 The Y coordinate of the second point in the line in normalized display coordinates (-1..1).
+      /// For spanning the entire first line, this will be 1.
       /// @param valuesRGB The raw RGB values to insert onto the line.  Must be a multiple of
       /// three long, with the first three values being the RGB values for the first pixel, etc.  For this to
       /// align point by point, this must have the same number of triples as pixels covered by the rendered line.
-      /// @param xStart The first pixel in the line to insert data onto.
+      /// To cover the entire first line, this will be width*3 values long.
       CompositeLineRawData(GLfloat x0, GLfloat y0, GLfloat x1, GLfloat y1, std::vector<uint8_t> const &valuesRGB);
 
       /// @brief Destructor

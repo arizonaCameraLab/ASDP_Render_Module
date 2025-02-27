@@ -52,7 +52,7 @@ using namespace asdp;
 using namespace asdp::render;
 using json = nlohmann::json;
 
-static std::string VERSION = "2.31.0";
+static std::string VERSION = "2.32.0";
 
 /// @brief The path to the configuration file. Defined in the CMakeLists file.
 std::filesystem::path g_dirPath = CONFIG_FILE_PATH;
@@ -518,7 +518,6 @@ static void ReceiveDataThread(ReceiverUDP& receiveSocket, size_t maxBytesPerPack
               done = true;
               return;
             }
-            if (cameraID == 3) std::cout << "XXX first data value: " << (int)data[0] << ":" << (int)data[1] << "; " << (int)(((uint16_t*)data)[0]) << std::endl;
 
             // Copy the data to the pinned CPU memory buffer.
             uint16_t regionWidth = right - left + 1;
@@ -841,6 +840,7 @@ struct DisplayInfo
 {
   ToneMap toneMap = ToneMap();  ///< The tone map to use.
   bool useOpenXR = false;       ///< Use OpenXR for rendering? If so, overrides all of the following.
+  bool useXSight = false;       ///< Use XSight for rendering? If so, overrides all of the following.
   int width = 1280;             ///< The width of the display.
   int height = 1024;            ///< The height of the display.
   float hFOV = 40.0f;           ///< The horizontal field of view in degrees.
@@ -881,14 +881,6 @@ void usage(std::string name)
   std::cerr << "  --replay <stream id>                ID of the stream to replay (1+)." << std::endl;
   std::cerr << "  --loopReplay                        Loop the replay (default not)." << std::endl;
   std::cerr << "  --lineBatchesPerGPUSend <int>       The number of batches of lines to group (default 16 Linux, 110 Windows)" << std::endl;
-  std::cerr << "  --openXR                            Use OpenXR for rendering. If set, overrides the following." << std::endl;
-  std::cerr << "  --width <width>                     The width of the window (default 1280)." << std::endl;
-  std::cerr << "  --height <height>                   The height of the window (default 1024)." << std::endl;
-  std::cerr << "  --fullScreen <display>              Run in full screen mode on the specified display (0+)." << std::endl;
-  std::cerr << "  --fps <frames per second>           The frames per second to run at (default 60)." << std::endl;
-  std::cerr << "  --cameraFPS <frames per second>     The frames per second to run the camera at (default is maximum rate)." << std::endl;
-  std::cerr << "  --joystick <string>                 The joystick to use for input (e.g. GLFW::0)." << std::endl;
-  std::cerr << "  --hFOV <horizontal field of view>   The horizontal field of view in degrees (default 40)." << std::endl;
   std::cerr << "  --noPoses                           Do not stream poses from the server, so no latency adjustment." << std::endl;
   std::cerr << "  --dumpTiming <file name base>       Write timing on quit to CSV files with the specified base name." << std::endl;
   std::cerr << "  --triggerAheadMicroseconds <int>    Microseconds ahead of render to trigger camera (default 22000)." << std::endl;
@@ -899,6 +891,15 @@ void usage(std::string name)
   std::cerr << "  --noDepth                           Do not compute depth even when stereo cameras are available." << std::endl;
   std::cerr << "  --maxDepth <float>                  Maximum depth to test for in meters (default 200)." << std::endl;
   std::cerr << "  --depthThreshold <float>            Depth threshold in squared pixel value differences (default 10.0)." << std::endl;
+  std::cerr << "  --cameraFPS <frames per second>     The frames per second to run the camera at (default is maximum rate)." << std::endl;
+  std::cerr << "  --openXR                            Use OpenXR for rendering. If set, overrides the following." << std::endl;
+  std::cerr << "  --xSight                            Render to XSight. If set, overrides the following." << std::endl;
+  std::cerr << "  --width <width>                     The width of the window (default 1280)." << std::endl;
+  std::cerr << "  --height <height>                   The height of the window (default 1024)." << std::endl;
+  std::cerr << "  --hFOV <horizontal field of view>   The horizontal field of view in degrees (default 40)." << std::endl;
+  std::cerr << "  --joystick <string>                 The joystick to use for input (e.g. GLFW::0)." << std::endl;
+  std::cerr << "  --fps <frames per second>           The frames per second to run at (default 60)." << std::endl;
+  std::cerr << "  --fullScreen <display>              Run in full screen mode on the specified display (0+)." << std::endl;
 };
 
 int main(int argc, char** argv)
@@ -962,6 +963,9 @@ int main(int argc, char** argv)
     }
     else if (std::string("--openXR") == argv[i]) {
       displayInfos.back().useOpenXR = true;
+    }
+    else if (std::string("--xSight") == argv[i]) {
+      displayInfos.back().useXSight = true;
     }
     else if (std::string("--fullScreen") == argv[i]) {
       if (++i >= argc) {
@@ -1505,6 +1509,15 @@ int main(int argc, char** argv)
         displays.push_back(std::make_shared<DisplayOpenXR>(g_composite, displayTexture.get(),
           client, triggerID, triggerAheadMicroseconds, depthAheadMicroseconds, 2500, 1, handlers, nullptr,
           (i == 0) ? (&g_timingInfo) : nullptr, replayStreamID != 0));
+      } else if (displayInfos[i].useXSight) {
+        displays.push_back(std::make_shared<DisplayXSight>(g_composite, displayTexture.get(),
+          client, triggerID, triggerAheadMicroseconds,
+          depthAheadMicroseconds,
+          2500,
+          handlers, nullptr,
+          (i == 0) ? (&g_timingInfo) : nullptr, replayStreamID != 0
+        )
+        );
       } else {
         displays.push_back(std::make_shared<DisplayWindow>("ASDP Render Module " + std::to_string(i),
           g_composite, client, triggerID, triggerAheadMicroseconds, depthAheadMicroseconds, displayInfos[i].fps, 2500,

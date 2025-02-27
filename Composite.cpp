@@ -60,12 +60,14 @@ void Composite::Render(asdp::Time scanOutTime, std::vector<ViewRenderInfo> views
         }
       }
 
-      // Clear the buffers.  The clear color is sky blue to distingiush from a camera with a black texture.
-      glClearColor(0.6f, 0.8f, 1.0f, 1.0f);
-      GLbitfield clearBits = 0;
-      if ((view.frameBuffer == 0) || (view.colorBuffer != 0)) { clearBits |= GL_COLOR_BUFFER_BIT; }
-      if ((view.frameBuffer == 0) || (view.depthBuffer != 0)) { clearBits |= GL_DEPTH_BUFFER_BIT; }
-      glClear(clearBits);
+      if (m_doClear) {
+        // Clear the buffers.  The clear color is sky blue to distingiush from a camera with a black texture.
+        glClearColor(0.6f, 0.8f, 1.0f, 1.0f);
+        GLbitfield clearBits = 0;
+        if ((view.frameBuffer == 0) || (view.colorBuffer != 0)) { clearBits |= GL_COLOR_BUFFER_BIT; }
+        if ((view.frameBuffer == 0) || (view.depthBuffer != 0)) { clearBits |= GL_DEPTH_BUFFER_BIT; }
+        glClear(clearBits);
+      }
     }
 
     // Turn on depth testing so we get proper rendering.  The default frame buffer has depth.
@@ -570,7 +572,6 @@ void CompositeCube::SetupRenderFrame(asdp::Time scanOutTime)
 {
   glUseProgram(m_programId);
   glDisable(GL_CULL_FACE);
-  glEnable(GL_DEPTH_TEST);
 }
 
 void CompositeCube::RenderView(asdp::Time scanOutTime, const float* viewProjection)
@@ -909,7 +910,6 @@ void CompositeCameras::SetupRenderFrame(asdp::Time scanOutTime)
 {
   glUseProgram(m_programId);
   glDisable(GL_CULL_FACE);
-  glEnable(GL_DEPTH_TEST);
 
   // To ensure that the set of images from all cameras are synchronized, we pull the first
   // two images from each queue and then select a set of consistent ones.
@@ -1204,6 +1204,9 @@ CompositeLineRawData::CompositeLineRawData(GLfloat x0, GLfloat y0, GLfloat x1, G
     throw std::runtime_error("CompositeLineRawData::CompositeLineRawData(): valuesRGB size must be a multiple of 3");
   }
 
+  // We do not clear the buffers because we're an overlay.
+  m_doClear = false;
+
   // Initialize GLEW in our context. It is okay to initialize it more than once.
   glewExperimental = true;
   GLenum ret = glewInit();
@@ -1316,11 +1319,13 @@ void CompositeLineRawData::SetupRenderFrame(asdp::Time /* scanOutTime */)
 {
   glUseProgram(m_programId);
   glDisable(GL_CULL_FACE);
-  glDisable(GL_DEPTH_TEST);     ///< Turn off depth testing, we always want to draw the line.
 }
 
 void CompositeLineRawData::RenderView(asdp::Time /* scanOutTime */, const float* /* viewProjection */)
 {
+  // Turn off depth testing, we always want to draw the line.
+  glDisable(GL_DEPTH_TEST);
+
   // Bind the texture to texture unit 0.
   glActiveTexture(GL_TEXTURE0);
   glBindTexture(GL_TEXTURE_1D, m_texture);

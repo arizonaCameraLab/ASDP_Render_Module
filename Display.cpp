@@ -879,10 +879,10 @@ public:
     XrAction poseAction{ XR_NULL_HANDLE };
     XrAction vibrateAction{ XR_NULL_HANDLE };
     XrAction quitAction{ XR_NULL_HANDLE };
-    std::array<XrPath, Side::COUNT> handSubactionPath;
-    std::array<XrSpace, Side::COUNT> handSpace;
+    std::array<XrPath, Side::COUNT> handSubactionPath = {};
+    std::array<XrSpace, Side::COUNT> handSpace = {};
     std::array<float, Side::COUNT> handScale = { {1.0f, 1.0f} };
-    std::array<XrBool32, Side::COUNT> handActive;
+    std::array<XrBool32, Side::COUNT> handActive = {};
   };
   InputState m_input;
 
@@ -2090,3 +2090,317 @@ void DisplayOpenXR::DisplayThread(Display* sharedWindow, uint32_t renderAheadMic
 }
 
 #endif // USE_OPENXR
+
+//==============================================================================
+// Structures and methods for DisplayXSight class.
+
+/// @brief Implementation details for the DisplayXSight class to hide #includes from users of the DisplayXSight class.
+class asdp::render::DisplayXSight::DisplayXSightImpl {
+public:
+  /// Horizontal field of view in degrees.
+  float m_horizontalFOVDegrees{ 90.0f };
+
+  /// Views to be rendered.
+  std::vector<asdp::render::ViewRenderInfo> m_views;
+
+  /// Time point to start rendering the next frame.
+  std::chrono::steady_clock::time_point m_nextRenderTime;
+
+  /// Time point to start computing the depth for the next frame;
+  std::chrono::steady_clock::time_point m_nextDepthTime;
+
+  /// Time point in the middle of the next frame we will render.
+  std::chrono::steady_clock::time_point m_nextFrameTime;
+};
+
+DisplayXSight::DisplayXSight(std::shared_ptr<Composite> composite, Display* sharedWindow,
+  std::shared_ptr<CoreClient> client, uint8_t triggerID, uint32_t triggerAheadMicroseconds,
+  uint32_t depthAheadMicroseconds,
+  uint32_t renderAheadMicroseconds,
+  std::shared_ptr<EventHandlers> handlers, void* userData,
+  RenderTimingInfo* timingInfo, bool replaying,
+  int desiredDisplay,
+  int desiredWidth, int desiredHeight, float fps,
+  float horizontalFOVDegrees
+  )
+  : Display(composite, client, triggerID, triggerAheadMicroseconds, depthAheadMicroseconds, handlers, userData)
+  , m_timingInfo(timingInfo)
+  , m_replaying(replaying)
+  , m_impl(new DisplayXSightImpl)
+
+{
+  // Check our parameters.
+  if ((desiredWidth <= 0) || (desiredHeight <= 0) || (horizontalFOVDegrees <= 0.0f)) {
+    m_status = "Invalid window size or field of view";
+    return;
+  }
+
+  // Store info from the constructor.
+  m_impl->m_horizontalFOVDegrees = horizontalFOVDegrees;
+
+  // Construct a single view to be used.  We base is on the requested window size and we compute a
+  // field of view that is 40 degrees total horizontal and the correct aspect ratio vertical.
+  ViewRenderInfo view;
+  SetViewportSizeAndFOVs(view, desiredWidth, desiredHeight);
+  m_impl->m_views.push_back(view);
+
+  // Start the rendering thread.
+  m_displayThread = std::thread(&DisplayXSight::DisplayThread, this,
+    fps, renderAheadMicroseconds,
+    desiredWidth, desiredHeight, horizontalFOVDegrees,
+    sharedWindow, desiredDisplay);
+
+  // Wait until either the context is ready or there has been a failure so that the
+  // constructor does not return before the rendering thread is ready.
+  while (!Display::m_impl->m_contextAvailable && (m_status == "")) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+}
+
+DisplayXSight::~DisplayXSight()
+{
+  // Make sure we're done with our rendering state and then clean up.
+  Quit();
+  m_impl.reset();
+}
+
+void DisplayXSight::SetViewportSizeAndFOVs(ViewRenderInfo& viewInfo, int width, int height)
+{
+  if (m_impl == nullptr) {
+    return;
+  }
+  if ((width == 0) || (height == 0)) {
+    glfwGetWindowSize(Display::m_impl->m_window, &width, &height);
+    viewInfo.width = width;
+    viewInfo.height = height;
+  }
+  viewInfo.leftHalfFOV = -m_impl->m_horizontalFOVDegrees / 2.0f;
+  viewInfo.rightHalfFOV = m_impl->m_horizontalFOVDegrees / 2.0f;
+
+  // The vertical field of view is based on the aspect ratio of the window.  But the aspect ratio
+  // is the in-plane width divided by the in-plane height.  The horizontal and vertical fields of view
+  // are based on the tangents.
+  double aspectRatio = static_cast<double>(viewInfo.height) / static_cast<double>(viewInfo.width);
+  double halfWidth = tan(glm::radians(m_impl->m_horizontalFOVDegrees / 2.0));
+  double halfHeight = halfWidth * aspectRatio;
+  double halfAngle = glm::degrees(atan(halfHeight));
+  viewInfo.bottomHalfFOV = -halfAngle;
+  viewInfo.topHalfFOV = halfAngle;
+}
+
+void DisplayXSight::DisplayThread(
+  float fps, uint32_t renderAheadMicroseconds,
+  int desiredWidth, int desiredHeight, float horizontalFOVDegrees,
+  Display* sharedWindow,
+  int desiredDisplay)
+{
+  {
+    {
+      // Hold the window mutex so that only one window can be created at a time.
+      std::lock_guard<std::mutex> windowLock(m_windowMutex);
+
+      // Set the window to be visible.
+      glfwWindowHint(GLFW_VISIBLE, true);
+
+      // Don't use sRGB -- we need to put in specific pixel values with the CompositeLineRawData.
+      glfwWindowHint(GLFW_SRGB_CAPABLE, GLFW_FALSE);
+
+      // Tell it not to iconify full-screen windows that lose focus.
+      glfwWindowHint(GLFW_AUTO_ICONIFY, GLFW_FALSE);
+
+      // Create a windowed mode window and its OpenGL context.
+      // This must be done in the same thread that will do the rendering so that the window events will
+      // be handled properly on all architectures.
+      // We must make the OpenGL context of the window we want to share current on this thread
+      // if we are sharing it by borrowing it and then returning it once the window is open because
+      // Windows requires it to be current.
+      GLFWwindow* windowToShare = nullptr;
+      if (sharedWindow) {
+        windowToShare = sharedWindow->m_impl->m_window;
+        if (!sharedWindow->BorrowContext()) {
+          m_status = "Failed to borrow context from shared window";
+          return;
+        }
+      }
+      Display::m_impl->m_window = glfwCreateWindow(desiredWidth, desiredHeight, "XSight", nullptr,
+        windowToShare);
+      if (sharedWindow) {
+        if (!sharedWindow->ReturnContext()) {
+          m_status = "Failed to return context to shared window";
+          return;
+        }
+      }
+    }
+
+    // Verify that the window was created.
+    if (!Display::m_impl->m_window) {
+      m_status = "Failed to create GLFW window";
+      return;
+    }
+
+    // Determine the full-screen monitor to use.
+    int count;
+    GLFWmonitor** monitors = glfwGetMonitors(&count);
+    if ((count == 0) || !monitors) {
+      m_status = "No monitors for fullscreen";
+      return;
+    }
+    if (desiredDisplay > count) {
+      m_status = "Invalid monitor requested (index larger than available monitors)";
+      return;
+    }
+    GLFWmonitor* fullScreenMonitor = monitors[desiredDisplay-1];
+
+    // Engage full screen here along with specifying the refresh rate.
+    glfwSetWindowMonitor(Display::m_impl->m_window, fullScreenMonitor, 0, 0, desiredWidth, desiredHeight, fps);
+
+    // Make the window's context current
+    glfwMakeContextCurrent(Display::m_impl->m_window);
+
+    // Initialize GLEW in our context. It is okay to initialize it more than once.
+    glewExperimental = true;
+    if (glewInit() != GLEW_OK) {
+      m_status = "Failed to initialize GLEW";
+      return;
+    }
+    // Clear any GL error that Glew caused.  Apparently on Non-Windows
+    // platforms, this can cause a spurious error 1280.
+    glGetError();
+
+    // Disable SRGB on the frame buffer so our pixel values are not gamma corrected.
+    glDisable(GL_FRAMEBUFFER_SRGB);
+
+    // Release the window's current context in case another Display wants to borrow it.
+    glfwMakeContextCurrent(nullptr);
+
+    // After we're done with the context for set-up and have released it, indicate that the context is available
+    // for borrowing.
+    Display::m_impl->m_contextAvailable = true;
+  }
+
+  // Construct a CompositeLineRawData to render frame metadata into the first line, using the whole first line.
+  glfwMakeContextCurrent(Display::m_impl->m_window);
+  std::vector<uint8_t> lineData(desiredWidth * 3);
+  CompositeLineRawData lineComposite(-1, 1, 1, 1, lineData);
+  glfwMakeContextCurrent(nullptr);
+
+  // Loop until the display is done.
+  bool frameCompleted = false;
+  while (!m_done) {
+
+    // Determine the scan-out time of the frame (center of the image).
+    Time renderTime;
+    m_timer->GetCoreTime(renderTime, std::chrono::steady_clock::now());
+    if (!m_replaying) {
+      double frameTime = 1.0 / fps;
+      double middleOfNextFrameOffset = frameTime / 2.0 + renderAheadMicroseconds / 1e6;
+      uint32_t seconds = static_cast<uint32_t>(middleOfNextFrameOffset);
+      uint32_t microseconds = (middleOfNextFrameOffset - seconds) * 1e6;
+      renderTime += Time(seconds, microseconds);
+    }
+
+    // Adjust render time if we're paused.
+    if (m_pauseTime) {
+      renderTime = *m_pauseTime;
+    }
+
+    // Wait until it is time to compute depth for the next frame.  We must busy-wait here to avoid having our
+    // thread swapped out for longer than we want.
+    while (std::chrono::steady_clock::now() < m_impl->m_nextDepthTime) {
+    }
+    if (m_eventHandlers && m_eventHandlers->ComputeDepth) {
+      // Make the window's context current
+      std::lock_guard<std::mutex> lock(Display::m_impl->m_contextMutex);
+      glfwMakeContextCurrent(Display::m_impl->m_window);
+
+      GLenum err = glGetError();
+      if (err != GL_NO_ERROR) {
+        std::cerr << "OpenGL error before checking whether to call ComputeDepth: " << err << std::endl;
+      }
+      m_eventHandlers->ComputeDepth(renderTime, m_userData);
+
+      // Release the window's current context in case another Display wants to borrow it.
+      glfwMakeContextCurrent(nullptr);
+    }
+
+    // Wait until it is time to render the next frame.  We must busy-wait here to avoid having our
+    // thread swapped out for longer than we want.
+    while (std::chrono::steady_clock::now() < m_impl->m_nextRenderTime) {
+    }
+
+    // Grab the context mutex for the duration of the loop.  Once we have it, we know
+    // that the context is not active in another thread.
+    std::lock_guard<std::mutex> lock(Display::m_impl->m_contextMutex);
+
+    // Make the window's context current
+    glfwMakeContextCurrent(Display::m_impl->m_window);
+
+    // Quit when our window closes.
+    if (glfwWindowShouldClose(Display::m_impl->m_window)) {
+      m_composite.reset();
+      m_status = "Done";
+      break;
+    }
+
+    // Process any incoming pose requests; update views and lineComposite data.
+    /// @todo
+
+    // Handle any window resizing
+    SetViewportSizeAndFOVs(m_impl->m_views[0]);
+
+    // Trigger the cameras, saying that we need the data now. The base class will handle offsetting
+    // by the specified transmission/processing time as passed to its constructor by the client.
+    TriggerCameras(std::chrono::steady_clock::now());
+
+    // Record the render start time if we have a place to put it.
+    if (m_timingInfo) {
+      m_timingInfo->renderStartTimes.push_back(std::chrono::steady_clock::now());
+    }
+
+    // Render the frame data
+    m_composite->Render(renderTime, m_impl->m_views);
+
+    // Render the frame metadata into the first line.
+    lineComposite.Render(renderTime, m_impl->m_views);
+
+    // Record the render submit time if we have a place to put it.
+    if (m_timingInfo) {
+      m_timingInfo->renderSubmitTimes.push_back(std::chrono::steady_clock::now());
+    }
+
+    // Swap front and back buffers and wait for it to complete, then compute the next frame time.
+    glfwSwapBuffers(Display::m_impl->m_window);
+    glFinish();
+    m_impl->m_nextRenderTime = std::chrono::steady_clock::now() +
+      std::chrono::microseconds(static_cast<long long>(1e6 / fps) - renderAheadMicroseconds);
+    m_impl->m_nextDepthTime = m_impl->m_nextRenderTime - std::chrono::microseconds(m_depthAheadMicroseconds);
+    // Half way through the next frame, which is when we want the geometry adjusted for.
+    m_impl->m_nextFrameTime = std::chrono::steady_clock::now() +
+      std::chrono::microseconds(static_cast<long long>(1e6 / fps) * 3 / 2);
+
+    // Poll for and process events
+    glfwPollEvents();
+
+    // Release the window's current context in case another Display wants to borrow it.
+    glfwMakeContextCurrent(nullptr);
+  }
+
+  // Done with the window
+  glfwDestroyWindow(Display::m_impl->m_window);
+}
+
+void DisplayXSight::SetNowPlaying(bool nowPlaying)
+{
+  // Call the parent-class method to set the now-playing state.
+  Display::SetNowPlaying(nowPlaying);
+
+  // Set the pause time based on whether we are now playing so that
+  // we don't extrapolate forward in time while paused.
+  if (!m_nowPlaying) {
+    m_pauseTime = std::make_unique<Time>();
+    m_timer->GetCoreTime(*m_pauseTime, std::chrono::steady_clock::now());
+  }
+  else {
+    m_pauseTime.reset();
+  }
+}

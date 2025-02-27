@@ -152,6 +152,29 @@ protected:
       friend class DisplayWindow;
       friend class DisplayTexture;
       friend class DisplayOpenXR;
+      friend class DisplayXSight;
+    };
+
+    /// @brief Display class that handles writing to textures, not actually displaying.
+    /// @details This class basically produces an OpenGL context that is shared with another
+    /// Display object, allowing a thread to render to a texture that can be used by the other
+    /// Display object to display the rendered scene.
+    class DisplayTexture : public Display {
+    public:
+      /// @brief Constructor
+      /// @param sharedWindow A pointer to a DisplayWindow to share the OpenGL objects with, null if it
+      /// is to be the base object to be shared.
+      DisplayTexture(Display* sharedWindow = nullptr);
+
+      ~DisplayTexture();
+
+    private:
+
+      /// Opaque class used to enable not requiring the application to #include all headers.
+      class DisplayTextureImpl;
+
+      /// Instance of the implementation class used to store data.  Filled in by the constructor.
+      std::unique_ptr<DisplayTextureImpl> m_impl;
     };
 
     /// @brief Display class that displays to a window, perhaps full-screen.
@@ -245,28 +268,6 @@ protected:
       std::unique_ptr<DisplayWindowImpl> m_impl;
     };
 
-    /// @brief Display class that handles writing to textures, not actually displaying.
-    /// @details This class basically produces an OpenGL context that is shared with another
-    /// Display object, allowing a thread to render to a texture that can be used by the other
-    /// Display object to display the rendered scene.
-    class DisplayTexture : public Display {
-    public:
-      /// @brief Constructor
-      /// @param sharedWindow A pointer to a DisplayWindow to share the OpenGL objects with, null if it
-      /// is to be the base object to be shared.
-      DisplayTexture(Display* sharedWindow = nullptr);
-
-      ~DisplayTexture();
-
-    private:
-
-      /// Opaque class used to enable not requiring the application to #include all headers.
-      class DisplayTextureImpl;
-
-      /// Instance of the implementation class used to store data.  Filled in by the constructor.
-      std::unique_ptr<DisplayTextureImpl> m_impl;
-    };
-
     /// @brief Display class that displays using OpenXR.
     class DisplayOpenXR : public Display {
     public:
@@ -316,6 +317,79 @@ protected:
 
       /// Instance of the implementation class used to store data.  Filled in by the constructor.
       std::unique_ptr<DisplayOpenXRImpl> m_impl;
+    };
+
+    /// @brief Display class that displays to an Elbit XSight HMD using a full-screen window.
+    class DisplayXSight : public Display {
+    public:
+      /// @brief Constructor
+      /// @param composite The Composite used to generate textured geometry.  The DisplayXSight object will
+      /// reset this pointer just before closing the window, and the caller should reset the pointer passed
+      /// in here so that it will be destroyed before the window closes.
+      /// @param client The CoreClient used to communicate with the Core to cause software triggers.
+      /// @param triggerID The ID of the trigger to use to trigger the cameras.
+      /// @param triggerAheadMicroseconds The offset in microseconds to subtract from the time of render start.
+      /// This is to ensure that the frames make it all the way through the Composite object before being needed.
+      /// It is expected to be read from a configuration file and tuned for the specific hardware and software.
+      /// @param depthAheadMicroseconds The offset in microseconds to subtract from the time of render start.
+      /// @param desiredDisplay The index of the desired display to use (1 = first, default 2).
+      /// @param desiredWidth The width of the display in pixels.
+      /// @param desiredHeight The height of the display in pixels.
+      /// @param fps The number of frames per second requested.  The system will busy-wait
+      /// to achieve at most this frame rate.  This is the frame rate we ask for on the monitor.
+      /// @param horizontalFOVDegrees The horizontal field of view of the display in degrees.
+      /// @param renderAheadMicroseconds The number of microseconds ahead of the next swap time to begin
+      /// rendering.  This is to ensure that the rendering is done in time for the swap to happen while
+      /// providing the minimum prediction interval and delaying as long as possible to enable new frames
+      /// to arrive before rendering.  If this value is larger than 1 million / fps, the frames will not
+      /// wait before rendering.
+      /// @param sharedWindow A pointer to a DisplayWindow to share the OpenGL objects with, or nullptr if none.
+      /// @param handlers Event handlers to use, if any.
+      /// @param userData User data to pass to the event handlers.
+      /// @param timingInfo Timing information on display operations should be stored here, if it is not null.
+      /// @param replaying True if the display is replaying a recording, false if not.
+      DisplayXSight(std::shared_ptr<Composite> composite, Display* sharedWindow,
+        std::shared_ptr<CoreClient> client, uint8_t triggerID, uint32_t triggerAheadMicroseconds,
+        uint32_t depthAheadMicroseconds,
+        uint32_t renderAheadMicroseconds = 2500,  ///< @todo Match XSight specs
+        std::shared_ptr<EventHandlers> handlers = nullptr, void* userData = nullptr,
+        RenderTimingInfo* timingInfo = nullptr, bool replaying = false,
+        int desiredDisplay = 2,
+        int desiredWidth = 3840, int desiredHeight = 2160, float fps = 60,  ///< @todo Match XSight specs
+        float horizontalFOVDegrees = 90.0  ///< @todo Match XSight specs
+      );
+
+      void SetNowPlaying(bool nowPlaying) override;
+
+      ~DisplayXSight();
+
+    private:
+      /// Where to store render timing info, if not nullptr.
+      RenderTimingInfo* m_timingInfo;
+
+      /// Are we replaying?
+      bool m_replaying;
+
+      /// Pointer to time when we started pausing, nullptr if not pausing.
+      std::unique_ptr<Time> m_pauseTime;
+
+      /// @brief Method to implement the display thread.
+      void DisplayThread(
+        float fps, uint32_t renderAheadMicroseconds,
+        int desiredWidth, int desiredHeight, float horizontalFOVDegrees,
+        Display* sharedWindow,
+        int desiredDisplay);
+
+      /// @brief Helper function to set the viewport dimensions based on the window size.
+      /// @param viewInfo The ViewRenderInfo object to set the viewport size and field of view in.
+      /// @param width The width of the window in pixels, 0 to use the current width.
+      /// @param height The height of the window in pixels, 0 to use the current height.
+      void SetViewportSizeAndFOVs(ViewRenderInfo& viewInfo, int width = 0, int height = 0);
+
+      /// Opaque class used to enable not requiring the application to #include all headers.
+      class DisplayXSightImpl;
+      /// Instance of the implementation class used to store data.  Filled in by the constructor.
+      std::unique_ptr<DisplayXSightImpl> m_impl;
     };
 
   } // namespace render

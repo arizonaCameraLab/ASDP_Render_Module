@@ -101,7 +101,7 @@ int main()
     }
     if (!success) {
       std::cerr << "Failed to match the rendered image to the expected values." << std::endl;
-      //return 1;
+      return 1;
     }
 
     // Swap front and back buffers
