@@ -1319,6 +1319,7 @@ void CompositeLineRawData::SetupRenderFrame(asdp::Time /* scanOutTime */)
 {
   glUseProgram(m_programId);
   glDisable(GL_CULL_FACE);
+  glPointSize(1.0f);
 }
 
 void CompositeLineRawData::RenderView(asdp::Time /* scanOutTime */, const float* /* viewProjection */)
@@ -1338,9 +1339,6 @@ void CompositeLineRawData::RenderView(asdp::Time /* scanOutTime */, const float*
   // Fill in the vertex data.
   // There are two spatial coordinates and one texture coordinate per vertex.
   // The texture coordinates are the normalized position along the line.
-  // We draw the forwards line and then the backwards line because the last
-  // point on the line is not filled in if we only draw forwards or if we
-  // repeat the last point three times to draw a zero-length line.
   std::vector<GLfloat> vertices;
   vertices.push_back(m_x0);
   vertices.push_back(m_y0);
@@ -1348,12 +1346,6 @@ void CompositeLineRawData::RenderView(asdp::Time /* scanOutTime */, const float*
   vertices.push_back(m_x1);
   vertices.push_back(m_y1);
   vertices.push_back(1.0f);
-  vertices.push_back(m_x1);
-  vertices.push_back(m_y1);
-  vertices.push_back(1.0f);
-  vertices.push_back(m_x0);
-  vertices.push_back(m_y0);
-  vertices.push_back(0.0f);
 
   // Unbind any currently bound vertex array object.
   // We cannot use vertex array objects because we're potentially going to be called
@@ -1366,11 +1358,13 @@ void CompositeLineRawData::RenderView(asdp::Time /* scanOutTime */, const float*
   glEnableVertexAttribArray(1);
 
   // Draw the line using its vertex buffer objects after specifying its layout.
+  // Draw the final point on the line because OpenGL doesn't fill that point in.
   glBindBuffer(GL_ARRAY_BUFFER, m_vertexBufferObject);
   glBufferData(GL_ARRAY_BUFFER, sizeof(vertices[0]) * vertices.size(), vertices.data(), GL_DYNAMIC_DRAW);
   glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 3 * sizeof(GLfloat), (GLvoid*)0);
   glVertexAttribPointer(1, 1, GL_FLOAT, GL_FALSE, 3 * sizeof(GLfloat), (GLvoid*)(2 * sizeof(GLfloat)));
   glDrawArrays(GL_LINES, 0, vertices.size() / 3);
+  glDrawArrays(GL_POINTS, 1, 1);
   glBindBuffer(GL_ARRAY_BUFFER, 0);
 
   // Unbind the image from its texture unit

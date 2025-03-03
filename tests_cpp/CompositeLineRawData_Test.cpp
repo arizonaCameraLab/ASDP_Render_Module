@@ -31,7 +31,7 @@ int main()
   }
 
   // Create a windowed mode window and its OpenGL context
-  GLFWwindow* window = glfwCreateWindow(width, height, "Composite_Test", NULL, NULL);
+  GLFWwindow* window = glfwCreateWindow(width, height, "CompositeLineRawData_Test", NULL, NULL);
   if (!window) {
     std::cerr << "Failed to create GLFW window\n";
     glfwTerminate();
