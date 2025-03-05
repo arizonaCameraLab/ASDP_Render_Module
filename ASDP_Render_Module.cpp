@@ -52,7 +52,7 @@ using namespace asdp;
 using namespace asdp::render;
 using json = nlohmann::json;
 
-static std::string VERSION = "2.32.0";
+static std::string VERSION = "2.32.1";
 
 /// @brief The path to the configuration file. Defined in the CMakeLists file.
 std::filesystem::path g_dirPath = CONFIG_FILE_PATH;
@@ -892,7 +892,7 @@ void usage(std::string name)
   std::cerr << "  --maxDepth <float>                  Maximum depth to test for in meters (default 200)." << std::endl;
   std::cerr << "  --depthThreshold <float>            Depth threshold in squared pixel value differences (default 10.0)." << std::endl;
   std::cerr << "  --cameraFPS <frames per second>     The frames per second to run the camera at (default is maximum rate)." << std::endl;
-  std::cerr << "  --openXR                            Use OpenXR for rendering. If set, overrides the following." << std::endl;
+  std::cerr << "  --openXR                            Use OpenXR for rendering. If set, overrides the following and sets lineBatchesPerGPUSend to 10000." << std::endl;
   std::cerr << "  --xSight                            Render to XSight. If set, overrides the following." << std::endl;
   std::cerr << "  --width <width>                     The width of the window (default 1280)." << std::endl;
   std::cerr << "  --height <height>                   The height of the window (default 1024)." << std::endl;
@@ -963,6 +963,7 @@ int main(int argc, char** argv)
     }
     else if (std::string("--openXR") == argv[i]) {
       displayInfos.back().useOpenXR = true;
+      lineBatchesPerGPUSend = 10000;
     }
     else if (std::string("--xSight") == argv[i]) {
       displayInfos.back().useXSight = true;
