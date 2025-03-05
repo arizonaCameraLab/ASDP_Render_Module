@@ -205,16 +205,16 @@ if(WIN32)
   file(GLOB_RECURSE GLEW_DLL "${GLEW_INCLUDE_DIRS}/../*glew32.dll")
   find_element_with_substring(GLEW_DLL2 "${GLEW_DLL}" "x64")
 
-  if(GLEW_DLL)
+  if(GLEW_DLL2)
     # Copy the GLEW DLL to the build directory after building the executable
     add_custom_command(TARGET ASDP_Render_Module POST_BUILD
-      COMMAND ${CMAKE_COMMAND} -E copy_if_different
-      ${GLEW_DLL} $<TARGET_FILE_DIR:ASDP_Render_Module>
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different ${GLEW_DLL2} $<TARGET_FILE_DIR:ASDP_Render_Module>
       COMMENT "Copying ${GLEW_DLL} to build directory"
     )
 
     # Install the GLEW DLL to the install directory
-    install(FILES ${GLEW_DLL} DESTINATION ${CMAKE_INSTALL_BINDIR})
+    install(FILES ${GLEW_DLL2} DESTINATION ${CMAKE_INSTALL_BINDIR})
+    MESSAGE("Installing ${GLEW_DLL2} to ${CMAKE_INSTALL_BINDIR}")
   else()
     message(WARNING "GLEW DLL not found. Make sure glew32.dll is in the same path as your GLEW include directory.")
   endif()
