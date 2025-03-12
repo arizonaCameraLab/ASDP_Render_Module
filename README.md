@@ -29,6 +29,11 @@ The following packages are required (apt install) to build on Linux:
 - libglfw3-dev
 - libglew-dev
 
+If you want to build the Storage Manager application, it also requires Qt5:
+- qtbase5-dev
+- qtdeclarative5-dev
+- libqt5svg5-dev
+
 To upgrade a server-only Mint distribution (with added nVidia drivers) on a Render Server to a
 desktop environment that uses the light-weight XFCE desktop but does not include the printer daemon,
 use the following commands:
