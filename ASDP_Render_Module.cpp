@@ -1570,7 +1570,8 @@ int main(int argc, char** argv)
       }
       uint32_t renderOffsetMicroseconds = 0;
       if (replayStreamID != 0) {
-        // Set up to run 1.5 frames behind the current time, which empirically was much
+        // Set up to run 1.5 frames behind the curre
+        // nt time, which empirically was much
         // smoother than a single frame behind and slightly smoother than 2 frames.
         renderOffsetMicroseconds = 0.5 * (1000000 / cameraFPS); //1.5
       }
