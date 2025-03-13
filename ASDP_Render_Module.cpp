@@ -840,7 +840,7 @@ struct DisplayInfo
 {
   ToneMap toneMap = ToneMap();  ///< The tone map to use.
   bool useOpenXR = false;       ///< Use OpenXR for rendering? If so, overrides all of the following.
-  bool useXSight = false;       ///< Use XSight for rendering? If so, overrides all of the following.
+  std::string XSightNIC = "";   ///< NIC to listen to XSight on for rendering. If not empty, overrides all of the following.
   int width = 1280;             ///< The width of the display.
   int height = 1024;            ///< The height of the display.
   float hFOV = 40.0f;           ///< The horizontal field of view in degrees.
@@ -893,7 +893,7 @@ void usage(std::string name)
   std::cerr << "  --depthThreshold <float>            Depth threshold in squared pixel value differences (default 10.0)." << std::endl;
   std::cerr << "  --cameraFPS <frames per second>     The frames per second to run the camera at (default is maximum rate)." << std::endl;
   std::cerr << "  --openXR                            Use OpenXR for rendering. If set, overrides the following and sets lineBatchesPerGPUSend to 10000." << std::endl;
-  std::cerr << "  --xSight                            Render to XSight. If set, overrides the following." << std::endl;
+  std::cerr << "  --xSight <ip of NIC to listen on>   Render to XSight on specified NIC. If set, overrides the following." << std::endl;
   std::cerr << "  --width <width>                     The width of the window (default 1280)." << std::endl;
   std::cerr << "  --height <height>                   The height of the window (default 1024)." << std::endl;
   std::cerr << "  --hFOV <horizontal field of view>   The horizontal field of view in degrees (default 40)." << std::endl;
@@ -966,7 +966,11 @@ int main(int argc, char** argv)
       lineBatchesPerGPUSend = 10000;
     }
     else if (std::string("--xSight") == argv[i]) {
-      displayInfos.back().useXSight = true;
+      if (++i >= argc) {
+        usage(argv[0]);
+        return 2;
+      }
+      displayInfos.back().XSightNIC = argv[i];
     }
     else if (std::string("--fullScreen") == argv[i]) {
       if (++i >= argc) {
@@ -1510,8 +1514,8 @@ int main(int argc, char** argv)
         displays.push_back(std::make_shared<DisplayOpenXR>(g_composite, displayTexture.get(),
           client, triggerID, triggerAheadMicroseconds, depthAheadMicroseconds, 2500, 1, handlers, nullptr,
           (i == 0) ? (&g_timingInfo) : nullptr, replayStreamID != 0));
-      } else if (displayInfos[i].useXSight) {
-        displays.push_back(std::make_shared<DisplayXSight>(g_composite, displayTexture.get(),
+      } else if (!displayInfos[i].XSightNIC.empty()) {
+        displays.push_back(std::make_shared<DisplayXSight>(displayInfos[i].XSightNIC, g_composite, displayTexture.get(),
           client, triggerID, triggerAheadMicroseconds,
           depthAheadMicroseconds,
           2500,

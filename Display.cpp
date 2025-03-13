@@ -2113,7 +2113,7 @@ public:
   std::chrono::steady_clock::time_point m_nextFrameTime;
 };
 
-DisplayXSight::DisplayXSight(std::shared_ptr<Composite> composite, Display* sharedWindow,
+DisplayXSight::DisplayXSight(std::string NICName, std::shared_ptr<Composite> composite, Display* sharedWindow,
   std::shared_ptr<CoreClient> client, uint8_t triggerID, uint32_t triggerAheadMicroseconds,
   uint32_t depthAheadMicroseconds,
   uint32_t renderAheadMicroseconds,
@@ -2124,6 +2124,7 @@ DisplayXSight::DisplayXSight(std::shared_ptr<Composite> composite, Display* shar
   float horizontalFOVDegrees
   )
   : Display(composite, client, triggerID, triggerAheadMicroseconds, depthAheadMicroseconds, handlers, userData)
+  , m_NICName(NICName)
   , m_timingInfo(timingInfo)
   , m_replaying(replaying)
   , m_impl(new DisplayXSightImpl)
@@ -2139,7 +2140,7 @@ DisplayXSight::DisplayXSight(std::shared_ptr<Composite> composite, Display* shar
   m_impl->m_horizontalFOVDegrees = horizontalFOVDegrees;
 
   // Construct a single view to be used.  We base is on the requested window size and we compute a
-  // field of view that is 40 degrees total horizontal and the correct aspect ratio vertical.
+  // field of view that is the requested horizontal and the correct aspect ratio vertical.
   ViewRenderInfo view;
   SetViewportSizeAndFOVs(view, desiredWidth, desiredHeight);
   m_impl->m_views.push_back(view);
@@ -2186,6 +2187,38 @@ void DisplayXSight::SetViewportSizeAndFOVs(ViewRenderInfo& viewInfo, int width, 
   double halfAngle = glm::degrees(atan(halfHeight));
   viewInfo.bottomHalfFOV = -halfAngle;
   viewInfo.topHalfFOV = halfAngle;
+}
+
+/// @brief Embeds a 4-byte entity into four RGB pixels of an image.
+/// @param dataPtr Pointer to the 4-byte entity to embed (points to first byte of little-endian value).
+/// This must be type-cast into a char* to allow byte-wise manipulation.
+/// @param firstRGBByte Pointer to the first byte of the first of four RGB triads to embed the data into.
+static void EmbedField(char const* dataPtr, uint8_t* firstRGBByte)
+{
+  // The 4-byte entity (float or int) is embedded into four pixels of the image according to the
+  // specification in "Xsight_Rack.pdf".  The data is stored from least-significant byte to most
+  // and each byte is encoded into a single RGB triad. The encoding makes the Red byte zero and encodes
+  // the value in Green and Blue. The lower nybble of each byte has the value 8 and the upper is mapped
+  // with the most-significanly nybble of the encoded byte in the upper nybble of Blue and the least-significant
+  // nybble in the upper nybble of Green.
+  // NOTE: This assumes that we are running on a little-endian machine.
+  for (int i = 0; i < 4; i++) {
+    uint8_t byte = dataPtr[i];
+    firstRGBByte[i * 3 + 0] = 0x08;                               // Red is ignored.
+    firstRGBByte[i * 3 + 1] = 0x8 | ((byte & 0x0F) << 4);         // Green is the lower nybble.
+    firstRGBByte[i * 3 + 2] = 0x8 | (((byte >> 4) & 0x0F) << 4);  // Blue is the upper nybble.
+  }
+}
+
+static void EmbedLOSData(float azimuth, float elevation, float roll, uint32_t time, std::vector<uint8_t>& lineData)
+{
+  // Embed the azimuth, elevation, and roll into the first line of the image.
+  // The azimuth is in the first 4 bytes, the elevation in the next 4 bytes, the roll in the next 4 bytes,
+  // and the time in the last 4 bytes.
+  EmbedField(reinterpret_cast<char const*>(&azimuth), lineData.data());
+  EmbedField(reinterpret_cast<char const*>(&elevation), lineData.data() + 12);
+  EmbedField(reinterpret_cast<char const*>(&roll), lineData.data() + 24);
+  EmbedField(reinterpret_cast<char const*>(&time), lineData.data() + 36);
 }
 
 void DisplayXSight::DisplayThread(
@@ -2278,6 +2311,20 @@ void DisplayXSight::DisplayThread(
     Display::m_impl->m_contextAvailable = true;
   }
 
+  // Place holders for LOS data read from the XSight.
+  float azimuth = 0.0f;
+  float elevation = 0.0f;
+  float roll = 0.0f;
+  uint32_t time = 0;
+
+  // Open a multicast UDP receiver to listen for LOS data from the XSight on the specified port.
+  asdp::ReceiverUDP receiver(m_NICName, 5535, 9000 - 28, "224.0.0.50");
+  Status status = receiver.GetConstructorStatus();
+  if (status != OKAY) {
+    m_status = "Failed to create UDP receiver";
+    return;
+  }
+
   // Construct a CompositeLineRawData to render frame metadata into the first line, using the whole first line.
   glfwMakeContextCurrent(Display::m_impl->m_window);
   std::vector<uint8_t> lineData(desiredWidth * 3);
@@ -2342,8 +2389,70 @@ void DisplayXSight::DisplayThread(
       break;
     }
 
-    // Process any incoming pose requests; update views and lineComposite data.
-    /// @todo
+    // Process any incoming pose requests; update view orientation to match.
+    bool packetReady = false;
+    Status status = receiver.IsPacketAvailable(0, packetReady);
+    if (status != OKAY) {
+      m_status = "Failed to check for packet availability";
+      break;
+    }
+    while (packetReady) {
+      // Read the packet.
+      size_t length = 9000;
+      std::vector<uint8_t> buffer(length);
+      status = receiver.ReceiveBuffer(buffer.data(), length);
+      if (status != OKAY) {
+        m_status = "Failed to receive packet";
+        break;
+      }
+
+      // Verify that the packet length is as expected and then parse it.
+      const size_t expectedLength = 3*4 + 3*4 + 2 + 3*4 + 4 + 4 + 3*4 + 1 + 3*4;
+      if (length != expectedLength) {
+        m_status = "Received packet of unexpected length";
+        break;
+      }
+
+      // Pull each of the fields out of the packet into a buffer, then perform byte order conversion,
+      // then copy into the result. We do the two copies because the bytes are not always aligned in the
+      // packet.  We first check to see if the packet is valid and leave things alone if it is not.
+      bool valid = buffer[6 * 4 + 2 + 3 * 4 + 4 + 4 + 3 * 4] != 0;
+      if (valid) {
+        uint32_t temp;
+        memcpy(&temp, &(buffer[5*4]), sizeof(temp));
+        temp = ntohl(temp);
+        memcpy(&azimuth, &temp, sizeof(azimuth));
+        memcpy(&temp, &(buffer[4*4]), sizeof(temp));
+        temp = ntohl(temp);
+        memcpy(&elevation, &temp, sizeof(elevation));
+        memcpy(&temp, &(buffer[3*4]), sizeof(temp));
+        temp = ntohl(temp);
+        memcpy(&roll, &temp, sizeof(roll));
+        memcpy(&temp, &(buffer[6*4 + 2 + 3*4]), sizeof(temp));
+        temp = ntohl(temp);
+        memcpy(&time, &temp, sizeof(time));
+      }
+
+      // Check for another packet, so we gobble up any that are waiting.
+      Status status = receiver.IsPacketAvailable(0, packetReady);
+      if (status != OKAY) {
+        m_status = "Failed to check for packet availability";
+        break;
+      }
+    }
+
+    // Update the transformation for the view.  We first rotate around roll, then pitch, then yaw.
+    glm::quat rotationX = glm::angleAxis(glm::radians(roll), glm::vec3(1.0f, 0.0f, 0.0f));
+    glm::quat rotationY = glm::angleAxis(glm::radians(elevation), glm::vec3(0.0f, 1.0f, 0.0f));
+    glm::quat rotationZ = glm::angleAxis(glm::radians(azimuth), glm::vec3(0.0f, 0.0f, 1.0f));
+    glm::quat rotationTotal = rotationZ * rotationY * rotationX;
+    m_impl->m_views[0].orientation[0] = rotationTotal.w;
+    m_impl->m_views[0].orientation[1] = rotationTotal.x;
+    m_impl->m_views[0].orientation[2] = rotationTotal.y;
+    m_impl->m_views[0].orientation[3] = rotationTotal.z;
+
+    // Embed the azimuth, elevation, roll, and time into the first line of the image.
+    EmbedLOSData(azimuth, elevation, roll, time, lineData);
 
     // Handle any window resizing
     SetViewportSizeAndFOVs(m_impl->m_views[0]);

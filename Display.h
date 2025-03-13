@@ -323,6 +323,7 @@ protected:
     class DisplayXSight : public Display {
     public:
       /// @brief Constructor
+      /// @param NICName The name of the NIC to use listen for UDP packets from the XSight HMD.
       /// @param composite The Composite used to generate textured geometry.  The DisplayXSight object will
       /// reset this pointer just before closing the window, and the caller should reset the pointer passed
       /// in here so that it will be destroyed before the window closes.
@@ -348,15 +349,15 @@ protected:
       /// @param userData User data to pass to the event handlers.
       /// @param timingInfo Timing information on display operations should be stored here, if it is not null.
       /// @param replaying True if the display is replaying a recording, false if not.
-      DisplayXSight(std::shared_ptr<Composite> composite, Display* sharedWindow,
+      DisplayXSight(std::string NICName, std::shared_ptr<Composite> composite, Display* sharedWindow,
         std::shared_ptr<CoreClient> client, uint8_t triggerID, uint32_t triggerAheadMicroseconds,
         uint32_t depthAheadMicroseconds,
         uint32_t renderAheadMicroseconds = 2500,  ///< @todo Match XSight specs
         std::shared_ptr<EventHandlers> handlers = nullptr, void* userData = nullptr,
         RenderTimingInfo* timingInfo = nullptr, bool replaying = false,
         int desiredDisplay = 2,
-        int desiredWidth = 3840, int desiredHeight = 2160, float fps = 60,  ///< @todo Match XSight specs
-        float horizontalFOVDegrees = 90.0  ///< @todo Match XSight specs
+        int desiredWidth = 2560, int desiredHeight = 2048, float fps = 50,
+        float horizontalFOVDegrees = 69.33
       );
 
       void SetNowPlaying(bool nowPlaying) override;
@@ -364,6 +365,9 @@ protected:
       ~DisplayXSight();
 
     private:
+      /// Name of the NIC to use for UDP packets from the XSight HMD.
+      std::string m_NICName;
+
       /// Where to store render timing info, if not nullptr.
       RenderTimingInfo* m_timingInfo;
 
