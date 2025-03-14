@@ -396,22 +396,6 @@ void DisplayWindow::DisplayThread(std::string windowName,
       glfwSetWindowMonitor(Display::m_impl->m_window, fullScreenMonitor, 0, 0, desiredWidth, desiredHeight, fps);
     }
 
-    // Grab the context mutex for the duration of the setup.  Once we have it, we know
-    // that the context is not active in another thread.
-    // Make the window's context current
-    std::lock_guard<std::mutex> lock(Display::m_impl->m_contextMutex);
-    glfwMakeContextCurrent(Display::m_impl->m_window);
-
-    // Initialize GLEW in our context. It is okay to initialize it more than once.
-    glewExperimental = true;
-    if (glewInit() != GLEW_OK) {
-      m_status = "Failed to initialize GLEW";
-      return;
-    }
-    // Clear any GL error that Glew caused.  Apparently on Non-Windows
-    // platforms, this can cause a spurious error 1280.
-    glGetError();
-
     // Open the joystick if there is one asked for and there is one present.
     // We currently only support GLFW-based joysticks, which are specified by the string
     // "GLFW::#".  The # is the number of the joystick to open, starting with 0.  GLFW
@@ -424,11 +408,27 @@ void DisplayWindow::DisplayThread(std::string windowName,
         // See if we should flip the Y-axis value.
         const char* joystickName = glfwGetJoystickName(joyNum);
         if (std::find(m_impl->m_flipYJoysticks.begin(), m_impl->m_flipYJoysticks.end(),
-            glfwGetJoystickName(joyNum)) != m_impl->m_flipYJoysticks.end()) {
+          glfwGetJoystickName(joyNum)) != m_impl->m_flipYJoysticks.end()) {
           m_impl->m_joystickScaleY = -1.0f;
         }
       }
     }
+
+    // Grab the context mutex for the duration of the setup.  Once we have it, we know
+    // that the context is not active in another thread.
+    // DO NOT do any GLFW calls while holding the context -- it causes rare hangs on Linux.
+    std::lock_guard<std::mutex> lock(Display::m_impl->m_contextMutex);
+    glfwMakeContextCurrent(Display::m_impl->m_window);
+
+    // Initialize GLEW in our context. It is okay to initialize it more than once.
+    glewExperimental = true;
+    if (glewInit() != GLEW_OK) {
+      m_status = "Failed to initialize GLEW";
+      return;
+    }
+    // Clear any GL error that Glew caused.  Apparently on Non-Windows
+    // platforms, this can cause a spurious error 1280.
+    glGetError();
 
     // Release the window's current context in case another Display wants to borrow it.
     glfwMakeContextCurrent(nullptr);
@@ -471,7 +471,8 @@ void DisplayWindow::DisplayThread(std::string windowName,
     if (m_eventHandlers && m_eventHandlers->ComputeDepth) {
       // Grab the context mutex for the duration of the depth calculations.  Once we have it, we know
       // that the context is not active in another thread.
-      // Make the window's context current
+      // Make the window's context current.
+      // DO NOT do any GLFW calls while holding the context -- it causes rare hangs on Linux.
       std::lock_guard<std::mutex> lock(Display::m_impl->m_contextMutex);
       glfwMakeContextCurrent(Display::m_impl->m_window);
 
@@ -534,7 +535,8 @@ void DisplayWindow::DisplayThread(std::string windowName,
 
     // Grab the context mutex for the duration of the loop.  Once we have it, we know
     // that the context is not active in another thread.
-    // Make the window's context current
+    // Make the window's context current.
+    // DO NOT do any GLFW calls while holding the context -- it causes rare hangs on Linux.
     std::lock_guard<std::mutex> lock(Display::m_impl->m_contextMutex);
     glfwMakeContextCurrent(Display::m_impl->m_window);
 
@@ -762,7 +764,8 @@ DisplayTexture::DisplayTexture(Display* sharedWindow)
 
   // Grab the context mutex for the duration of the setup.  Once we have it, we know
   // that the context is not active in another thread.
-  // Make the window's context current
+  // Make the window's context current.
+  // DO NOT do any GLFW calls while holding the context -- it causes rare hangs on Linux.
   std::lock_guard<std::mutex> lock(Display::m_impl->m_contextMutex);
   glfwMakeContextCurrent(Display::m_impl->m_window);
 
@@ -2305,7 +2308,8 @@ void DisplayXSight::DisplayThread(
 
     // Grab the context mutex for the duration of the setup.  Once we have it, we know
     // that the context is not active in another thread.
-    // Make the window's context current
+    // Make the window's context current.
+    // DO NOT do any GLFW calls while holding the context -- it causes rare hangs on Linux.
     std::lock_guard<std::mutex> lock(Display::m_impl->m_contextMutex);
     glfwMakeContextCurrent(Display::m_impl->m_window);
 
@@ -2484,7 +2488,8 @@ void DisplayXSight::DisplayThread(
 
     // Grab the context mutex for the duration of the loop.  Once we have it, we know
     // that the context is not active in another thread.
-    // Make the window's context current
+    // Make the window's context current.
+    // DO NOT do any GLFW calls while holding the context -- it causes rare hangs on Linux.
     std::lock_guard<std::mutex> lock(Display::m_impl->m_contextMutex);
     glfwMakeContextCurrent(Display::m_impl->m_window);
 
