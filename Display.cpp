@@ -396,9 +396,10 @@ void DisplayWindow::DisplayThread(std::string windowName,
       glfwSetWindowMonitor(Display::m_impl->m_window, fullScreenMonitor, 0, 0, desiredWidth, desiredHeight, fps);
     }
 
-    // Grab the context mutex for the duration of the loop.  Once we have it, we know
+    // Grab the context mutex for the duration of the setup.  Once we have it, we know
     // that the context is not active in another thread.
     // Make the window's context current
+    std::lock_guard<std::mutex> lock(Display::m_impl->m_contextMutex);
     glfwMakeContextCurrent(Display::m_impl->m_window);
 
     // Initialize GLEW in our context. It is okay to initialize it more than once.
@@ -464,7 +465,7 @@ void DisplayWindow::DisplayThread(std::string windowName,
     while (std::chrono::steady_clock::now() < m_impl->m_nextDepthTime) {
     }
     if (m_eventHandlers && m_eventHandlers->ComputeDepth) {
-      // Grab the context mutex for the duration of the loop.  Once we have it, we know
+      // Grab the context mutex for the duration of the depth calculations.  Once we have it, we know
       // that the context is not active in another thread.
       // Make the window's context current
       std::lock_guard<std::mutex> lock(Display::m_impl->m_contextMutex);
@@ -758,7 +759,7 @@ DisplayTexture::DisplayTexture(Display* sharedWindow)
     return;
   }
 
-  // Grab the context mutex for the duration of the loop.  Once we have it, we know
+  // Grab the context mutex for the duration of the setup.  Once we have it, we know
   // that the context is not active in another thread.
   // Make the window's context current
   std::lock_guard<std::mutex> lock(Display::m_impl->m_contextMutex);
@@ -1058,8 +1059,7 @@ void asdp::render::DisplayOpenXR::DisplayOpenXRImpl::OpenGLInitializeDevice(Disp
       THROW("DisplayOpenXR::DisplayOpenXRImpl::OpenGLInitializeDevice(): Failed to create GLFW window");
       return;
     }
-    // Grab the context mutex for the duration of the loop.  Once we have it, we know
-    // that the context is not active in another thread.
+    // Grab the context mutex.  Once we have it, we know that the context is not active in another thread.
     // Make the window's context current
     m_display->Display::m_impl->m_contextMutex.lock();
     glfwMakeContextCurrent(m_contextWindow);
@@ -2302,7 +2302,7 @@ void DisplayXSight::DisplayThread(
     // Engage full screen here along with specifying the refresh rate.
     glfwSetWindowMonitor(Display::m_impl->m_window, fullScreenMonitor, 0, 0, desiredWidth, desiredHeight, fps);
 
-    // Grab the context mutex for the duration of the loop.  Once we have it, we know
+    // Grab the context mutex for the duration of the setup.  Once we have it, we know
     // that the context is not active in another thread.
     // Make the window's context current
     std::lock_guard<std::mutex> lock(Display::m_impl->m_contextMutex);
@@ -2377,7 +2377,7 @@ void DisplayXSight::DisplayThread(
     while (std::chrono::steady_clock::now() < m_impl->m_nextDepthTime) {
     }
     if (m_eventHandlers && m_eventHandlers->ComputeDepth) {
-      // Make the window's context current
+      // Make the window's context current during depth calculations
       std::lock_guard<std::mutex> lock(Display::m_impl->m_contextMutex);
       glfwMakeContextCurrent(Display::m_impl->m_window);
 
