@@ -809,6 +809,9 @@ CompositeCameras::~CompositeCameras()
 // NOTE: This must be called for each camera to produce the required buffers before rendering uses them.
 void CompositeCameras::CreateBufferInfo(CameraRenderInfo const& cameraRenderInfo, MeshInfo const& mesh)
 {
+  // Lock the mutex to protect the mesh data.
+  std::lock_guard<std::mutex> lock(cameraRenderInfo.m_meshMutex);
+
   // Create the vertices including the texture coordinates and vignette correction.
   std::vector<GLfloat> vertices;
   for (VertexInfo const &v : mesh.vertexInfo) {
@@ -1125,6 +1128,8 @@ void CompositeCameras::RenderView(asdp::Time scanOutTime, const float* viewProje
     glUniform1f(m_depthScaleUniformID, m_cameraRenderInfos[c]->m_depthScale);
 
     // Draw the camera using its vertex buffer objects after specifying its layout.
+    // We don't need to lock these because they will only have been updated by the callback
+    // handler.  @todo If we allow asynchronous updates, we will need to lock these.
     glBindBuffer(GL_ARRAY_BUFFER, m_cameraBufferInfos[cameraID].vertexBufferObject);
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(GLfloat), (GLvoid*)0);
     glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 6 * sizeof(GLfloat), (GLvoid*)(3 * sizeof(GLfloat)));
