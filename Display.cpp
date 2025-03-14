@@ -444,6 +444,10 @@ void DisplayWindow::DisplayThread(std::string windowName,
   auto lastJoystickCheck = std::chrono::steady_clock::now();
   while (!m_done) {
 
+    // Poll for and process events without a context to avoid multiple threads trying to get
+    // the context at the same time.
+    glfwPollEvents();
+
     // Determine the scan-out time of the frame (center of the image).
     Time renderTime;
     m_timer->GetCoreTime(renderTime, std::chrono::steady_clock::now());
@@ -550,9 +554,6 @@ void DisplayWindow::DisplayThread(std::string windowName,
     // Half way through the next frame, which is when we want the geometry adjusted for.
     m_impl->m_nextFrameTime = std::chrono::steady_clock::now() +
       std::chrono::microseconds(static_cast<long long>(1e6/fps)*3/2);
-
-    // Poll for and process events
-    glfwPollEvents();
 
     // Release the window's current context in case another Display wants to borrow it.
     glfwMakeContextCurrent(nullptr);
@@ -2356,6 +2357,10 @@ void DisplayXSight::DisplayThread(
   bool frameCompleted = false;
   while (!m_done) {
 
+    // Poll for and process events without a context to avoid multiple threads trying to get
+    // the context at the same time.
+    glfwPollEvents();
+
     // Determine the scan-out time of the frame (center of the image).
     Time renderTime;
     m_timer->GetCoreTime(renderTime, std::chrono::steady_clock::now());
@@ -2507,9 +2512,6 @@ void DisplayXSight::DisplayThread(
     // Half way through the next frame, which is when we want the geometry adjusted for.
     m_impl->m_nextFrameTime = std::chrono::steady_clock::now() +
       std::chrono::microseconds(static_cast<long long>(1e6 / fps) * 3 / 2);
-
-    // Poll for and process events
-    glfwPollEvents();
 
     // Release the window's current context in case another Display wants to borrow it.
     glfwMakeContextCurrent(nullptr);
