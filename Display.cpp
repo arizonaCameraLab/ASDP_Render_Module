@@ -490,12 +490,6 @@ void DisplayWindow::DisplayThread(std::string windowName,
     while (std::chrono::steady_clock::now() < m_impl->m_nextRenderTime) {
     }
 
-    // Grab the context mutex for the duration of the loop.  Once we have it, we know
-    // that the context is not active in another thread.
-    // Make the window's context current
-    std::lock_guard<std::mutex> lock(Display::m_impl->m_contextMutex);
-    glfwMakeContextCurrent(Display::m_impl->m_window);
-
     // Quit when our window closes.
     if (glfwWindowShouldClose(Display::m_impl->m_window)) {
       m_composite.reset();
@@ -537,6 +531,12 @@ void DisplayWindow::DisplayThread(std::string windowName,
     if (m_timingInfo) {
       m_timingInfo->renderStartTimes.push_back(std::chrono::steady_clock::now());
     }
+
+    // Grab the context mutex for the duration of the loop.  Once we have it, we know
+    // that the context is not active in another thread.
+    // Make the window's context current
+    std::lock_guard<std::mutex> lock(Display::m_impl->m_contextMutex);
+    glfwMakeContextCurrent(Display::m_impl->m_window);
 
     m_composite->Render(renderTime, m_impl->m_views);
 
@@ -2401,12 +2401,6 @@ void DisplayXSight::DisplayThread(
     while (std::chrono::steady_clock::now() < m_impl->m_nextRenderTime) {
     }
 
-    // Grab the context mutex for the duration of the loop.  Once we have it, we know
-    // that the context is not active in another thread.
-    // Make the window's context current
-    std::lock_guard<std::mutex> lock(Display::m_impl->m_contextMutex);
-    glfwMakeContextCurrent(Display::m_impl->m_window);
-
     // Quit when our window closes.
     if (glfwWindowShouldClose(Display::m_impl->m_window)) {
       m_composite.reset();
@@ -2476,10 +2470,6 @@ void DisplayXSight::DisplayThread(
     m_impl->m_views[0].orientation[2] = rotationTotal.y;
     m_impl->m_views[0].orientation[3] = rotationTotal.z;
 
-    // Embed the azimuth, elevation, roll, and time into the first line of the image.
-    EmbedLOSData(azimuth, elevation, roll, time, lineData);
-    lineComposite.UpdateValues(lineData);
-
     // Handle any window resizing
     SetViewportSizeAndFOVs(m_impl->m_views[0]);
 
@@ -2491,6 +2481,16 @@ void DisplayXSight::DisplayThread(
     if (m_timingInfo) {
       m_timingInfo->renderStartTimes.push_back(std::chrono::steady_clock::now());
     }
+
+    // Grab the context mutex for the duration of the loop.  Once we have it, we know
+    // that the context is not active in another thread.
+    // Make the window's context current
+    std::lock_guard<std::mutex> lock(Display::m_impl->m_contextMutex);
+    glfwMakeContextCurrent(Display::m_impl->m_window);
+
+    // Embed the azimuth, elevation, roll, and time into the first line of the image.
+    EmbedLOSData(azimuth, elevation, roll, time, lineData);
+    lineComposite.UpdateValues(lineData);
 
     // Render the frame data
     m_composite->Render(renderTime, m_impl->m_views);
