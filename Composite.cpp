@@ -863,29 +863,27 @@ void CompositeCameras::CreateBufferInfo(CameraRenderInfo const& cameraRenderInfo
 
 void CompositeCameras::UpdateVertexBuffer(CameraRenderInfo const& cameraRenderInfo)
 {
+  // Lock the mutex to protect the mesh data.
+  std::lock_guard<std::mutex> lock(cameraRenderInfo.m_meshMutex);
+
   CameraBufferInfo const& cbi = m_cameraBufferInfos[cameraRenderInfo.m_ID];
   std::vector<GLfloat> vertices;
 
-  {
-    // Lock the mutex to protect the mesh data.
-    std::lock_guard<std::mutex> lock(cameraRenderInfo.m_meshMutex);
+  // Find the mesh information for this camera.
+  MeshInfo const& mesh = cameraRenderInfo.m_mesh;
 
-    // Find the mesh information for this camera.
-    MeshInfo const& mesh = cameraRenderInfo.m_mesh;
-
-    // Create the vertices including the texture coordinates by scaling the normalized offsets
-    // in the mesh by their current depth values and adding the camera center.
-    vertices.reserve(6 * mesh.vertexInfo.size());
-    for (VertexInfo const& v : mesh.vertexInfo) {
-      // Add the vertex description
-      // Offset the points by the camera position in the helicopter view space.
-      vertices.push_back(v.normalizedOffset[0] * v.depth + cameraRenderInfo.m_positionMeters[0]);
-      vertices.push_back(v.normalizedOffset[1] * v.depth + cameraRenderInfo.m_positionMeters[1]);
-      vertices.push_back(v.normalizedOffset[2] * v.depth + cameraRenderInfo.m_positionMeters[2]);
-      vertices.push_back(v.texCoord[0]);
-      vertices.push_back(v.texCoord[1]);
-      vertices.push_back(v.vignetteGain);
-    }
+  // Create the vertices including the texture coordinates by scaling the normalized offsets
+  // in the mesh by their current depth values and adding the camera center.
+  vertices.reserve(6 * mesh.vertexInfo.size());
+  for (VertexInfo const& v : mesh.vertexInfo) {
+    // Add the vertex description
+    // Offset the points by the camera position in the helicopter view space.
+    vertices.push_back(v.normalizedOffset[0] * v.depth + cameraRenderInfo.m_positionMeters[0]);
+    vertices.push_back(v.normalizedOffset[1] * v.depth + cameraRenderInfo.m_positionMeters[1]);
+    vertices.push_back(v.normalizedOffset[2] * v.depth + cameraRenderInfo.m_positionMeters[2]);
+    vertices.push_back(v.texCoord[0]);
+    vertices.push_back(v.texCoord[1]);
+    vertices.push_back(v.vignetteGain);
   }
 
   // Unbind any vertex array object, we won't be using these because they are not shared between contexts.
