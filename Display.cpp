@@ -396,6 +396,8 @@ void DisplayWindow::DisplayThread(std::string windowName,
       glfwSetWindowMonitor(Display::m_impl->m_window, fullScreenMonitor, 0, 0, desiredWidth, desiredHeight, fps);
     }
 
+    // Grab the context mutex for the duration of the loop.  Once we have it, we know
+    // that the context is not active in another thread.
     // Make the window's context current
     glfwMakeContextCurrent(Display::m_impl->m_window);
 
@@ -462,6 +464,8 @@ void DisplayWindow::DisplayThread(std::string windowName,
     while (std::chrono::steady_clock::now() < m_impl->m_nextDepthTime) {
     }
     if (m_eventHandlers && m_eventHandlers->ComputeDepth) {
+      // Grab the context mutex for the duration of the loop.  Once we have it, we know
+      // that the context is not active in another thread.
       // Make the window's context current
       std::lock_guard<std::mutex> lock(Display::m_impl->m_contextMutex);
       glfwMakeContextCurrent(Display::m_impl->m_window);
@@ -483,9 +487,8 @@ void DisplayWindow::DisplayThread(std::string windowName,
 
     // Grab the context mutex for the duration of the loop.  Once we have it, we know
     // that the context is not active in another thread.
-    std::lock_guard<std::mutex> lock(Display::m_impl->m_contextMutex);
-
     // Make the window's context current
+    std::lock_guard<std::mutex> lock(Display::m_impl->m_contextMutex);
     glfwMakeContextCurrent(Display::m_impl->m_window);
 
     // Quit when our window closes.
@@ -755,7 +758,10 @@ DisplayTexture::DisplayTexture(Display* sharedWindow)
     return;
   }
 
+  // Grab the context mutex for the duration of the loop.  Once we have it, we know
+  // that the context is not active in another thread.
   // Make the window's context current
+  std::lock_guard<std::mutex> lock(Display::m_impl->m_contextMutex);
   glfwMakeContextCurrent(Display::m_impl->m_window);
 
   // Initialize GLEW in our context. It is okay to initialize it more than once.
@@ -1052,6 +1058,10 @@ void asdp::render::DisplayOpenXR::DisplayOpenXRImpl::OpenGLInitializeDevice(Disp
       THROW("DisplayOpenXR::DisplayOpenXRImpl::OpenGLInitializeDevice(): Failed to create GLFW window");
       return;
     }
+    // Grab the context mutex for the duration of the loop.  Once we have it, we know
+    // that the context is not active in another thread.
+    // Make the window's context current
+    m_display->Display::m_impl->m_contextMutex.lock();
     glfwMakeContextCurrent(m_contextWindow);
   }
 
@@ -2292,7 +2302,10 @@ void DisplayXSight::DisplayThread(
     // Engage full screen here along with specifying the refresh rate.
     glfwSetWindowMonitor(Display::m_impl->m_window, fullScreenMonitor, 0, 0, desiredWidth, desiredHeight, fps);
 
+    // Grab the context mutex for the duration of the loop.  Once we have it, we know
+    // that the context is not active in another thread.
     // Make the window's context current
+    std::lock_guard<std::mutex> lock(Display::m_impl->m_contextMutex);
     glfwMakeContextCurrent(Display::m_impl->m_window);
 
     // Initialize GLEW in our context. It is okay to initialize it more than once.
@@ -2332,10 +2345,12 @@ void DisplayXSight::DisplayThread(
   }
 
   // Construct a CompositeLineRawData to render frame metadata into the first line, using the whole first line.
-  glfwMakeContextCurrent(Display::m_impl->m_window);
+  Display::m_impl->m_contextMutex.lock();
   std::vector<uint8_t> lineData(desiredWidth * 3);
+  glfwMakeContextCurrent(Display::m_impl->m_window);
   CompositeLineRawData lineComposite(-1, 1, 1, 1, lineData);
   glfwMakeContextCurrent(nullptr);
+  Display::m_impl->m_contextMutex.unlock();
 
   // Loop until the display is done.
   bool frameCompleted = false;
@@ -2383,9 +2398,8 @@ void DisplayXSight::DisplayThread(
 
     // Grab the context mutex for the duration of the loop.  Once we have it, we know
     // that the context is not active in another thread.
-    std::lock_guard<std::mutex> lock(Display::m_impl->m_contextMutex);
-
     // Make the window's context current
+    std::lock_guard<std::mutex> lock(Display::m_impl->m_contextMutex);
     glfwMakeContextCurrent(Display::m_impl->m_window);
 
     // Quit when our window closes.
