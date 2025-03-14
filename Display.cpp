@@ -4,6 +4,8 @@
 
 #ifdef WIN32
 #define _USE_MATH_DEFINES
+#else
+#include <arpa/inet.h>		// For ntohl()
 #endif
 #include <cmath>
 #include <iostream>
