@@ -296,6 +296,7 @@ if(BUILD_TESTS)
     Vignette_Test
     ImageStatistics_Test
     RangeEstimator_Test
+    XSight_Simulator
   )
   foreach (BASE ${CPP_TESTS})
     set (APP ${BASE})

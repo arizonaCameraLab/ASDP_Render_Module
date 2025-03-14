@@ -2318,7 +2318,7 @@ void DisplayXSight::DisplayThread(
   uint32_t time = 0;
 
   // Open a multicast UDP receiver to listen for LOS data from the XSight on the specified port.
-  asdp::ReceiverUDP receiver(m_NICName, 5535, 9000 - 28, "224.0.0.50");
+  asdp::ReceiverUDP receiver(m_NICName, 5535, 9000 - 28, false, "224.0.0.50");
   Status status = receiver.GetConstructorStatus();
   if (status != OKAY) {
     m_status = "Failed to create UDP receiver";
@@ -2407,9 +2407,9 @@ void DisplayXSight::DisplayThread(
       }
 
       // Verify that the packet length is as expected and then parse it.
-      const size_t expectedLength = 3*4 + 3*4 + 2 + 3*4 + 4 + 4 + 3*4 + 1 + 3*4;
+      const uint32_t expectedLength = 3*4 + 3*4 + 2 + 3*4 + 4 + 4 + 3*4 + 1 + 3*4;
       if (length != expectedLength) {
-        m_status = "Received packet of unexpected length";
+        m_status = "Received packet of unexpected length (" + std::to_string(length) + ")";
         break;
       }
 
@@ -2453,6 +2453,7 @@ void DisplayXSight::DisplayThread(
 
     // Embed the azimuth, elevation, roll, and time into the first line of the image.
     EmbedLOSData(azimuth, elevation, roll, time, lineData);
+    lineComposite.UpdateValues(lineData);
 
     // Handle any window resizing
     SetViewportSizeAndFOVs(m_impl->m_views[0]);

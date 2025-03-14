@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2024: Arizona Board of Regents on Behalf of the University of Arizona
+ * Copyright (C) 2024-2025: Arizona Board of Regents on Behalf of the University of Arizona
  */
 
 #include <iostream>
@@ -118,6 +118,7 @@ int main(int argc, char** argv)
         done = true;
       }
     }
+    std::cout << "Final display status: " << displays[0]->GetStatus() << std::endl;
   }
 
   // Done
