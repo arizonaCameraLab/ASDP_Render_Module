@@ -1238,6 +1238,28 @@ int main(int argc, char** argv)
     // to share contexts.
     std::shared_ptr<DisplayTexture> displayTexture = std::make_shared<DisplayTexture>();
 
+    // Make additional OpenGL contexts for all but the first texture thread -- re-use the original for
+    // the first one.
+    int NUM_TEXTURE_THREADS = 2;
+    if (cameras.size() > 21) {
+#ifdef _WIN32
+      // On Windows, we need larger batches of lines to keep up with more than 21 cameras. The jump from
+      // default 110 to 330 has both cases ending at 990, which is just below the 1024 limit so will make
+      // a small final batch, reducing the latency from the end of the frame receipt to texture upload.
+      lineBatchesPerGPUSend *= 3;
+#else
+      // On Linux, we need an extra thread to keep up with the data rate when we get more than 21 cameras.
+      // It may be that we could increase the lineBatchesPerGPUSend and get by with two threads.
+      NUM_TEXTURE_THREADS = 3;
+#endif
+    }
+
+    std::vector< std::shared_ptr<DisplayTexture> > displayTextures = { displayTexture };
+    for (size_t i = 1; i < NUM_TEXTURE_THREADS; i++) {
+      std::shared_ptr<DisplayTexture> dt = std::make_shared<DisplayTexture>(displayTexture.get());
+      displayTextures.push_back(dt);
+    }
+
     // Construct a vector of CameraRenderInfo objects from the configuration file, adding an image
     // queue to each.
     std::vector< std::shared_ptr<asdp::render::CameraRenderInfo> > cameraRenderInfos;
@@ -1571,28 +1593,6 @@ int main(int argc, char** argv)
         return 27;
       }
       UDPReceivers.push_back(receiverUDP);
-    }
-
-    // Make additional OpenGL contexts for all but the first texture thread -- re-use the original for
-    // the first one.
-    int NUM_TEXTURE_THREADS = 2;
-    if (cameras.size() > 21) {
-#ifdef _WIN32
-      // On Windows, we need larger batches of lines to keep up with more than 21 cameras. The jump from
-      // default 110 to 330 has both cases ending at 990, which is just below the 1024 limit so will make
-      // a small final batch, reducing the latency from the end of the frame receipt to texture upload.
-      lineBatchesPerGPUSend *= 3;
-#else
-      // On Linux, we need an extra thread to keep up with the data rate when we get more than 21 cameras.
-      // It may be that we could increase the lineBatchesPerGPUSend and get by with two threads.
-      NUM_TEXTURE_THREADS = 3;
-#endif
-    }
-
-    std::vector< std::shared_ptr<DisplayTexture> > displayTextures = { displayTexture };
-    for (size_t i = 1; i < NUM_TEXTURE_THREADS; i++) {
-      std::shared_ptr<DisplayTexture> dt = std::make_shared<DisplayTexture>(displayTexture.get());
-      displayTextures.push_back(dt);
     }
 
     // Make the queues to pass data between the receiver and texture threads, one for each texture thread.
