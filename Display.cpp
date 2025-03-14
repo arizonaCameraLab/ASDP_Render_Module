@@ -429,6 +429,7 @@ void DisplayWindow::DisplayThread(std::string windowName,
 
     // Release the window's current context in case another Display wants to borrow it.
     glfwMakeContextCurrent(nullptr);
+    glFinish();
 
     // After we're done with the context for set-up and have released it, indicate that the context is available
     // for borrowing.
@@ -769,6 +770,7 @@ DisplayTexture::DisplayTexture(Display* sharedWindow)
 
   // Release the window's current context in case another Display wants to borrow it.
   glfwMakeContextCurrent(nullptr);
+  glFinish();
 
   // After we're done with the context for set-up and have released it, indicate that the context is available
   // for borrowing.
@@ -2307,6 +2309,7 @@ void DisplayXSight::DisplayThread(
 
     // Release the window's current context in case another Display wants to borrow it.
     glfwMakeContextCurrent(nullptr);
+    glFinish();
 
     // After we're done with the context for set-up and have released it, indicate that the context is available
     // for borrowing.
