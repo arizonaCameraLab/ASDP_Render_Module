@@ -80,6 +80,17 @@ namespace asdp {
     class Composite {
     public:
 
+      //======================================
+      // Added by Sang Yoon to add a flag for enabling the cylindrical projection in rendering
+      bool m_CP_enabled = false;
+      //======================================
+
+      //======================================
+      // Added by Sang Yoon to indicate whether the current composite is for overview or detailed view
+      bool m_overview = false;
+      bool m_detailed_view = false;
+      //======================================
+
       /// @brief Destructor, virtual so that derived classes can have their destructors called from pointers.
       virtual ~Composite();
 
@@ -115,7 +126,14 @@ namespace asdp {
       /// @param scanOutTime The time that the scan out is occurring, in ASDP Core time.  This is the time of the middle of the frame.
       /// @param viewProjection The matrix specifying the transformation from helicopter space
       /// into final projected points.
-      virtual void RenderView(asdp::Time scanOutTime, const float* viewProjection) = 0;
+
+      //======================================
+      // Revised by Sang Yoon to support the cylindrical projection
+      // The arguments used for the cylindrical projection are added: modelViewMatrix, lh_hFOVf, rh_hFOVf, bh_vFOVf, th_vFOVf, nearf, and farf.
+      // Original: virtual void RenderView(asdp::Time scanOutTime, const float* viewProjection) = 0;
+      // Revised:
+      virtual void RenderView(asdp::Time scanOutTime, const float* viewProjection, const float* modelViewMatrix, const float lh_hFOVf, const float rh_hFOVf, const float bh_vFOVf, const float th_vFOVf, const float nearf, const float farf) = 0;
+      //======================================
 
       /// @brief Set up state needed for rendering, perhaps including the shader program and geometry/textures.
       /// @details This function is called during the first call to Render().  If it fails, rendering is not
@@ -136,6 +154,11 @@ namespace asdp {
       static void checkShaderError(GLuint shaderId, const std::string& exceptionMsg);
       /// @brief Helper function to check for errors.
       static void checkProgramError(GLuint programId, const std::string& exceptionMsg);
+
+      //======================================
+      // Added by Sang Yoon to draw a rectangle showing the head orientation of detailed view in overview window.
+      virtual void DrawHeadOrientation(float view_farf, int screen_width) = 0;
+      //======================================
     };
 
     /// @brief Composite class that renders a cube rather than camera views.
@@ -159,15 +182,40 @@ namespace asdp {
       /// @brief The Uniform ID of the modelview-projection matrix.
       GLuint m_modelViewProjectionUniformId;
 
+      //======================================
+      // Added by Sang Yoon to pass the parameters for cylindrical projection to GPU
+      GLuint m_useCPUniformId;
+      GLuint m_lh_hfovUniformId;
+      GLuint m_rh_hfovUniformId;
+      GLuint m_bh_vfovUniformId;
+      GLuint m_th_vfovUniformId;
+      GLuint m_nearUniformId;
+      GLuint m_farUniformId;
+      GLuint m_modelViewUniformId;
+      //======================================
+
       /// @briegf Forward declaration of a class defined in the source code.
       class MeshCube;
       /// @brief Pointer to the mesh to use to draw the room.
       std::shared_ptr<MeshCube> m_roomCube;
 
       bool SetupRendering() override;
-      void RenderView(asdp::Time scanOutTime, const float* viewProjection) override;
+
+      //======================================
+      // Revised by Sang Yoon to support the cylindrical projection
+      // The arguments used for the cylindrical projection are added: modelViewMatrix, lh_hFOVf, rh_hFOVf, bh_vFOVf, th_vFOVf, nearf, and farf.
+      // Original: void void RenderView(asdp::Time scanOutTime, const float* viewProjection) override;
+      // Revised:
+      void RenderView(asdp::Time scanOutTime, const float* viewProjection, const float* modelViewMatrix, const float lh_hFOVf, const float rh_hFOVf, const float bh_vFOVf, const float th_vFOVf, const float nearf, const float farf) override;
+      //======================================
+
       void SetupRenderFrame(asdp::Time scanOutTime) override;
       void TearDownRenderFrame() override;
+
+      //======================================
+      // Added by Sang Yoon to draw a rectangle showing the head orientation of detailed view in overview window.
+      void DrawHeadOrientation(float view_farf, int screen_width) override;
+      //======================================
     };
 
     /// @brief Composite class that renders a set of camera views.
@@ -226,6 +274,18 @@ namespace asdp {
       /// @brief The Uniform ID of the view-projection matrix taking points from helicopter space.
       GLint m_viewProjectionUniformId;
 
+      //======================================
+      // Added by Sang Yoon to pass the parameters for cylindrical projection to GPU
+      GLuint m_useCPUniformId;
+      GLuint m_lh_hfovUniformId;
+      GLuint m_rh_hfovUniformId;
+      GLuint m_bh_vfovUniformId;
+      GLuint m_th_vfovUniformId;
+      GLuint m_nearUniformId;
+      GLuint m_farUniformId;
+      GLuint m_modelViewUniformId;
+      //======================================
+
       /// @brief The Uniform ID of the poseAdjust matrix moving points to their earlier position
       /// in helicopter space.
       GLint m_poseAdjustUniformId;
@@ -274,9 +334,27 @@ namespace asdp {
 
       // Overridden methods
       bool SetupRendering() override;
-      void RenderView(asdp::Time scanOutTime, const float* viewProjection) override;
+
+      //======================================
+      // Revised by Sang Yoon to support the cylindrical projection
+      // The arguments used for the cylindrical projection are added: modelViewMatrix, lh_hFOVf, rh_hFOVf, bh_vFOVf, th_vFOVf, nearf, and farf.
+      // Original: void RenderView(asdp::Time scanOutTime, const float* viewProjection) override;
+      // Revised: 
+      void RenderView(asdp::Time scanOutTime, const float* viewProjection, const float* modelViewMatrix, const float lh_hFOVf, const float rh_hFOVf, const float bh_vFOVf, const float th_vFOVf, const float nearf, const float farf) override;
+      //======================================
+
       void SetupRenderFrame(asdp::Time scanOutTime) override;
       void TearDownRenderFrame() override;
+
+      //======================================
+      // Added by Sang Yoon to draw a rectangle showing the head orientation of detailed view in overview window.
+      bool m_drawing_head_orientation_initialized = false;
+      GLuint m_head_orientation_colorTexture;
+      GLuint m_head_orientation_toneMapTexture;
+      GLubyte m_colorTextureSrc[3] = { 0xFF, 0xFF, 0xFF };
+      GLfloat m_toneMapTextureSrc[3] = { 0.0f, 1.0f, 1.0f }; // The color used for the rectangle (red, green, and blue)
+      void DrawHeadOrientation(float view_farf, int screen_width) override;
+      //======================================
     };
 
     /// @brief Composite class that renders a vector of raw color values into a line of a display.
@@ -347,9 +425,22 @@ namespace asdp {
 
       // Overridden methods
       bool SetupRendering() override;
-      void RenderView(asdp::Time scanOutTime, const float* viewProjection) override;
+
+      //======================================
+      // Revised by Sang Yoon to match the function declaration of Composite class
+      // The arguments used for the cylindrical projection are added: modelViewMatrix, lh_hFOVf, rh_hFOVf, bh_vFOVf, th_vFOVf, nearf, and farf.
+      // Original: void RenderView(asdp::Time scanOutTime, const float* viewProjection) override;
+      // Revised: 
+      void RenderView(asdp::Time scanOutTime, const float* viewProjection, const float* modelViewMatrix, const float lh_hFOVf, const float rh_hFOVf, const float bh_vFOVf, const float th_vFOVf, const float nearf, const float farf) override;
+      //======================================
+
       void SetupRenderFrame(asdp::Time scanOutTime) override;
       void TearDownRenderFrame() override;
+
+      //======================================
+      // Added by Sang Yoon to draw a rectangle showing the head orientation of detailed view in overview window.
+      void DrawHeadOrientation(float view_farf, int screen_width) override;
+      //======================================
     };
 
   } // namespace render

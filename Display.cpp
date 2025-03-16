@@ -252,6 +252,11 @@ public:
 
   /// Scale of the joystick input in Y axis, flipped if the joystick is on the list above.
   float m_joystickScaleY = 1.0f;
+
+  //======================================
+  // Added by Sang Yoon to bind trigger button(s) of a game pad to pausing/resuming action
+  bool m_triggerPressed = false;
+  //======================================
 };
 
 DisplayWindow::DisplayWindow(std::string windowName, std::shared_ptr<Composite> composite,
@@ -324,6 +329,13 @@ void DisplayWindow::SetViewportSizeAndFOVs(ViewRenderInfo& viewInfo, int width, 
   double halfWidth = tan(glm::radians(m_impl->m_horizontalFOVDegrees / 2.0));
   double halfHeight = halfWidth * aspectRatio;
   double halfAngle = glm::degrees(atan(halfHeight));
+
+  //======================================
+  // Added by Sang Yoon to calculate a vertical FOV for cylindrical projection
+  if (this->m_composite->m_CP_enabled)
+      halfAngle = m_impl->m_horizontalFOVDegrees / 2.0 * aspectRatio;
+  //======================================
+
   viewInfo.bottomHalfFOV = -halfAngle;
   viewInfo.topHalfFOV = halfAngle;
 }
@@ -499,6 +511,73 @@ void DisplayWindow::DisplayThread(std::string windowName,
     }
 
     // Process keyboard/mouse/joystick input events and update the viewpoint
+
+    //======================================
+    // Added by Sang Yoon to add key/joystick mappings for closing windows (Q or ESCAPE key on keyboard),
+    // resetting viewer's orientation (R key on keyboard or A key on Xbox controller),
+    // and pausing/resuming replaying (Left or Right trigger button on Xbox controller)
+
+    // Adding key mappings for closing windows
+    if (glfwGetKey(Display::m_impl->m_window, GLFW_KEY_Q) == GLFW_PRESS
+        || glfwGetKey(Display::m_impl->m_window, GLFW_KEY_ESCAPE) == GLFW_PRESS) {
+        m_composite.reset();
+        m_status = "Done";
+        break;
+    }
+
+    // Adding key mapping for resetting viewer orientation
+    if (glfwGetKey(Display::m_impl->m_window, GLFW_KEY_R) == GLFW_PRESS) {
+        m_impl->m_rotationXDegrees = 0.0f;
+        m_impl->m_rotationZDegrees = 0.0f;
+    }
+
+    if (m_impl->m_glfwJoystickIndex >= 0) {
+      // Adding joystick button mapping for resetting viewer's orientation
+      int btnCount;
+      const unsigned char* btns = glfwGetJoystickButtons(m_impl->m_glfwJoystickIndex, &btnCount);
+      if (btnCount > 0) {
+        if (btns[0] == GLFW_PRESS) { // 0: A button, 1: B button, 2: X button, 3: Y button for Xbox Controller
+          m_impl->m_rotationXDegrees = 0.0f;
+          m_impl->m_rotationZDegrees = 0.0f;
+        }
+      }
+
+      // Adding joystick triggers mapping for pausing/resuming replaying
+      int axisCount;
+      const float* axes = glfwGetJoystickAxes(m_impl->m_glfwJoystickIndex, &axisCount);
+      bool triggerPressed = false;
+      float left_trigger = -1.0;
+      float right_trigger = -1.0;
+
+      if (axisCount >= 6) {
+#ifdef WIN32
+        left_trigger = axes[4];
+        right_trigger = axes[5];
+#else
+        // In Linux, the index number for the left trigger is different from that in Windows.
+        left_trigger = axes[2];
+        right_trigger = axes[5];
+#endif
+      }
+#ifdef WIN32
+      else if (axisCount >= 5) {
+          left_trigger = axes[4];
+#else
+      else if (axisCount >= 3) {
+          left_trigger = axes[2];
+#endif
+      }
+      if (left_trigger == 1.0 || right_trigger == 1.0)
+          triggerPressed = true;
+      if (triggerPressed && !m_impl->m_triggerPressed) {
+        if (m_eventHandlers && m_eventHandlers->ChangePlayPause) {
+          m_eventHandlers->ChangePlayPause(!m_nowPlaying, m_userData);
+        }
+      }
+      m_impl->m_triggerPressed = triggerPressed;
+    }
+    //======================================
+
     HandleKeyboard();
     HandleMouse();
     if (m_impl->m_glfwJoystickIndex >= 0) {
@@ -515,6 +594,27 @@ void DisplayWindow::DisplayThread(std::string windowName,
         if (fabs(axes[1]) > 0.2) {
           m_impl->m_rotationXDegrees -= 90.0f * elapsed.count() * axes[1] * m_impl->m_joystickScaleY;
         }
+
+        //======================================
+        // Added by Sang Yoon to add the right joystick mappings for viewer's orientation change
+#ifdef WIN32
+        if (axisCount >= 4) {
+          float x_axis = axes[2];
+          float y_axis = axes[3];
+#else
+        // In Linux, the index numbers for the right joystick are different from those in Windows.
+        if (axisCount >= 5) {
+          float x_axis = axes[3];
+          float y_axis = axes[4];
+#endif
+          if (fabs(x_axis) > 0.2) {
+            m_impl->m_rotationZDegrees -= 90.0f * elapsed.count() * x_axis;
+          }
+          if (fabs(y_axis) > 0.2) {
+            m_impl->m_rotationXDegrees -= 90.0f * elapsed.count() * y_axis * m_impl->m_joystickScaleY;
+          }
+        }
+        //======================================
       }
     }
 
@@ -1744,6 +1844,21 @@ bool asdp::render::DisplayOpenXR::DisplayOpenXRImpl::OpenXRRenderLayer(XrTime pr
     vri.width = projectionLayerViews[i].subImage.imageRect.extent.width;
     vri.height = projectionLayerViews[i].subImage.imageRect.extent.height;
     
+    //======================================
+    // Added by Sang Yoon to adjust binocular disparity between two images for the left and right eyes in the cylindrical projection.
+    // It is assumed that the Varjo XR-4 HMD is used (between 40 PPD and 51 PPD with a hozontal FOV of about 105 degrees per eye).
+    // Without this adjustment, it is hard to stereoscopically fuse the images rendered using the cylindrical projection, 
+    // since the binocular disparity between the left and right images is too large.
+    // The amount of binocular disparity adjustment is dependent on the resolution (proportional to pixel size or PPD).
+    if (m_display->m_composite->m_CP_enabled) {
+      float shift_amount = 225.0 * vri.width / 5184 + 0.5;
+      if (i == 0)
+          vri.x = (int)shift_amount;
+      else
+          vri.x = -(int)shift_amount;
+    }
+    //======================================
+
     viewRenderInfos.push_back(vri);
   }
 

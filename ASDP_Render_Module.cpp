@@ -848,6 +848,19 @@ struct DisplayInfo
   float fps = 60.0f;            ///< The frames per second to run at.
   bool fullScreen = false;      ///< Run in full screen mode.
   int fullScreenDisplay = 0;    ///< The display to run in full screen mode on.
+
+  //======================================
+  // Added by Sang Yoon to add a flag for enabling the cylindrical projection.
+  bool enableCP = false;        ///< The flag to enable the cylindrical projection
+  //======================================
+
+  //======================================
+  // Added by Sang Yoon to indicate if the window associated with the display is overview window, detailed view windowe, or neither.
+  // Where the number of displays is greater than 1, the window that has the widest horizontal FOV is considered as an overview window, 
+  // and the window that has the narrowest hFOV is considered as a detailed view window.
+  bool overview = false;
+  bool detailed_view = false;
+  //======================================
 };
 
 static std::string TimeIntervalToStringMilliseconds(std::chrono::duration<float> interval)
@@ -892,6 +905,7 @@ void usage(std::string name)
   std::cerr << "  --maxDepth <float>                  Maximum depth to test for in meters (default 200)." << std::endl;
   std::cerr << "  --depthThreshold <float>            Depth threshold in squared pixel value differences (default 10.0)." << std::endl;
   std::cerr << "  --cameraFPS <frames per second>     The frames per second to run the camera at (default is maximum rate)." << std::endl;
+  std::cerr << "  --enableCP                          Enable the cylindrical projection." << std::endl; // Added by Sang Yoon
   std::cerr << "  --openXR                            Use OpenXR for rendering. If set, overrides the following and sets lineBatchesPerGPUSend to 10000." << std::endl;
   std::cerr << "  --xSight <ip of NIC to listen on>   Render to XSight on specified NIC. If set, overrides the following." << std::endl;
   std::cerr << "  --width <width>                     The width of the window (default 1280)." << std::endl;
@@ -1080,6 +1094,15 @@ int main(int argc, char** argv)
     } else if (std::string("--help") == argv[i]) {
       usage(argv[0]);
       return 0;
+
+    //======================================
+    // Added by Sang Yoon to add a command line argument to enable the cylindrical projection for the current display.
+    // Note that each display (or window) can use either perspective projection (default) or cylindrical projection (enabled with --enableCP).
+    }
+    else if (std::string("--enableCP") == argv[i]) {
+        displayInfos.back().enableCP = true;
+    //======================================
+
     } else if (argv[i][0] == '-') {
       usage(argv[0]);
       return 1;
@@ -1492,6 +1515,32 @@ int main(int argc, char** argv)
     // Construct one or more Display objects to render the cameras.  They all share objects with the texture Display.
     std::vector<std::shared_ptr<Display>> displays;
     std::vector<GLuint> toneMapTextures;  ///< Stores these for later deletion.
+
+    //======================================
+    // Added by Sang Yoon to determine overview window and detail view window.
+    // Where the number of displays is greater than 1, the widest window is considered as an overview window, 
+    // and the narrowest window is considered as a detail view window.
+    int overview_displayID = -1; // display ID of overview window
+    int detailed_view_displayID = -1; // display ID of detailed view window
+
+    if (displayInfos.size() > 1) {
+        float widest_hFOV = 0.0f;
+        float narrowest_hFOV = 360.0f;
+        for (size_t i = 0; i < displayInfos.size(); i++) {
+            if (displayInfos[i].hFOV >= widest_hFOV) {
+                widest_hFOV = displayInfos[i].hFOV;
+                overview_displayID = i;
+            }
+            if (displayInfos[i].hFOV < narrowest_hFOV || displayInfos[i].useOpenXR) {
+                narrowest_hFOV = displayInfos[i].hFOV;
+                detailed_view_displayID = i;
+            }
+        }
+        displayInfos[overview_displayID].overview = true;
+        displayInfos[detailed_view_displayID].detailed_view = true;
+    }
+    //======================================
+
     for (size_t i = 0; i < displayInfos.size(); i++) {
 
       // Construct a Tone Map texture to use for rendering the cameras.
@@ -1523,13 +1572,26 @@ int main(int argc, char** argv)
       if (replayStreamID != 0) {
         // Set up to run 1.5 frames behind the current time, which empirically was much
         // smoother than a single frame behind and slightly smoother than 2 frames.
-        renderOffsetMicroseconds = 1.5 * (1000000 / cameraFPS);
+        renderOffsetMicroseconds = 0.5 * (1000000 / cameraFPS); //1.5
       }
       g_composite = std::make_shared<CompositeCameras>(
         g_visibleCameras, toneMapTexture, poseAdjuster, Time(1/cameraFPS),
         renderOffsetMicroseconds,
         Time(0, 1000000 / displayInfos[i].fps), (i == 0) ? (&g_timingInfo) : nullptr,
         rangeEstimator);
+
+      //======================================
+      // Added by Sang Yoon to just pass the status of enabling the cylindrical projection (true or false) from DisplayInfos[i] to composite.
+      // Note that the cylinderical projection is processed in Composite Submodule.
+      g_composite->m_CP_enabled = displayInfos[i].enableCP;
+      //======================================
+
+      //======================================
+      // Added by Sang Yoon to just pass the status of overview and detailed view for the current display to composite.
+      // Note that the overview and detailed view are handled in Composite Submodule.
+      g_composite->m_overview = displayInfos[i].overview;
+      g_composite->m_detailed_view = displayInfos[i].detailed_view;
+      //======================================
 
       // Only time the first listed display, to avoid race conditions
       if (displayInfos[i].useOpenXR) {

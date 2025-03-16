@@ -19,6 +19,27 @@
 
 using namespace asdp::render;
 
+//======================================
+// Added by Sang Yoon to share the head orientation information of detailed view window 
+//   with the overview window.
+// This information is used for drawing a rectangle in the overview window 
+//   showing the user's head orientation of detailed view window (DrawHeadOrientation()).
+// Note that the mutually exclusive access to the variables between the composite submodules 
+//   associated with overview and detailed view windows is controlled using a mutex (overview_mutex)
+//   in Composite::Render() and DrawHeadOrientation(). In the composite submodule associated with 
+//   the detailed view window, the head orientation information of the detailed view window is stored 
+//   to the global variables, and in the composite submodule associated with the overview window, 
+//   the values of the global variables are read.
+std::mutex g_overview_mutex;
+glm::mat4 g_detailed_view_translate;
+float g_detailed_view_leftf;
+float g_detailed_view_rightf;
+float g_detailed_view_topf;
+float g_detailed_view_bottomf;
+float g_detailed_view_nearf;
+//======================================
+
+
 Composite::~Composite()
 {
   // Empty destructor.
@@ -111,8 +132,38 @@ void Composite::Render(asdp::Time scanOutTime, std::vector<ViewRenderInfo> views
       view.nearClip, view.farClip);
     glm::mat4 VP = Projection * ViewTranslate;
 
+    //======================================
+    // Added by Sang Yoon to pass the information about viewing frustum and head pose of the detailed view window 
+    // to the composite submodule for the overview window.
+    // This information is used for drawing a rectangle showing the head orientation of detailed view window in the overview window
+    if (eye == 0 && m_detailed_view) {
+        std::lock_guard<std::mutex> lock(g_overview_mutex);
+        g_detailed_view_translate = ViewTranslate;
+        g_detailed_view_leftf = leftFrust;
+        g_detailed_view_rightf = rightFrust;
+        g_detailed_view_topf = topFrust;
+        g_detailed_view_bottomf = bottomFrust;
+        g_detailed_view_nearf = view.nearClip;
+    }
+    //======================================
+
     // Call the derived-class method to render the geometry into this viewpoint.
-    RenderView(scanOutTime, glm::value_ptr(VP));
+
+    //======================================
+    // Revised by Sang Yoon to support the cylindrical projection
+    // Original:
+    //RenderView(scanOutTime, glm::value_ptr(VP));
+    // Revised:
+    RenderView(scanOutTime, glm::value_ptr(VP), glm::value_ptr(ViewTranslate), view.leftHalfFOV, view.rightHalfFOV, view.bottomHalfFOV, view.topHalfFOV, view.nearClip, view.farClip);
+    //======================================
+
+    //======================================
+    // Added by Sang Yoon to draw a rectangle to show the head orientation of detailed view window in the overview window  
+    // Note that in drawing this rectangle the shiftPoints or PoseAdjuster is not considered.
+    if (m_overview)
+        DrawHeadOrientation(view.farClip, view.width); // view.farClip is used for determining a radius of a big sphere.
+    // view.width (screen width) is used for determining the line thickness of rectangle.
+    //======================================
   }
 
   // Unset things
@@ -485,9 +536,42 @@ R"(#version 330 core
    layout(location = 1) in vec3 vertexColor;
    out vec3 fragmentColor;
    uniform mat4 modelViewProjection;
+
+   //======================================
+   // Added by Sang Yoon to support a cylindrical projection
+   uniform int useCP;
+   uniform float lh_hfov_rad;
+   uniform float rh_hfov_rad;
+   uniform float bh_vfov_rad;
+   uniform float th_vfov_rad;
+   uniform float near;
+   uniform float far;
+   uniform mat4 modelViewMatrix;
+   //======================================
+
    void main()
    {
-      gl_Position = modelViewProjection * vec4(position,1);
+      //======================================
+      // Revised by Sang Yoon to support a cylindrical projection
+      // Original: gl_Position = modelViewProjection * vec4(position,1);
+      // Revised:
+      if (useCP == 0)
+        gl_Position = modelViewProjection * vec4(position,1);
+      else
+      {
+        vec4 p = modelViewMatrix * vec4(position, 1.0);
+
+        float length_xz = length(p.xz);
+        float theta_x = atan(p.x, -p.z); // angle around y axis (angle in horizontal direction)
+        float theta_y = atan(p.y, length_xz); // angle around bent x axis (angle in vertical direction)
+
+        gl_Position = vec4((theta_x - lh_hfov_rad)/(rh_hfov_rad - lh_hfov_rad) * 2.0 - 1.0, 
+                           (theta_y - bh_vfov_rad)/(th_vfov_rad - bh_vfov_rad) * 2.0 - 1.0, 
+                           (length_xz - near)/(far - near) * 2.0 - 1.0,
+                           1.0);
+      }
+      //======================================
+
       fragmentColor = vertexColor;
    })";
 
@@ -505,6 +589,19 @@ CompositeCube::CompositeCube(double radius)
   , m_radius(radius)
   , m_programId(0)
   , m_modelViewProjectionUniformId(0)
+
+  //======================================
+  // Added by Sang Yoon to pass the parameters for cylindrical projection to GPU
+  // (separately transfer horizontal FOV, vertical FOV, near, far, projection matrix, and model view matrix to the vertex shader).
+  , m_useCPUniformId(0)
+  , m_lh_hfovUniformId(0)
+  , m_rh_hfovUniformId(0)
+  , m_bh_vfovUniformId(0)
+  , m_th_vfovUniformId(0)
+  , m_nearUniformId(0)
+  , m_farUniformId(0)
+  , m_modelViewUniformId(0)
+  //======================================
 {
 }
 
@@ -553,6 +650,18 @@ bool CompositeCube::SetupRendering()
 
   m_modelViewProjectionUniformId = glGetUniformLocation(m_programId, "modelViewProjection");
 
+  //======================================
+  // Added by Sang Yoon to pass the parameters used in the cylindrical projection to the vertex shader
+  m_useCPUniformId = glGetUniformLocation(m_programId, "useCP");
+  m_lh_hfovUniformId = glGetUniformLocation(m_programId, "lh_hfov_rad");
+  m_rh_hfovUniformId = glGetUniformLocation(m_programId, "rh_hfov_rad");
+  m_bh_vfovUniformId = glGetUniformLocation(m_programId, "bh_vfov_rad");
+  m_th_vfovUniformId = glGetUniformLocation(m_programId, "th_vfov_rad");
+  m_nearUniformId = glGetUniformLocation(m_programId, "near");
+  m_farUniformId = glGetUniformLocation(m_programId, "far");
+  m_modelViewUniformId = glGetUniformLocation(m_programId, "modelViewMatrix");
+  //======================================
+
   // Make our geometry object, which will draw itself.
   size_t quadsPerEdge = 10;
   size_t trianglesPerSide = 2 * quadsPerEdge * quadsPerEdge;
@@ -574,17 +683,45 @@ void CompositeCube::SetupRenderFrame(asdp::Time scanOutTime)
   glDisable(GL_CULL_FACE);
 }
 
-void CompositeCube::RenderView(asdp::Time scanOutTime, const float* viewProjection)
+//======================================
+// Revised by Sang Yoon to support the cylindrical projection
+// The arguments used for the cylindrical projection are added: modelViewMatrix, hFOVf, vFOVf, nearf, and farf.
+void CompositeCube::RenderView(asdp::Time scanOutTime, const float* viewProjection, const float* modelViewMatrix, const float lh_hFOVf, const float rh_hFOVf, const float bh_vFOVf, const float th_vFOVf, const float nearf, const float farf)
 {
-  // Set the model-view-projection matrix to the viewProjection matrix (no model) and draw the cube.
-  glUniformMatrix4fv(m_modelViewProjectionUniformId, 1, GL_FALSE, viewProjection);
-  m_roomCube->draw();
+    if (!m_CP_enabled) // If the flag for cylindrical projection is not enabled, use the perspective projection
+        // (following the original execution flow of RenderView()).
+    {
+        // Set the model-view-projection matrix and draw the cube.
+        glUniformMatrix4fv(m_modelViewProjectionUniformId, 1, GL_FALSE, viewProjection);
+        glUniform1i(m_useCPUniformId, 0);
+    }
+    else // If the flag for cylindrical projection is enabled, use the cylindrical projection.
+    {
+        glUniform1i(m_useCPUniformId, 1);
+        glUniform1f(m_lh_hfovUniformId, lh_hFOVf * M_PI / 180.0);
+        glUniform1f(m_rh_hfovUniformId, rh_hFOVf * M_PI / 180.0);
+        glUniform1f(m_bh_vfovUniformId, bh_vFOVf * M_PI / 180.0);
+        glUniform1f(m_th_vfovUniformId, th_vFOVf * M_PI / 180.0);
+        glUniform1f(m_nearUniformId, nearf);
+        glUniform1f(m_farUniformId, farf);
+        glUniformMatrix4fv(m_modelViewUniformId, 1, GL_FALSE, modelViewMatrix);
+    }
+    m_roomCube->draw();
 }
+//======================================
 
 void CompositeCube::TearDownRenderFrame()
 {
   glUseProgram(0);
 }
+
+//======================================
+// Added by Sang Yoon to draw a rectangle to show the head orientation of detailed view window in the overview window
+void CompositeCube::DrawHeadOrientation(float view_farf, int screen_width)
+{
+    // Do nothing for CompositeCube.
+}
+//======================================
 
 //==================================================================================================
 // Objects needed by the CompositeCameras class.
@@ -632,6 +769,19 @@ R"(#version 330 core
    uniform vec3 fAxis;       ///< The axis around which the camera is rotating during the frame
    uniform float fAngle;     ///< The angle of rotation around the axis during a frame time in radians
    uniform float depthScale; ///< If this is >= 0, scales the depth by this amount and sends to fragment shader.
+
+   //======================================
+   // Added by Sang Yoon to support a cylindrical projection
+   uniform int useCP;
+   uniform float lh_hfov_rad;
+   uniform float rh_hfov_rad;
+   uniform float bh_vfov_rad;
+   uniform float th_vfov_rad;
+   uniform float near;
+   uniform float far;
+   uniform mat4 modelViewMatrix;
+   //======================================
+
    void main()
    {
       // Determine the time within a frame that this vertex is being rendered.
@@ -651,7 +801,25 @@ R"(#version 330 core
       // Apply the matrices to the position to get the final projected position.
       // Perform the within-frame distortion first (it is in helicopter space), then the pose adjustment
       // (to previous helicopter space), and finally the view+projection.
-      gl_Position = viewProjection * poseAdjust * delta * vec4(aPos, 1.0);
+
+      //======================================
+      // Revised by Sang Yoon to support a cylindrical projection
+      // Original: gl_Position = viewProjection * poseAdjust * delta * vec4(aPos, 1.0);
+      // Revised:
+      if (useCP == 0)
+        gl_Position = viewProjection * poseAdjust * delta * vec4(aPos, 1.0);
+      else {
+        vec4 p = modelViewMatrix * poseAdjust * delta * vec4(aPos, 1.0);
+        float length_xz = length(p.xz);
+        float theta_x = atan(p.x, -p.z); // angle around y axis (angle in horizontal direction)
+        float theta_y = atan(p.y, length_xz); // angle around bent x axis (angle in vertical direction)
+
+        gl_Position = vec4((theta_x - lh_hfov_rad)/(rh_hfov_rad - lh_hfov_rad) * 2.0 - 1.0, 
+                           (theta_y - bh_vfov_rad)/(th_vfov_rad - bh_vfov_rad) * 2.0 - 1.0, 
+                           (length_xz - near)/(far - near) * 2.0 - 1.0,
+                           1.0);
+      }
+      //======================================
 
       // Pass the texture coordinate and vignette gain to the fragment shader.
       TexCoord = vec2(aTexCoord.x, aTexCoord.y);
@@ -710,6 +878,25 @@ CompositeCameras::CompositeCameras(std::vector< std::shared_ptr<CameraRenderInfo
   , m_globalExposureGain(cameraFrameInterval.seconds + cameraFrameInterval.microseconds * 1e-6)
   , m_imageTextureId(0)
   , m_toneMapTextureId(0)
+
+  //======================================
+  // Added by Sang Yoon to pass the parameters for cylindrical projection to GPU
+  // (separately transfer horizontal FOV, vertical FOV, near, far, projection matrix, and model view matrix to the vertex shader).
+  , m_useCPUniformId(0)
+  , m_lh_hfovUniformId(0)
+  , m_rh_hfovUniformId(0)
+  , m_bh_vfovUniformId(0)
+  , m_th_vfovUniformId(0)
+  , m_nearUniformId(0)
+  , m_farUniformId(0)
+  , m_modelViewUniformId(0)
+  //======================================
+
+  //======================================
+  // Added by Sang Yoon to specificy the color of retangle indicating the head orientation of detailed view in the overview window
+  , m_head_orientation_colorTexture(0)
+  , m_head_orientation_toneMapTexture(0)
+  //======================================
 {
 }
 
@@ -784,6 +971,31 @@ bool CompositeCameras::SetupRendering()
     std::cerr << "  toneMapTexture: " << m_toneMapTextureId << std::endl;
     return false;
   }
+
+  //======================================
+  // Added by Sang Yoon to pass the parameters used for the cylindrical projection to the vertex shader
+  m_useCPUniformId = glGetUniformLocation(m_programId, "useCP");
+  m_lh_hfovUniformId = glGetUniformLocation(m_programId, "lh_hfov_rad");
+  m_rh_hfovUniformId = glGetUniformLocation(m_programId, "rh_hfov_rad");
+  m_bh_vfovUniformId = glGetUniformLocation(m_programId, "bh_vfov_rad");
+  m_th_vfovUniformId = glGetUniformLocation(m_programId, "th_vfov_rad");
+  m_nearUniformId = glGetUniformLocation(m_programId, "near");
+  m_farUniformId = glGetUniformLocation(m_programId, "far");
+  m_modelViewUniformId = glGetUniformLocation(m_programId, "modelViewMatrix");
+  if (m_useCPUniformId == -1 || m_lh_hfovUniformId == -1 || m_rh_hfovUniformId == -1 || m_bh_vfovUniformId == -1 ||
+      m_th_vfovUniformId == -1 || m_nearUniformId == -1 || m_farUniformId == -1 || m_modelViewUniformId == -1) {
+      std::cerr << "CompositeCameras::SetupRendering(): Failed to get uniform IDs used for cylindrical projection" << std::endl;
+      std::cerr << "  useCP: " << m_useCPUniformId << std::endl;
+      std::cerr << "  lh_hfov_rad: " << m_lh_hfovUniformId << std::endl;
+      std::cerr << "  rh_hfov_rad: " << m_rh_hfovUniformId << std::endl;
+      std::cerr << "  bh_vfov_rad: " << m_bh_vfovUniformId << std::endl;
+      std::cerr << "  th_vfov_rad: " << m_th_vfovUniformId << std::endl;
+      std::cerr << "  near: " << m_nearUniformId << std::endl;
+      std::cerr << "  far: " << m_farUniformId << std::endl;
+      std::cerr << "  modelViewMatrix: " << m_modelViewUniformId << std::endl;
+      return false;
+  }
+  //======================================
 
   // Construct a vertex and index buffer object for each camera that describes the positions and
   // texture coordinates along with the indices, along with a count of index buffer entries.  Make
@@ -985,7 +1197,12 @@ void CompositeCameras::SetupRenderFrame(asdp::Time scanOutTime)
     static_cast<int>((averageSeconds - static_cast<int>(averageSeconds)) * 1e6));
 }
 
-void CompositeCameras::RenderView(asdp::Time scanOutTime, const float* viewProjection)
+//======================================
+// Revised by Sang Yoon to support the cylindrical projection
+// Original: void CompositeCameras::RenderView(asdp::Time scanOutTime, const float* viewProjection)
+// Revised:
+void CompositeCameras::RenderView(asdp::Time scanOutTime, const float* viewProjection, const float* modelViewMatrix, const float lh_hFOVf, const float rh_hFOVf, const float bh_vFOVf, const float th_vFOVf, const float nearf, const float farf)
+//======================================
 {
   // Find the frame time in floating point seconds.
   float frameTime = m_cameraFrameInterval.seconds + m_cameraFrameInterval.microseconds * 1.0e-6;
@@ -1008,6 +1225,23 @@ void CompositeCameras::RenderView(asdp::Time scanOutTime, const float* viewProje
 
   // Set the matrices and uniform parameters that are the same for all cameras
   glUniformMatrix4fv(m_viewProjectionUniformId, 1, GL_FALSE, viewProjection);
+
+  //======================================
+  // Added by Sang Yoon to support the cylindrical projection
+  if (!m_CP_enabled)
+    glUniform1i(m_useCPUniformId, 0);
+  else
+  {
+    glUniform1i(m_useCPUniformId, 1);
+    glUniform1f(m_lh_hfovUniformId, lh_hFOVf * M_PI/180.0);
+    glUniform1f(m_rh_hfovUniformId, rh_hFOVf * M_PI/180.0);
+    glUniform1f(m_bh_vfovUniformId, bh_vFOVf * M_PI/180.0);
+    glUniform1f(m_th_vfovUniformId, th_vFOVf * M_PI/180.0);
+    glUniform1f(m_nearUniformId, nearf);
+    glUniform1f(m_farUniformId, farf);
+    glUniformMatrix4fv(m_modelViewUniformId, 1, GL_FALSE, modelViewMatrix);
+  }
+  //======================================
 
   // Compute a product of gain and exposure for each camera and then use this set to
   // determine a global to apply across all cameras, which will handle them auto-gaining
@@ -1160,6 +1394,196 @@ void CompositeCameras::TearDownRenderFrame()
   m_images.clear();
   glUseProgram(0);
 }
+
+//======================================
+// Added by Sang Yoon to draw a rectangle to show the head orientation of detailed view in the overview window
+
+#define SQR(x)  ((x)*(x))
+
+// 3D ray struct defined by 2 points
+struct Ray {
+  glm::vec4 from;
+  glm::vec4 to;
+};
+
+// Find a ray-sphere intersection.
+// Note that a single intersection point must exist since the start point of the ray is located inside the sphere.
+static bool FindRaySphereIntersection(Ray *ray, double radius, double intersection[3])
+{
+  double a, b, c, D, t;
+
+  a = SQR(ray->to[0] - ray->from[0]) + SQR(ray->to[1] - ray->from[1]) + SQR(ray->to[2] - ray->from[2]);
+  b = 2.0*(ray->from[0]*(ray->to[0]-ray->from[0]) + ray->from[1]*(ray->to[1]-ray->from[1]) 
+            +ray->from[2]*(ray->to[2]-ray->from[2]));
+  c = SQR(ray->from[0]) + SQR(ray->from[1]) + SQR(ray->from[2]) - SQR(radius);
+
+  D = b * b - 4.0 * a * c;
+  if (D < 0)
+    return false;
+
+  t = (-b + sqrt(D)) / (2.0 * a);
+  if (t > 0) {
+    intersection[0] = (ray->to[0] - ray->from[0])*t + ray->from[0];
+    intersection[1] = (ray->to[1] - ray->from[1])*t + ray->from[1];
+    intersection[2] = (ray->to[2] - ray->from[2])*t + ray->from[2];
+    return true;
+  }
+
+  t = (-b - sqrt(D)) / (2.0 * a);
+  if (t > 0) {
+    intersection[0] = (ray->to[0] - ray->from[0])*t + ray->from[0];
+    intersection[1] = (ray->to[1] - ray->from[1])*t + ray->from[1];
+    intersection[2] = (ray->to[2] - ray->from[2])*t + ray->from[2];
+    return true;
+  }
+
+  return false;
+}
+
+// Draw a rectangle to show the head orientation.
+void CompositeCameras::DrawHeadOrientation(float view_farf, int screen_width)
+{
+  GLfloat org_line_width;
+  GLboolean org_depth_test;
+  glm::mat4 detailed_view_translate;
+  float detailed_view_leftf;
+  float detailed_view_rightf;
+  float detailed_view_topf;
+  float detailed_view_bottomf;
+  float detailed_view_nearf;
+
+  {
+    std::lock_guard<std::mutex> lock(g_overview_mutex);
+
+    detailed_view_translate = g_detailed_view_translate;
+    detailed_view_leftf = g_detailed_view_leftf;
+    detailed_view_rightf = g_detailed_view_rightf;
+    detailed_view_topf = g_detailed_view_topf;
+    detailed_view_bottomf = g_detailed_view_bottomf;
+    detailed_view_nearf = g_detailed_view_nearf;
+  }
+
+  if (!m_drawing_head_orientation_initialized) {
+    // Create a color texture of which size is 1 x 1.
+    glGenTextures(1, &m_head_orientation_colorTexture);
+    glBindTexture(GL_TEXTURE_2D, m_head_orientation_colorTexture);
+    // Set the texture wrapping parameters
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP);
+    // Set texture filtering parameters
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    // Load image into the texture
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 1, 1, 0, GL_RGB, GL_UNSIGNED_BYTE, m_colorTextureSrc);
+    glBindTexture(GL_TEXTURE_2D, 0);
+
+    // Create a tone map texture of which size is 1.
+    glGenTextures(1, &m_head_orientation_toneMapTexture);
+    glBindTexture(GL_TEXTURE_1D, m_head_orientation_toneMapTexture);
+    // Set the texture wrapping and filtering parameters
+    glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    // Load image into the texture
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 1, 1, 0, GL_RGB, GL_UNSIGNED_BYTE, m_colorTextureSrc);
+    glTexImage1D(GL_TEXTURE_1D, 0, GL_RGB, 1, 0, GL_RGB, GL_FLOAT, m_toneMapTextureSrc);
+    glBindTexture(GL_TEXTURE_1D, 0);
+
+    m_drawing_head_orientation_initialized = true;
+  }
+
+  //
+  // Find intersection points of view frustum (or 4 corner vectors of view frustum) and a big sphere
+  //
+  float abs_detailed_view_leftf = fabs(detailed_view_leftf);
+  float abs_detailed_view_rightf = fabs(detailed_view_rightf);
+  float adjusted_detailed_view_leftf;
+  float adjusted_detailed_view_rightf;
+
+  // Check if the view frustum is symmetric with respect to the yz plane.
+  // If it is not symmetric, assume that the detailed view is stereoscopically rendered for two eyes,
+  // and adjust the left and right values of the view frustum,
+  // so that it is symmetric (and as wide as covered using both eyes).
+  if (abs_detailed_view_leftf >= abs_detailed_view_rightf) {
+    adjusted_detailed_view_leftf = -abs_detailed_view_leftf;
+    adjusted_detailed_view_rightf = abs_detailed_view_leftf;
+  }
+  else {
+    adjusted_detailed_view_leftf = -abs_detailed_view_rightf;
+    adjusted_detailed_view_rightf = abs_detailed_view_rightf;
+  }
+
+  // Calculate the rays of view frustum edges in the helicopter coorindate system (up: +Z)
+  glm::mat4 inverse_detailed_view_translate = glm::inverse(detailed_view_translate);
+  Ray tmp_ray = {glm::vec4(0, 0, 0, 1), glm::vec4(adjusted_detailed_view_leftf, detailed_view_bottomf, -detailed_view_nearf, 1)};
+  Ray left_bottom_ray = { inverse_detailed_view_translate * tmp_ray.from, inverse_detailed_view_translate * tmp_ray.to };
+  tmp_ray = { glm::vec4(0, 0, 0, 1), glm::vec4(adjusted_detailed_view_rightf, detailed_view_bottomf, -detailed_view_nearf, 1) };
+  Ray right_bottom_ray = { inverse_detailed_view_translate * tmp_ray.from, inverse_detailed_view_translate * tmp_ray.to };
+  tmp_ray = { glm::vec4(0, 0, 0, 1), glm::vec4(adjusted_detailed_view_leftf, detailed_view_topf, -detailed_view_nearf, 1) };
+  Ray left_top_ray = { inverse_detailed_view_translate * tmp_ray.from, inverse_detailed_view_translate * tmp_ray.to };
+  tmp_ray = { glm::vec4(0, 0, 0, 1), glm::vec4(adjusted_detailed_view_rightf, detailed_view_topf, -detailed_view_nearf, 1) };
+  Ray right_top_ray = { inverse_detailed_view_translate * tmp_ray.from, inverse_detailed_view_translate * tmp_ray.to };
+
+  double intersection_left_bottom_point[3];
+  double intersection_right_bottom_point[3];
+  double intersection_left_top_point[3];
+  double intersection_right_top_point[3];
+  bool intersection_left_bottom_found = false;
+  bool intersection_right_bottom_found = false;
+  bool intersection_left_top_found = false;
+  bool intersection_right_top_found = false;
+
+  // Find the intersection points between a big sphere enclosing all the camera image planes (i.e., radius = far clipping distance - 1) and the view frustum rays.
+  intersection_left_bottom_found = FindRaySphereIntersection(&left_bottom_ray, view_farf-1.0, intersection_left_bottom_point);
+  intersection_right_bottom_found = FindRaySphereIntersection(&right_bottom_ray, view_farf-1.0, intersection_right_bottom_point);
+  intersection_left_top_found = FindRaySphereIntersection(&left_top_ray, view_farf-1.0, intersection_left_top_point);
+  intersection_right_top_found = FindRaySphereIntersection(&right_top_ray, view_farf-1.0, intersection_right_top_point);
+
+  // If all the intersection points are found, draw the rectangle formed by them.
+  if (intersection_left_bottom_found && intersection_right_bottom_found
+      && intersection_left_top_found && intersection_right_top_found) {
+    // Bind the color and tone map textures to texture units 0 and 1, respectively.
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, m_head_orientation_colorTexture);
+    glUniform1i(m_imageTextureId, 0);
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_1D, m_head_orientation_toneMapTexture);
+    glUniform1i(m_toneMapTextureId, 1);
+
+    // Save the current line thickness and set the line thickness to a new value.
+    glGetFloatv(GL_LINE_WIDTH, &org_line_width);
+    glLineWidth(screen_width/1000.0f);
+    // Save the current depth test status and diable the depth test.
+    glGetBooleanv(GL_DEPTH_TEST, &org_depth_test);
+    glDisable(GL_DEPTH_TEST);
+
+    glUniform1f(m_offsetUniformID, 0.0);
+    glUniform1f(m_gainUniformID, 1.0);
+    glUniform1f(m_depthScaleUniformID, -1.0);
+
+    // Draw a rectangle
+    glBegin(GL_LINE_LOOP);
+    glVertex3f((GLfloat)intersection_left_bottom_point[0], (GLfloat)intersection_left_bottom_point[1], (GLfloat)intersection_left_bottom_point[2]);
+    glVertex3f((GLfloat)intersection_right_bottom_point[0], (GLfloat)intersection_right_bottom_point[1], (GLfloat)intersection_right_bottom_point[2]);
+    glVertex3f((GLfloat)intersection_right_top_point[0], (GLfloat)intersection_right_top_point[1], (GLfloat)intersection_right_top_point[2]);
+    glVertex3f((GLfloat)intersection_left_top_point[0], (GLfloat)intersection_left_top_point[1], (GLfloat)intersection_left_top_point[2]);
+    glEnd();
+    //
+
+    // Unbind the color and tone map textures.
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_1D, 0);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, 0);
+
+    // Restore the previous line thickness.
+    glLineWidth(org_line_width);
+    // Restore the previous depth test status.
+    if (org_depth_test)
+      glEnable(GL_DEPTH_TEST);
+  }
+}
+//======================================
 
 //==================================================================================================
 // Objects needed by the CompositeLineRawData class.
@@ -1325,7 +1749,10 @@ void CompositeLineRawData::SetupRenderFrame(asdp::Time /* scanOutTime */)
   glPointSize(1.0f);
 }
 
-void CompositeLineRawData::RenderView(asdp::Time /* scanOutTime */, const float* /* viewProjection */)
+//======================================
+// Revised by Sang Yoon to match the function declaration of the Composite class revised for the cylinderical projection
+void CompositeLineRawData::RenderView(asdp::Time /* scanOutTime */, const float* /* viewProjection */, const float* /* modelViewMatrix */, const float /* lh_hFOVf */, const float /* rh_hFOVf */, const float /* bh_vFOVf */, const float /* th_vFOVf */, const float /* nearf */, const float /* farf */)
+//======================================
 {
   // Turn off depth testing, we always want to draw the line.
   glDisable(GL_DEPTH_TEST);
@@ -1379,3 +1806,12 @@ void CompositeLineRawData::TearDownRenderFrame()
 {
   glUseProgram(0);
 }
+
+//======================================
+// Added by Sang Yoon for an override method inherited from the Composite class
+// Note that this method is not used in the CompositeLineRawData class.
+void CompositeLineRawData::DrawHeadOrientation(float view_farf, int screen_width)
+{
+    // Do nothing for CompositeLineRawData.
+}
+//======================================
