@@ -339,7 +339,7 @@ namespace asdp {
       // Revised by Sang Yoon to support the cylindrical projection
       // The arguments used for the cylindrical projection are added: modelViewMatrix, lh_hFOVf, rh_hFOVf, bh_vFOVf, th_vFOVf, nearf, and farf.
       // Original: void RenderView(asdp::Time scanOutTime, const float* viewProjection) override;
-      // Revised: 
+      // Revised:
       void RenderView(asdp::Time scanOutTime, const float* viewProjection, const float* modelViewMatrix, const float lh_hFOVf, const float rh_hFOVf, const float bh_vFOVf, const float th_vFOVf, const float nearf, const float farf) override;
       //======================================
 
@@ -430,7 +430,7 @@ namespace asdp {
       // Revised by Sang Yoon to match the function declaration of Composite class
       // The arguments used for the cylindrical projection are added: modelViewMatrix, lh_hFOVf, rh_hFOVf, bh_vFOVf, th_vFOVf, nearf, and farf.
       // Original: void RenderView(asdp::Time scanOutTime, const float* viewProjection) override;
-      // Revised: 
+      // Revised:
       void RenderView(asdp::Time scanOutTime, const float* viewProjection, const float* modelViewMatrix, const float lh_hFOVf, const float rh_hFOVf, const float bh_vFOVf, const float th_vFOVf, const float nearf, const float farf) override;
       //======================================
 

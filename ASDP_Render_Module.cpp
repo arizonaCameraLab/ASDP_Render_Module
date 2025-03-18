@@ -856,7 +856,7 @@ struct DisplayInfo
 
   //======================================
   // Added by Sang Yoon to indicate if the window associated with the display is overview window, detailed view windowe, or neither.
-  // Where the number of displays is greater than 1, the window that has the widest horizontal FOV is considered as an overview window, 
+  // Where the number of displays is greater than 1, the window that has the widest horizontal FOV is considered as an overview window,
   // and the window that has the narrowest hFOV is considered as a detailed view window.
   bool overview = false;
   bool detailed_view = false;
@@ -1518,7 +1518,7 @@ int main(int argc, char** argv)
 
     //======================================
     // Added by Sang Yoon to determine overview window and detail view window.
-    // Where the number of displays is greater than 1, the widest window is considered as an overview window, 
+    // Where the number of displays is greater than 1, the widest window is considered as an overview window,
     // and the narrowest window is considered as a detail view window.
     int overview_displayID = -1; // display ID of overview window
     int detailed_view_displayID = -1; // display ID of detailed view window

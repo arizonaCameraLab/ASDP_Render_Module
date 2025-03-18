@@ -1847,7 +1847,7 @@ bool asdp::render::DisplayOpenXR::DisplayOpenXRImpl::OpenXRRenderLayer(XrTime pr
     //======================================
     // Added by Sang Yoon to adjust binocular disparity between two images for the left and right eyes in the cylindrical projection.
     // It is assumed that the Varjo XR-4 HMD is used (between 40 PPD and 51 PPD with a hozontal FOV of about 105 degrees per eye).
-    // Without this adjustment, it is hard to stereoscopically fuse the images rendered using the cylindrical projection, 
+    // Without this adjustment, it is hard to stereoscopically fuse the images rendered using the cylindrical projection,
     // since the binocular disparity between the left and right images is too large.
     // The amount of binocular disparity adjustment is dependent on the resolution (proportional to pixel size or PPD).
     if (m_display->m_composite->m_CP_enabled) {

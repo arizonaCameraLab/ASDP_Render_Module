@@ -20,15 +20,15 @@
 using namespace asdp::render;
 
 //======================================
-// Added by Sang Yoon to share the head orientation information of detailed view window 
+// Added by Sang Yoon to share the head orientation information of detailed view window
 //   with the overview window.
-// This information is used for drawing a rectangle in the overview window 
+// This information is used for drawing a rectangle in the overview window
 //   showing the user's head orientation of detailed view window (DrawHeadOrientation()).
-// Note that the mutually exclusive access to the variables between the composite submodules 
+// Note that the mutually exclusive access to the variables between the composite submodules
 //   associated with overview and detailed view windows is controlled using a mutex (overview_mutex)
-//   in Composite::Render() and DrawHeadOrientation(). In the composite submodule associated with 
-//   the detailed view window, the head orientation information of the detailed view window is stored 
-//   to the global variables, and in the composite submodule associated with the overview window, 
+//   in Composite::Render() and DrawHeadOrientation(). In the composite submodule associated with
+//   the detailed view window, the head orientation information of the detailed view window is stored
+//   to the global variables, and in the composite submodule associated with the overview window,
 //   the values of the global variables are read.
 std::mutex g_overview_mutex;
 glm::mat4 g_detailed_view_translate;
@@ -133,7 +133,7 @@ void Composite::Render(asdp::Time scanOutTime, std::vector<ViewRenderInfo> views
     glm::mat4 VP = Projection * ViewTranslate;
 
     //======================================
-    // Added by Sang Yoon to pass the information about viewing frustum and head pose of the detailed view window 
+    // Added by Sang Yoon to pass the information about viewing frustum and head pose of the detailed view window
     // to the composite submodule for the overview window.
     // This information is used for drawing a rectangle showing the head orientation of detailed view window in the overview window
     if (eye == 0 && m_detailed_view) {
@@ -158,7 +158,7 @@ void Composite::Render(asdp::Time scanOutTime, std::vector<ViewRenderInfo> views
     //======================================
 
     //======================================
-    // Added by Sang Yoon to draw a rectangle to show the head orientation of detailed view window in the overview window  
+    // Added by Sang Yoon to draw a rectangle to show the head orientation of detailed view window in the overview window
     // Note that in drawing this rectangle the shiftPoints or PoseAdjuster is not considered.
     if (m_overview)
         DrawHeadOrientation(view.farClip, view.width); // view.farClip is used for determining a radius of a big sphere.
@@ -565,8 +565,8 @@ R"(#version 330 core
         float theta_x = atan(p.x, -p.z); // angle around y axis (angle in horizontal direction)
         float theta_y = atan(p.y, length_xz); // angle around bent x axis (angle in vertical direction)
 
-        gl_Position = vec4((theta_x - lh_hfov_rad)/(rh_hfov_rad - lh_hfov_rad) * 2.0 - 1.0, 
-                           (theta_y - bh_vfov_rad)/(th_vfov_rad - bh_vfov_rad) * 2.0 - 1.0, 
+        gl_Position = vec4((theta_x - lh_hfov_rad)/(rh_hfov_rad - lh_hfov_rad) * 2.0 - 1.0,
+                           (theta_y - bh_vfov_rad)/(th_vfov_rad - bh_vfov_rad) * 2.0 - 1.0,
                            (length_xz - near)/(far - near) * 2.0 - 1.0,
                            1.0);
       }
@@ -814,8 +814,8 @@ R"(#version 330 core
         float theta_x = atan(p.x, -p.z); // angle around y axis (angle in horizontal direction)
         float theta_y = atan(p.y, length_xz); // angle around bent x axis (angle in vertical direction)
 
-        gl_Position = vec4((theta_x - lh_hfov_rad)/(rh_hfov_rad - lh_hfov_rad) * 2.0 - 1.0, 
-                           (theta_y - bh_vfov_rad)/(th_vfov_rad - bh_vfov_rad) * 2.0 - 1.0, 
+        gl_Position = vec4((theta_x - lh_hfov_rad)/(rh_hfov_rad - lh_hfov_rad) * 2.0 - 1.0,
+                           (theta_y - bh_vfov_rad)/(th_vfov_rad - bh_vfov_rad) * 2.0 - 1.0,
                            (length_xz - near)/(far - near) * 2.0 - 1.0,
                            1.0);
       }
