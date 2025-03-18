@@ -102,11 +102,10 @@ MainWindow::MainWindow(QWidget *parent)
 
 void MainWindow::SelectNIC(const QString& nicName)
 {
+  ResetNIC();
+
   // Implement the logic for selecting the NIC here
-  std::cout << "Selected NIC:" << nicName.toStdString() << std::endl;
-  ui->comboBoxCore->clear();
-  ui->comboBoxCore->addItem("");
-  m_client.reset();
+  std::cout << "Selected NIC: " << nicName.toStdString() << std::endl;
 
   if (!nicName.isEmpty()) {
     // Find the list of servers on the selected NIC and add them to the
@@ -126,13 +125,16 @@ void MainWindow::SelectNIC(const QString& nicName)
     Status status = m_client->GetDiscoveryThreadStatus(threadStatus);
     if (status != OKAY) {
       std::cerr << "Failed to get discovery thread status: " << ErrorMessage(status) << std::endl;
+      return;
     }
     if (threadStatus != OKAY) {
       std::cerr << "Discovery thread status: " << ErrorMessage(threadStatus) << std::endl;
+      return;
     }
     status = m_client->IdentifiedServers(servers);
     if (status != OKAY) {
       std::cerr << "Failed to get identified servers: " << ErrorMessage(status) << std::endl;
+      return;
     }
     std::cout << "Servers found: " << servers.size() << std::endl;
     for (const std::string& server : servers) {
@@ -143,6 +145,62 @@ void MainWindow::SelectNIC(const QString& nicName)
     // Emit the signal to show the list of servers
     emit ShowServers(true);
   }
+}
+
+void MainWindow::ResetNIC()
+{
+  ui->comboBoxCore->clear();
+  ui->comboBoxCore->addItem("");
+  m_client.reset();
+  emit ShowServers(false);
+
+  // Reset the server
+  ResetServer();
+}
+
+void MainWindow::ResetServer()
+{
+  m_receiver.reset();
+  emit ShowControls(false);
+  emit SetSerialNumber("");
+}
+
+void MainWindow::SelectServer(const QString& coreURL)
+{
+  ResetServer();
+
+  // Implement the logic for selecting the core here
+  std::cout << "Selected Core: " << coreURL.toStdString() << std::endl;
+
+  if (!coreURL.isEmpty()) {
+    // Connect to the server.
+    std::cout << "Connecting to " << coreURL.toStdString() << std::endl;
+    uint16_t major, minor, patch;
+    Status status = m_client->ConnectToServer(coreURL.toStdString(), major, minor, patch);
+    if (status != OKAY) {
+      std::cerr << "Failed to connect to server: " << ErrorMessage(status) << std::endl;
+      return;
+    }
+    std::cout << "  Connected to server version " << major << "." << minor << "." << patch << std::endl;
+    uint32_t serialNumber;
+    status = m_client->GetServerSerialNumber(serialNumber);
+    if (status != OKAY) {
+      std::cerr << "Failed to get server serial number: " << ErrorMessage(status) << std::endl;
+      return;
+    }
+    std::cout << "  Connected to server with serial number " << serialNumber << std::endl;
+    SetSerialNumber(std::to_string(serialNumber).c_str());
+
+    // Get the main stream receiver
+    status = m_client->GetMainStreamReceiver(m_receiver);
+    if (status != OKAY) {
+      std::cerr << "Failed to get main stream receiver: " << ErrorMessage(status) << std::endl;
+      return;
+    }
+  }
+
+  // Show the controls.
+  emit ShowControls(true);
 }
 
 MainWindow::~MainWindow()

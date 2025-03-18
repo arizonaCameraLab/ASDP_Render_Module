@@ -16,7 +16,7 @@
   <widget class="QWidget" name="centralWidget">
    <layout class="QVBoxLayout" name="verticalLayout_2">
     <item>
-     <widget class="QFrame" name="frame">
+     <widget class="QFrame" name="frameNIC">
       <property name="frameShape">
        <enum>QFrame::StyledPanel</enum>
       </property>
@@ -63,17 +63,74 @@
      </widget>
     </item>
     <item>
-     <spacer name="verticalSpacer">
-      <property name="orientation">
-       <enum>Qt::Vertical</enum>
+     <widget class="QFrame" name="frameControls">
+      <property name="enabled">
+       <bool>false</bool>
       </property>
-      <property name="sizeHint" stdset="0">
-       <size>
-        <width>20</width>
-        <height>40</height>
-       </size>
+      <property name="frameShape">
+       <enum>QFrame::Box</enum>
       </property>
-     </spacer>
+      <property name="frameShadow">
+       <enum>QFrame::Raised</enum>
+      </property>
+      <property name="midLineWidth">
+       <number>0</number>
+      </property>
+      <layout class="QVBoxLayout" name="verticalLayout">
+       <item>
+        <widget class="QFrame" name="frame_2">
+         <property name="frameShape">
+          <enum>QFrame::StyledPanel</enum>
+         </property>
+         <property name="frameShadow">
+          <enum>QFrame::Raised</enum>
+         </property>
+         <layout class="QHBoxLayout" name="horizontalLayout_3">
+          <item>
+           <widget class="QLabel" name="label_2">
+            <property name="text">
+             <string>Serial Number:</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QLabel" name="labelSerial">
+            <property name="text">
+             <string/>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <spacer name="horizontalSpacer">
+            <property name="orientation">
+             <enum>Qt::Horizontal</enum>
+            </property>
+            <property name="sizeHint" stdset="0">
+             <size>
+              <width>40</width>
+              <height>20</height>
+             </size>
+            </property>
+           </spacer>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <spacer name="verticalSpacer">
+         <property name="orientation">
+          <enum>Qt::Vertical</enum>
+         </property>
+         <property name="sizeHint" stdset="0">
+          <size>
+           <width>20</width>
+           <height>40</height>
+          </size>
+         </property>
+        </spacer>
+       </item>
+      </layout>
+     </widget>
     </item>
    </layout>
   </widget>
@@ -112,9 +169,60 @@
     </hint>
    </hints>
   </connection>
+  <connection>
+   <sender>MainWindow</sender>
+   <signal>SetSerialNumber(QString)</signal>
+   <receiver>labelSerial</receiver>
+   <slot>setText(QString)</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>511</x>
+     <y>299</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>752</x>
+     <y>494</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>MainWindow</sender>
+   <signal>ShowControls(bool)</signal>
+   <receiver>frameControls</receiver>
+   <slot>setEnabled(bool)</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>511</x>
+     <y>299</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>511</x>
+     <y>494</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>comboBoxCore</sender>
+   <signal>textActivated(QString)</signal>
+   <receiver>MainWindow</receiver>
+   <slot>SelectServer(QString)</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>758</x>
+     <y>299</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>511</x>
+     <y>299</y>
+    </hint>
+   </hints>
+  </connection>
  </connections>
  <slots>
   <signal>ShowServers(bool)</signal>
+  <signal>ShowControls(bool)</signal>
+  <signal>SetSerialNumber(QString)</signal>
   <slot>SelectNIC(QString)</slot>
+  <slot>SelectServer(QString)</slot>
  </slots>
 </ui>
