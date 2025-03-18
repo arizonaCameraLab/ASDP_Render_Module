@@ -52,7 +52,7 @@ using namespace asdp;
 using namespace asdp::render;
 using json = nlohmann::json;
 
-static std::string VERSION = "2.38.0";
+static std::string VERSION = "2.38.1";
 
 /// @brief The path to the configuration file. Defined in the CMakeLists file.
 std::filesystem::path g_dirPath = CONFIG_FILE_PATH;
@@ -906,6 +906,7 @@ void usage(std::string name)
   std::cerr << "  --depthThreshold <float>            Depth threshold in squared pixel value differences (default 10.0)." << std::endl;
   std::cerr << "  --cameraFPS <frames per second>     The frames per second to run the camera at (default is maximum rate)." << std::endl;
   std::cerr << "  --enableCP                          Enable the cylindrical projection." << std::endl; // Added by Sang Yoon
+  std::cerr << "  --enableOD                          Enable the display interface of overview plus detail view." << std::endl; // Added by Sang Yoon
   std::cerr << "  --openXR                            Use OpenXR for rendering. If set, overrides the following and sets lineBatchesPerGPUSend to 10000." << std::endl;
   std::cerr << "  --xSight <ip of NIC to listen on>   Render to XSight on specified NIC. If set, overrides the following." << std::endl;
   std::cerr << "  --width <width>                     The width of the window (default 1280)." << std::endl;
@@ -943,6 +944,10 @@ int main(int argc, char** argv)
   float maxDepth = 200.0f;        ///< Maximum depth to test for in meters.
   float depthThreshold = 10.0f;   ///< Depth threshold in squared pixel value differences.
   size_t realParams = 0;          ///< The number of non-flag parameters we've seen.
+  //======================================
+  // Added by Sang Yoon to add a command line argument to enable the display interface of overview plus detail view.
+  bool enableOD = false;          ///< The flag to enable/disable the display interface of overview plus detail view.
+  //======================================
 
   // Parse the command line arguments, with the first non-flag argument being the
   // name of the IP address to listen on.
@@ -1101,6 +1106,13 @@ int main(int argc, char** argv)
     }
     else if (std::string("--enableCP") == argv[i]) {
         displayInfos.back().enableCP = true;
+    //======================================
+
+    //======================================
+    // Added by Sang Yoon to add a command line argument to enable the display interface of overview plus detail view.
+    }
+    else if (std::string("--enableOD") == argv[i]) {
+        enableOD = true;
     //======================================
 
     } else if (argv[i][0] == '-') {
@@ -1517,27 +1529,30 @@ int main(int argc, char** argv)
     std::vector<GLuint> toneMapTextures;  ///< Stores these for later deletion.
 
     //======================================
-    // Added by Sang Yoon to determine overview window and detail view window.
+    // Added by Sang Yoon to enable the display interface of overview plus detail view.
+    if (enableOD) {
+    // Determine overview window and detail view window.
     // Where the number of displays is greater than 1, the widest window is considered as an overview window,
     // and the narrowest window is considered as a detail view window.
-    int overview_displayID = -1; // display ID of overview window
-    int detailed_view_displayID = -1; // display ID of detailed view window
+      int overview_displayID = -1; // display ID of overview window
+      int detailed_view_displayID = -1; // display ID of detailed view window
 
-    if (displayInfos.size() > 1) {
+      if (displayInfos.size() > 1) {
         float widest_hFOV = 0.0f;
         float narrowest_hFOV = 360.0f;
         for (size_t i = 0; i < displayInfos.size(); i++) {
-            if (displayInfos[i].hFOV >= widest_hFOV) {
-                widest_hFOV = displayInfos[i].hFOV;
-                overview_displayID = i;
-            }
-            if (displayInfos[i].hFOV < narrowest_hFOV || displayInfos[i].useOpenXR) {
-                narrowest_hFOV = displayInfos[i].hFOV;
-                detailed_view_displayID = i;
-            }
+          if (displayInfos[i].hFOV >= widest_hFOV) {
+            widest_hFOV = displayInfos[i].hFOV;
+            overview_displayID = i;
+          }
+          if (displayInfos[i].hFOV < narrowest_hFOV || displayInfos[i].useOpenXR) {
+            narrowest_hFOV = displayInfos[i].hFOV;
+            detailed_view_displayID = i;
+          }
         }
         displayInfos[overview_displayID].overview = true;
         displayInfos[detailed_view_displayID].detailed_view = true;
+      }
     }
     //======================================
 
