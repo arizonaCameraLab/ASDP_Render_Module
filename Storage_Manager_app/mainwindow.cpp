@@ -83,7 +83,7 @@ static std::vector<std::string> getIPAddresses()
 }
 
 MainWindow::MainWindow(QWidget *parent)
-    : QMainWindow(parent), ui(new Ui::MainWindow)
+  : QMainWindow(parent), ui(new Ui::MainWindow), m_timer(std::make_shared<QTimer>(this))
 {
   // Setup UI and other initialization
   ui->setupUi(this);  // Set up the UI
@@ -98,6 +98,13 @@ MainWindow::MainWindow(QWidget *parent)
     ui->comboBoxNIC->addItem(QString::fromStdString(ipAddress));
   }
 
+  // Hook up the timer to the periodic task.
+  connect(m_timer.get(), &QTimer::timeout, this, &MainWindow::PeriodicTask);
+}
+
+MainWindow::~MainWindow()
+{
+  delete ui;
 }
 
 void MainWindow::SelectNIC(const QString& nicName)
@@ -163,6 +170,7 @@ void MainWindow::ResetServer()
   m_receiver.reset();
   emit ShowControls(false);
   emit SetSerialNumber("");
+  m_timer->stop();
 }
 
 void MainWindow::SelectServer(const QString& coreURL)
@@ -201,9 +209,70 @@ void MainWindow::SelectServer(const QString& coreURL)
 
   // Show the controls.
   emit ShowControls(true);
+
+  // Start the update timer, firing 10x/second.
+  m_timer->start(100);  // 100 milliseconds
 }
 
-MainWindow::~MainWindow()
+void MainWindow::PeriodicTask()
 {
-  delete ui;
+  if (m_receiver) {
+    std::shared_ptr<StreamPacket> response;
+    size_t offset = 0;
+    Status status = m_receiver->ReceiveStreamPacket(0, response, offset);
+    if (status == OKAY) {
+      std::shared_ptr<Message> message;
+      status = response->GetNextMessage(message);
+      if (status != OKAY) {
+        std::cerr << "Failed to get message from stream packet: " << ErrorMessage(status) << std::endl;
+        return;
+      }
+      MessageID type;
+      status = message->GetType(type);
+      if (status != OKAY) {
+        std::cerr << "Failed to get message type: " << ErrorMessage(status) << std::endl;
+        return;
+      }
+      if (type == STATE) {
+        // Cast the message into a state message and then extract the information and send it.
+        MessageState state(*message);
+        if (state.GetConstructorStatus() != OKAY) {
+          std::cerr << "Failed to construct state message: " << ErrorMessage(state.GetConstructorStatus()) << std::endl;
+          return;
+        }
+
+        std::string coreInfo = "State:\n";
+
+        uint8_t recordOnReset;
+        status = state.GetRecordOnReset(recordOnReset);
+        if (status != OKAY) {
+          std::cerr << "Failed to get record on reset: " << ErrorMessage(status) << std::endl;
+          return;
+        }
+        coreInfo += "  Record on Reset: " + std::to_string(recordOnReset) + "\n";
+
+        uint8_t storing;
+        status = state.GetStoring(storing);
+        if (status != OKAY) {
+          std::cerr << "Failed to get storing: " << ErrorMessage(status) << std::endl;
+          return;
+        }
+        coreInfo += "  Storing: " + std::to_string(storing) + "\n";
+
+        uint8_t streaming;
+        status = state.GetCamerasStreaming(streaming);
+        if (status != OKAY) {
+          std::cerr << "Failed to get cameras streaming: " << ErrorMessage(status) << std::endl;
+          return;
+        }
+        coreInfo += "  Cameras Streaming: " + std::to_string(streaming) + "\n";
+
+        /// @todo
+
+        emit SetInfo(QString::fromStdString(coreInfo));
+      }
+    } else if (status != TIMEOUT) {
+      std::cerr << "Failed to receive stream packet: " << ErrorMessage(status) << std::endl;
+    }
+  }
 }

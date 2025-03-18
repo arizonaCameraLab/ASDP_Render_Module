@@ -7,6 +7,7 @@
 
 #include <memory>
 #include <QMainWindow>
+#include <QTimer>
 #include <ASDP_Core_API.h>
 using namespace asdp;
 
@@ -29,6 +30,9 @@ public slots:
     /// @brief Server to connect to has been selected.
     void SelectServer(const QString& coreURL);
 
+    /// @brief Slot for the periodic task that shows information.
+    void PeriodicTask(); 
+
 signals:
     /// @brief Signal to show or hide list of servers.
     void ShowServers(bool show);
@@ -39,6 +43,9 @@ signals:
     /// @brief Report the serial number of the server.
     void SetSerialNumber(QString serialNumber);
 
+    /// @brief Set the information about the Core.
+    void SetInfo(QString coreInfo);
+
 private:
   Ui::MainWindow* ui;
 
@@ -47,6 +54,8 @@ private:
 
   void ResetServer();
   void ResetNIC();
+
+  std::shared_ptr<QTimer> m_timer; // Timer for a periodic task that polls the server for messages and updates info.
 };
 
 #endif // MAINWINDOW_H
