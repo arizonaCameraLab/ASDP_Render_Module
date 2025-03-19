@@ -42,6 +42,9 @@ public slots:
     /// @brief Start replaying the specified stream.
     void StartReplay(const QString& streamID);
 
+    /// @brief Delete the stream.
+    void DeleteStream(const QString& streamID);
+
 signals:
     /// @brief Signal to show or hide list of servers.
     void ShowServers(bool show);

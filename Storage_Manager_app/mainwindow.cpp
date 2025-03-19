@@ -341,10 +341,14 @@ void MainWindow::PeriodicTask()
           }
           if (m_streams != m_lastStreams) {
             m_lastStreams = m_streams;
+
             ui->comboBoxReplay->clear();
             ui->comboBoxReplay->addItem("");
+            ui->comboBoxDelete->clear();
+            ui->comboBoxDelete->addItem("");
             for (const uint32_t& stream : m_streams) {
               ui->comboBoxReplay->addItem(QString::number(stream));
+              ui->comboBoxDelete->addItem(QString::number(stream));
             }
           }
       }
@@ -410,6 +414,19 @@ void MainWindow::StartReplay(const QString& streamID)
       Status status = m_client->SendCommandPacket(CommandPacketStartReplay(streamID.toUInt(), Time(1, 0)));
       if (status != OKAY) {
         std::cerr << "Failed to start replay: " << ErrorMessage(status) << std::endl;
+        return;
+      }
+    }
+  }
+}
+
+void MainWindow::DeleteStream(const QString& streamID)
+{
+  if (m_client) {
+    if (!streamID.isEmpty()) {
+      Status status = m_client->SendCommandPacket(CommandPacketEraseStoredStream(streamID.toUInt()));
+      if (status != OKAY) {
+        std::cerr << "Failed to delete stream: " << ErrorMessage(status) << std::endl;
         return;
       }
     }

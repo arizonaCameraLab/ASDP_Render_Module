@@ -171,6 +171,28 @@
               </widget>
              </item>
              <item>
+              <widget class="QFrame" name="frame_4">
+               <property name="frameShape">
+                <enum>QFrame::StyledPanel</enum>
+               </property>
+               <property name="frameShadow">
+                <enum>QFrame::Raised</enum>
+               </property>
+               <layout class="QHBoxLayout" name="horizontalLayout_6">
+                <item>
+                 <widget class="QLabel" name="labelDelete">
+                  <property name="text">
+                   <string>Delete Stream:</string>
+                  </property>
+                 </widget>
+                </item>
+                <item>
+                 <widget class="QComboBox" name="comboBoxDelete"/>
+                </item>
+               </layout>
+              </widget>
+             </item>
+             <item>
               <spacer name="verticalSpacer">
                <property name="orientation">
                 <enum>Qt::Vertical</enum>
@@ -356,6 +378,22 @@
     </hint>
    </hints>
   </connection>
+  <connection>
+   <sender>comboBoxDelete</sender>
+   <signal>textActivated(QString)</signal>
+   <receiver>MainWindow</receiver>
+   <slot>DeleteStream(QString)</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>191</x>
+     <y>357</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>734</x>
+     <y>596</y>
+    </hint>
+   </hints>
+  </connection>
  </connections>
  <slots>
   <signal>ShowServers(bool)</signal>
@@ -367,5 +405,6 @@
   <slot>StartRecording()</slot>
   <slot>StopRecording()</slot>
   <slot>StartReplay(QString)</slot>
+  <slot>DeleteStream(QString)</slot>
  </slots>
 </ui>
