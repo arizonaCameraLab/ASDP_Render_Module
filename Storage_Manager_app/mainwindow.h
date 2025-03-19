@@ -10,6 +10,7 @@
 #include <QTimer>
 #include <ASDP_Core_API.h>
 #include <Display.h>
+#include <ToneMap.h>
 using namespace asdp;
 using namespace asdp::render;
 
@@ -84,6 +85,7 @@ private:
 
   // Variables and functions for displaying video from a camera.
   std::shared_ptr<Display> m_display;
+  GLuint m_toneMap = 0;
 };
 
 #endif // MAINWINDOW_H

@@ -2,6 +2,8 @@
  * Copyright (C) 2024-2025: Arizona Board of Regents on Behalf of the University of Arizona
  */
 
+#include <GL/glew.h>
+
 #ifdef _WIN32
 #include <winsock2.h>
 #include <iphlpapi.h>
@@ -390,6 +392,8 @@ void MainWindow::PeriodicTask()
   if (m_display) {
     if (m_display->GetStatus() != "") {
       m_display.reset();
+      ui->comboBoxCamera->setCurrentIndex(0);
+      std::cout << "Not viewing camera." << std::endl;
     }
   }
 }
@@ -452,9 +456,96 @@ void MainWindow::ViewCamera(const QString& cameraID)
 {
   std::cout << "Viewing Camera: " << cameraID.toStdString() << std::endl;
 
-  std::shared_ptr<DisplayTexture> displayTexture;
+  // Remove any existing display. We can only have one display at a time.
+  m_display.reset();
+
+  if (!m_client || cameraID.isEmpty()) {
+    return;
+  }
+
+  // Construct a DisplayTexture object to handle textures.  It will be the base object that all others will use
+  // to share contexts.
+  std::shared_ptr<DisplayTexture> displayTexture = std::make_shared<DisplayTexture>();
+
+  // Construct information about the camera to be displayed. Add it as the only entry in the vector.
+  std::shared_ptr<Distortion> dist(new DistortionNone);
+  std::shared_ptr<Vignette> vig(new VignetteNone);
+  std::shared_ptr<asdp::render::CameraRenderInfo> info =
+    std::make_shared<CameraRenderInfo>(cameraID.toUShort(),
+      std::array<double, 3>{0.0, 0.0, 0.0}, std::array<double, 3>{ 0.0, 0.0, 0.0 },
+      std::array<uint16_t, 2>{1280, 1024}, std::array<double, 2>{40.0, 32.5},
+      dist, vig, std::make_shared<asdp::render::ImageQueue>(), -1.0f);
+
+  // Fill in three textures for this camera, all gray and at time zero.
+  // We must borrow the context from the displayTexture so that we can create the textures.
+  if (!displayTexture->BorrowContext()) {
+    std::cerr << "Error borrowing context from displayTexture." << std::endl;
+    return;
+  }
+
+  unsigned int width = info->m_resolutionPixels[0];
+  unsigned int height = info->m_resolutionPixels[1];
+  std::vector<uint16_t> image(width * height, 32767);
+
+  // Create the textures for the camera. Make two for each Composite to pull when it is looking
+  // for the next image to render, one for the texture thread to write to, and one to lie fallow.
+  for (size_t i = 0; i < 2 + 2 + 1; i++) {
+    std::shared_ptr<ImageData> imageData = std::make_shared<ImageData>();
+
+    unsigned int texture;
+    glGenTextures(1, &texture);
+    glBindTexture(GL_TEXTURE_2D, texture);
+    // Set the texture wrapping parameters
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    // Set texture filtering parameters
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+    // Load image into the texture
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_R16, width, height, 0, GL_RED, GL_UNSIGNED_SHORT, image.data());
+    glBindTexture(GL_TEXTURE_2D, 0);
+
+    imageData->texture = texture;
+    info->m_imageQueue->InsertImage(imageData);
+  }
+
+  // Handle construction of a tonemap texture, removing the previous if there is one.
+  glDeleteTextures(1, &m_toneMap);
+  glGenTextures(1, &m_toneMap);
+  m_toneMap = ToneMap().GenerateTexture();
+
+  if (!displayTexture->ReturnContext()) {
+    std::cerr << "Error returning context to displayTexture." << std::endl;
+    return;
+  }
+
+  // Construct a vector with a single camera in it to display.
   std::vector< std::shared_ptr<CameraRenderInfo> > visibleCameras;
-  std::shared_ptr<CompositeCameras> composite;
+  visibleCameras.push_back(info);
+
+  // Make a range estimator that does the whole range.
+  std::shared_ptr<RangeEstimator> rangeEstimator = std::make_shared<RangeEstimatorFixed>();
+
+  // Configure an event (empty) structure to handle callbacks for the display windows.
+  std::shared_ptr<EventHandlers> handlers = std::make_shared<EventHandlers>();
+
+  // Create a PoseAdjuster that does not adjust based on helicopter motion and disables latency compensation.
+  PoseAdjusterCoordinates poseAdjusterCoordinates = INITIAL_ORIENTATION;
+  std::shared_ptr<PoseAdjuster> poseAdjuster = std::make_shared<PoseAdjuster>(2000, poseAdjusterCoordinates, true);
+
+  // Construct a composite object to render the visible cameras.
+  std::shared_ptr<CompositeCameras> composite = std::make_shared<CompositeCameras>(
+    visibleCameras, m_toneMap, poseAdjuster, Time(1 / 60.0),
+    0,
+    Time(0, 1000000 / 60.0), nullptr,
+    rangeEstimator);
+
+  // Construct a DisplayWindow to show the camera data.
+  std::string name = "Camera " + cameraID.toStdString();
+  m_display = std::make_shared<DisplayWindow>(name, composite, m_client, 0, 0, 0,
+    60, 2500,
+    1280, 1024, 42);
 
   /// @todo
 }

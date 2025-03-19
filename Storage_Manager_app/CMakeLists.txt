@@ -29,14 +29,35 @@ add_executable(Storage_Manager ${SOURCES} ${HEADERS} ${UI_HEADERS})
 
 # Link the Qt5 libraries to the target
 target_link_libraries(Storage_Manager PRIVATE Qt5::Core Qt5::Widgets Qt5::Gui Render_Module ASDP_Core_API::ASDP_Core_API)
-target_include_directories(Storage_Manager PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_include_directories(Storage_Manager PRIVATE
+  "${CMAKE_CURRENT_BINARY_DIR}"
+  "${CMAKE_CURRENT_SOURCE_DIR}"
+)
 
 # Post-build step to run windeployqt
 if(WIN32)
+  add_custom_command(TARGET Storage_Manager POST_BUILD
+      COMMAND ${Qt5_DIR}/../../../bin/windeployqt.exe $<TARGET_FILE:Storage_Manager>
+      COMMENT "Running windeployqt to deploy Qt DLLs"
+  )
+
+  # Assuming GLEW::glew is the imported target from find_package(GLEW REQUIRED)
+  # Use that to find all of the glew32.dll files in neighboring directories and then pick the one
+  # that has "x64" in the path.
+  get_target_property(GLEW_INCLUDE_DIRS GLEW::glew INTERFACE_INCLUDE_DIRECTORIES)
+  file(GLOB_RECURSE GLEW_DLL "${GLEW_INCLUDE_DIRS}/../*glew32.dll")
+  find_element_with_substring(GLEW_DLL2 "${GLEW_DLL}" "x64")
+
+  if(GLEW_DLL2)
+    # Copy the GLEW DLL to the build directory after building the executable
     add_custom_command(TARGET Storage_Manager POST_BUILD
-        COMMAND ${Qt5_DIR}/../../../bin/windeployqt.exe $<TARGET_FILE:Storage_Manager>
-        COMMENT "Running windeployqt to deploy Qt DLLs"
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different ${GLEW_DLL2} $<TARGET_FILE_DIR:Storage_Manager>
+      COMMENT "Copying ${GLEW_DLL} to build directory"
     )
+  else()
+    message(WARNING "GLEW DLL not found. Make sure glew32.dll is in the same path as your GLEW include directory.")
+  endif()
+
 endif()
 
 # Install the executable
