@@ -19,6 +19,8 @@
 #include <map>
 #include <vector>
 #include <ASDP_Core_API.h>
+#include <ASDP_SpinFreeQueue.hpp>
+#include <Display.h>
 #include "ImageQueue.h"
 
 namespace asdp {
@@ -112,6 +114,27 @@ protected:
   /// @return Empty string on success, description of error on failure.
   std::string SendToGPU();
 };
+
+/// @brief Function to copy data to the GPU and store it into the appropriate textures.
+/// It must create and record an event after all operations are complete.  All operations must be
+/// done on the stream that is passed in and they must all be asynchronous.  There is a single
+/// thread to handle all cameras; it uses different CUDA streams to overlap the operations.
+/// To be able to map textures, it must have an OpenGL context whose objects are shared with the Display submodule that
+/// will be rendering the images.
+/// @param width The width of the image data.
+/// @param height The height of the image data.
+/// @param done A flag that is set to true when the program is done.
+/// @param inQueue The queue that we receive requests on.
+/// @param batchSize The number of lines to send to the GPU at once.  This is tuned to trade off latency
+/// for throughput, and it should be set to a value that is large enough to amortize the cost of sending
+/// data to the GPU, but small enough to keep latency low.  The value of 16 is a good starting point.
+/// @param sharedContext The Display object that shares the OpenGL context with the rendering Display.
+/// @param cameraTimings The timing information for each camera, fill in the texture time for the appropriate camera.
+void CopyDataToTextures(uint16_t width, uint16_t height,
+  std::atomic<bool>& done,
+  std::shared_ptr< SpinFreeQueue< std::shared_ptr<DataToSendToGPU> > > inQueue,
+  size_t batchSize, std::shared_ptr<Display> sharedContext,
+  std::vector<RenderTimingInfo::camera>& cameraTimings);
 
   } // namespace render
 } // namespace asdp

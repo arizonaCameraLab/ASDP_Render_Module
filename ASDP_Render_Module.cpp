@@ -215,163 +215,6 @@ asdp::Status ParseFrameEndMessage(Message &message, uint32_t &cameraID)
   return OKAY;
 }
 
-/// @brief Function to copy data to the GPU and store it into the appropriate textures.
-/// It must create and record an event after all operations are complete.  All operations must be
-/// done on the stream that is passed in and they must all be asynchronous.  There is a single
-/// thread to handle all cameras; it uses different CUDA streams to overlap the operations.
-/// To be able to map textures, it must have an OpenGL context whose objects are shared with the Display submodule that
-/// will be rendering the images.
-/// @param width The width of the image data.
-/// @param height The height of the image data.
-/// @param done A flag that is set to true when the program is done.
-/// @param inQueue The queue that we receive requests on.
-/// @param batchSize The number of lines to send to the GPU at once.  This is tuned to trade off latency
-/// for throughput, and it should be set to a value that is large enough to amortize the cost of sending
-/// data to the GPU, but small enough to keep latency low.  The value of 16 is a good starting point.
-/// @param sharedContext The Display object that shares the OpenGL context with the rendering Display.
-/// @param cameraTimings The timing information for each camera, fill in the texture time for the appropriate camera.
-static void CopyDataToTextures(uint16_t width, uint16_t height,
-  std::atomic<bool>& done,
-  std::shared_ptr< SpinFreeQueue< std::shared_ptr<DataToSendToGPU> > > inQueue,
-  size_t batchSize, std::shared_ptr<Display> sharedContext,
-  std::vector<RenderTimingInfo::camera>& cameraTimings)
-{
-  // Borrow the context from the shared context so that we can use it to map textures.
-  if (!sharedContext->BorrowContext()) {
-    std::cerr << "CopyDataToGPU: Error borrowing context from shared context." << std::endl;
-    done = true;
-    return;
-  }
-
-  // Vector of handlers to process the data for each camera.  There will be one handler for each camera,
-  // indexed by its ID.  We add to this vector as we get new cameras.
-  std::vector< std::shared_ptr<CPUDataToTextureHandler> > handlers;
-
-  // Vector of times for the current frame from each camera, indexed by camera ID.  We add to this vector
-  // as we get new cameras.
-  std::vector<asdp::Time> frameTimes;
-
-  auto lastPrint = std::chrono::steady_clock::now();
-
-  // Map from Texture ID to cudaGraphicsResource* for the texture data.  This is used by the CPUDataToTextureHandler
-  // objects to know which texture to use without having to repeatedly register and unregister it.
-  std::shared_ptr< std::map<GLuint, cudaGraphicsResource*> > texturesToCUDAMap =
-    std::make_shared< std::map<GLuint, cudaGraphicsResource*> >();
-
-  while (!done) {
-    // Once per second, print out the size of the input queue
-    if (std::chrono::duration<double>(std::chrono::steady_clock::now() - lastPrint).count() > 5.0) {
-      std::cout << "Input queue size: " << inQueue->size() << std::endl;
-      lastPrint = std::chrono::steady_clock::now();
-    }
-
-    std::shared_ptr<DataToSendToGPU> data;
-    // Time out after 10 milliseconds so that we can check the done flag frequently.
-    if (inQueue->dequeue(data, std::chrono::milliseconds(10))) {
-
-      // Parse all of the messages in the stream packet, handling each of them in turn.
-      for (auto &message : data->messages) {
-        switch (message.messageType) {
-        case FRAME_BEGIN:
-          {
-            // Construct the CPUDataToTextureHandler object to handle the data for this frame and store it in the vector
-            // of handlers.  This will be used to process the data as it comes in.  Make more handlers as needed.
-            if (message.cameraID >= handlers.size()) {
-              handlers.resize(message.cameraID + 1);
-            }
-            handlers[message.cameraID] = std::make_shared<CPUDataToTextureHandler>(texturesToCUDAMap, data,
-              message.width, message.height, static_cast<uint16_t>(batchSize), message.exposure, message.gain);
-            if (!handlers[message.cameraID]->GetStatus().empty()) {
-              std::cerr << "Error creating CPUDataToTextureHandler: " << handlers[message.cameraID]->GetStatus() << std::endl;
-              done = true;
-              return;
-            }
-
-            // Store the initial frame time for this camera.
-            if (message.cameraID >= frameTimes.size()) {
-              frameTimes.resize(message.cameraID + 1);
-            }
-            frameTimes[message.cameraID] = message.time;
-          }
-          break;
-
-        case FRAME_DATA:
-          // Asynchronously send data to the GPU buffer as we get enough data for a minimum block size. 
-          // We send the data to the GPU in chunks so that we amortize the per-send cost and reduce
-          // latency.  We send asynchronously to enable overlap between data copying and processing
-          // (which increases throughput).
-          {
-            // Handle the data
-            if (message.cameraID >= handlers.size()) {
-              std::cerr << "CopyDataToGPU: FRAME_DATA: Error: Camera ID " << message.cameraID << " not found." << std::endl;
-              done = true;
-              return;
-            }
-            if (handlers[message.cameraID] == nullptr) {
-              std::cerr << "CopyDataToGPU: FRAME_DATA: Warning: Camera ID " << message.cameraID << " frame data without begin." << std::endl;
-              break;
-            }
-            std::string ret = handlers[message.cameraID]->ProcessImageSubset(message.left, message.top, message.right, message.bottom);
-            if (!ret.empty()) {
-              std::cerr << "Error processing image subset: " << ret << std::endl;
-              done = true;
-              return;
-            }
-          }
-          break;
-
-        case FRAME_END:
-          // Run the kernel and enqueue the result.
-          {
-            // Set the center time for the image data, which is the average of the frame begin and end times.
-            if (message.cameraID >= frameTimes.size()) {
-              std::cerr << "CopyDataToGPU: FRAME_END: Error: Camera ID " << message.cameraID << " not found in frameTimes." << std::endl;
-              done = true;
-              return;
-            }
-            asdp::Time duration = message.time - frameTimes[message.cameraID];
-            float durationSeconds = duration.seconds + duration.microseconds / 1.0e6f;
-            float halfDurationSeconds = durationSeconds / 2;
-            asdp::Time centerTime = frameTimes[message.cameraID] + asdp::Time(halfDurationSeconds);
-            std::string ret = handlers[message.cameraID]->SetCenterTime(centerTime);
-            if (!ret.empty()) {
-              std::cerr << "Error setting center time: " << ret << std::endl;
-              done = true;
-              return;
-            }
-
-            // Done with this frame, so we reset the pointer to delete the handler, which will clean
-            // up and push the data to the texture before returning.
-            if (message.cameraID >= handlers.size()) {
-              std::cerr << "CopyDataToGPU: FRAME_END: Warning: Camera ID " << message.cameraID << " frame end without begin." << std::endl;
-              break;
-            }
-            handlers[message.cameraID].reset();
-            cameraTimings[message.cameraID - 1].textureTimes.push_back(std::chrono::steady_clock::now());
-          }
-          break;
-
-        default:
-          // Nothing to do for other message types.
-          break;
-        } // End of switch on message type.
-
-      } // End of message summary loop.
-    } // End of if we got a message from the queue.
-  } // End of while we are not done.
-
-  // Unregister all of our textures from CUDA.
-  for (auto &texture : *texturesToCUDAMap) {
-    cudaGraphicsUnregisterResource(texture.second);
-  }
-
-  // Return the context borrowed from the shared context so that we can use it to map textures.
-  if (!sharedContext->ReturnContext()) {
-    std::cerr << "CopyDataToGPU: Error return context to shared context." << std::endl;
-    done = true;
-    return;
-  }
-}
 
 /// @brief Thread for each camera that receives the data from the network and sends it to the GPU.
 /// @param receiveSocket The socket to receive the data on.
@@ -384,7 +227,7 @@ static void CopyDataToTextures(uint16_t width, uint16_t height,
 /// @param outQueue The queue to send the data to the GPU-feeding thread.
 /// @param frameBeginTimes Store the times for the begin frame message receipts.
 /// @param frameEndTimes Store the times for the end frame message receipts.
-static void ReceiveDataThread(ReceiverUDP& receiveSocket, size_t maxBytesPerPacket, std::atomic<bool>& done,
+void ReceiveDataThread(ReceiverUDP& receiveSocket, size_t maxBytesPerPacket, std::atomic<bool>& done,
   std::shared_ptr<PinnedBufferPool> cpuImageBuffers, std::shared_ptr<GPUBufferPool> gpuImageBuffers,
   std::shared_ptr<cudaStream_t> streamPtr,
   std::shared_ptr<asdp::render::ImageQueue> imageQueue,
@@ -616,7 +459,7 @@ static void ReceiveDataThread(ReceiverUDP& receiveSocket, size_t maxBytesPerPack
   outQueue.reset();
 }
 
-std::shared_ptr<Message> WaitForMessageType(std::shared_ptr<Receiver> receiver, MessageID type, float seconds)
+static std::shared_ptr<Message> WaitForMessageType(std::shared_ptr<Receiver> receiver, MessageID type, float seconds)
 {
   std::shared_ptr<Message> empty;   ///< We return this on failure.
   std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now();
@@ -655,7 +498,7 @@ std::shared_ptr<Message> WaitForMessageType(std::shared_ptr<Receiver> receiver, 
 }
 
 /// @param [out] replayDone Set to true if we are at the end of replay, set to false otherwise.
-Status HandleStreamPacket(std::shared_ptr<StreamPacket> packet, std::shared_ptr<ClockSynchronizer> clockSync,
+static Status HandleStreamPacket(std::shared_ptr<StreamPacket> packet, std::shared_ptr<ClockSynchronizer> clockSync,
   std::shared_ptr<PoseAdjuster> poseAdjuster, bool &replayDone, std::vector<std::shared_ptr<Display>> &displays,
   std::shared_ptr<Timer> timer, Time &pausedTime)
 {
@@ -882,7 +725,7 @@ static std::chrono::steady_clock::time_point LargestTimeLessThan(std::chrono::st
   return largest;
 }
 
-void usage(std::string name)
+static void usage(std::string name)
 {
   std::cerr << "Usage: " << name << " [options] <ip_address>" << std::endl;
   std::cerr << "  <ip_address>                        The IP address to listen for servers on." << std::endl;
@@ -1665,7 +1508,7 @@ int main(int argc, char** argv)
       dataQueues.push_back(std::make_shared< SpinFreeQueue< std::shared_ptr<DataToSendToGPU> > >());
     }
 
-    // Launch the threads to copy data to the GPU and to render the cameras, each having its own queue.
+    // Launch the threads to copy data to the GPU, each having its own queue.
     std::vector<std::thread> copyDataToGPUThread;
     for (size_t i = 0; i < NUM_TEXTURE_THREADS; i++) {
       copyDataToGPUThread.push_back(std::thread(CopyDataToTextures, cameras[0].width, cameras[0].height, std::ref(done),
