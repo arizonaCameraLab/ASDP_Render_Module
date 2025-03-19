@@ -132,7 +132,9 @@ target_include_directories(Render_Module PUBLIC
   "${CMAKE_CURRENT_SOURCE_DIR}/dependencies/glm"
 )
 target_include_directories(Render_Module PRIVATE
-  "${CMAKE_CURRENT_SOURCE_DIR}/dependencies/glm"
+    "${CMAKE_CURRENT_BINARY_DIR}"
+    "${CMAKE_CURRENT_SOURCE_DIR}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/dependencies/glm"
 )
 target_link_libraries(Render_Module PUBLIC
   ASDP_Core_API::ASDP_Core_API glfw GLEW::glew OpenGL::GL
@@ -150,7 +152,7 @@ if(OPENXR_FOUND)
       target_compile_definitions(Render_Module PRIVATE USE_OPENXR=1 XR_USE_PLATFORM_WAYLAND)
   endif()
   target_include_directories(Render_Module PRIVATE
-    "${CMAKE_CURRENT_SOURCE_DIR}/openxr-sdk-files"
+      "${CMAKE_CURRENT_SOURCE_DIR}/openxr-sdk-files"
   )
   target_link_libraries(Render_Module PRIVATE
     OpenXR::openxr_loader

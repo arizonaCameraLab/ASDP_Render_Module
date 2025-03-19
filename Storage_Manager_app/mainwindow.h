@@ -83,9 +83,6 @@ private:
   std::string m_streamInfo;
 
   // Variables and functions for displaying video from a camera.
-  std::shared_ptr<DisplayTexture> m_displayTexture;
-  std::vector< std::shared_ptr<CameraRenderInfo> > m_visibleCameras;
-  std::shared_ptr<CompositeCameras> m_composite;
   std::shared_ptr<Display> m_display;
 };
 

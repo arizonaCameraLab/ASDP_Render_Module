@@ -359,7 +359,7 @@ void MainWindow::PeriodicTask()
               ui->comboBoxDelete->addItem(QString::number(stream));
             }
           }
-      }
+        }
         break;
 
       default:
@@ -385,6 +385,13 @@ void MainWindow::PeriodicTask()
     }
 
   } // if (m_receiver)
+
+  // Delete the display if it is no longer valid.
+  if (m_display) {
+    if (m_display->GetStatus() != "") {
+      m_display.reset();
+    }
+  }
 }
 
 void MainWindow::StartRecording()
@@ -444,6 +451,10 @@ void MainWindow::DeleteStream(const QString& streamID)
 void MainWindow::ViewCamera(const QString& cameraID)
 {
   std::cout << "Viewing Camera: " << cameraID.toStdString() << std::endl;
+
+  std::shared_ptr<DisplayTexture> displayTexture;
+  std::vector< std::shared_ptr<CameraRenderInfo> > visibleCameras;
+  std::shared_ptr<CompositeCameras> composite;
 
   /// @todo
 }
