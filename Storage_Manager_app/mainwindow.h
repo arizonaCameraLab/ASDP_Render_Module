@@ -75,6 +75,7 @@ private:
 
   std::shared_ptr<CoreClient> m_client;
   std::shared_ptr<Receiver> m_receiver;
+  std::shared_ptr<Receiver> m_receiverCam;
 
   std::vector<FeatureID> m_features;
   std::vector<CameraInfo> m_cameras;

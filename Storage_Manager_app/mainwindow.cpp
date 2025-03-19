@@ -214,6 +214,14 @@ void MainWindow::SelectServer(const QString& coreURL)
     }
   }
 
+  // Create a UDP receiver for the camera.
+  m_receiverCam = std::make_shared<ReceiverUDP>(coreURL.toStdString());
+  if (m_receiverCam->GetConstructorStatus() != OKAY) {
+    std::cerr << "Error constructing ReceiverUDP: " << ErrorMessage(m_receiverCam->GetConstructorStatus()) << std::endl;
+    m_receiverCam.reset();
+    return;
+  }
+
   // Show the controls.
   emit ShowControls(true);
 
@@ -463,6 +471,14 @@ void MainWindow::ViewCamera(const QString& cameraID)
     return;
   }
 
+  size_t index = cameraID.toUInt() - 1;
+  if (index >= m_cameras.size()) {
+    std::cerr << "Invalid camera index: " << index << std::endl;
+    return;
+  }
+  uint16_t width = m_cameras[index].width;
+  uint16_t height = m_cameras[index].height;
+
   // Construct a DisplayTexture object to handle textures.  It will be the base object that all others will use
   // to share contexts.
   std::shared_ptr<DisplayTexture> displayTexture = std::make_shared<DisplayTexture>();
@@ -473,7 +489,7 @@ void MainWindow::ViewCamera(const QString& cameraID)
   std::shared_ptr<asdp::render::CameraRenderInfo> info =
     std::make_shared<CameraRenderInfo>(cameraID.toUShort(),
       std::array<double, 3>{0.0, 0.0, 0.0}, std::array<double, 3>{ 0.0, 0.0, 0.0 },
-      std::array<uint16_t, 2>{1280, 1024}, std::array<double, 2>{40.0, 32.5},
+      std::array<uint16_t, 2>{width, height}, std::array<double, 2>{40.0, 32.5},
       dist, vig, std::make_shared<asdp::render::ImageQueue>(), -1.0f);
 
   // Fill in three textures for this camera, all gray and at time zero.
@@ -483,9 +499,7 @@ void MainWindow::ViewCamera(const QString& cameraID)
     return;
   }
 
-  unsigned int width = info->m_resolutionPixels[0];
-  unsigned int height = info->m_resolutionPixels[1];
-  std::vector<uint16_t> image(width * height, 32767);
+  std::vector<uint16_t> image(size_t(width) * size_t(height), 32767);
 
   // Create the textures for the camera. Make two for each Composite to pull when it is looking
   // for the next image to render, one for the texture thread to write to, and one to lie fallow.
@@ -545,7 +559,7 @@ void MainWindow::ViewCamera(const QString& cameraID)
   std::string name = "Camera " + cameraID.toStdString();
   m_display = std::make_shared<DisplayWindow>(name, composite, m_client, 0, 0, 0,
     60, 2500,
-    1280, 1024, 42);
+    width, height, 41);
 
   /// @todo
 }
