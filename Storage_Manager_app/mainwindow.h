@@ -33,6 +33,15 @@ public slots:
     /// @brief Slot for the periodic task that shows information.
     void PeriodicTask(); 
 
+    /// @brief Start recording a stream.
+    void StartRecording();
+
+    /// @brief Stop recording a stream.
+    void StopRecording();
+
+    /// @brief Start replaying the specified stream.
+    void StartReplay(const QString& streamID);
+
 signals:
     /// @brief Signal to show or hide list of servers.
     void ShowServers(bool show);
@@ -55,6 +64,7 @@ private:
   std::vector<FeatureID> m_features;
   std::vector<CameraInfo> m_cameras;
   std::vector<uint32_t> m_streams;
+  std::vector<uint32_t> m_lastStreams;
   std::string m_streamInfo;
 
   void ResetServer();

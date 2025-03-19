@@ -35,6 +35,7 @@ static std::vector<std::string> getIPAddresses()
 
 #ifdef _WIN32
   // Get the list of all network interfaces on the system
+  // Get the list of all network interfaces on the system
   ULONG bufferLength = 0;
   GetAdaptersInfo(NULL, &bufferLength);
 
@@ -224,7 +225,7 @@ void MainWindow::PeriodicTask()
     std::shared_ptr<StreamPacket> response;
     size_t offset = 0;
     Status status = m_receiver->ReceiveStreamPacket(0, response, offset);
-    if (status == OKAY) {
+    while (status == OKAY) {
       std::shared_ptr<Message> message;
       status = response->GetNextMessage(message);
       if (status != OKAY) {
@@ -292,9 +293,25 @@ void MainWindow::PeriodicTask()
             std::cerr << "Failed to get storing: " << ErrorMessage(status) << std::endl;
             return;
           }
-          coreInfo += "  Storing: " + std::to_string(storing) + "\n";
+          coreInfo += "  Recording: " + std::to_string(storing) + "\n";
 
-          emit SetInfo(QString::fromStdString(coreInfo + m_streamInfo));
+          uint8_t replaying;
+          status = state.GetReplaying(replaying);
+          if (status != OKAY) {
+            std::cerr << "Failed to get replaying: " << ErrorMessage(status) << std::endl;
+            return;
+          }
+          coreInfo += "  Replaying: " + std::to_string(replaying) + "\n";
+
+          uint8_t replayAtEnd;
+          status = state.GetReplayAtEnd(replayAtEnd);
+          if (status != OKAY) {
+            std::cerr << "Failed to get replay at end: " << ErrorMessage(status) << std::endl;
+            return;
+          }
+          coreInfo += "  Replay at end: " + std::to_string(replayAtEnd) + "\n";
+
+          emit SetInfo(QString::fromStdString(coreInfo + "\n" + m_streamInfo));
 
           // Store the available features.
           status = state.GetFeatures(m_features);
@@ -322,7 +339,15 @@ void MainWindow::PeriodicTask()
           for (const uint32_t& stream : m_streams) {
             m_streamInfo += "  " + std::to_string(stream) + "\n";
           }
-        }
+          if (m_streams != m_lastStreams) {
+            m_lastStreams = m_streams;
+            ui->comboBoxReplay->clear();
+            ui->comboBoxReplay->addItem("");
+            for (const uint32_t& stream : m_streams) {
+              ui->comboBoxReplay->addItem(QString::number(stream));
+            }
+          }
+      }
         break;
 
       default:
@@ -330,7 +355,9 @@ void MainWindow::PeriodicTask()
         {};
       } // switch based on type
 
-    } else if (status != TIMEOUT) {
+      status = m_receiver->ReceiveStreamPacket(0, response, offset);
+    }
+    if (status != TIMEOUT) {
       std::cerr << "Failed to receive stream packet: " << ErrorMessage(status) << std::endl;
     }
 
@@ -346,4 +373,45 @@ void MainWindow::PeriodicTask()
     }
 
   } // if (m_receiver)
+}
+
+void MainWindow::StartRecording()
+{
+  if (m_client) {
+    Status status = m_client->SendCommandPacket(CommandPacketStartRecording());
+    if (status != OKAY) {
+      std::cerr << "Failed to start recording: " << ErrorMessage(status) << std::endl;
+      return;
+    }
+  }
+}
+
+void MainWindow::StopRecording()
+{
+  if (m_client) {
+    Status status = m_client->SendCommandPacket(CommandPacketStopRecording());
+    if (status != OKAY) {
+      std::cerr << "Failed to stop recording: " << ErrorMessage(status) << std::endl;
+      return;
+    }
+  }
+}
+
+void MainWindow::StartReplay(const QString& streamID)
+{
+  if (m_client) {
+    if (streamID.isEmpty()) {
+      Status status = m_client->SendCommandPacket(CommandPacketStopReplay());
+      if (status != OKAY) {
+        std::cerr << "Failed to stop replay: " << ErrorMessage(status) << std::endl;
+        return;
+      }
+    } else {
+      Status status = m_client->SendCommandPacket(CommandPacketStartReplay(streamID.toUInt(), Time(1, 0)));
+      if (status != OKAY) {
+        std::cerr << "Failed to start replay: " << ErrorMessage(status) << std::endl;
+        return;
+      }
+    }
+  }
 }

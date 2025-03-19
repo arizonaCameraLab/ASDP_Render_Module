@@ -133,6 +133,57 @@
             <property name="frameShadow">
              <enum>QFrame::Raised</enum>
             </property>
+            <layout class="QVBoxLayout" name="verticalLayout_4">
+             <item>
+              <widget class="QPushButton" name="pushButtonStartRecording">
+               <property name="text">
+                <string>Start Recording</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QPushButton" name="pushButtonStopRecording">
+               <property name="text">
+                <string>Stop Recording</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QFrame" name="frame_3">
+               <property name="frameShape">
+                <enum>QFrame::StyledPanel</enum>
+               </property>
+               <property name="frameShadow">
+                <enum>QFrame::Raised</enum>
+               </property>
+               <layout class="QHBoxLayout" name="horizontalLayout_5">
+                <item>
+                 <widget class="QLabel" name="labelReplay">
+                  <property name="text">
+                   <string>Replay Stream:</string>
+                  </property>
+                 </widget>
+                </item>
+                <item>
+                 <widget class="QComboBox" name="comboBoxReplay"/>
+                </item>
+               </layout>
+              </widget>
+             </item>
+             <item>
+              <spacer name="verticalSpacer">
+               <property name="orientation">
+                <enum>Qt::Vertical</enum>
+               </property>
+               <property name="sizeHint" stdset="0">
+                <size>
+                 <width>20</width>
+                 <height>40</height>
+                </size>
+               </property>
+              </spacer>
+             </item>
+            </layout>
            </widget>
           </item>
           <item>
@@ -204,8 +255,8 @@
      <y>299</y>
     </hint>
     <hint type="destinationlabel">
-     <x>752</x>
-     <y>494</y>
+     <x>148</x>
+     <y>167</y>
     </hint>
    </hints>
   </connection>
@@ -232,8 +283,8 @@
    <slot>SelectServer(QString)</slot>
    <hints>
     <hint type="sourcelabel">
-     <x>758</x>
-     <y>299</y>
+     <x>1000</x>
+     <y>103</y>
     </hint>
     <hint type="destinationlabel">
      <x>511</x>
@@ -257,6 +308,54 @@
     </hint>
    </hints>
   </connection>
+  <connection>
+   <sender>pushButtonStartRecording</sender>
+   <signal>clicked()</signal>
+   <receiver>MainWindow</receiver>
+   <slot>StartRecording()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>116</x>
+     <y>223</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>193</x>
+     <y>596</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>pushButtonStopRecording</sender>
+   <signal>clicked()</signal>
+   <receiver>MainWindow</receiver>
+   <slot>StopRecording()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>78</x>
+     <y>264</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>344</x>
+     <y>594</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>comboBoxReplay</sender>
+   <signal>textActivated(QString)</signal>
+   <receiver>MainWindow</receiver>
+   <slot>StartReplay(QString)</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>200</x>
+     <y>306</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>557</x>
+     <y>596</y>
+    </hint>
+   </hints>
+  </connection>
  </connections>
  <slots>
   <signal>ShowServers(bool)</signal>
@@ -265,5 +364,8 @@
   <signal>SetInfo(QString)</signal>
   <slot>SelectNIC(QString)</slot>
   <slot>SelectServer(QString)</slot>
+  <slot>StartRecording()</slot>
+  <slot>StopRecording()</slot>
+  <slot>StartReplay(QString)</slot>
  </slots>
 </ui>
