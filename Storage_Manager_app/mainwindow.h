@@ -9,7 +9,9 @@
 #include <QMainWindow>
 #include <QTimer>
 #include <ASDP_Core_API.h>
+#include <Display.h>
 using namespace asdp;
+using namespace asdp::render;
 
 namespace Ui {
   class MainWindow;
@@ -45,6 +47,9 @@ public slots:
     /// @brief Delete the stream.
     void DeleteStream(const QString& streamID);
 
+    /// @brief View the specified camera.
+    void ViewCamera(const QString& cameraID);
+
 signals:
     /// @brief Signal to show or hide list of servers.
     void ShowServers(bool show);
@@ -61,19 +66,27 @@ signals:
 private:
   Ui::MainWindow* ui;
 
+  void ResetServer();
+  void ResetNIC();
+
+  // Timer for a periodic task that polls the server for messages and updates info.
+  std::shared_ptr<QTimer> m_timer;
+
   std::shared_ptr<CoreClient> m_client;
   std::shared_ptr<Receiver> m_receiver;
 
   std::vector<FeatureID> m_features;
   std::vector<CameraInfo> m_cameras;
+  std::vector<CameraInfo> m_lastCameras;
   std::vector<uint32_t> m_streams;
   std::vector<uint32_t> m_lastStreams;
   std::string m_streamInfo;
 
-  void ResetServer();
-  void ResetNIC();
-
-  std::shared_ptr<QTimer> m_timer; // Timer for a periodic task that polls the server for messages and updates info.
+  // Variables and functions for displaying video from a camera.
+  std::shared_ptr<DisplayTexture> m_displayTexture;
+  std::vector< std::shared_ptr<CameraRenderInfo> > m_visibleCameras;
+  std::shared_ptr<CompositeCameras> m_composite;
+  std::shared_ptr<Display> m_display;
 };
 
 #endif // MAINWINDOW_H

@@ -24,7 +24,7 @@
 #include "ui_mainwindow.h"  // Include the generated header
 
 // Define the version number
-const QString VERSION_NUMBER = "1.0.0";
+const QString VERSION_NUMBER = "0.9.0";
 
 static std::vector<std::string> getIPAddresses()
 {
@@ -272,6 +272,14 @@ void MainWindow::PeriodicTask()
             return;
           }
           coreInfo += "  Cameras: " + std::to_string(m_cameras.size()) + "\n";
+          if (m_cameras != m_lastCameras) {
+            m_lastCameras = m_cameras;
+            ui->comboBoxCamera->clear();
+            ui->comboBoxCamera->addItem("");
+            for (int i = 1; i <= m_cameras.size(); ++i) {
+              ui->comboBoxCamera->addItem(QString::number(i));
+            }
+          }
 
           uint64_t totalDiskSpace, remainingDiskSpace;
           status = state.GetTotalDiskSpace(totalDiskSpace);
@@ -431,4 +439,11 @@ void MainWindow::DeleteStream(const QString& streamID)
       }
     }
   }
+}
+
+void MainWindow::ViewCamera(const QString& cameraID)
+{
+  std::cout << "Viewing Camera: " << cameraID.toStdString() << std::endl;
+
+  /// @todo
 }

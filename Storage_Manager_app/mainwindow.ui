@@ -171,6 +171,41 @@
               </widget>
              </item>
              <item>
+              <widget class="QFrame" name="frame_5">
+               <property name="frameShape">
+                <enum>QFrame::StyledPanel</enum>
+               </property>
+               <property name="frameShadow">
+                <enum>QFrame::Raised</enum>
+               </property>
+               <layout class="QHBoxLayout" name="horizontalLayout_7">
+                <item>
+                 <widget class="QLabel" name="labelCamera">
+                  <property name="text">
+                   <string>View camera:</string>
+                  </property>
+                 </widget>
+                </item>
+                <item>
+                 <widget class="QComboBox" name="comboBoxCamera"/>
+                </item>
+               </layout>
+              </widget>
+             </item>
+             <item>
+              <spacer name="verticalSpacer">
+               <property name="orientation">
+                <enum>Qt::Vertical</enum>
+               </property>
+               <property name="sizeHint" stdset="0">
+                <size>
+                 <width>20</width>
+                 <height>40</height>
+                </size>
+               </property>
+              </spacer>
+             </item>
+             <item>
               <widget class="QFrame" name="frame_4">
                <property name="frameShape">
                 <enum>QFrame::StyledPanel</enum>
@@ -191,19 +226,6 @@
                 </item>
                </layout>
               </widget>
-             </item>
-             <item>
-              <spacer name="verticalSpacer">
-               <property name="orientation">
-                <enum>Qt::Vertical</enum>
-               </property>
-               <property name="sizeHint" stdset="0">
-                <size>
-                 <width>20</width>
-                 <height>40</height>
-                </size>
-               </property>
-              </spacer>
              </item>
             </layout>
            </widget>
@@ -385,12 +407,28 @@
    <slot>DeleteStream(QString)</slot>
    <hints>
     <hint type="sourcelabel">
-     <x>191</x>
-     <y>357</y>
+     <x>247</x>
+     <y>539</y>
     </hint>
     <hint type="destinationlabel">
      <x>734</x>
      <y>596</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>comboBoxCamera</sender>
+   <signal>textActivated(QString)</signal>
+   <receiver>MainWindow</receiver>
+   <slot>ViewCamera(QString)</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>213</x>
+     <y>361</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>938</x>
+     <y>595</y>
     </hint>
    </hints>
   </connection>
@@ -406,5 +444,6 @@
   <slot>StopRecording()</slot>
   <slot>StartReplay(QString)</slot>
   <slot>DeleteStream(QString)</slot>
+  <slot>ViewCamera(QString)</slot>
  </slots>
 </ui>
