@@ -52,6 +52,11 @@ private:
   std::shared_ptr<CoreClient> m_client;
   std::shared_ptr<Receiver> m_receiver;
 
+  std::vector<FeatureID> m_features;
+  std::vector<CameraInfo> m_cameras;
+  std::vector<uint32_t> m_streams;
+  std::string m_streamInfo;
+
   void ResetServer();
   void ResetNIC();
 

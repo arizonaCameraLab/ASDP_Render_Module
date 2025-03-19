@@ -19,6 +19,7 @@
 #include <iostream>
 #include <vector>
 #include <string>
+#include <algorithm>
 #include "mainwindow.h"
 #include "ui_mainwindow.h"  // Include the generated header
 
@@ -168,6 +169,9 @@ void MainWindow::ResetNIC()
 void MainWindow::ResetServer()
 {
   m_receiver.reset();
+  m_features.clear();
+  m_cameras.clear();
+  m_streams.clear();
   emit ShowControls(false);
   emit SetSerialNumber("");
   m_timer->stop();
@@ -233,46 +237,113 @@ void MainWindow::PeriodicTask()
         std::cerr << "Failed to get message type: " << ErrorMessage(status) << std::endl;
         return;
       }
-      if (type == STATE) {
-        // Cast the message into a state message and then extract the information and send it.
-        MessageState state(*message);
-        if (state.GetConstructorStatus() != OKAY) {
-          std::cerr << "Failed to construct state message: " << ErrorMessage(state.GetConstructorStatus()) << std::endl;
-          return;
+      switch (type) {
+      case STATE:
+        {
+          // Cast the message into a state message and then extract the information and print it.
+          MessageState state(*message);
+          if (state.GetConstructorStatus() != OKAY) {
+            std::cerr << "Failed to construct state message: " << ErrorMessage(state.GetConstructorStatus()) << std::endl;
+            return;
+          }
+
+          std::string coreInfo = "State:\n";
+
+          uint8_t recordOnReset;
+          status = state.GetRecordOnReset(recordOnReset);
+          if (status != OKAY) {
+            std::cerr << "Failed to get record on reset: " << ErrorMessage(status) << std::endl;
+            return;
+          }
+          coreInfo += "  Record on Reset: " + std::to_string(recordOnReset) + "\n";
+
+          uint8_t streaming;
+          status = state.GetCamerasStreaming(streaming);
+          if (status != OKAY) {
+            std::cerr << "Failed to get cameras streaming: " << ErrorMessage(status) << std::endl;
+            return;
+          }
+          coreInfo += "  Cameras Streaming: " + std::to_string(streaming) + "\n";
+
+          status = state.GetCameras(m_cameras);
+          if (status != OKAY) {
+            std::cerr << "Failed to get cameras: " << ErrorMessage(status) << std::endl;
+            return;
+          }
+          coreInfo += "  Cameras: " + std::to_string(m_cameras.size()) + "\n";
+
+          uint64_t totalDiskSpace, remainingDiskSpace;
+          status = state.GetTotalDiskSpace(totalDiskSpace);
+          if (status != OKAY) {
+            std::cerr << "Failed to get total disk space: " << ErrorMessage(status) << std::endl;
+            return;
+          }
+          status = state.GetRemainingDiskSpace(remainingDiskSpace);
+          if (status != OKAY) {
+            std::cerr << "Failed to get remaining disk space: " << ErrorMessage(status) << std::endl;
+            return;
+          }
+          coreInfo += "  Disk Space: " + std::to_string(totalDiskSpace / 1000000000) + "GB total, "
+            + std::to_string(remainingDiskSpace / 1000000000) + "GB remaining\n";
+
+          uint8_t storing;
+          status = state.GetStoring(storing);
+          if (status != OKAY) {
+            std::cerr << "Failed to get storing: " << ErrorMessage(status) << std::endl;
+            return;
+          }
+          coreInfo += "  Storing: " + std::to_string(storing) + "\n";
+
+          emit SetInfo(QString::fromStdString(coreInfo + m_streamInfo));
+
+          // Store the available features.
+          status = state.GetFeatures(m_features);
+          if (status != OKAY) {
+            std::cerr << "Failed to get features: " << ErrorMessage(status) << std::endl;
+            return;
+          }
         }
+        break;
 
-        std::string coreInfo = "State:\n";
-
-        uint8_t recordOnReset;
-        status = state.GetRecordOnReset(recordOnReset);
-        if (status != OKAY) {
-          std::cerr << "Failed to get record on reset: " << ErrorMessage(status) << std::endl;
-          return;
+      case STORED_STREAMS:
+        {
+          // Cast the message into a stored streams message and then extract the information and print it.
+          MessageStoredStreamList storedStreams(*message);
+          if (storedStreams.GetConstructorStatus() != OKAY) {
+            std::cerr << "Failed to construct stored streams message: " << ErrorMessage(storedStreams.GetConstructorStatus()) << std::endl;
+            return;
+          }
+          status = storedStreams.GetIDs(m_streams);
+          if (status != OKAY) {
+            std::cerr << "Failed to get stored stream IDs: " << ErrorMessage(status) << std::endl;
+            return;
+          }
+          m_streamInfo = "Streams:\n";
+          for (const uint32_t& stream : m_streams) {
+            m_streamInfo += "  " + std::to_string(stream) + "\n";
+          }
         }
-        coreInfo += "  Record on Reset: " + std::to_string(recordOnReset) + "\n";
+        break;
 
-        uint8_t storing;
-        status = state.GetStoring(storing);
-        if (status != OKAY) {
-          std::cerr << "Failed to get storing: " << ErrorMessage(status) << std::endl;
-          return;
-        }
-        coreInfo += "  Storing: " + std::to_string(storing) + "\n";
+      default:
+        // Ignore other message types.
+        {};
+      } // switch based on type
 
-        uint8_t streaming;
-        status = state.GetCamerasStreaming(streaming);
-        if (status != OKAY) {
-          std::cerr << "Failed to get cameras streaming: " << ErrorMessage(status) << std::endl;
-          return;
-        }
-        coreInfo += "  Cameras Streaming: " + std::to_string(streaming) + "\n";
-
-        /// @todo
-
-        emit SetInfo(QString::fromStdString(coreInfo));
-      }
     } else if (status != TIMEOUT) {
       std::cerr << "Failed to receive stream packet: " << ErrorMessage(status) << std::endl;
     }
-  }
+
+    // Request a list of stored streams if the storage API is available and we have a client.
+    if (std::find(m_features.begin(), m_features.end(), STORAGE_API_AVAILABLE) != m_features.end()) {\
+      if (m_client) {
+        status = m_client->SendCommandPacket(CommandPacketListStoredStreams());
+        if (status != OKAY) {
+          std::cerr << "Failed to list streams: " << ErrorMessage(status) << std::endl;
+          return;
+        }
+      }
+    }
+
+  } // if (m_receiver)
 }
