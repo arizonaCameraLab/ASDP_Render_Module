@@ -134,12 +134,12 @@ protected:
 /// data to the GPU, but small enough to keep latency low.  The value of 16 is a good starting point.
 /// @param sharedContext The Display object that shares the OpenGL context with the rendering Display.
 /// @param cameraTimings The timing information for each camera, fill in the texture time for the appropriate camera.
-/// The default does not fill in camera timings because the vector is empty.
+/// This does not fill in camera timings if the vector is empty.
 void CopyDataToTextures(uint16_t width, uint16_t height,
   std::atomic<bool>& done,
   std::shared_ptr< SpinFreeQueue< std::shared_ptr<DataToSendToGPU> > > inQueue,
   size_t batchSize, std::shared_ptr<Display> sharedContext,
-  std::vector<RenderTimingInfo::camera>& cameraTimings = std::vector<RenderTimingInfo::camera>());
+  std::vector<RenderTimingInfo::camera>& cameraTimings);
 
 /// @brief Thread for each camera that receives the data from the network and sends it to the GPU.
 /// @param receiveSocket The socket to receive the data on.
@@ -150,17 +150,17 @@ void CopyDataToTextures(uint16_t width, uint16_t height,
 /// @param streamPtr The stream to use for copy and kernel calls.
 /// @param imageQueue The image queue to store the textures in.
 /// @param outQueue The queue to send the data to the GPU-feeding thread.
-/// @param frameBeginTimes Store the times for the begin frame message receipts. Default is nullptr
-/// that does not record them.
-/// @param frameEndTimes Store the times for the end frame message receipts. Default is nullptr
-/// that does not record them.
+/// @param frameBeginTimes Store the times for the begin frame message receipts. nullptr
+/// does not record them.
+/// @param frameEndTimes Store the times for the end frame message receipts. nullptr
+/// does not record them.
 void ReceiveDataThread(ReceiverUDP& receiveSocket, size_t maxBytesPerPacket, std::atomic<bool>& done,
   std::shared_ptr<PinnedBufferPool> cpuImageBuffers, std::shared_ptr<GPUBufferPool> gpuImageBuffers,
   std::shared_ptr<cudaStream_t> streamPtr,
   std::shared_ptr<asdp::render::ImageQueue> imageQueue,
   std::shared_ptr< SpinFreeQueue< std::shared_ptr<DataToSendToGPU> > > outQueue,
-  std::vector<std::chrono::steady_clock::time_point>* frameBeginTimes = nullptr,
-  std::vector<std::chrono::steady_clock::time_point>* frameEndTimes = nullptr);
+  std::vector<std::chrono::steady_clock::time_point>* frameBeginTimes,
+  std::vector<std::chrono::steady_clock::time_point>* frameEndTimes);
 
   } // namespace render
 } // namespace asdp
