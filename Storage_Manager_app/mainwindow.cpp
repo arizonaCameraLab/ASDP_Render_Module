@@ -228,35 +228,36 @@ void MainWindow::ResetStreaming()
 void MainWindow::SelectServer(const QString& coreURL)
 {
   ResetServer();
+  if (coreURL.isEmpty()) {
+    return;
+  }
 
   // Implement the logic for selecting the core here
   std::cout << "Selected Core: " << coreURL.toStdString() << std::endl;
 
-  if (!coreURL.isEmpty()) {
-    // Connect to the server.
-    std::cout << "Connecting to " << coreURL.toStdString() << std::endl;
-    uint16_t major, minor, patch;
-    Status status = m_client->ConnectToServer(coreURL.toStdString(), major, minor, patch);
-    if (status != OKAY) {
-      std::cerr << "Failed to connect to server: " << ErrorMessage(status) << std::endl;
-      return;
-    }
-    std::cout << "  Connected to server version " << major << "." << minor << "." << patch << std::endl;
-    uint32_t serialNumber;
-    status = m_client->GetServerSerialNumber(serialNumber);
-    if (status != OKAY) {
-      std::cerr << "Failed to get server serial number: " << ErrorMessage(status) << std::endl;
-      return;
-    }
-    std::cout << "  Connected to server with serial number " << serialNumber << std::endl;
-    SetSerialNumber(std::to_string(serialNumber).c_str());
+  // Connect to the server.
+  std::cout << "Connecting to " << coreURL.toStdString() << std::endl;
+  uint16_t major, minor, patch;
+  Status status = m_client->ConnectToServer(coreURL.toStdString(), major, minor, patch);
+  if (status != OKAY) {
+    std::cerr << "Failed to connect to server: " << ErrorMessage(status) << std::endl;
+    return;
+  }
+  std::cout << "  Connected to server version " << major << "." << minor << "." << patch << std::endl;
+  uint32_t serialNumber;
+  status = m_client->GetServerSerialNumber(serialNumber);
+  if (status != OKAY) {
+    std::cerr << "Failed to get server serial number: " << ErrorMessage(status) << std::endl;
+    return;
+  }
+  std::cout << "  Connected to server with serial number " << serialNumber << std::endl;
+  SetSerialNumber(std::to_string(serialNumber).c_str());
 
-    // Get the main stream receiver
-    status = m_client->GetMainStreamReceiver(m_receiver);
-    if (status != OKAY) {
-      std::cerr << "Failed to get main stream receiver: " << ErrorMessage(status) << std::endl;
-      return;
-    }
+  // Get the main stream receiver
+  status = m_client->GetMainStreamReceiver(m_receiver);
+  if (status != OKAY) {
+    std::cerr << "Failed to get main stream receiver: " << ErrorMessage(status) << std::endl;
+    return;
   }
 
   // Create a UDP receiver for the camera.
@@ -521,7 +522,8 @@ void MainWindow::DeleteStream(const QString& streamID)
 {
   if (m_client) {
     if (!streamID.isEmpty()) {
-      Status status = m_client->SendCommandPacket(CommandPacketSetStartUpRecordingState(1));
+      std::cout << "Deleting stream: " << streamID.toStdString() << std::endl;
+      Status status = m_client->SendCommandPacket(CommandPacketEraseStoredStream(streamID.toUInt()));
       if (status != OKAY) {
         std::cerr << "Failed to delete stream: " << ErrorMessage(status) << std::endl;
         return;
