@@ -89,6 +89,7 @@ private:
   std::shared_ptr<Receiver> m_receiver;
   std::shared_ptr<ReceiverUDP> m_receiverCam;
   std::string m_hostname;
+  bool m_triggersConfigured = false;
 
   std::vector<FeatureID> m_features;
   std::vector<CameraInfo> m_cameras;

@@ -270,6 +270,9 @@ void MainWindow::SelectServer(const QString& coreURL)
   // Show the controls.
   emit ShowControls(true);
 
+  // Mark triggers not configured.
+  m_triggersConfigured = false;
+
   // Start the update timer, firing 10x/second.
   m_timer->start(100);  // 100 milliseconds
 }
@@ -381,6 +384,29 @@ void MainWindow::PeriodicTask()
           if (status != OKAY) {
             std::cerr << "Failed to get features: " << ErrorMessage(status) << std::endl;
             return;
+          }
+
+          // If the triggers have not been configured, then set up the triggers to run the cameras
+          // at their maximum frame rate.
+          if (!m_triggersConfigured && m_cameras.size() > 0) {
+            double cameraFPS = 1.0 / m_cameras[0].minTriggerPeriod;
+
+            for (size_t i = 0; i < m_cameras.size(); i++) {
+              CameraInfo& camera = m_cameras[i];
+              TriggerInfo ti;
+              ti.ID = camera.trigger;
+              ti.mode = 3;
+              ti.period = 1 / cameraFPS;
+              ti.offset = 0;
+              ti.trackingFactor = 0.005;
+              ti.externalID = camera.trigger;
+              status = m_client->SendCommandPacket(CommandPacketConfigureTrigger(ti));
+              if (status != OKAY) {
+                std::cerr << "Failed to configure trigger: " << ErrorMessage(status) << std::endl;
+              }
+              std::cout << "  Configured trigger for camera " << i+1 << " with period " << ti.period << " seconds" << std::endl;
+            }
+            m_triggersConfigured = true;
           }
         }
         break;
