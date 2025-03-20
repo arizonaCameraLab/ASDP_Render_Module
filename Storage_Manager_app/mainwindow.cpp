@@ -218,6 +218,9 @@ void MainWindow::ResetStreaming()
     m_displayTexture->BorrowContext();
     m_visibleCameras.clear();
     glDeleteTextures(1, &m_toneMap);
+    m_display.reset();
+    ui->comboBoxCamera->setCurrentIndex(0);
+    std::cout << "Not viewing camera." << std::endl;
     m_displayTexture->ReturnContext();
   }
 }
@@ -442,9 +445,6 @@ void MainWindow::PeriodicTask()
   if (m_display) {
     if (m_display->GetStatus() != "") {
       ResetStreaming();
-      m_display.reset();
-      ui->comboBoxCamera->setCurrentIndex(0);
-      std::cout << "Not viewing camera." << std::endl;
     }
   }
 }
