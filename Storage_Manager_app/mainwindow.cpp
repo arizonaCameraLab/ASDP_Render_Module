@@ -212,6 +212,14 @@ void MainWindow::ResetStreaming()
     m_streamingCameraID = 0;
     m_endpoint = StreamEndpoint();
   }
+
+  // Grab the context and then clear the visible cameras and delete the tone map.
+  if (m_displayTexture) {
+    m_displayTexture->BorrowContext();
+    m_visibleCameras.clear();
+    glDeleteTextures(1, &m_toneMap);
+    m_displayTexture->ReturnContext();
+  }
 }
 
 void MainWindow::SelectServer(const QString& coreURL)
@@ -539,7 +547,7 @@ void MainWindow::ViewCamera(const QString& cameraID)
 
   // Construct a DisplayTexture object to handle textures.  It will be the base object that all others will use
   // to share contexts.
-  std::shared_ptr<DisplayTexture> displayTexture = std::make_shared<DisplayTexture>();
+  m_displayTexture = std::make_shared<DisplayTexture>();
 
   // Construct information about the camera to be displayed. Add it as the only entry in the vector.
   std::shared_ptr<Distortion> dist(new DistortionNone);
@@ -552,7 +560,7 @@ void MainWindow::ViewCamera(const QString& cameraID)
 
   // Fill in three textures for this camera, all gray and at time zero.
   // We must borrow the context from the displayTexture so that we can create the textures.
-  if (!displayTexture->BorrowContext()) {
+  if (!m_displayTexture->BorrowContext()) {
     std::cerr << "Error borrowing context from displayTexture." << std::endl;
     return;
   }
@@ -587,14 +595,13 @@ void MainWindow::ViewCamera(const QString& cameraID)
   glGenTextures(1, &m_toneMap);
   m_toneMap = ToneMap().GenerateTexture();
 
-  if (!displayTexture->ReturnContext()) {
+  if (!m_displayTexture->ReturnContext()) {
     std::cerr << "Error returning context to displayTexture." << std::endl;
     return;
   }
 
   // Construct a vector with a single camera in it to display.
-  std::vector< std::shared_ptr<CameraRenderInfo> > visibleCameras;
-  visibleCameras.push_back(info);
+  m_visibleCameras.push_back(info);
 
   // Make a range estimator that does the whole range.
   std::shared_ptr<RangeEstimator> rangeEstimator = std::make_shared<RangeEstimatorFixed>();
@@ -608,7 +615,7 @@ void MainWindow::ViewCamera(const QString& cameraID)
 
   // Construct a composite object to render the visible cameras.
   std::shared_ptr<CompositeCameras> composite = std::make_shared<CompositeCameras>(
-    visibleCameras, m_toneMap, poseAdjuster, Time(1 / 60.0),
+    m_visibleCameras, m_toneMap, poseAdjuster, Time(1 / 60.0),
     0,
     Time(0, 1000000 / 60.0), nullptr,
     rangeEstimator);
@@ -617,7 +624,7 @@ void MainWindow::ViewCamera(const QString& cameraID)
   std::string name = "Camera " + cameraID.toStdString();
   m_display = std::make_shared<DisplayWindow>(name, composite, m_client, 0, 0, 0,
     60, 2500,
-    width, height, 40.0, "", displayTexture.get());
+    width, height, 40.0, "", m_displayTexture.get());
 
   // Construct shared pointers to the data structures that we'll need to do rendering, with
   // custom destructors that will clean up when the shared_ptr is destroyed.
@@ -636,9 +643,9 @@ void MainWindow::ViewCamera(const QString& cameraID)
   // Launch the threads to receive and then copy data to the GPU.
   m_doneStreaming = false;
   m_copyThread = std::make_shared<std::thread>(CopyDataToTextures, width, height, std::ref(m_doneStreaming),
-    dataQueue, size_t(height), displayTexture, std::ref(m_emptyTimingInfo));
+    dataQueue, size_t(height), m_displayTexture, std::ref(m_emptyTimingInfo));
   m_receiveThread = std::make_shared<std::thread>(std::thread(ReceiveDataThread, std::ref(*m_receiverCam), 9000,
-    std::ref(m_doneStreaming), m_cpuPinnedImageBuffer, m_gpuImageBuffer, m_stream, visibleCameras.back()->m_imageQueue,
+    std::ref(m_doneStreaming), m_cpuPinnedImageBuffer, m_gpuImageBuffer, m_stream, m_visibleCameras.back()->m_imageQueue,
     dataQueue, nullptr, nullptr));
 
   // Request the camera to start sending data, showing every 10th frame.

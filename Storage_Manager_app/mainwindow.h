@@ -99,6 +99,8 @@ private:
 
   // Variables and functions for displaying video from a camera.
   std::shared_ptr<Display> m_display;
+  std::shared_ptr<DisplayTexture> m_displayTexture;
+  std::vector< std::shared_ptr<CameraRenderInfo> > m_visibleCameras;
   GLuint m_toneMap = 0;
   std::atomic<bool> m_doneStreaming{ false };
   std::shared_ptr<PinnedBufferPool> m_cpuPinnedImageBuffer;
