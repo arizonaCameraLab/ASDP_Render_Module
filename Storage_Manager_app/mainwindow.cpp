@@ -35,10 +35,10 @@ static std::vector<std::string> getIPAddresses()
 {
   std::vector<std::string> ipAddresses;
 
-  // Add Localhost.
+#ifdef _WIN32
+  // Add Localhost, which does not show up on the list on Windows.
   ipAddresses.push_back("localhost");
 
-#ifdef _WIN32
   // Get the list of all network interfaces on the system
   // Get the list of all network interfaces on the system
   ULONG bufferLength = 0;
@@ -76,7 +76,7 @@ static std::vector<std::string> getIPAddresses()
       char addressBuffer[INET_ADDRSTRLEN];
       inet_ntop(AF_INET, tmpAddrPtr, addressBuffer, INET_ADDRSTRLEN);
       // Skip empty IP addresses
-      if (ipAddr->IpAddress.String[0] != '0') {
+      if (addressBuffer[0] != '0') {
         ipAddresses.push_back(addressBuffer);
       }
     }
