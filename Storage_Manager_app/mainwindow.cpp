@@ -29,7 +29,7 @@
 #include <CPUDataToTextureHandler.h>
 
 // Define the version number
-const QString VERSION_NUMBER = "0.9.0";
+const QString VERSION_NUMBER = "1.0.0";
 
 static std::vector<std::string> getIPAddresses()
 {
@@ -182,6 +182,7 @@ void MainWindow::ResetNIC()
 
 void MainWindow::ResetServer()
 {
+  ResetStreaming();
   m_receiver.reset();
   m_features.clear();
   m_cameras.clear();
@@ -189,6 +190,28 @@ void MainWindow::ResetServer()
   emit ShowControls(false);
   emit SetSerialNumber("");
   m_timer->stop();
+}
+
+void MainWindow::ResetStreaming()
+{
+  // Stop any running threads.
+  m_doneStreaming = true;
+  if (m_copyThread) {
+    m_copyThread->join();
+    m_copyThread.reset();
+  }
+  if (m_receiveThread) {
+    m_receiveThread->join();
+    m_receiveThread.reset();
+  }
+  m_doneStreaming = false;
+
+  // Request stop streaming on a camera if we have an endpoint.
+  if (m_client && m_streamingCameraID) {
+    m_client->SendCommandPacket(CommandPacketCancelSubregion(m_streamingCameraID, m_endpoint));
+    m_streamingCameraID = 0;
+    m_endpoint = StreamEndpoint();
+  }
 }
 
 void MainWindow::SelectServer(const QString& coreURL)
@@ -407,9 +430,10 @@ void MainWindow::PeriodicTask()
 
   } // if (m_receiver)
 
-  // Delete the display if it is no longer valid.
+  // Stop streaming and delete the display if it is no longer valid.
   if (m_display) {
     if (m_display->GetStatus() != "") {
+      ResetStreaming();
       m_display.reset();
       ui->comboBoxCamera->setCurrentIndex(0);
       std::cout << "Not viewing camera." << std::endl;
@@ -475,7 +499,8 @@ void MainWindow::ViewCamera(const QString& cameraID)
 {
   std::cout << "Viewing Camera: " << cameraID.toStdString() << std::endl;
 
-  // Remove any existing display. We can only have one display at a time.
+  // Remove any existing streaming and display. We can only have one display at a time.
+  ResetStreaming();
   m_display.reset();
 
   if (!m_client || cameraID.isEmpty()) {
@@ -570,7 +595,7 @@ void MainWindow::ViewCamera(const QString& cameraID)
   std::string name = "Camera " + cameraID.toStdString();
   m_display = std::make_shared<DisplayWindow>(name, composite, m_client, 0, 0, 0,
     60, 2500,
-    width, height, 41, "", displayTexture.get());
+    width, height, 40.0, "", displayTexture.get());
 
   // Construct shared pointers to the data structures that we'll need to do rendering, with
   // custom destructors that will clean up when the shared_ptr is destroyed.
@@ -586,44 +611,33 @@ void MainWindow::ViewCamera(const QString& cameraID)
   std::shared_ptr< SpinFreeQueue < std::shared_ptr<DataToSendToGPU> > > dataQueue =
     std::make_shared< SpinFreeQueue< std::shared_ptr<DataToSendToGPU> > >();
 
-  // Stop any prior threads.
-  m_done = true;
-  if (m_copyThread) {
-    m_copyThread->join();
-    m_copyThread.reset();
-  }
-  if (m_receiveThread) {
-    m_receiveThread->join();
-    m_receiveThread.reset();
-  }
-
   // Launch the threads to receive and then copy data to the GPU.
-  m_done = false;
-  m_copyThread = std::make_shared<std::thread>(CopyDataToTextures, width, height, std::ref(m_done),
+  m_doneStreaming = false;
+  m_copyThread = std::make_shared<std::thread>(CopyDataToTextures, width, height, std::ref(m_doneStreaming),
     dataQueue, size_t(height), displayTexture, std::ref(m_emptyTimingInfo));
   m_receiveThread = std::make_shared<std::thread>(std::thread(ReceiveDataThread, std::ref(*m_receiverCam), 9000,
-    std::ref(m_done), m_cpuPinnedImageBuffer, m_gpuImageBuffer, m_stream, visibleCameras.back()->m_imageQueue,
+    std::ref(m_doneStreaming), m_cpuPinnedImageBuffer, m_gpuImageBuffer, m_stream, visibleCameras.back()->m_imageQueue,
     dataQueue, nullptr, nullptr));
 
-  // Request the camera to start sending data, skipping every 30 frames.
+  // Request the camera to start sending data, showing every 10th frame.
   if (m_client && m_receiverCam) {
     uint16_t port;
     m_receiverCam->GetPort(port);
-    StreamEndpoint endpoint(m_hostname, port);
+    m_endpoint = StreamEndpoint(m_hostname, port);
+    m_streamingCameraID = cameraID.toUInt();
     SubregionDescription region;
-    region.cameraID = cameraID.toUInt();
-    region.skipFrames = 29;
+    region.cameraID = m_streamingCameraID;
+    region.skipFrames = 9;
     region.startTimeSeconds = 0;
     region.startTimeMicroseconds = 0;
     region.left = 0;
     region.top = 0;
     region.right = width - 1;
     region.bottom = height - 1;
-    Status status = m_client->SendCommandPacket(CommandPacketStreamSubregion(endpoint, region));
+    Status status = m_client->SendCommandPacket(CommandPacketStreamSubregion(m_endpoint, region));
     if (status != OKAY) {
       std::cerr << "Failed to start streaming: " << ErrorMessage(status) << std::endl;
       return;
     }
   }
-
 }

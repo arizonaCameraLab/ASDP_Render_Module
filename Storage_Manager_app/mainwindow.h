@@ -74,6 +74,7 @@ private:
 
   void ResetServer();
   void ResetNIC();
+  void ResetStreaming();
 
   // Timer for a periodic task that polls the server for messages and updates info.
   std::shared_ptr<QTimer> m_timer;
@@ -93,13 +94,15 @@ private:
   // Variables and functions for displaying video from a camera.
   std::shared_ptr<Display> m_display;
   GLuint m_toneMap = 0;
-  std::atomic<bool> m_done{ false };
+  std::atomic<bool> m_doneStreaming{ false };
   std::shared_ptr<PinnedBufferPool> m_cpuPinnedImageBuffer;
   std::shared_ptr<GPUBufferPool> m_gpuImageBuffer;
   std::shared_ptr<cudaStream_t> m_stream;
   std::shared_ptr<std::thread> m_copyThread;
   std::shared_ptr<std::thread> m_receiveThread;
   std::vector<RenderTimingInfo::camera> m_emptyTimingInfo;
+  StreamEndpoint m_endpoint;
+  uint32_t m_streamingCameraID = 0;
 };
 
 #endif // MAINWINDOW_H
