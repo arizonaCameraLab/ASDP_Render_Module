@@ -486,11 +486,33 @@ void MainWindow::DeleteStream(const QString& streamID)
 {
   if (m_client) {
     if (!streamID.isEmpty()) {
-      Status status = m_client->SendCommandPacket(CommandPacketEraseStoredStream(streamID.toUInt()));
+      Status status = m_client->SendCommandPacket(CommandPacketSetStartUpRecordingState(1));
       if (status != OKAY) {
         std::cerr << "Failed to delete stream: " << ErrorMessage(status) << std::endl;
         return;
       }
+    }
+  }
+}
+
+void MainWindow::RecordAtStartup()
+{
+  if (m_client) {
+    Status status = m_client->SendCommandPacket(CommandPacketSetStartUpRecordingState(1));
+    if (status != OKAY) {
+      std::cerr << "Failed to set record at startup: " << ErrorMessage(status) << std::endl;
+      return;
+    }
+  }
+}
+
+void MainWindow::NoRecordAtStartup()
+{
+  if (m_client) {
+    Status status = m_client->SendCommandPacket(CommandPacketSetStartUpRecordingState(0));
+    if (status != OKAY) {
+      std::cerr << "Failed to set no record at startup: " << ErrorMessage(status) << std::endl;
+      return;
     }
   }
 }

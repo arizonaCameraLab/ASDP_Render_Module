@@ -56,6 +56,12 @@ public slots:
     /// @brief View the specified camera.
     void ViewCamera(const QString& cameraID);
 
+    /// @brief Do recording at startup
+    void RecordAtStartup();
+
+    /// @brief Do not record at startup
+    void NoRecordAtStartup();
+
 signals:
     /// @brief Signal to show or hide list of servers.
     void ShowServers(bool show);
