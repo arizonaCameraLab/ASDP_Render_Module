@@ -118,6 +118,7 @@ MainWindow::MainWindow(QWidget *parent)
 
 MainWindow::~MainWindow()
 {
+  ResetServer();
   delete ui;
 }
 
@@ -219,7 +220,6 @@ void MainWindow::ResetStreaming()
     m_visibleCameras.clear();
     glDeleteTextures(1, &m_toneMap);
     m_display.reset();
-    ui->comboBoxCamera->setCurrentIndex(0);
     std::cout << "Not viewing camera." << std::endl;
     m_displayTexture->ReturnContext();
   }
@@ -528,8 +528,6 @@ void MainWindow::NoRecordAtStartup()
 
 void MainWindow::ViewCamera(const QString& cameraID)
 {
-  std::cout << "Viewing Camera: " << cameraID.toStdString() << std::endl;
-
   // Remove any existing streaming and display. We can only have one display at a time.
   ResetStreaming();
   m_display.reset();
@@ -537,6 +535,7 @@ void MainWindow::ViewCamera(const QString& cameraID)
   if (!m_client || cameraID.isEmpty()) {
     return;
   }
+  std::cout << "Viewing Camera: " << cameraID.toStdString() << std::endl;
 
   size_t index = cameraID.toUInt() - 1;
   if (index >= m_cameras.size()) {
