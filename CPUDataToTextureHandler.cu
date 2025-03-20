@@ -311,7 +311,7 @@ void asdp::render::CopyDataToTextures(uint16_t width, uint16_t height,
             break;
           }
           handlers[message.cameraID].reset();
-          if (message.cameraID <= cameraTimings.size()) {
+          if ((cameraTimings.size() > 0) && (message.cameraID <= cameraTimings.size())) {
             cameraTimings[message.cameraID - 1].textureTimes.push_back(std::chrono::steady_clock::now());
           }
         }
