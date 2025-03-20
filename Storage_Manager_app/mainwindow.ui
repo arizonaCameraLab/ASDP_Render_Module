@@ -29,6 +29,9 @@
          <property name="text">
           <string>Select Network Interface:</string>
          </property>
+         <property name="alignment">
+          <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+         </property>
         </widget>
        </item>
        <item>
@@ -53,6 +56,9 @@
         <widget class="QLabel" name="label">
          <property name="text">
           <string>Select Core Module:</string>
+         </property>
+         <property name="alignment">
+          <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
          </property>
         </widget>
        </item>
@@ -162,6 +168,9 @@
                   <property name="text">
                    <string>Replay Stream:</string>
                   </property>
+                  <property name="alignment">
+                   <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+                  </property>
                  </widget>
                 </item>
                 <item>
@@ -183,6 +192,9 @@
                  <widget class="QLabel" name="labelCamera">
                   <property name="text">
                    <string>View camera:</string>
+                  </property>
+                  <property name="alignment">
+                   <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
                   </property>
                  </widget>
                 </item>
@@ -218,6 +230,9 @@
                  <widget class="QLabel" name="labelDelete">
                   <property name="text">
                    <string>Delete Stream:</string>
+                  </property>
+                  <property name="alignment">
+                   <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
                   </property>
                  </widget>
                 </item>

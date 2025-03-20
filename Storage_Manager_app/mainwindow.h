@@ -6,11 +6,16 @@
 #define MAINWINDOW_H
 
 #include <memory>
+#include <thread>
 #include <QMainWindow>
 #include <QTimer>
 #include <ASDP_Core_API.h>
 #include <Display.h>
 #include <ToneMap.h>
+#include <PinnedBufferPool.h>
+#include <GPUBufferPool.h>
+#include <cuda_runtime.h>
+
 using namespace asdp;
 using namespace asdp::render;
 
@@ -75,7 +80,8 @@ private:
 
   std::shared_ptr<CoreClient> m_client;
   std::shared_ptr<Receiver> m_receiver;
-  std::shared_ptr<Receiver> m_receiverCam;
+  std::shared_ptr<ReceiverUDP> m_receiverCam;
+  std::string m_hostname;
 
   std::vector<FeatureID> m_features;
   std::vector<CameraInfo> m_cameras;
@@ -87,6 +93,13 @@ private:
   // Variables and functions for displaying video from a camera.
   std::shared_ptr<Display> m_display;
   GLuint m_toneMap = 0;
+  std::atomic<bool> m_done{ false };
+  std::shared_ptr<PinnedBufferPool> m_cpuPinnedImageBuffer;
+  std::shared_ptr<GPUBufferPool> m_gpuImageBuffer;
+  std::shared_ptr<cudaStream_t> m_stream;
+  std::shared_ptr<std::thread> m_copyThread;
+  std::shared_ptr<std::thread> m_receiveThread;
+  std::vector<RenderTimingInfo::camera> m_emptyTimingInfo;
 };
 
 #endif // MAINWINDOW_H

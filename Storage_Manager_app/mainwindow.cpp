@@ -25,6 +25,9 @@
 #include "mainwindow.h"
 #include "ui_mainwindow.h"  // Include the generated header
 
+#include <ASDP_SpinFreeQueue.hpp>
+#include <CPUDataToTextureHandler.h>
+
 // Define the version number
 const QString VERSION_NUMBER = "0.9.0";
 
@@ -102,6 +105,13 @@ MainWindow::MainWindow(QWidget *parent)
     ui->comboBoxNIC->addItem(QString::fromStdString(ipAddress));
   }
 
+  // Create a CUDA stream for us to use with an auto-deleting destructor.
+  cudaStream_t* streamPtr = new cudaStream_t;
+  cudaStreamCreate(streamPtr);
+  m_stream = std::shared_ptr<cudaStream_t>(streamPtr,
+    [](cudaStream_t* ptr) { cudaStreamDestroy(*ptr); delete ptr; }
+  );
+
   // Hook up the timer to the periodic task.
   connect(m_timer.get(), &QTimer::timeout, this, &MainWindow::PeriodicTask);
 }
@@ -114,6 +124,7 @@ MainWindow::~MainWindow()
 void MainWindow::SelectNIC(const QString& nicName)
 {
   ResetNIC();
+  m_hostname = nicName.toStdString();
 
   // Implement the logic for selecting the NIC here
   std::cout << "Selected NIC: " << nicName.toStdString() << std::endl;
@@ -559,7 +570,60 @@ void MainWindow::ViewCamera(const QString& cameraID)
   std::string name = "Camera " + cameraID.toStdString();
   m_display = std::make_shared<DisplayWindow>(name, composite, m_client, 0, 0, 0,
     60, 2500,
-    width, height, 41);
+    width, height, 41, "", displayTexture.get());
 
-  /// @todo
+  // Construct shared pointers to the data structures that we'll need to do rendering, with
+  // custom destructors that will clean up when the shared_ptr is destroyed.
+  try {
+    m_cpuPinnedImageBuffer = std::make_shared<PinnedBufferPool>(width * height * sizeof(uint16_t), 5);
+    m_gpuImageBuffer = std::make_shared<GPUBufferPool>(width * height * sizeof(uint16_t), 5);
+  } catch (const std::exception& e) {
+    std::cerr << "Error constructing buffers: " << e.what() << std::endl;
+    return;
+  }
+
+  // Make the queues to pass data between the receiver and texture threads.
+  std::shared_ptr< SpinFreeQueue < std::shared_ptr<DataToSendToGPU> > > dataQueue =
+    std::make_shared< SpinFreeQueue< std::shared_ptr<DataToSendToGPU> > >();
+
+  // Stop any prior threads.
+  m_done = true;
+  if (m_copyThread) {
+    m_copyThread->join();
+    m_copyThread.reset();
+  }
+  if (m_receiveThread) {
+    m_receiveThread->join();
+    m_receiveThread.reset();
+  }
+
+  // Launch the threads to receive and then copy data to the GPU.
+  m_done = false;
+  m_copyThread = std::make_shared<std::thread>(CopyDataToTextures, width, height, std::ref(m_done),
+    dataQueue, size_t(height), displayTexture, std::ref(m_emptyTimingInfo));
+  m_receiveThread = std::make_shared<std::thread>(std::thread(ReceiveDataThread, std::ref(*m_receiverCam), 9000,
+    std::ref(m_done), m_cpuPinnedImageBuffer, m_gpuImageBuffer, m_stream, visibleCameras.back()->m_imageQueue,
+    dataQueue, nullptr, nullptr));
+
+  // Request the camera to start sending data, skipping every 30 frames.
+  if (m_client && m_receiverCam) {
+    uint16_t port;
+    m_receiverCam->GetPort(port);
+    StreamEndpoint endpoint(m_hostname, port);
+    SubregionDescription region;
+    region.cameraID = cameraID.toUInt();
+    region.skipFrames = 29;
+    region.startTimeSeconds = 0;
+    region.startTimeMicroseconds = 0;
+    region.left = 0;
+    region.top = 0;
+    region.right = width - 1;
+    region.bottom = height - 1;
+    Status status = m_client->SendCommandPacket(CommandPacketStreamSubregion(endpoint, region));
+    if (status != OKAY) {
+      std::cerr << "Failed to start streaming: " << ErrorMessage(status) << std::endl;
+      return;
+    }
+  }
+
 }
