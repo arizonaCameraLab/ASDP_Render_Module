@@ -4,7 +4,7 @@ project(ASDP_Render_Module LANGUAGES CUDA CXX C)
 # We require C++17 for the use of std::filesystem.
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-list(APPEND CMAKE_PREFIX_PATH F:/Packages/GLEW/glew-2.2.0)
+list(APPEND CMAKE_PREFIX_PATH F:/Packages/GLEW/glew-2.2.0 C:/Qt/5.15.2/msvc2019_64/lib/cmake/Qt5)
 
 #-----------------------------------------------------------------------------
 if(WIN32)
@@ -132,7 +132,9 @@ target_include_directories(Render_Module PUBLIC
   "${CMAKE_CURRENT_SOURCE_DIR}/dependencies/glm"
 )
 target_include_directories(Render_Module PRIVATE
-  "${CMAKE_CURRENT_SOURCE_DIR}/dependencies/glm"
+    "${CMAKE_CURRENT_BINARY_DIR}"
+    "${CMAKE_CURRENT_SOURCE_DIR}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/dependencies/glm"
 )
 target_link_libraries(Render_Module PUBLIC
   ASDP_Core_API::ASDP_Core_API glfw GLEW::glew OpenGL::GL
@@ -150,7 +152,7 @@ if(OPENXR_FOUND)
       target_compile_definitions(Render_Module PRIVATE USE_OPENXR=1 XR_USE_PLATFORM_WAYLAND)
   endif()
   target_include_directories(Render_Module PRIVATE
-    "${CMAKE_CURRENT_SOURCE_DIR}/openxr-sdk-files"
+      "${CMAKE_CURRENT_SOURCE_DIR}/openxr-sdk-files"
   )
   target_link_libraries(Render_Module PRIVATE
     OpenXR::openxr_loader
@@ -338,3 +340,14 @@ if(BUILD_TESTS)
   endforeach (BASE)
 
 endif(BUILD_TESTS)
+
+#-----------------------------------------------------------------------------
+# Build the Storage Manager if we find Qt version 5.
+
+# Find the Qt5 package
+find_package(Qt5 COMPONENTS Core Widgets Gui)
+
+if (Qt5_FOUND)
+  # Add the Storage Manager project
+  add_subdirectory(Storage_Manager_app)
+endif()

@@ -19,7 +19,13 @@
 #include <map>
 #include <vector>
 #include <ASDP_Core_API.h>
+#include <ASDP_SpinFreeQueue.hpp>
+#include <ASDP_BufferPool.h>
+#include <ASDP_StreamPacketSortedQueue.h>
+#include "Display.h"
 #include "ImageQueue.h"
+#include "PinnedBufferPool.h"
+#include "GPUBufferPool.h"
 
 namespace asdp {
   namespace render {
@@ -112,6 +118,49 @@ protected:
   /// @return Empty string on success, description of error on failure.
   std::string SendToGPU();
 };
+
+/// @brief Function to copy data to the GPU and store it into the appropriate textures.
+/// It must create and record an event after all operations are complete.  All operations must be
+/// done on the stream that is passed in and they must all be asynchronous.  There is a single
+/// thread to handle all cameras; it uses different CUDA streams to overlap the operations.
+/// To be able to map textures, it must have an OpenGL context whose objects are shared with the Display submodule that
+/// will be rendering the images.
+/// @param width The width of the image data.
+/// @param height The height of the image data.
+/// @param done A flag that is set to true when the program is done.
+/// @param inQueue The queue that we receive requests on.
+/// @param batchSize The number of lines to send to the GPU at once.  This is tuned to trade off latency
+/// for throughput, and it should be set to a value that is large enough to amortize the cost of sending
+/// data to the GPU, but small enough to keep latency low.  The value of 16 is a good starting point.
+/// @param sharedContext The Display object that shares the OpenGL context with the rendering Display.
+/// @param cameraTimings The timing information for each camera, fill in the texture time for the appropriate camera.
+/// This does not fill in camera timings if the vector is empty.
+void CopyDataToTextures(uint16_t width, uint16_t height,
+  std::atomic<bool>& done,
+  std::shared_ptr< SpinFreeQueue< std::shared_ptr<DataToSendToGPU> > > inQueue,
+  size_t batchSize, std::shared_ptr<Display> sharedContext,
+  std::vector<RenderTimingInfo::camera>& cameraTimings);
+
+/// @brief Thread for each camera that receives the data from the network and sends it to the GPU.
+/// @param receiveSocket The socket to receive the data on.
+/// @param maxBytesPerPacket The maximum number of bytes in a packet.
+/// @param done The flag to set when we're done.
+/// @param cpuImageBuffers Pool of pinned memory buffer on the CPU to hold the image data.
+/// @param gpuImageBuffers Pool of buffers on the GPU to hold the image data.
+/// @param streamPtr The stream to use for copy and kernel calls.
+/// @param imageQueue The image queue to store the textures in.
+/// @param outQueue The queue to send the data to the GPU-feeding thread.
+/// @param frameBeginTimes Store the times for the begin frame message receipts. nullptr
+/// does not record them.
+/// @param frameEndTimes Store the times for the end frame message receipts. nullptr
+/// does not record them.
+void ReceiveDataThread(ReceiverUDP& receiveSocket, size_t maxBytesPerPacket, std::atomic<bool>& done,
+  std::shared_ptr<PinnedBufferPool> cpuImageBuffers, std::shared_ptr<GPUBufferPool> gpuImageBuffers,
+  std::shared_ptr<cudaStream_t> streamPtr,
+  std::shared_ptr<asdp::render::ImageQueue> imageQueue,
+  std::shared_ptr< SpinFreeQueue< std::shared_ptr<DataToSendToGPU> > > outQueue,
+  std::vector<std::chrono::steady_clock::time_point>* frameBeginTimes,
+  std::vector<std::chrono::steady_clock::time_point>* frameEndTimes);
 
   } // namespace render
 } // namespace asdp
