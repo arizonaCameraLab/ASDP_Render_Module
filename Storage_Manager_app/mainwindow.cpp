@@ -474,6 +474,7 @@ void MainWindow::StopRecording()
 void MainWindow::StartReplay(const QString& streamID)
 {
   if (m_client) {
+    ResetStreaming();
     if (streamID.isEmpty()) {
       Status status = m_client->SendCommandPacket(CommandPacketStopReplay());
       if (status != OKAY) {
