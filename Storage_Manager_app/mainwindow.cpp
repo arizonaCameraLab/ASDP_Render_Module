@@ -29,7 +29,7 @@
 #include <CPUDataToTextureHandler.h>
 
 // Define the version number
-const QString VERSION_NUMBER = "1.0.0";
+const QString VERSION_NUMBER = "1.1.0";
 
 static std::vector<std::string> getIPAddresses()
 {
@@ -184,10 +184,13 @@ void MainWindow::ResetNIC()
 void MainWindow::ResetServer()
 {
   ResetStreaming();
+  ui->comboBoxCamera->setCurrentIndex(0);
+  ui->comboBoxReplay->setCurrentIndex(0);
   m_receiver.reset();
   m_features.clear();
   m_cameras.clear();
   m_streams.clear();
+  emit SetInfo("");
   emit ShowControls(false);
   emit SetSerialNumber("");
   m_timer->stop();
