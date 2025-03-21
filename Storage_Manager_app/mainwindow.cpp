@@ -29,7 +29,7 @@
 #include <CPUDataToTextureHandler.h>
 
 // Define the version number
-const QString VERSION_NUMBER = "1.1.0";
+const QString VERSION_NUMBER = "1.2.0";
 
 static std::vector<std::string> getIPAddresses()
 {
@@ -471,10 +471,11 @@ void MainWindow::PeriodicTask()
 
   } // if (m_receiver)
 
-  // Stop streaming and delete the display if it is no longer valid.
+  // Stop streaming and delete the display if it is no longer valid, and reset the selection.
   if (m_display) {
     if (m_display->GetStatus() != "") {
       ResetStreaming();
+      ui->comboBoxCamera->setCurrentIndex(0);
     }
   }
 }
