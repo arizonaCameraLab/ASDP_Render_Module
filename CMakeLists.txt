@@ -230,6 +230,7 @@ if(BUILD_UTILITIES)
   set (CPP_UTILS
     Texture_Coordinates
     Compare_Configurations
+    Target_Calibration_Make_Scan
   )
   foreach (BASE ${CPP_UTILS})
     set (APP ${BASE})

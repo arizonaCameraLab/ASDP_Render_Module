@@ -248,6 +248,11 @@ The **util** directory contains a number of utilities.
   network and write them to GPU memory.
 - **Texture_Coordinates** is a utility to verify that the coordinates in OpenGL go all the way to
   the corner of a pixel.
+
+Many of these utilities relate to calibration and its validation (see Calibration section):
+- **Target_Calibration_Make_Scan** produces one or more CSV files describing the gimbal poses, cameras,
+  and number of frames for a number of FrameIndex values.  It reads a camera configuration JSON
+  file and a target configuration JSON file and produces a CSV file for each target.
 - **Compare_Configurations** compares two camera configuration files and reports the deviations between them.
   This can be used to validate the results of an optimized configuration file against a reference configuration file.
 
@@ -294,7 +299,7 @@ If the second time parameter is the expected time of scan-out and the first is t
 acquired (an earlier time), then this transformation can be used to transform the vertices of the
 image representation to remove the effects of the helicopter motion.
 
-## Validation
+## Unit Tests
 
 The **tests_cpp** directory contains a number of tests.  Some of these tests require a viewer to
 examine a graphical output; these, along with their expected outputs, are described below.
@@ -324,10 +329,16 @@ bottom. The expected image is shown below.
 
 **Display_Test:** This displays two windows, each with a view-controllable cube.  The arrow keys
 control cube rotation, as does pressing and dragging with the left mouse button, as do up to two plugged-in joysticks.
-The expected initial image in each window is shown below.
+The expected initial image in each window is shown below. The `--openXR` command-line argument will open
+an OpenXR display rather than two windows, and the `--xSight` argument (which must also include
+a NIC IP address) will open an XSight head-mounted display instead.
 
 ![Test of the Display class](Display_Test.png "Test of the Display class")
 
 **Fullscreen_Test:** This a full-screen 1280x1024 window at 60Hz with a view-controllable cube.  The arrow keys
 control cube rotation, as does pressing and dragging with the left mouse button, as does the first plugged-in joystick.
 The expected initial image matches that of one window in the Display_Test (shown above).
+
+## Calibration
+
+@todo

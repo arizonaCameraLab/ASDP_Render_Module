@@ -1,15 +1,12 @@
 /*
- * Copyright (C) 2024: Arizona Board of Regents on Behalf of the University of Arizona
+ * Copyright (C) 2025: Arizona Board of Regents on Behalf of the University of Arizona
  */
 
-// This is a client that connects to the first server it encounters and runs a Render Module.
-
 /**
- * @file ASDP_Render_Module.cpp
- * @brief Apache Strap-Down Pilotage Render Module.
+ * @file Compare_Configurations.cpp
+ * @brief Apache Strap-Down Pilotage configuration file comparitor.
  *
 * @author ReliaSolve.
-* @date May 20th, 2024.
 */
 
 #include <iostream>
