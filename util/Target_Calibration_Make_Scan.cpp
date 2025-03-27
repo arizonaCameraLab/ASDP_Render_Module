@@ -25,7 +25,7 @@ using namespace asdp;
 using namespace asdp::render;
 using json = nlohmann::json;
 
-static std::string VERSION = "1.0.0";
+static std::string VERSION = "1.1.0";
 
 void usage(std::string name)
 {
@@ -232,7 +232,6 @@ int main(int argc, char** argv)
     std::cout << "Adjusted vertical maximum angle: " << maxVAngle << " degrees" << std::endl;
 
     // For each target, generate a series of poses and write them to a file.
-    int frameIndex = 0;
     for (size_t i = 0; i < targetInfos.size(); i++) {
       const TargetInfo& target = targetInfos[i];
       std::string filename = "target_" + std::to_string(target.id) + "_poses.csv";
@@ -262,6 +261,7 @@ int main(int argc, char** argv)
       // covering the full range that might possibly be covered by any camera.  The second
       // goes vertically across the target, covering the full range that might possibly be
       // covered by any camera.  They step with the specified interval in degrees.
+      int frameIndex = 0;
       for (double a = targetHAngle + minHAngle; a <= targetHAngle + maxHAngle; a += step) {
 
         // Determine the ID of the camera whose +Y axis has the largest dot product with the specified
