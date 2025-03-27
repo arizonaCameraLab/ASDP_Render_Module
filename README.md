@@ -341,4 +341,24 @@ The expected initial image matches that of one window in the Display_Test (shown
 
 ## Calibration
 
+Camera calibration is described in **TR-011v3_Geometric_Calibration.docx**, with the steps here
+described in Appendix A.  The workflow is as follows:
+- **Estimate target lateral location:**
+    - Generate an as-designed camera calibration JSON file for the camera to be calibrated. This has
+      the gimbal center of rotation as the center of helicopter space with the +X axis pointing
+      towards one of the forks and the +Z axis pointing up.
+    - Generate an as-designed target location JSON file for the two targets to be used in calibration.
+    - Run **Target_Calibration_Make_Scan** and give it the camera configuration file and the target
+      configuration file.  This will produce a CSV file for each target with the gimbal poses and
+      the number of frames for each FrameIndex value.  The files will be target_1_poses.csv and
+      target_2_poses.csv.
+    - Capture or simulate the frames for each target and save them in a directory named for the target.
+        - If simulating:
+            - Open the **calibration_v1.blend** file from the **FlightSim** repository in Blender 4.0 and
+              edit the file names at the top of the script to point at the camera configuration file and
+              the target configuration file and the poses file for each of the targets, setting the
+              renderPath to an empty directory on the data drive in a subdirectory that will hold both target
+              runs and naming each subdirectory target_lateral_N (where N is the target number).  Run the
+              script to generate the TIFF files.
+
 @todo

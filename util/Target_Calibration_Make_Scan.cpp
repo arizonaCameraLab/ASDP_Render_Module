@@ -25,7 +25,7 @@ using namespace asdp;
 using namespace asdp::render;
 using json = nlohmann::json;
 
-static std::string VERSION = "0.1.0";
+static std::string VERSION = "1.0.0";
 
 void usage(std::string name)
 {
@@ -265,11 +265,13 @@ int main(int argc, char** argv)
       for (double a = targetHAngle + minHAngle; a <= targetHAngle + maxHAngle; a += step) {
 
         // Determine the ID of the camera whose +Y axis has the largest dot product with the specified
-        // transform.  This is the one we'll ask for images from.
+        // transform.  This is the one we'll ask for images from.  Note that we must rotate by
+        // the inverse gimbal transform to line it up with the camera's vector when the stage is
+        // rotated (it will rotate the camera vector to the origin).
         glm::dquat rotationZ = glm::angleAxis(glm::radians(a), glm::dvec3(0.0, 0.0, 1.0));
         glm::dquat rotationX = glm::angleAxis(glm::radians(targetHAngle), glm::dvec3(1.0, 0.0, 0.0));
         glm::dquat rotationTotal = rotationZ * rotationX;
-        glm::dvec3 targetY = rotationTotal * glm::dvec3(0, 1, 0);
+        glm::dvec3 targetY = glm::inverse(rotationTotal) * glm::dvec3(0, 1, 0);
 
         size_t whichCamera = 0;
         double bestDot = -2;
@@ -293,11 +295,13 @@ int main(int argc, char** argv)
       }
       for (double a = targetVAngle + minVAngle; a < targetVAngle + maxVAngle; a += step) {
         // Determine the ID of the camera whose +Y axis has the largest dot product with the specified
-        // transform.  This is the one we'll ask for images from.
+        // transform.  This is the one we'll ask for images from.  Note that we must rotate by
+        // the inverse gimbal transform to line it up with the camera's vector when the stage is
+        // rotated (it will rotate the camera vector to the origin).
         glm::dquat rotationZ = glm::angleAxis(glm::radians(targetHAngle), glm::dvec3(0.0, 0.0, 1.0));
         glm::dquat rotationX = glm::angleAxis(glm::radians(a), glm::dvec3(1.0, 0.0, 0.0));
         glm::dquat rotationTotal = rotationZ * rotationX;
-        glm::dvec3 targetY = rotationTotal * glm::dvec3(0, 1, 0);
+        glm::dvec3 targetY = glm::inverse(rotationTotal) * glm::dvec3(0, 1, 0);
 
         size_t whichCamera = 0;
         double bestDot = -2;
