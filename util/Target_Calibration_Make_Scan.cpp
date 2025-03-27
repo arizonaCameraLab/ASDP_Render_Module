@@ -15,6 +15,7 @@
 #include <string>
 #include <filesystem>
 #include <vector>
+#include <set>
 #include <cmath>
 #include <CameraRenderInfo.h>
 #include <nlohmann/json.hpp>
@@ -25,7 +26,7 @@ using namespace asdp;
 using namespace asdp::render;
 using json = nlohmann::json;
 
-static std::string VERSION = "1.1.0";
+static std::string VERSION = "2.0.0";
 
 void usage(std::string name)
 {
@@ -261,7 +262,11 @@ int main(int argc, char** argv)
       // covering the full range that might possibly be covered by any camera.  The second
       // goes vertically across the target, covering the full range that might possibly be
       // covered by any camera.  They step with the specified interval in degrees.
+      // These poses are used to determine the set of cameras that are the closest match across
+      // some part of this sweep -- we then use the centers of those cameras to generate the
+      // list of gimbal angle + camera to use.
       int frameIndex = 0;
+      std::set<uint16_t> camerasUsed;
       for (double a = targetHAngle + minHAngle; a <= targetHAngle + maxHAngle; a += step) {
 
         // Determine the ID of the camera whose +Y axis has the largest dot product with the specified
@@ -289,16 +294,17 @@ int main(int argc, char** argv)
             whichCamera = c;
           }
         }
-
-        outFile << ++frameIndex << "," << a << "," << targetVAngle
-          << "," << cameraRenderInfos[whichCamera].m_ID << "," << frames << std::endl;
+        camerasUsed.insert(cameraRenderInfos[whichCamera].m_ID);
       }
       for (double a = targetVAngle + minVAngle; a < targetVAngle + maxVAngle; a += step) {
         // Determine the ID of the camera whose +Y axis has the largest dot product with the specified
-        // transform.  This is the one we'll ask for images from.  Note that we must rotate by
+        // transform after we rotate the whole camera so that its principal ray points in the
+        // direction of the target in the XY plane (so we go straight up and down the middle).
+        // This is the one we'll ask for images from.  Note that we must rotate by
         // the inverse gimbal transform to line it up with the camera's vector when the stage is
         // rotated (it will rotate the camera vector to the origin).
-        glm::dquat rotationZ = glm::angleAxis(glm::radians(targetHAngle), glm::dvec3(0.0, 0.0, 1.0));
+        //glm::dquat rotationZ = glm::angleAxis(glm::radians(targetHAngle), glm::dvec3(0.0, 0.0, 1.0));
+        glm::dquat rotationZ = glm::angleAxis(glm::radians(0.0), glm::dvec3(0.0, 0.0, 1.0));
         glm::dquat rotationX = glm::angleAxis(glm::radians(a), glm::dvec3(1.0, 0.0, 0.0));
         glm::dquat rotationTotal = rotationZ * rotationX;
         glm::dvec3 targetY = glm::inverse(rotationTotal) * glm::dvec3(0, 1, 0);
@@ -319,9 +325,33 @@ int main(int argc, char** argv)
             whichCamera = c;
           }
         }
+        camerasUsed.insert(cameraRenderInfos[whichCamera].m_ID);
+      }
 
-        outFile << ++frameIndex << "," << targetHAngle << "," << a
-          << "," << cameraRenderInfos[whichCamera].m_ID << "," << frames << std::endl;
+      // For each camera that was the closest in part of one of the sweeps, take an image using that
+      // camera with the gimbal rotated to point the camera at the target.
+      for (auto const &cri : cameraRenderInfos) if (camerasUsed.count(cri.m_ID)) {
+        // Find the amount of rotation around Z that points the camera at the target.
+        // This is the the angle between the target and the camera's Y axis.
+        glm::dquat cameraRotationX = glm::angleAxis(glm::radians(cri.m_orientationDegrees[0]), glm::dvec3(1.0, 0.0, 0.0));
+        glm::dquat cameraRotationY = glm::angleAxis(glm::radians(cri.m_orientationDegrees[1]), glm::dvec3(0.0, 1.0, 0.0));
+        glm::dquat cameraRotationZ = glm::angleAxis(glm::radians(cri.m_orientationDegrees[2]), glm::dvec3(0.0, 0.0, 1.0));
+        glm::dquat cameraRotationTotal = cameraRotationX * cameraRotationY * cameraRotationZ;
+        glm::dvec3 cameraY = cameraRotationTotal * glm::dvec3(0, 1, 0);
+        // The atan2 arguments are swapped here: X is along +Y and Y is along -X.
+        double cameraAngle = glm::degrees(std::atan2(-cameraY.x, cameraY.y));
+        double zRotation = targetHAngle - cameraAngle;
+
+        // Find the amount of rotation about X that brings the camera Y axis into the XY plane
+        // and subtract that from the angle that points at the target.
+        // Here the Z axis corresponds to atan Y and the Y axis to atan X.
+        double xRotation = targetVAngle;
+        if (cameraY.y != 0) {
+          xRotation -= glm::degrees(std::atan2(cameraY.z, cameraY.y));
+        }
+
+        outFile << ++frameIndex << "," << zRotation << "," << xRotation
+          << "," << cri.m_ID << "," << frames << std::endl;
       }
 
       outFile.close();

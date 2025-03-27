@@ -356,7 +356,7 @@ described in Appendix A.  The workflow is as follows:
       target_2_poses.csv.
     - Copy the target_*_poses.csv files into the calibration directory.
     - Capture or simulate the frames for each target and save them in a directory named for the target.
-        - If simulating:
+        - If simulating for validation:
             - Open the **calibration_v1.blend** file from the **FlightSim** repository in Blender 4.0 and
               edit the file names at the top of the script to point at the camera configuration file and
               the target configuration file and the poses file for each of the targets, setting the
@@ -364,5 +364,16 @@ described in Appendix A.  The workflow is as follows:
               script to generate the TIFF files.
             - Run the **tif_to_pgm.bash** script from the **FlightSim** repository to convert the TIFF files
               to PGM files, running for each of the target subdirectories.
+            - Run the **SimToCalibration** program from the **FlightSim** repository to generate the
+              calibration files for each of the targets, using `--configFile` and `--poseFile` to point at
+              the appropriate JSON and CSV file, then give it the target_lateral_N directory and another
+              in the same directory called target_lateral_N_sim. Do this for each target.
+        - If taking measurements:
+            - Run the **CollectCalibrationData** program from the **ASDP_Render_Module** repository to
+              capture the frames for each target, providing it the name of the serial device, the IP
+              address of the NIC to talk with the camera on, and target_N_poses.csv file name and the
+              output directory name target_lateran_N_sim (where N is the target number).  Do this for
+              each target.
 
 @todo
+
