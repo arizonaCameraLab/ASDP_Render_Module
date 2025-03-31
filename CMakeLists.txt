@@ -91,6 +91,8 @@ endif (BUILD_DOXYGEN)
 #-----------------------------------------------------------------------------
 # Build the libraries.
 
+add_subdirectory(Spot_Tracker)
+
 set (Render_Module_HEADERS
   CameraRenderInfo.h
   Composite.h
@@ -300,6 +302,7 @@ if(BUILD_TESTS)
     ImageStatistics_Test
     RangeEstimator_Test
     XSight_Simulator
+    Spot_Tracker_Test
   )
   foreach (BASE ${CPP_TESTS})
     set (APP ${BASE})
@@ -311,6 +314,7 @@ if(BUILD_TESTS)
     )
     target_link_libraries(${APP}
       Render_Module
+      spot_tracker_library
     )
     install(TARGETS ${APP} EXPORT ${PROJECT_NAME}
       RUNTIME DESTINATION bin
