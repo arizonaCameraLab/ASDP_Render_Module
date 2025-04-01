@@ -26,7 +26,7 @@ using namespace asdp;
 using namespace asdp::render;
 using json = nlohmann::json;
 
-static std::string VERSION = "2.0.0";
+static std::string VERSION = "2.0.1";
 
 void usage(std::string name)
 {
@@ -86,7 +86,7 @@ int main(int argc, char** argv)
 
   // Run inside a block so that the destructors will be called for all objects before we exit.
   {
-    std::cout << "Target_Calibrration_Make_Scan version " << VERSION << std::endl;
+    std::cout << "Target_Calibration_Make_Scan version " << VERSION << std::endl;
 
     // Read the configuration files.
     if (!std::filesystem::exists(camConfigFile)) {

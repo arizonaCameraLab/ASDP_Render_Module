@@ -367,13 +367,19 @@ described in Appendix A.  The workflow is as follows:
             - Run the **SimToCalibration** program from the **FlightSim** repository to generate the
               calibration files for each of the targets, using `--configFile` and `--poseFile` to point at
               the appropriate JSON and CSV file, then give it the target_lateral_N directory and another
-              in the same directory called target_lateral_N_sim. Do this for each target.
+              in the same directory called target_lateral_N_images. Do this for each target.
         - If taking measurements:
-            - Run the **CollectCalibrationData** program from the **ASDP_Render_Module** repository to
+            - Run the **Collect_Calibration_Data** program from the **ASDP_Render_Module** repository to
               capture the frames for each target, providing it the name of the serial device, the IP
               address of the NIC to talk with the camera on, and target_N_poses.csv file name and the
-              output directory name target_lateran_N_sim (where N is the target number).  Do this for
+              output directory name target_lateral_N_images (where N is the target number).  Do this for
               each target.
+    - Run the **Target_Calibration_Estimate_Lateral** program and give it the camera configuration
+      file, target configuration file, the threshold value for the target center, and the root directory
+      where the simulation or measurement data was stored (where the target_lateral_N_images directories
+      and the target_*_poses.csv files are).  This will produce a **targets_lateral_opt.json**
+      file in the root directory with the estimated lateral positions of the targets updated based on the
+      image data.
 
 @todo
 
