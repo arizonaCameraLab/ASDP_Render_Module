@@ -312,7 +312,6 @@ int main(int argc, char** argv)
         // target location with the plane through the 3D target.  First find the ray start, which is the
         // camera position. Then find the ray direction, which is the ray in camera space rotated by the
         // camera rotation.
-        /// @todo Can't lookup by camera ID because the camera ID is not the same as the index in the array.
         glm::dvec3 rayStart;
         rayStart.x = cri->m_positionMeters[0];
         rayStart.y = cri->m_positionMeters[1];
@@ -359,7 +358,6 @@ int main(int argc, char** argv)
 
         // Compute the intersection of the ray with the plane.
         // The target normal points towards the origin and the rotated ray direction should point away.
-        /// @todo Check this math
         double dotProduct = glm::dot(targetNormal, rayDirectionInWorld);
         if (dotProduct == 0) {
           std::cerr << "Error: Ray is parallel to the plane for target " << target.id << std::endl;
@@ -368,7 +366,6 @@ int main(int argc, char** argv)
         double distance = glm::dot(pointInPlane - rayStartInWorld, targetNormal) / dotProduct;
         glm::dvec3 intersection = rayStartInWorld + distance * rayDirectionInWorld;
 
-        /// @todo
         std::cout << "  Intersection = " << intersection.x << " " << intersection.y << " " << intersection.z << std::endl;
         targetLocations.push_back(intersection);
 
