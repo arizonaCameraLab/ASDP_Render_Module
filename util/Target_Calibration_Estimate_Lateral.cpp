@@ -28,6 +28,7 @@
 
 using namespace asdp;
 using namespace asdp::render;
+using namespace asdp::render::calibration;
 using json = nlohmann::json;
 
 static std::string VERSION = "1.0.0";

@@ -318,6 +318,7 @@ if(BUILD_TESTS)
     RangeEstimator_Test
     XSight_Simulator
     Spot_Tracker_Test
+    Calibration_Helpers_Test
   )
   foreach (BASE ${CPP_TESTS})
     set (APP ${BASE})
@@ -330,6 +331,7 @@ if(BUILD_TESTS)
     target_link_libraries(${APP}
       Render_Module
       spot_tracker_library
+      Calibration_Helpers
     )
     install(TARGETS ${APP} EXPORT ${PROJECT_NAME}
       RUNTIME DESTINATION bin
