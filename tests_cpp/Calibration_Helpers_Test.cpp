@@ -12,5 +12,7 @@ int main()
     std::cerr << "Error: " << ret << std::endl;
     return 1;
   }
+
+  std::cout << "Success!" << std::endl;
   return 0;
 }
