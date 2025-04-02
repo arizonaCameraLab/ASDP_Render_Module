@@ -91,36 +91,63 @@ void asdp::render::calibration::PointPixelAtTarget(const CameraRenderInfo& cri,
   // across the specified range.
   double minMissDistance = 1e30;
   double bestXRotation = 0.0;
-  glm::dvec3 bestClosestPoint = { 0, 0, 0 };
+  glm::dvec2 bestClosestPoint = { 0, 0 };
   for (double xRotation = minXRotationDegrees; xRotation <= maxXRotationDegrees; xRotation += precisionDegrees) {
     glm::dvec3 rayStartInWorld, rayDirectionInWorld;
     WorldSpaceRayNoDistortion(cri, xPixels, yPixels, 0.0, xRotation, rayStartInWorld, rayDirectionInWorld, false);
 
-    // The ray is defined by the start and direction.  The target is defined by the center.
-    // Find the point of closest approach of the ray to the target.  Do this by projecting
-    // the target onto the ray and then finding the distance between the target and the projection.
-    glm::dvec3 targetToRay = target - rayStartInWorld;
-    double distanceAlongRay = glm::dot(targetToRay, rayDirectionInWorld);
-    glm::dvec3 closestPoint = rayStartInWorld + distanceAlongRay * rayDirectionInWorld;
-    double missDistance = glm::length(target - closestPoint);
+    // The ray is defined by the start and direction.
+    // Find the location along the ray that pierces the vertical cylinder whose radius matches
+    // that of the target.  The error is the absolute difference between the height of the target
+    // and the height of the piercing point.
+    // The equation of the cylinder in the plane is the circle x^2 + y^2 = r^2.
+    // Its center is (0,0) and its radius is r.
+    // The ray is defined by the start (U) and direction in the plane (V).
+    // From Graphics Gems p 5-6, the intersection of the ray and the circle is
+    // G <- U - C = U because the circle is centered at the origin.
+    // a <- V dot V
+    // b <- 2 * V dot G
+    // c <- G dot G - r^2
+    // d <- b^2 - 4ac
+    // If d < 0, there is no intersection.
+    // P1 (corresponding to t1 on the line?) <- (-b + sqrt(d)) / 2a
+    // P2 (corresponding to t2 on the line?) <- (-b - sqrt(d)) / 2a
+    // We want P1, further along the line, which is at U + P1 * V.
+    double rad = glm::length(glm::dvec2(target.x, target.y));
+    glm::dvec2 U = glm::dvec2(rayStartInWorld.x, rayStartInWorld.y);
+    glm::dvec2 V = glm::dvec2(rayDirectionInWorld.x, rayDirectionInWorld.y);
+    glm::dvec2 G = U;
+    double a = glm::dot(V, V);
+    double b = 2 * glm::dot(V, G);
+    double c = glm::dot(G, G) - rad * rad;
+    double d = b * b - 4 * a * c;
+    if (d < 0) {
+      continue;
+    }
+    double P1 = (-b + sqrt(d)) / (2 * a);
+    glm::dvec2 intersect = U + P1 * V;
+    double height = rayStartInWorld.z + P1 * rayDirectionInWorld.z;
+    double missDistance = fabs(height - target.z);
     if (missDistance < minMissDistance) {
       minMissDistance = missDistance;
       bestXRotation = xRotation;
-      bestClosestPoint = closestPoint;
+      bestClosestPoint = intersect;
     }
   }
 
-  // Find the angle in the Z=0 plane of the closest point.
+  // Find the angle in the Z=0 plane of the piercing point.
   double zRotation = atan2(bestClosestPoint.y, bestClosestPoint.x);
 
   // Find the angle in the Z=0 plane of the target.
   double targetZRotation = atan2(target.y, target.x);
 
   // The difference between the two is the Z rotation.
-  double zDelta = targetZRotation - zRotation;
+  double zDelta = glm::degrees(targetZRotation - zRotation);
+  if (zDelta < -180) { zDelta += 360; }
+  if (zDelta > 180) { zDelta -= 360; }
 
-  outZRotationDegrees = glm::degrees(zDelta);
-  outXRotationDegrees = glm::degrees(bestXRotation);
+  outZRotationDegrees = zDelta;
+  outXRotationDegrees = bestXRotation;
 }
 
 std::string asdp::render::calibration::Test()
@@ -251,9 +278,66 @@ std::string asdp::render::calibration::Test()
 
   // Test PointPixelAtTarget()
   {
+    double zRotation, xRotation;
+    {
+      //===========================================================================
+      // Test a camera at the center and a target down the +Y axis at the same height.
+      CameraRenderInfo cri(1, { 0, 0, 0 }, { 0, 0, 0 }, { 1024, 1024 }, { 90, 90 },
+        distNull, vigNull, nullptr, 1.0);
 
-    /// @todo
+      // Center of the image, no rotation.
+      PointPixelAtTarget(cri, 511.5, 511.5, -60, 240, { 0, 3, 0 }, zRotation, xRotation, 0.01);
+      if (fabs(zRotation) > 0.01) {
+        return "Test failed: PointPixelAtTarget() center of image no rotation Z.";
+      }
+      if (fabs(xRotation) > 0.01) {
+        return "Test failed: PointPixelAtTarget() center of image no rotation X.";
+      }
+
+      // Right side of the image, should be rotated by 45 degrees around Z.
+      PointPixelAtTarget(cri, 1023.5, 511.5, -60, 240, { 0, 3, 0 }, zRotation, xRotation, 0.01);
+      if (fabs(zRotation - 45) > 0.01) {
+        return "Test failed: PointPixelAtTarget() right side of image no rotation Z.";
+      }
+      if (fabs(xRotation) > 0.01) {
+        return "Test failed: PointPixelAtTarget() right side of image no rotation X.";
+      }
+
+      // Top of the image, should be rotated by -45 degrees around X.
+      PointPixelAtTarget(cri, 511.5, -0.5, -60, 240, { 0, 3, 0 }, zRotation, xRotation, 0.01);
+      if (fabs(zRotation) > 0.01) {
+        return "Test failed: PointPixelAtTarget() top of image no rotation Z.";
+      }
+      if (fabs(xRotation - (-45)) > 0.01) {
+        return "Test failed: PointPixelAtTarget() top of image no rotation X: "
+          + std::to_string(xRotation);
+      }
+    }
+
+    {
+      //===========================================================================
+      // Test a camera that is offset by +1 down the Y axis and rotated -90 degrees
+      // around Z so that it is looking to the right.  Using a target at the same height
+      // that is -1 in X and +3 in Y should require a gimbal rotation of 90 degrees
+      // around Z.
+      CameraRenderInfo cri(1, { 0, 1, 0 }, { 0, 0, -90 }, { 1024, 1024 }, { 90, 90 },
+        distNull, vigNull, nullptr, 1.0);
+
+      // Center of the image, no rotation.
+      PointPixelAtTarget(cri, 511.5, 511.5, -60, 240, { -1, 3, 0 }, zRotation, xRotation, 0.01);
+      if (fabs(zRotation - 90) > 0.01) {
+        return "Test failed: PointPixelAtTarget() center of image rotated 90Z Z: "
+          + std::to_string(zRotation);
+      }
+
+      /// @todo
+    }
+
+    {
+
+      /// @todo
+    }
   }
 
-  return "@todo Test";
+  return "@todo add tests";
 }
