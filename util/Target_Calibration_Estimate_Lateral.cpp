@@ -20,6 +20,7 @@
 #include <cmath>
 #include <CameraRenderInfo.h>
 #include <ASDP_ImageSource.h>
+#include <Calibration_Helpers.h>
 #include <spot_tracker.h>
 #include <nlohmann/json.hpp>
 #include <glm/glm.hpp>
@@ -153,7 +154,7 @@ int main(int argc, char** argv)
 
     // Parse the target information for each target and read the information from
     // its target_N_poses.csv file.
-    struct poseInfo {
+    struct PoseInfo {
       int frameIndex;
       double zRotation;
       double xRotation;
@@ -163,7 +164,7 @@ int main(int argc, char** argv)
     struct TargetInfo {
       int id;
       std::array<double, 3> position;
-      std::vector<poseInfo> poses;
+      std::vector<PoseInfo> poses;
     };
     std::vector<TargetInfo> targetInfos;
     for (const auto& target : targetConfig["targets"]) {
@@ -183,7 +184,7 @@ int main(int argc, char** argv)
         std::string line;
         std::getline(poseFile, line); // Skip the header line.
         while (std::getline(poseFile, line)) {
-          poseInfo pose;
+          PoseInfo pose;
           std::istringstream ss(line);
           char comma;
           ss >> pose.frameIndex >> comma >> pose.zRotation >> comma >> pose.xRotation >> comma
@@ -307,61 +308,25 @@ int main(int argc, char** argv)
           std::cerr << "Error: Camera ID " << pose.cameraID << " not found in camera configuration." << std::endl;
           return 32;
         }
+        if (width != cri->m_resolutionPixels[0] || height != cri->m_resolutionPixels[1]) {
+          std::cerr << "Error: Camera " << pose.cameraID << " resolution does not match image resolution." << std::endl;
+          return 33;
+        }
 
         // Find the intersection of the ray from the camera starting location through the image-space
         // target location with the plane through the 3D target.  First find the ray start, which is the
         // camera position. Then find the ray direction, which is the ray in camera space rotated by the
         // camera rotation.
-        glm::dvec3 rayStart;
-        rayStart.x = cri->m_positionMeters[0];
-        rayStart.y = cri->m_positionMeters[1];
-        rayStart.z = cri->m_positionMeters[2];
-
-        double normalizedX = x / (width - 1);
-        double normalizedY = y / (height - 1);
-        double halfWidth = atan(glm::radians(cri->m_fovDegrees[0] / 2.0));
-        double halfHeight = atan(glm::radians(cri->m_fovDegrees[1] / 2.0));
-        double xScaled = halfWidth * (2 * normalizedX - 1);
-        double yScaled = halfHeight * (1 - 2 * normalizedY);    // Flip the Y axis to make it right handed
-        // The pixel centers are half a pixel in from the edge, so we scale to make this happen.
-        double xM = xScaled * (width - 1.0) / width;
-        double yM = yScaled * (height - 1.0) / height;
-        double zM = -1.0;
-        // Convert from +X, +Y camera space pointing along -Z to helicopter space with +Z up and +Y forward.
-        glm::dvec3 rayDirection = glm::normalize(glm::dvec3(xM, -zM, yM));
-        std::cout << "  Camera-space ray direction = " << rayDirection.x << " " << rayDirection.y << " " << rayDirection.z << std::endl;
-
-        // Rotate the ray direction by the camera orientation; X, then Y then Z.
-        glm::dvec3 rayDirectionInBall;
-        {
-          glm::dquat rotationX = glm::angleAxis(glm::radians(cri->m_orientationDegrees[0]), glm::dvec3(1.0, 0.0, 0.0));
-          glm::dquat rotationY = glm::angleAxis(glm::radians(cri->m_orientationDegrees[1]), glm::dvec3(0.0, 1.0, 0.0));
-          glm::dquat rotationZ = glm::angleAxis(glm::radians(cri->m_orientationDegrees[2]), glm::dvec3(0.0, 0.0, 1.0));
-          glm::dquat rotationTotal = rotationX * rotationY * rotationZ;
-          rayDirectionInBall = rotationTotal * rayDirection;
-        }
-        std::cout << "  Ball-space ray direction = " << rayDirectionInBall.x << " " << rayDirectionInBall.y << " " << rayDirectionInBall.z << std::endl;
-
-        // Okay, we now have the ray start and direction in the camera ball's coordinate system.
-        // We must rotate both by the pose angle, around Z first and then around X.
-        glm::dvec3 rayStartInWorld;
-        glm::dvec3 rayDirectionInWorld;
-        {
-          glm::dquat rotationZ = glm::angleAxis(glm::radians(pose.zRotation), glm::dvec3(0.0, 0.0, 1.0));
-          glm::dquat rotationX = glm::angleAxis(glm::radians(pose.xRotation), glm::dvec3(1.0, 0.0, 0.0));
-          glm::dquat rotationTotal = rotationZ * rotationX;
-          rayDirectionInWorld = rotationTotal * rayDirectionInBall;
-          rayStartInWorld = rotationTotal * rayStart;
-        }
-        std::cout << "  World-space ray direction = " << rayDirectionInWorld.x << " " << rayDirectionInWorld.y << " " << rayDirectionInWorld.z << std::endl;
-        std::cout << "  World-space ray start = " << rayStartInWorld.x << " " << rayStartInWorld.y << " " << rayStartInWorld.z << std::endl;
+        glm::dvec3 rayStartInWorld, rayDirectionInWorld;
+        WorldSpaceRayNoDistortion(*cri, x, y, pose.zRotation, pose.xRotation,
+          rayStartInWorld, rayDirectionInWorld, true);
 
         // Compute the intersection of the ray with the plane.
         // The target normal points towards the origin and the rotated ray direction should point away.
         double dotProduct = glm::dot(targetNormal, rayDirectionInWorld);
         if (dotProduct == 0) {
           std::cerr << "Error: Ray is parallel to the plane for target " << target.id << std::endl;
-          return 33;
+          return 34;
         }
         double distance = glm::dot(pointInPlane - rayStartInWorld, targetNormal) / dotProduct;
         glm::dvec3 intersection = rayStartInWorld + distance * rayDirectionInWorld;
@@ -383,7 +348,7 @@ int main(int argc, char** argv)
         target.position[2] = point.z;
       } else {
         std::cerr << "Error: No target locations found for target " << target.id << std::endl;
-        return 34;
+        return 35;
       }
 
     } // End of loop over targets.

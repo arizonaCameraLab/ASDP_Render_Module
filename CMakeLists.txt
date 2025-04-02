@@ -161,6 +161,15 @@ if(OPENXR_FOUND)
   )
 endif()
 
+add_library(Calibration_Helpers STATIC util/Calibration_Helpers.cpp util/Calibration_Helpers.h)
+target_include_directories(Calibration_Helpers PUBLIC
+  "${CMAKE_CURRENT_SOURCE_DIR}/util"
+  "${CMAKE_CURRENT_SOURCE_DIR}/dependencies/glm"
+)
+target_link_libraries(Calibration_Helpers PUBLIC
+  Render_Module
+)
+
 #-----------------------------------------------------------------------------
 # Build the Render module application.
 
@@ -247,6 +256,7 @@ if(BUILD_UTILITIES)
       glfw
       GLEW::glew
       OpenGL::GL
+      Calibration_Helpers
     )
     install(TARGETS ${APP} EXPORT ${PROJECT_NAME}
       RUNTIME DESTINATION bin
