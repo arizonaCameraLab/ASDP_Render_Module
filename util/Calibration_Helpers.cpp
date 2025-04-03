@@ -91,7 +91,7 @@ void asdp::render::calibration::PointPixelAtTarget(const CameraRenderInfo& cri,
   // across the specified range.
   double minMissDistance = 1e30;
   double bestXRotation = 0.0;
-  glm::dvec2 bestClosestPoint = { 0, 0 };
+  glm::dvec2 bestPierce = { 0, 0 };
   for (double xRotation = minXRotationDegrees; xRotation <= maxXRotationDegrees; xRotation += precisionDegrees) {
     glm::dvec3 rayStartInWorld, rayDirectionInWorld;
     WorldSpaceRayNoDistortion(cri, xPixels, yPixels, 0.0, xRotation, rayStartInWorld, rayDirectionInWorld, false);
@@ -116,6 +116,9 @@ void asdp::render::calibration::PointPixelAtTarget(const CameraRenderInfo& cri,
     double rad = glm::length(glm::dvec2(target.x, target.y));
     glm::dvec2 U = glm::dvec2(rayStartInWorld.x, rayStartInWorld.y);
     glm::dvec2 V = glm::dvec2(rayDirectionInWorld.x, rayDirectionInWorld.y);
+    if (glm::length(V) < 1e-6) {
+      continue; // No direction, so no intersection.
+    }
     glm::dvec2 G = U;
     double a = glm::dot(V, V);
     double b = 2 * glm::dot(V, G);
@@ -131,12 +134,12 @@ void asdp::render::calibration::PointPixelAtTarget(const CameraRenderInfo& cri,
     if (missDistance < minMissDistance) {
       minMissDistance = missDistance;
       bestXRotation = xRotation;
-      bestClosestPoint = intersect;
+      bestPierce = intersect;
     }
   }
 
   // Find the angle in the Z=0 plane of the piercing point.
-  double zRotation = atan2(bestClosestPoint.y, bestClosestPoint.x);
+  double zRotation = atan2(bestPierce.y, bestPierce.x);
 
   // Find the angle in the Z=0 plane of the target.
   double targetZRotation = atan2(target.y, target.x);
@@ -329,15 +332,8 @@ std::string asdp::render::calibration::Test()
         return "Test failed: PointPixelAtTarget() center of image rotated 90Z Z: "
           + std::to_string(zRotation);
       }
-
-      /// @todo
-    }
-
-    {
-
-      /// @todo
     }
   }
 
-  return "@todo add tests";
+  return "";
 }
