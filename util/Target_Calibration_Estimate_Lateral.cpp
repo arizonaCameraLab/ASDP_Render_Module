@@ -226,42 +226,55 @@ int main(int argc, char** argv)
         int index = 1;
         std::string filename = imageDirectory + "/" + std::to_string(pose.frameIndex)
           + "_" + std::to_string(pose.cameraID) + "_" + std::to_string(index) + ".pgm";
-        asdp::ImageSource::Image firstPPM(filename);
-        int width = firstPPM.getWidth();
-        int height = firstPPM.getHeight();
-        double_image avg(0, width - 1, 0, height - 1);
-        std::shared_ptr< std::vector<uint16_t> > data = firstPPM.getData();
-        for (int y = 0; y < height; ++y) {
-          for (int x = 0; x < width; ++x) {
-            avg.write_pixel(x, y, (*data)[y * width + x]);
+        int width, height;
+        std::shared_ptr<double_image> avg;
+        try {
+          asdp::ImageSource::Image firstPPM(filename);
+          width = firstPPM.getWidth();
+          height = firstPPM.getHeight();
+          avg = std::make_shared<double_image>(0, width - 1, 0, height - 1);
+          std::shared_ptr< std::vector<uint16_t> > data = firstPPM.getData();
+          for (int y = 0; y < height; ++y) {
+            for (int x = 0; x < width; ++x) {
+              avg->write_pixel(x, y, (*data)[y * width + x]);
+            }
           }
+        } catch (const std::exception& e) {
+          std::cerr << "Error: Unable to read PGM file" << filename << ": " << e.what() << std::endl;
+          return 30;
         }
         for (index = 2; index <= pose.numFrames; ++index) {
           filename = imageDirectory + "/" + std::to_string(pose.frameIndex)
             + "_" + std::to_string(pose.cameraID) + "_" + std::to_string(index) + ".pgm";
-          asdp::ImageSource::Image ppm(filename);
-          if (ppm.getWidth() != width || ppm.getHeight() != height) {
-            std::cerr << "Error: Image " << filename << " has different dimensions from the first image." << std::endl;
-            return 30;
-          }
-          data = ppm.getData();
-          for (int y = 0; y < height; ++y) {
-            for (int x = 0; x < width; ++x) {
-              double value;
-              if (avg.read_pixel(x, y, value)) {
-                value += (*data)[y * width + x];
-                avg.write_pixel(x, y, value);
+          try {
+            asdp::ImageSource::Image ppm(filename);
+            if (ppm.getWidth() != width || ppm.getHeight() != height) {
+              std::cerr << "Error: Image " << filename << " has different dimensions from the first image." << std::endl;
+              return 30;
+            }
+            std::shared_ptr< std::vector<uint16_t> > data = ppm.getData();
+            for (int y = 0; y < height; ++y) {
+              for (int x = 0; x < width; ++x) {
+                double value;
+                if (avg->read_pixel(x, y, value)) {
+                  value += (*data)[y * width + x];
+                  avg->write_pixel(x, y, value);
+                }
               }
             }
+          }
+          catch (const std::exception& e) {
+            std::cerr << "Error: Unable to read PGM file" << filename << ": " << e.what() << std::endl;
+            return 30;
           }
         }
         double scale = 1/static_cast<double>(pose.numFrames);
         for (int y = 0; y < height; ++y) {
           for (int x = 0; x < width; ++x) {
             double value;
-            if (avg.read_pixel(x, y, value)) {
+            if (avg->read_pixel(x, y, value)) {
               value *= scale;
-              avg.write_pixel(x, y, value);
+              avg->write_pixel(x, y, value);
             }
           }
         }
@@ -270,11 +283,11 @@ int main(int argc, char** argv)
         int centerX = -1;
         int centerY = -1;
         double minSquaredDistance = 1e30;
-        double maxVal = avg.read_pixel_nocheck(0, 0);
+        double maxVal = avg->read_pixel_nocheck(0, 0);
         for (int y = 0; y < height; ++y) {
           for (int x = 0; x < width; ++x) {
-            maxVal = std::max(maxVal, avg.read_pixel_nocheck(x, y));
-            if (avg.read_pixel_nocheck(x, y) >= targetBrightnessThreshold) {
+            maxVal = std::max(maxVal, avg->read_pixel_nocheck(x, y));
+            if (avg->read_pixel_nocheck(x, y) >= targetBrightnessThreshold) {
               double squaredDistance = (width/2 - x) * (width/2 - x) + (height/2 - y) * (height/2 - y);
               if (squaredDistance < minSquaredDistance) {
                 minSquaredDistance = squaredDistance;
@@ -294,7 +307,7 @@ int main(int argc, char** argv)
         symmetric_spot_tracker_interp symmetrictracker(10);
         symmetrictracker.set_pixel_accuracy(0.01);
         double x, y;
-        symmetrictracker.optimize_xy(avg, 0, x, y, centerX, centerY);
+        symmetrictracker.optimize_xy(*avg, 0, x, y, centerX, centerY);
         std::cout << "  Target optimized to (" << x << ", " << y << ")" << std::endl;
 
         // Find the CameraRenderInfo associated with this pose.

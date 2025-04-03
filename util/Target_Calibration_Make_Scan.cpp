@@ -26,7 +26,7 @@ using namespace asdp;
 using namespace asdp::render;
 using namespace asdp::render::calibration;
 
-static std::string VERSION = "2.0.1";
+static std::string VERSION = "3.0.0";
 
 void usage(std::string name)
 {
@@ -263,28 +263,17 @@ int main(int argc, char** argv)
       }
 
       // For each camera that was the closest in part of one of the sweeps, take an image using that
-      // camera with the gimbal rotated to point the camera at the target.
+      // camera with the gimbal rotated to point its center at the target.
       for (auto const &cri : cameraRenderInfos) if (camerasUsed.count(cri.m_ID)) {
-        // Find the amount of rotation around Z that points the camera at the target.
-        // This is the the angle between the target and the camera's Y axis.
-        glm::dquat cameraRotationX = glm::angleAxis(glm::radians(cri.m_orientationDegrees[0]), glm::dvec3(1.0, 0.0, 0.0));
-        glm::dquat cameraRotationY = glm::angleAxis(glm::radians(cri.m_orientationDegrees[1]), glm::dvec3(0.0, 1.0, 0.0));
-        glm::dquat cameraRotationZ = glm::angleAxis(glm::radians(cri.m_orientationDegrees[2]), glm::dvec3(0.0, 0.0, 1.0));
-        glm::dquat cameraRotationTotal = cameraRotationX * cameraRotationY * cameraRotationZ;
-        glm::dvec3 cameraY = cameraRotationTotal * glm::dvec3(0, 1, 0);
-        // The atan2 arguments are swapped here: X is along +Y and Y is along -X.
-        double cameraAngle = glm::degrees(std::atan2(-cameraY.x, cameraY.y));
-        double zRotation = targetHAngle - cameraAngle;
 
-        // Find the amount of rotation about X that brings the camera Y axis into the XY plane
-        // and subtract that from the angle that points at the target.
-        // Here the Z axis corresponds to atan Y and the Y axis to atan X.
-        double xRotation = targetVAngle;
-        if (cameraY.y != 0) {
-          xRotation -= glm::degrees(std::atan2(cameraY.z, cameraY.y));
-        }
+        double zRotationDegrees, xRotationDegrees;
+        PointPixelAtTarget(cri,
+          0.5 * cri.m_resolutionPixels[0] - 0.5, 0.5 * cri.m_resolutionPixels[1] - 0.5,
+          minVAngle, maxVAngle,
+          target.position,
+          zRotationDegrees, xRotationDegrees);
 
-        outFile << ++frameIndex << "," << zRotation << "," << xRotation
+        outFile << ++frameIndex << "," << zRotationDegrees << "," << xRotationDegrees
           << "," << cri.m_ID << "," << frames << std::endl;
       }
 
