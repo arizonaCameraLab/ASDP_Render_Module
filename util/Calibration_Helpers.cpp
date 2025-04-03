@@ -12,10 +12,103 @@
 
 #include <Calibration_Helpers.h>
 #include <glm/gtc/quaternion.hpp>
+#include <nlohmann/json.hpp>
 #include <iostream>
+#include <fstream>
+#include <filesystem>
 
 using namespace asdp::render;
 using namespace asdp::render::calibration;
+using json = nlohmann::json;
+
+std::vector<CameraRenderInfo> asdp::render::calibration::GetCameraRenderInfos(
+  const std::string& configFileName)
+{
+  // Read the configuration files.
+  if (!std::filesystem::exists(configFileName)) {
+    throw std::runtime_error("Configuration file not found: " + configFileName);
+  }
+  std::ifstream configFile1(configFileName);
+  json camConfig = json::parse(configFile1);
+
+  // Construct CameraRenderInfos for each configuration file.
+  std::vector<asdp::render::CameraRenderInfo> cameraRenderInfos;
+  for (const auto& camera : camConfig["cameras"]) {
+    std::shared_ptr<Distortion> dist;
+    json distortion = camera["distortion"];
+    if (distortion["type"] == "none") {
+      DistortionNone* distortion = new DistortionNone;
+      dist = std::shared_ptr<Distortion>(distortion);
+    } else if (distortion["type"] == "radial") {
+      json parameters = distortion["parameters"];
+      std::array<double, 2> center = parameters["COP"];
+      json map = parameters["map"];
+      std::vector< std::array<double, 2> > mapPoints = map;
+      DistortionRadialLERP* distortion = new DistortionRadialLERP(center, mapPoints);
+      dist = std::shared_ptr<Distortion>(distortion);
+    } else {
+      throw std::runtime_error("Error: Unknown distortion type: " + distortion["type"]);
+    }
+
+    std::shared_ptr<Vignette> vig(new VignetteNone);
+    try {
+      json vignette = camera["vignette"];
+      if (vignette["type"] == "evenPolynomial") {
+        json parameters = vignette["parameters"];
+        std::array<double, 2> center = parameters["COP"];
+        std::array<double, 2> cArray = parameters["coefficients"];
+        std::vector<double> coefficients(cArray.begin(), cArray.end());
+        VignetteRadialPolynomail* vignette = new VignetteRadialPolynomail(center, camera["fieldOfViewDegrees"], coefficients);
+        vig = std::shared_ptr<Vignette>(vignette);
+      } else if (vignette["type"] == nullptr) {
+        // No vignette specified, so use the default.
+      } else {
+        throw std::runtime_error("Error: Unknown vignette type: " + vignette["type"]);
+      }
+    } catch (...) {
+      // No vignette specified, so use the default.
+    }
+
+    asdp::render::CameraRenderInfo info(camera["id"],
+      camera["positionMeters"], camera["orientationDegrees"],
+      camera["resolutionPixels"], camera["fieldOfViewDegrees"],
+      dist, vig, std::make_shared<asdp::render::ImageQueue>(), -1.0f);
+    cameraRenderInfos.push_back(info);
+  }
+
+  return cameraRenderInfos;
+}
+
+std::vector<TargetInfo> asdp::render::calibration::GetTargetInfos(
+  const std::string& configFileName)
+{
+  if (!std::filesystem::exists(configFileName)) {
+    throw std::runtime_error("Configuration file not found: " + configFileName);
+  }
+  std::ifstream configFile(configFileName);
+  try {
+    json targetConfig = json::parse(configFile);
+
+    std::vector<TargetInfo> targetInfos;
+    for (const auto& target : targetConfig["targets"]) {
+      try {
+        TargetInfo info;
+        info.id = target["id"];
+        info.position.x = target["positionMeters"][0];
+        info.position.y = target["positionMeters"][1];
+        info.position.z = target["positionMeters"][2];
+        targetInfos.push_back(info);
+      }
+      catch (...) {
+        throw std::runtime_error("Error: Unable to parse target information.");
+      }
+    }
+    return targetInfos;
+  }
+  catch (...) {
+    throw std::runtime_error("Error: Unable to parse target configuration file: " + configFileName);
+  }
+}
 
 void asdp::render::calibration::WorldSpaceRayNoDistortion(const CameraRenderInfo& cri,
   double xPixels, double yPixels,

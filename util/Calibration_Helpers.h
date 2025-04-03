@@ -13,8 +13,26 @@
 #include <CameraRenderInfo.h>
 #include <glm/glm.hpp>
 #include <string>
+#include <vector>
 
 namespace asdp { namespace render { namespace calibration {
+
+/// @brief Read the camera render information from the specified configuration file.
+/// @param configFileName The name of the configuration file.
+/// @return A vector of CameraRenderInfo objects.
+/// @throws std::runtime_error if the file cannot be opened or parsed.
+std::vector<CameraRenderInfo> GetCameraRenderInfos(const std::string& configFileName);
+
+struct TargetInfo {
+  int id;
+  glm::dvec3 position;
+};
+
+/// @brief Read the target information from the specified configuration file.
+/// @param configFileName The name of the configuration file.
+/// @return A vector of TargetInfo objects.
+/// @throws std::runtime_error if the file cannot be opened or parsed.
+std::vector<TargetInfo> GetTargetInfos(const std::string& configFileName);
 
 /// @brief Compute the world-space ray from the camera through the specified pixel, ignoring distortion.
 /// @param cri The camera render information to use to determine the ray in camera space.

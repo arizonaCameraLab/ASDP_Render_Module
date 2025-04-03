@@ -3,11 +3,11 @@
  */
 
 /**
- * @file Target_Calibration_Make_Scan.cpp
+ * @file Camera_Calibration_Make_Scan.cpp
  * @brief Apache Strap-Down Pilotage configuration calibration program.
  *
 * @author ReliaSolve.
-* @date March 26th, 2025.
+* @date April 3rd, 2025.
 */
 
 #include <iostream>
@@ -18,6 +18,7 @@
 #include <set>
 #include <cmath>
 #include <CameraRenderInfo.h>
+#include <nlohmann/json.hpp>
 #include <glm/glm.hpp>
 #include <glm/gtc/quaternion.hpp>
 #include "Calibration_Helpers.h"
@@ -26,7 +27,7 @@ using namespace asdp;
 using namespace asdp::render;
 using namespace asdp::render::calibration;
 
-static std::string VERSION = "2.0.1";
+static std::string VERSION = "0.1.0";
 
 void usage(std::string name)
 {
@@ -37,7 +38,7 @@ void usage(std::string name)
   std::cerr << "    --frames <int>              Number of frames per location (default 10)." << std::endl;
   std::cerr << "    --step <float>              Step size in degrees (default 1.0)." << std::endl;
   std::cerr << "    --help                      Print this information and quit." << std::endl;
-  std::cerr << "  Writes target_N_poses.csv files, where N goes from 1 through the number of targets." << std::endl;
+  std::cerr << "  Writes poses.csv file." << std::endl;
 };
 
 int main(int argc, char** argv)
@@ -86,13 +87,14 @@ int main(int argc, char** argv)
 
   // Run inside a block so that the destructors will be called for all objects before we exit.
   {
-    std::cout << "Target_Calibration_Make_Scan version " << VERSION << std::endl;
+    std::cout << "Camera_Calibration_Make_Scan version " << VERSION << std::endl;
 
     // Construct CameraRenderInfos for each configuration file.
     std::vector<asdp::render::CameraRenderInfo> cameraRenderInfos;
     try {
       cameraRenderInfos = asdp::render::calibration::GetCameraRenderInfos(camConfigFile);
-    } catch (const std::exception& e) {
+    }
+    catch (const std::exception& e) {
       std::cerr << "Error: Unable to read camera configuration file: " << e.what() << std::endl;
       return 10;
     }
@@ -102,11 +104,14 @@ int main(int argc, char** argv)
     std::vector<TargetInfo> targetInfos;
     try {
       targetInfos = asdp::render::calibration::GetTargetInfos(targetConfigFile);
-    } catch (const std::exception& e) {
+    }
+    catch (const std::exception& e) {
       std::cerr << "Error: Unable to read target configuration file: " << e.what() << std::endl;
       return 11;
     }
     std::cout << "Read target configuration from " << targetConfigFile << std::endl;
+
+    /// @todo
 
     // Find the largest field of view (either horizontal or vertical) in any of the
     // cameras.
@@ -166,20 +171,23 @@ int main(int argc, char** argv)
     std::cout << "Adjusted vertical minimum angle: " << minVAngle << " degrees" << std::endl;
     std::cout << "Adjusted vertical maximum angle: " << maxVAngle << " degrees" << std::endl;
 
-    // For each target, generate a series of poses and write them to a file.
+    std::string filename = "poses.csv";
+    std::cout << std::endl;
+    std::cout << "Writing poses to " << filename << std::endl;
+    std::ofstream outFile(filename);
+    if (!outFile) {
+      std::cerr << "Error: Unable to open output file " << filename << std::endl;
+      return 20;
+    }
+    // Write the header line.
+    outFile << "FrameIndex,ZRotationDegrees,XRotationDegrees,Camera,NumFrames" << std::endl;
+
+    // For each target, generate a series of poses, writing them to the file.
+    // When more than one camera can see the same target, request images from all of them
+    // using the same frame index.
+    int frameIndex = 0;
     for (size_t i = 0; i < targetInfos.size(); i++) {
       const TargetInfo& target = targetInfos[i];
-      std::string filename = "target_" + std::to_string(target.id) + "_poses.csv";
-      std::cout << std::endl;
-      std::cout << "Writing poses for target " << target.id << " to " << filename << std::endl;
-      std::ofstream outFile(filename);
-      if (!outFile) {
-        std::cerr << "Error: Unable to open output file " << filename << std::endl;
-        return 20;
-      }
-      // Write the header line.
-      outFile << "FrameIndex,ZRotationDegrees,XRotationDegrees,Camera,NumFrames" << std::endl;
-
       // Determine the angle of the target in the XY plane, with 0 degrees being the +Y axis
       // and 90 degrees being the -X axis.
       double targetHAngle = glm::degrees(std::atan2(-target.position.x, target.position.y));
@@ -199,7 +207,6 @@ int main(int argc, char** argv)
       // These poses are used to determine the set of cameras that are the closest match across
       // some part of this sweep -- we then use the centers of those cameras to generate the
       // list of gimbal angle + camera to use.
-      int frameIndex = 0;
       std::set<uint16_t> camerasUsed;
       for (double a = targetHAngle + minHAngle; a <= targetHAngle + maxHAngle; a += step) {
 
@@ -288,9 +295,8 @@ int main(int argc, char** argv)
           << "," << cri.m_ID << "," << frames << std::endl;
       }
 
-      outFile.close();
-
     } // End of loop over targets.
+    outFile.close();
   } // End of block to ensure that all objects are destructed before we exit.
 
   return 0;

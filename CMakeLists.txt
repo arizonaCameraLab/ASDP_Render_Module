@@ -168,6 +168,7 @@ target_include_directories(Calibration_Helpers PUBLIC
 )
 target_link_libraries(Calibration_Helpers PUBLIC
   Render_Module
+  nlohmann_json::nlohmann_json
 )
 
 #-----------------------------------------------------------------------------
@@ -243,6 +244,7 @@ if(BUILD_UTILITIES)
     Compare_Configurations
     Target_Calibration_Make_Scan
     Target_Calibration_Estimate_Lateral
+    Camera_Calibration_Make_Scan
   )
   foreach (BASE ${CPP_UTILS})
     set (APP ${BASE})
@@ -251,7 +253,6 @@ if(BUILD_UTILITIES)
     target_link_libraries(${APP} PRIVATE
 	    Render_Module
       spot_tracker_library
-      nlohmann_json::nlohmann_json
       ASDP_Core_API::ASDP_Core_API
       glfw
       GLEW::glew
