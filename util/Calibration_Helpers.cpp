@@ -170,7 +170,7 @@ void asdp::render::calibration::WorldSpaceRayNoDistortion(const CameraRenderInfo
   }
 }
 
-void asdp::render::calibration::PointPixelAtTarget(const CameraRenderInfo& cri,
+void asdp::render::calibration::PointPixelAtTargetNoDistortion(const CameraRenderInfo& cri,
   double xPixels, double yPixels,
   double minXRotationDegrees, double maxXRotationDegrees,
   glm::dvec3 target,
@@ -382,30 +382,30 @@ std::string asdp::render::calibration::Test()
         distNull, vigNull, nullptr, 1.0);
 
       // Center of the image, no rotation.
-      PointPixelAtTarget(cri, 511.5, 511.5, -60, 240, { 0, 3, 0 }, zRotation, xRotation, 0.01);
+      PointPixelAtTargetNoDistortion(cri, 511.5, 511.5, -60, 240, { 0, 3, 0 }, zRotation, xRotation, 0.01);
       if (fabs(zRotation) > 0.01) {
-        return "Test failed: PointPixelAtTarget() center of image no rotation Z.";
+        return "Test failed: PointPixelAtTargetNoDistortion() center of image no rotation Z.";
       }
       if (fabs(xRotation) > 0.01) {
-        return "Test failed: PointPixelAtTarget() center of image no rotation X.";
+        return "Test failed: PointPixelAtTargetNoDistortion() center of image no rotation X.";
       }
 
       // Right side of the image, should be rotated by 45 degrees around Z.
-      PointPixelAtTarget(cri, 1023.5, 511.5, -60, 240, { 0, 3, 0 }, zRotation, xRotation, 0.01);
+      PointPixelAtTargetNoDistortion(cri, 1023.5, 511.5, -60, 240, { 0, 3, 0 }, zRotation, xRotation, 0.01);
       if (fabs(zRotation - 45) > 0.01) {
-        return "Test failed: PointPixelAtTarget() right side of image no rotation Z.";
+        return "Test failed: PointPixelAtTargetNoDistortion() right side of image no rotation Z.";
       }
       if (fabs(xRotation) > 0.01) {
-        return "Test failed: PointPixelAtTarget() right side of image no rotation X.";
+        return "Test failed: PointPixelAtTargetNoDistortion() right side of image no rotation X.";
       }
 
       // Top of the image, should be rotated by -45 degrees around X.
-      PointPixelAtTarget(cri, 511.5, -0.5, -60, 240, { 0, 3, 0 }, zRotation, xRotation, 0.01);
+      PointPixelAtTargetNoDistortion(cri, 511.5, -0.5, -60, 240, { 0, 3, 0 }, zRotation, xRotation, 0.01);
       if (fabs(zRotation) > 0.01) {
-        return "Test failed: PointPixelAtTarget() top of image no rotation Z.";
+        return "Test failed: PointPixelAtTargetNoDistortion() top of image no rotation Z.";
       }
       if (fabs(xRotation - (-45)) > 0.01) {
-        return "Test failed: PointPixelAtTarget() top of image no rotation X: "
+        return "Test failed: PointPixelAtTargetNoDistortion() top of image no rotation X: "
           + std::to_string(xRotation);
       }
     }
@@ -420,9 +420,9 @@ std::string asdp::render::calibration::Test()
         distNull, vigNull, nullptr, 1.0);
 
       // Center of the image, no rotation.
-      PointPixelAtTarget(cri, 511.5, 511.5, -60, 240, { -1, 3, 0 }, zRotation, xRotation, 0.01);
+      PointPixelAtTargetNoDistortion(cri, 511.5, 511.5, -60, 240, { -1, 3, 0 }, zRotation, xRotation, 0.01);
       if (fabs(zRotation - 90) > 0.01) {
-        return "Test failed: PointPixelAtTarget() center of image rotated 90Z Z: "
+        return "Test failed: PointPixelAtTargetNoDistortion() center of image rotated 90Z Z: "
           + std::to_string(zRotation);
       }
     }

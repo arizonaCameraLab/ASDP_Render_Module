@@ -357,7 +357,7 @@ described in Appendix A.  The workflow is as follows:
     - Copy the target_*_poses.csv files into the calibration directory.
     - Capture or simulate the frames for each target and save them in a directory named for the target.
         - If simulating for validation:
-            - Open the **calibration_v1.blend** file from the **FlightSim** repository in Blender 4.0 and
+            - Open the **calibration_v2.blend** file from the **FlightSim** repository in Blender 4.0 and
               edit the file names at the top of the script to point at the camera configuration file and
               the target configuration file and the poses file for each of the targets, setting the
               renderPath to an empty subdirectory named target_lateral_N (where N is the target number).  Run the
@@ -380,6 +380,27 @@ described in Appendix A.  The workflow is as follows:
       and the target_*_poses.csv files are).  This will produce a **targets_lateral_opt.json**
       file in the root directory with the estimated lateral positions of the targets updated based on the
       image data.
+    - Run the **Camera_Calibration_Make_Scan** program and give it the camera configuration file and
+      the optimized target configuration file.  It will produce a poses.csv file for all cameras.
+      Copy this file into the calibration directory.
+    - Copy the poses.csv file into the calibration directory.
+    - Capture or simulate the frames for the cameras and save them.
+        - If simulating for validation:
+            - Open the **calibration_v2.blend** file from the **FlightSim** repository in Blender 4.0 and
+              edit the file names at the top of the script to point at the camera configuration file and
+              the target configuration file and the poses file, setting the renderPath to an empty
+             subdirectory named cameras.  Run the script to generate the TIFF files.
+            - Run the **tif_to_pgm.bash** script from the **FlightSim** repository to convert the TIFF files
+              to PGM files.
+            - Run the **SimToCalibration** program from the **FlightSim** repository to generate the
+              calibration files, using `--configFile` and `--poseFile` to point at
+              the appropriate JSON and CSV file, then give it the cameras directory and another
+              in the same directory called cameras_images.
+        - If taking measurements:
+            - Run the **Collect_Calibration_Data** program from the **ASDP_Render_Module** repository to
+              capture the frames, providing it the name of the serial device, the IP
+              address of the NIC to talk with the camera on, and poses.csv file name and the
+              output directory name cameras_images.
 
 @todo
 

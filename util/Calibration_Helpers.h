@@ -49,7 +49,7 @@ void WorldSpaceRayNoDistortion(const asdp::render::CameraRenderInfo& cri, double
   bool verbose = false);
 
 /// @brief Compute the gimbal angles to point a camera pixel at the specified 3D target location
-/// as closely as possible.
+/// as closely as possible, ignoring distortion.
 /// @param cri The camera render information to use to determine the ray in camera space.
 /// @param xPixels The X pixel coordinate, may not be centered on a pixel.
 /// @param yPixels The Y pixel coordinate, may not be centered on a pixel.
@@ -60,7 +60,7 @@ void WorldSpaceRayNoDistortion(const asdp::render::CameraRenderInfo& cri, double
 /// @param outXRotationDegrees The gimbal rotation around the X axis in degrees.
 /// @param precisionDegrees The required precision for the gimbal angles.
 /// @param verbose If true, print debugging information.
-void PointPixelAtTarget(const asdp::render::CameraRenderInfo& cri, double xPixels, double yPixels,
+void PointPixelAtTargetNoDistortion(const asdp::render::CameraRenderInfo& cri, double xPixels, double yPixels,
   double minXRotationDegrees, double maxXRotationDegrees,
   glm::dvec3 target,
   double &outZRotationDegrees, double &outXRotationDegrees,

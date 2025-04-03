@@ -267,7 +267,7 @@ int main(int argc, char** argv)
       for (auto const &cri : cameraRenderInfos) if (camerasUsed.count(cri.m_ID)) {
 
         double zRotationDegrees, xRotationDegrees;
-        PointPixelAtTarget(cri,
+        PointPixelAtTargetNoDistortion(cri,
           0.5 * cri.m_resolutionPixels[0] - 0.5, 0.5 * cri.m_resolutionPixels[1] - 0.5,
           minVAngle, maxVAngle,
           target.position,
