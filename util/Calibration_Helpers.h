@@ -67,6 +67,19 @@ void PointPixelAtTargetNoDistortion(const asdp::render::CameraRenderInfo& cri, d
   double precisionDegrees = 0.01,
   bool verbose = false);
 
+/// @brief See whether the specified target is within the view frustum of the camera at the
+/// specified gimbal angles, not counting distortion.
+/// @param cri The camera render information.
+/// @param zRotationDegrees The gimbal rotation around the Z axis in degrees.
+/// @param xRotationDegrees The gimbal rotation around the X axis in degrees.
+/// @param targetPoint The target point in world (gimbal helicopter) coordinates.
+/// @param xPixels The X pixel coordinate, may not be centered on a pixel.
+/// @param yPixels The Y pixel coordinate, may not be centered on a pixel.
+/// @return True if the target is within the view frustum, false otherwise.
+bool TargetProjectedLocationNoDistortion(const asdp::render::CameraRenderInfo& cri,
+  double zRotationDegrees, double xRotationDegrees, const glm::dvec3& targetPoint,
+  double &xPixels, double &yPixels);
+
 /// @brief Test the calibration helpers.
 /// @return An empty string if the test passes, otherwise an error message.
 std::string Test();

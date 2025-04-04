@@ -246,6 +246,80 @@ void asdp::render::calibration::PointPixelAtTargetNoDistortion(const CameraRende
   outXRotationDegrees = bestXRotation;
 }
 
+bool asdp::render::calibration::TargetProjectedLocationNoDistortion(
+  const asdp::render::CameraRenderInfo& cri,
+  double zRotationDegrees, double xRotationDegrees, const glm::dvec3& targetPoint,
+  double& xPixels, double& yPixels)
+{
+  // Shift the target location from world space to camera space, which is done by performing
+  // the inverse of the gimbal rotation and then translating by the inverse of its position
+  // and then the inverse of the camera rotation.
+  // We do the opposite rotations in the opposite order to get the inverse.
+  glm::dvec3 targetPointInCamera = targetPoint;
+  {
+    // Rotate the target point by the inverse of the gimbal rotation.
+    glm::dquat rotationZ = glm::angleAxis(glm::radians(-zRotationDegrees), glm::dvec3(0.0, 0.0, 1.0));
+    glm::dquat rotationX = glm::angleAxis(glm::radians(-xRotationDegrees), glm::dvec3(1.0, 0.0, 0.0));
+    glm::dquat rotationTotal = rotationX * rotationZ;
+    targetPointInCamera = rotationTotal * targetPointInCamera;
+  }
+  {
+    // Translate the target point by the inverse of the camera position.
+    targetPointInCamera.x -= cri.m_positionMeters[0];
+    targetPointInCamera.y -= cri.m_positionMeters[1];
+    targetPointInCamera.z -= cri.m_positionMeters[2];
+  }
+  {
+    // Rotate the target point by the inverse of the camera rotation.
+    glm::dquat rotationX = glm::angleAxis(glm::radians(-cri.m_orientationDegrees[0]), glm::dvec3(1.0, 0.0, 0.0));
+    glm::dquat rotationY = glm::angleAxis(glm::radians(-cri.m_orientationDegrees[1]), glm::dvec3(0.0, 1.0, 0.0));
+    glm::dquat rotationZ = glm::angleAxis(glm::radians(-cri.m_orientationDegrees[2]), glm::dvec3(0.0, 0.0, 1.0));
+    glm::dquat rotationTotal = rotationZ * rotationY * rotationX;
+    targetPointInCamera = rotationTotal * targetPointInCamera;
+  }
+
+  // Switch from helicopter space (+X right, +Y forward, +Z up) to camera space (+X right, +Y up, -Z forward).
+  glm::dvec3 temp = targetPointInCamera;
+  targetPointInCamera.x = temp.x;
+  targetPointInCamera.y = temp.z;
+  targetPointInCamera.z = -temp.y;
+
+  // If the target is at or behind the camera (along +Z), it is not in the frustum.
+  if (targetPointInCamera.z >= 0) {
+    return false;
+  }
+
+  // Project the target point onto the Z = -1 plane.
+  // The projection is done by scaling the X and Y coordinates by the -Z coordinate.
+  targetPointInCamera.x /= -targetPointInCamera.z;
+  targetPointInCamera.y /= -targetPointInCamera.z;
+  targetPointInCamera.z = -1;
+
+  // Find the four edges of the camera frustum in the Z = -1 plane.
+  double maxX = tan(glm::radians(cri.m_fovDegrees[0] / 2.0));
+  double minX = -maxX;
+  double maxY = tan(glm::radians(cri.m_fovDegrees[1] / 2.0));
+  double minY = -maxY;
+
+  // Invert the Y coordinate to match the right-handed coordinate system of the image.
+  targetPointInCamera.y = -targetPointInCamera.y;
+
+  // Compute the normalized coordinates of the target point (0 at min and 1 at max).
+  double xFrac = (targetPointInCamera.x - minX) / (maxX - minX);
+  double yFrac = (targetPointInCamera.y - minY) / (maxY - minY);
+
+  if (xFrac < 0 || xFrac > 1 || yFrac < 0 || yFrac > 1) {
+    // The target point is outside the camera frustum.
+    return false;
+  }
+
+  // Compute the pixel coordinates of the target point.
+  // The pixel coordinates are in the range [0, width-1] and [0, height-1].
+  xPixels = xFrac * (cri.m_resolutionPixels[0] - 1);
+  yPixels = yFrac * (cri.m_resolutionPixels[1] - 1);
+  return true;
+}
+
 std::string asdp::render::calibration::Test()
 {
   // Used in multiple tests.
@@ -424,6 +498,71 @@ std::string asdp::render::calibration::Test()
       if (fabs(zRotation - 90) > 0.01) {
         return "Test failed: PointPixelAtTargetNoDistortion() center of image rotated 90Z Z: "
           + std::to_string(zRotation);
+      }
+    }
+
+    // Test TargetProjectedLocationNoDistortion()
+    {
+      double xPixel, yPixel;
+      {
+        //===========================================================================
+        // Test a camera at the center and a target down the +Y axis at the same height.
+        CameraRenderInfo cri(1, { 0, 0, 0 }, { 0, 0, 0 }, { 1024, 1024 }, { 90, 90 },
+          distNull, vigNull, nullptr, 1.0);
+
+        // No gimbal rotation, center of the image.
+        if (!TargetProjectedLocationNoDistortion(cri, 0, 0, { 0, 3, 0 }, xPixel, yPixel)) {
+          return "Test failed: TargetProjectedLocationNoDistortion() center of image no rotation.";
+        }
+        if (fabs(xPixel - 511.5) > 0.01) {
+          return "Test failed: TargetProjectedLocationNoDistortion() center of image no rotation X.";
+        }
+        if (fabs(yPixel - 511.5) > 0.01) {
+          return "Test failed: TargetProjectedLocationNoDistortion() center of image no rotation Y.";
+        }
+
+        // No gimbal rotation, outside of image.
+        if (TargetProjectedLocationNoDistortion(cri, 0, 0, { 0, -3, 0 }, xPixel, yPixel)) {
+          return "Test failed: TargetProjectedLocationNoDistortion() center of image no rotation behind.";
+        }
+        if (TargetProjectedLocationNoDistortion(cri, 0, 0, { 0, 3, 3 }, xPixel, yPixel)) {
+          return "Test failed: TargetProjectedLocationNoDistortion() center of image no rotation out of range.";
+        }
+
+        // 90 degree Z gimbal rotation, center of image.
+        if (!TargetProjectedLocationNoDistortion(cri, 90, 0, { -3, 0, 0 }, xPixel, yPixel)) {
+          return "Test failed: TargetProjectedLocationNoDistortion() center of image rotated 90Z.";
+        }
+        if (fabs(xPixel - 511.5) > 0.01) {
+          return "Test failed: TargetProjectedLocationNoDistortion() center of image rotated 90Z X.";
+        }
+        if (fabs(yPixel - 511.5) > 0.01) {
+          return "Test failed: TargetProjectedLocationNoDistortion() center of image rotated 90Z Y.";
+        }
+
+        // 90 degree X gimbal rotation, center of image.
+        if (!TargetProjectedLocationNoDistortion(cri, 0, 90, { 0, 0, 3 }, xPixel, yPixel)) {
+          return "Test failed: TargetProjectedLocationNoDistortion() center of image rotated 90X.";
+        }
+      }
+
+      {
+        //===========================================================================
+        // Test a camera that is offset by +1 down the Y axis and rotated 90 degrees
+        CameraRenderInfo cri(1, { 0, 1, 0 }, { 0, 0, 90 }, { 1024, 1024 }, { 90, 90 },
+          distNull, vigNull, nullptr, 1.0);
+
+        // No gimbal rotation, center of the image.
+        if (!TargetProjectedLocationNoDistortion(cri, 0, 0, { -1, 1, 0 }, xPixel, yPixel)) {
+          return "Test failed: TargetProjectedLocationNoDistortion() offset angled center of image.";
+        }
+        if (fabs(xPixel - 511.5) > 0.01) {
+          return "Test failed: TargetProjectedLocationNoDistortion() offset angled center of image X.";
+        }
+        if (fabs(yPixel - 511.5) > 0.01) {
+          return "Test failed: TargetProjectedLocationNoDistortion() offset angled center of image Y.";
+        }
+
       }
     }
   }
