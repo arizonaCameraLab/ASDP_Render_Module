@@ -45,8 +45,6 @@ void usage(std::string name)
   std::cerr << "  Writes poses.csv file." << std::endl;
 };
 
-
-
 int main(int argc, char** argv)
 {
   std::string camConfigFile, targetConfigFile;
@@ -214,7 +212,7 @@ int main(int argc, char** argv)
 
         //===========================================================
         // Run along each edge of each camera, asking for images from all cameras that can
-        // see the requested point.
+        // see the requested point within their margins.
 
         /// @todo
 

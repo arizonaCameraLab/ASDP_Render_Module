@@ -251,6 +251,10 @@ bool asdp::render::calibration::TargetProjectedLocationNoDistortion(
   double zRotationDegrees, double xRotationDegrees, const glm::dvec3& targetPoint,
   double& xPixels, double& yPixels)
 {
+  // Set return to defaults for failure in case of failure.
+  xPixels = -1e6;
+  yPixels = -1e6;
+
   // Shift the target location from world space to camera space, which is done by performing
   // the inverse of the gimbal rotation and then translating by the inverse of its position
   // and then the inverse of the camera rotation.
@@ -521,12 +525,29 @@ std::string asdp::render::calibration::Test()
           return "Test failed: TargetProjectedLocationNoDistortion() center of image no rotation Y.";
         }
 
+        // No gimbal rotation, right edge of image.
+        if (!TargetProjectedLocationNoDistortion(cri, 0, 0, { 2.9999999, 3, 0 }, xPixel, yPixel)) {
+          return "Test failed: TargetProjectedLocationNoDistortion() right edge of image no rotation.";
+        }
+        if (fabs(xPixel - 1023) > 0.01) {
+          return "Test failed: TargetProjectedLocationNoDistortion() right edge of image no rotation X.";
+        }
+        if (fabs(yPixel - 511.5) > 0.01) {
+          return "Test failed: TargetProjectedLocationNoDistortion() right edge of image no rotation Y.";
+        }
+
         // No gimbal rotation, outside of image.
         if (TargetProjectedLocationNoDistortion(cri, 0, 0, { 0, -3, 0 }, xPixel, yPixel)) {
           return "Test failed: TargetProjectedLocationNoDistortion() center of image no rotation behind.";
         }
-        if (TargetProjectedLocationNoDistortion(cri, 0, 0, { 0, 3, 3 }, xPixel, yPixel)) {
+        if (TargetProjectedLocationNoDistortion(cri, 0, 0, { 0, 3, 4 }, xPixel, yPixel)) {
           return "Test failed: TargetProjectedLocationNoDistortion() center of image no rotation out of range.";
+        }
+        if (fabs(xPixel - (-1e6)) > 0.01) {
+          return "Test failed: TargetProjectedLocationNoDistortion() center of image no rotation out of range X.";
+        }
+        if (fabs(yPixel - (-1e6)) > 0.01) {
+          return "Test failed: TargetProjectedLocationNoDistortion() center of image no rotation out of range Y.";
         }
 
         // 90 degree Z gimbal rotation, center of image.

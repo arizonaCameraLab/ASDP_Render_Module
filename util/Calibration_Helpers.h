@@ -36,8 +36,8 @@ std::vector<TargetInfo> GetTargetInfos(const std::string& configFileName);
 
 /// @brief Compute the world-space ray from the camera through the specified pixel, ignoring distortion.
 /// @param cri The camera render information to use to determine the ray in camera space.
-/// @param xPixels The X pixel coordinate, may not be centered on a pixel.
-/// @param yPixels The Y pixel coordinate, may not be centered on a pixel.
+/// @param xPixels The X pixel coordinate, need not be centered on a pixel.
+/// @param yPixels The Y pixel coordinate, need not be centered on a pixel.
 /// @param zRotationDegrees The gimbal rotation around the Z axis in degrees.
 /// @param xRotationDegrees The gimbal rotation around the X axis in degrees.
 /// @param outRayStartInWorld The start of the ray in world (gimbol helicopter) coordinates.
@@ -51,8 +51,8 @@ void WorldSpaceRayNoDistortion(const asdp::render::CameraRenderInfo& cri, double
 /// @brief Compute the gimbal angles to point a camera pixel at the specified 3D target location
 /// as closely as possible, ignoring distortion.
 /// @param cri The camera render information to use to determine the ray in camera space.
-/// @param xPixels The X pixel coordinate, may not be centered on a pixel.
-/// @param yPixels The Y pixel coordinate, may not be centered on a pixel.
+/// @param xPixels The X pixel coordinate, need not be centered on a pixel.
+/// @param yPixels The Y pixel coordinate, need not be centered on a pixel.
 /// @param minXRotationDegrees The minimum gimbal rotation around the X axis in degrees, probably negative.
 /// @param maxXRotationDegrees The maximum gimbal rotation around the X axis in degrees, probably positive.
 /// @param target The 3D target location in world (gimbol helicopter) coordinates.
@@ -73,8 +73,8 @@ void PointPixelAtTargetNoDistortion(const asdp::render::CameraRenderInfo& cri, d
 /// @param zRotationDegrees The gimbal rotation around the Z axis in degrees.
 /// @param xRotationDegrees The gimbal rotation around the X axis in degrees.
 /// @param targetPoint The target point in world (gimbal helicopter) coordinates.
-/// @param xPixels The X pixel coordinate, may not be centered on a pixel.
-/// @param yPixels The Y pixel coordinate, may not be centered on a pixel.
+/// @param xPixels The X pixel coordinate, might not be centered on a pixel; -1e6 if outside image.
+/// @param yPixels The Y pixel coordinate, might not be centered on a pixel; -1e6 if outside image.
 /// @return True if the target is within the view frustum, false otherwise.
 bool TargetProjectedLocationNoDistortion(const asdp::render::CameraRenderInfo& cri,
   double zRotationDegrees, double xRotationDegrees, const glm::dvec3& targetPoint,
