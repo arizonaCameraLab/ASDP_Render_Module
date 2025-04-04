@@ -27,7 +27,7 @@ using namespace asdp;
 using namespace asdp::render;
 using namespace asdp::render::calibration;
 
-static std::string VERSION = "0.5.0";
+static std::string VERSION = "1.0.0";
 
 void usage(std::string name)
 {
@@ -44,6 +44,51 @@ void usage(std::string name)
   std::cerr << "    --help                      Print this information and quit." << std::endl;
   std::cerr << "  Writes poses.csv file." << std::endl;
 };
+
+static void RunAlongEdge(std::ofstream& outFile, int& frameIndex,
+  std::vector<CameraRenderInfo> const& cameraRenderInfos, int numFrames,
+  CameraRenderInfo const& cri, glm::dvec3 const& targetPoint,
+  int topMarginPixels, int bottomMarginPixels,
+  int leftMarginPixels, int rightMarginPixels,
+  int startX, int startY, int stepX, int stepY, int numSteps
+  )
+{
+  for (int i = 0; i < numSteps; ++i) {
+    // Compute the pixel location.
+    double x = startX + i * stepX;
+    double y = startY + i * stepY;
+
+    // Compute the gimbal angles to point the camera at the target point.
+    double xRotationDegrees, zRotationDegrees;
+    PointPixelAtTargetNoDistortion(cri, x, y, -60, 240,
+      targetPoint,
+      zRotationDegrees, xRotationDegrees);
+
+    // Check each camera to see if it can see the target within its margin.
+    // If so, write the pose to the file.  We bump the frame index once for
+    // all cameras and then reset it if no cameras saw the target (so we don't
+    // have inadvertent gaps in the frame index).
+    ++frameIndex;
+    bool sawTarget = false;
+    for (auto const& camera : cameraRenderInfos) {
+      double xPixels, yPixels;
+      TargetProjectedLocationNoDistortion(camera, zRotationDegrees, xRotationDegrees, targetPoint,
+        xPixels, yPixels);
+      // We assume that the pixel is always in range in the reference camera.
+      if (camera.m_ID == cri.m_ID ||
+        (xPixels >= leftMarginPixels && xPixels <= (camera.m_resolutionPixels[0] - 1) - rightMarginPixels &&
+        yPixels >= topMarginPixels && yPixels <= (camera.m_resolutionPixels[1] - 1) - bottomMarginPixels)) {
+        outFile << frameIndex << "," << zRotationDegrees << "," << xRotationDegrees << ","
+          << camera.m_ID << "," << numFrames << std::endl;
+        sawTarget = true;
+      }
+    }
+    if (!sawTarget) {
+      // If we never saw the target, put the frame index back.
+      --frameIndex;
+    }
+  }
+}
 
 int main(int argc, char** argv)
 {
@@ -211,10 +256,33 @@ int main(int argc, char** argv)
         }
 
         //===========================================================
-        // Run along each edge of each camera, asking for images from all cameras that can
+        // Run along each edge of the camera, asking for images from all cameras that can
         // see the requested point within their margins.
+        {
+          int xMin = leftMarginPixels;
+          int xMax = cri.m_resolutionPixels[0] - rightMarginPixels - 1;
+          int yMin = topMarginPixels;
+          int yMax = cri.m_resolutionPixels[1] - bottomMarginPixels - 1;
+          int numXSteps = (xMax - xMin) / stepPixels;
+          int numYSteps = (yMax - yMin) / stepPixels;
 
-        /// @todo
+          RunAlongEdge(outFile, frameIndex, cameraRenderInfos, frames, cri, targetPoint,
+            topMarginPixels, bottomMarginPixels,
+            leftMarginPixels, rightMarginPixels,
+            xMin, yMin, stepPixels, 0, numXSteps);
+          RunAlongEdge(outFile, frameIndex, cameraRenderInfos, frames, cri, targetPoint,
+            topMarginPixels, bottomMarginPixels,
+            leftMarginPixels, rightMarginPixels,
+            xMax, yMin, 0, stepPixels, numYSteps);
+          RunAlongEdge(outFile, frameIndex, cameraRenderInfos, frames, cri, targetPoint,
+            topMarginPixels, bottomMarginPixels,
+            leftMarginPixels, rightMarginPixels,
+            xMin, yMax, stepPixels, 0, numXSteps);
+          RunAlongEdge(outFile, frameIndex, cameraRenderInfos, frames, cri, targetPoint,
+            topMarginPixels, bottomMarginPixels,
+            leftMarginPixels, rightMarginPixels,
+            xMax, yMin, 0, stepPixels, numYSteps);
+        }
 
       } // End of diagonals loop over cameras.
 
