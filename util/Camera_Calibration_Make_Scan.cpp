@@ -27,7 +27,7 @@ using namespace asdp;
 using namespace asdp::render;
 using namespace asdp::render::calibration;
 
-static std::string VERSION = "1.0.0";
+static std::string VERSION = "1.1.0";
 
 void usage(std::string name)
 {

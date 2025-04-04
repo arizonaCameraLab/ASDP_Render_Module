@@ -184,6 +184,11 @@ void asdp::render::calibration::PointPixelAtTargetNoDistortion(const CameraRende
   // across the specified range.
   double minMissDistance = 1e30;
   double bestXRotation = 0.0;
+
+  // To avoid toggling back randomly between two solutions, we keep track of whether we have passed
+  // the target height or not.  If we have passed it, we can stop looking for a solution.
+  int previousSign = 0;
+
   glm::dvec2 bestPierce = { 0, 0 };
   for (double xRotation = minXRotationDegrees; xRotation <= maxXRotationDegrees; xRotation += precisionDegrees) {
     glm::dvec3 rayStartInWorld, rayDirectionInWorld;
@@ -222,6 +227,7 @@ void asdp::render::calibration::PointPixelAtTargetNoDistortion(const CameraRende
     }
     double P1 = (-b + sqrt(d)) / (2 * a);
     glm::dvec2 intersect = U + P1 * V;
+    // Knowing the distance to the (X,Y) location, solve for Z at the same distance along the ray.
     double height = rayStartInWorld.z + P1 * rayDirectionInWorld.z;
     double missDistance = fabs(height - target.z);
     if (missDistance < minMissDistance) {
@@ -229,6 +235,15 @@ void asdp::render::calibration::PointPixelAtTargetNoDistortion(const CameraRende
       bestXRotation = xRotation;
       bestPierce = intersect;
     }
+
+    // If we have passed the target height, then our minimum so far is within the precision and
+    // we us it.  The previous sign starts out at 0, so we won't break on until we've had one that
+    // is non-negative and one that is negative.
+    int sign = (height >= target.z) ? 1 : -1;
+    if (sign * previousSign == -1) {
+      break;
+    }
+    previousSign = sign;
   }
 
   // Find the angle in the Z=0 plane of the piercing point.
