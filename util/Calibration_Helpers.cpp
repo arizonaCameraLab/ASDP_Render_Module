@@ -47,7 +47,7 @@ std::vector<CameraRenderInfo> asdp::render::calibration::GetCameraRenderInfos(
       DistortionRadialLERP* distortion = new DistortionRadialLERP(center, mapPoints);
       dist = std::shared_ptr<Distortion>(distortion);
     } else {
-      throw std::runtime_error("Error: Unknown distortion type: " + distortion["type"]);
+      throw std::runtime_error("Error: Unknown distortion type: " + std::string(distortion["type"]));
     }
 
     std::shared_ptr<Vignette> vig(new VignetteNone);
@@ -63,7 +63,7 @@ std::vector<CameraRenderInfo> asdp::render::calibration::GetCameraRenderInfos(
       } else if (vignette["type"] == nullptr) {
         // No vignette specified, so use the default.
       } else {
-        throw std::runtime_error("Error: Unknown vignette type: " + vignette["type"]);
+        throw std::runtime_error("Error: Unknown vignette type: " + std::string(vignette["type"]));
       }
     } catch (...) {
       // No vignette specified, so use the default.
