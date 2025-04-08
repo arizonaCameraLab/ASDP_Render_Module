@@ -92,6 +92,7 @@ endif (BUILD_DOXYGEN)
 # Build the libraries.
 
 add_subdirectory(Spot_Tracker)
+add_subdirectory(Gimbal)
 
 set (Render_Module_HEADERS
   CameraRenderInfo.h
