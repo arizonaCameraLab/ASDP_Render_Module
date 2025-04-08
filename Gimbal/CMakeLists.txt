@@ -28,8 +28,9 @@ add_library (Gimbal
 )
 set_property(TARGET Gimbal PROPERTY PUBLIC_HEADER ${GIMBAL_PUBLIC_Headers})
 target_include_directories(Gimbal PUBLIC
-  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>/Gimbal
   $<INSTALL_INTERFACE:include>
   "${CMAKE_CURRENT_BINARY_DIR}/Install/include"
+
 )
 target_link_libraries(Gimbal PUBLIC vrpn_Serial)

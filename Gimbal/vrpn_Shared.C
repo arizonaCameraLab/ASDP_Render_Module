@@ -11,6 +11,12 @@
 
 #include "vrpn_Shared.h"
 
+#ifdef _WIN32
+#ifdef _MSC_VER
+#pragma comment(lib, "wsock32.lib") // VRPN requires the Windows Sockets library.
+#endif
+#endif
+
 #if defined(__APPLE__) || defined(__ANDROID__)
 #include <unistd.h>
 #endif

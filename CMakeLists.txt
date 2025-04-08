@@ -321,6 +321,7 @@ if(BUILD_TESTS)
     XSight_Simulator
     Spot_Tracker_Test
     Calibration_Helpers_Test
+    Gimbal_Test
   )
   foreach (BASE ${CPP_TESTS})
     set (APP ${BASE})
@@ -334,6 +335,7 @@ if(BUILD_TESTS)
       Render_Module
       spot_tracker_library
       Calibration_Helpers
+      Gimbal
     )
     install(TARGETS ${APP} EXPORT ${PROJECT_NAME}
       RUNTIME DESTINATION bin
