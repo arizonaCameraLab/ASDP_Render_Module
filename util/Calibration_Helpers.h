@@ -34,6 +34,20 @@ struct TargetInfo {
 /// @throws std::runtime_error if the file cannot be opened or parsed.
 std::vector<TargetInfo> GetTargetInfos(const std::string& configFileName);
 
+struct PoseInfo {
+  int frameIndex;
+  double zRotationDegrees;
+  double xRotationDegrees;
+  int cameraID;
+  int numFrames;
+};
+
+/// @brief Read the pose information from the specified file.
+/// @param filename The name of the file.
+/// @return A vector of PoseInfo objects.
+/// @throws std::runtime_error if the file cannot be opened or parsed.
+std::vector<PoseInfo> GetPoseInfos(const std::string& filename);
+
 /// @brief Compute the world-space ray from the camera through the specified pixel, ignoring distortion.
 /// @param cri The camera render information to use to determine the ray in camera space.
 /// @param xPixels The X pixel coordinate, need not be centered on a pixel.

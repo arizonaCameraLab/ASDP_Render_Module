@@ -78,7 +78,7 @@ namespace asdp {
       std::vector<std::array<double, 2>> m_controlPoints;
     };
 
-    /// @brief Distortion model that uses a bag mappins from projection-plane points from the ideal camera to the distorted camera.
+    /// @brief Distortion model that uses a bag of mappings from projection-plane points from the ideal camera to the distorted camera.
     /// @details This model is constructed with a vector of mappings from 2D points in the ideal camera's
     /// projection plane to points in the distorted camera's projection plane.  The points do not have to be
     /// in a grid or in any particular order.  The mapping is done by finding the closest three non-collinear

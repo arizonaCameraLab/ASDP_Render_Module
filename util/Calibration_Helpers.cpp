@@ -15,6 +15,7 @@
 #include <nlohmann/json.hpp>
 #include <iostream>
 #include <fstream>
+#include <sstream>
 #include <filesystem>
 
 using namespace asdp::render;
@@ -108,6 +109,34 @@ std::vector<TargetInfo> asdp::render::calibration::GetTargetInfos(
   catch (...) {
     throw std::runtime_error("Error: Unable to parse target configuration file: " + configFileName);
   }
+}
+
+std::vector<PoseInfo> asdp::render::calibration::GetPoseInfos(
+  const std::string& filename)
+{
+  if (!std::filesystem::exists(filename)) {
+    throw std::runtime_error("Pose file not found: " + filename);
+  }
+  std::ifstream poseFile(filename);
+  std::vector<PoseInfo> poseInfos;
+  std::string line;
+  // Skip the header line.
+  std::getline(poseFile, line);
+  // Parse each comma-separated line.
+  while (std::getline(poseFile, line)) {
+    std::istringstream iss(line);
+    PoseInfo info;
+    char comma;
+    // Read the comma-separated values.
+    // Note that we use the >> operator to read the values, which will skip whitespace.
+    // The format is: frameIndex,zRotationDegrees,xRotationDegrees,cameraID,numFrames
+    if (!(iss >> info.frameIndex >> comma >> info.zRotationDegrees >> comma >>
+          info.xRotationDegrees >> comma >> info.cameraID >> comma >> info.numFrames)) {
+      throw std::runtime_error("Error: Unable to parse pose information.");
+    }
+    poseInfos.push_back(info);
+  }
+  return poseInfos;
 }
 
 void asdp::render::calibration::WorldSpaceRayNoDistortion(const CameraRenderInfo& cri,

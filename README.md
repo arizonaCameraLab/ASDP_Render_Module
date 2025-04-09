@@ -399,8 +399,9 @@ described in Appendix A.  The workflow is as follows:
         - If taking measurements:
             - Run the **Collect_Calibration_Data** program from the **ASDP_Render_Module** repository to
               capture the frames, providing it the name of the serial device, the IP
-              address of the NIC to talk with the camera on, and poses.csv file name and the
-              output directory name cameras_images.
+              address of the NIC to talk with the camera on, the serial number of the camera to use,
+              the poses.csv file name, and the dictory under the output directory named cameras_images
+              to write the images into.
 
 @todo
 

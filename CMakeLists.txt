@@ -246,6 +246,7 @@ if(BUILD_UTILITIES)
     Target_Calibration_Make_Scan
     Target_Calibration_Estimate_Lateral
     Camera_Calibration_Make_Scan
+    Collect_Calibration_Data
   )
   foreach (BASE ${CPP_UTILS})
     set (APP ${BASE})
@@ -259,6 +260,7 @@ if(BUILD_UTILITIES)
       GLEW::glew
       OpenGL::GL
       Calibration_Helpers
+      Gimbal
     )
     install(TARGETS ${APP} EXPORT ${PROJECT_NAME}
       RUNTIME DESTINATION bin
