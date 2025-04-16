@@ -69,23 +69,17 @@ static void RunAlongEdge(std::ofstream& outFile, int& frameIndex,
     // all cameras and then reset it if no cameras saw the target (so we don't
     // have inadvertent gaps in the frame index).
     ++frameIndex;
-    bool sawTarget = false;
     for (auto const& camera : cameraRenderInfos) {
       double xPixels, yPixels;
       TargetProjectedLocationNoDistortion(camera, zRotationDegrees, xRotationDegrees, targetPoint,
         xPixels, yPixels);
-      // We assume that the pixel is always in range in the reference camera.
+      // The pixel is always in range in the reference camera, by construction.
       if (camera.m_ID == cri.m_ID ||
         (xPixels >= leftMarginPixels && xPixels <= (camera.m_resolutionPixels[0] - 1) - rightMarginPixels &&
         yPixels >= topMarginPixels && yPixels <= (camera.m_resolutionPixels[1] - 1) - bottomMarginPixels)) {
         outFile << frameIndex << "," << zRotationDegrees << "," << xRotationDegrees << ","
           << camera.m_ID << "," << numFrames << std::endl;
-        sawTarget = true;
       }
-    }
-    if (!sawTarget) {
-      // If we never saw the target, put the frame index back.
-      --frameIndex;
     }
   }
 }
@@ -258,6 +252,8 @@ int main(int argc, char** argv)
         //===========================================================
         // Run along each edge of the camera, asking for images from all cameras that can
         // see the requested point within their margins.
+        /// @todo Don't repeat the corner points and go clockwise around the edges so we always
+        /// have a single copy of the corners and minimize motion.
         {
           int xMin = leftMarginPixels;
           int xMax = cri.m_resolutionPixels[0] - rightMarginPixels - 1;
