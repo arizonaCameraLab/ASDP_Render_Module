@@ -170,6 +170,7 @@ target_include_directories(Calibration_Helpers PUBLIC
 target_link_libraries(Calibration_Helpers PUBLIC
   Render_Module
   nlohmann_json::nlohmann_json
+  Gimbal
 )
 
 #-----------------------------------------------------------------------------

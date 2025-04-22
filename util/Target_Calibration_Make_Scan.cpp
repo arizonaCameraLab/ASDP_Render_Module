@@ -26,13 +26,14 @@ using namespace asdp;
 using namespace asdp::render;
 using namespace asdp::render::calibration;
 
-static std::string VERSION = "3.0.0";
+static std::string VERSION = "4.0.0";
 
 void usage(std::string name)
 {
-  std::cerr << "Usage: " << name << " [options] camConfig.json targetConfig.json" << std::endl;
+  std::cerr << "Usage: " << name << " [options] camConfig.json targetConfig.json gimbalConfig.json" << std::endl;
   std::cerr << "  camConfig.json                Camera configuration file." << std::endl;
   std::cerr << "  targetConfig.json             Target configuration file." << std::endl;
+  std::cerr << "  gimbalConfig.json             Gimbal configuration file." << std::endl;
   std::cerr << "  Options:" << std::endl;
   std::cerr << "    --frames <int>              Number of frames per location (default 10)." << std::endl;
   std::cerr << "    --step <float>              Step size in degrees (default 1.0)." << std::endl;
@@ -42,7 +43,7 @@ void usage(std::string name)
 
 int main(int argc, char** argv)
 {
-  std::string camConfigFile, targetConfigFile;
+  std::string camConfigFile, targetConfigFile, gimbalConfigFile;
   int frames = 10;
   double step = 1.0;
   size_t realParams = 0;          ///< The number of non-flag parameters we've seen.
@@ -74,12 +75,15 @@ int main(int argc, char** argv)
     case 1:
       targetConfigFile = argv[i];
       break;
+    case 2:
+      gimbalConfigFile = argv[i];
+      break;
     default:
       usage(argv[0]);
       return 2;
     }
   }
-  if (realParams != 2) {
+  if (realParams != 3) {
     usage(argv[0]);
     return 2;
   }
@@ -108,6 +112,16 @@ int main(int argc, char** argv)
     }
     std::cout << "Read target configuration from " << targetConfigFile << std::endl;
 
+    // Read the gimbal information.
+    GimbalInfo gimbalInfo;
+    try {
+      gimbalInfo = asdp::render::calibration::GetGimbalInfo(gimbalConfigFile);
+    }
+    catch (const std::exception& e) {
+      std::cerr << "Error: Unable to read gimbal configuration file: " << e.what() << std::endl;
+      return 12;
+    }
+
     // Find the largest field of view (either horizontal or vertical) in any of the
     // cameras.
     double maxFov = 0;
@@ -125,8 +139,8 @@ int main(int argc, char** argv)
     // Find the maximum and minimum angle above and below the XY plane that any rotated +Y axis goes.
     double minHAngle = 180;
     double maxHAngle = -180;
-    double minVAngle = 180;
-    double maxVAngle = -180;
+    double minVAngle = 90;
+    double maxVAngle = -90;
     for (const auto& camera : cameraRenderInfos) {
       // Rotate around X, then Y, then Z.
       glm::dquat rotationX = glm::angleAxis(glm::radians(camera.m_orientationDegrees[0]), glm::dvec3(1.0, 0.0, 0.0));
@@ -271,6 +285,7 @@ int main(int argc, char** argv)
           0.5 * cri.m_resolutionPixels[0] - 0.5, 0.5 * cri.m_resolutionPixels[1] - 0.5,
           minVAngle, maxVAngle,
           target.position,
+          gimbalInfo.pitchFirst,
           zRotationDegrees, xRotationDegrees);
 
         outFile << ++frameIndex << "," << zRotationDegrees << "," << xRotationDegrees

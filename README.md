@@ -348,60 +348,53 @@ described in Appendix A.  The workflow is as follows:
       the gimbal center of rotation as the center of helicopter space with the +X axis pointing
       towards one of the forks and the +Z axis pointing up.
     - Generate an as-designed target location JSON file for the two targets to be used in calibration.
+    - Generate a **gimbal.json** file to describe the gimbal configuration (see util/gimbal.json for an
+      example). Its "name" field selects which physical gimbal to use: "Zaber_X_G_RST" or "iOptics_CEM40",
+      and its "pitchFirst" field specifies whether the gimbal is rotated first around the X or Z axis
+      first (X first if true). Its "speed" and "acceleration" fields specify the maximum speed and
+      acceleration of the gimbal in degrees per second and degrees per second squared, respectively.
+      The "minYawDegrees" and "maxYawDegrees" fields specify the minimum and maximum yaw angles in degrees, and the
+      "minPitchDegrees" and "maxPitchDegrees" fields specify the minimum and maximum pitch angles in degrees.
+      "comPort" specifies the name of the serial port to use for the gimbal if one is required,
+      and "baud" specifies the baud rate if it is required.
     - Copy the calibration files to a new calibration directory on the data drive that will hold our calibration
       artifacts.
-    - Run **Target_Calibration_Make_Scan** and give it the camera configuration file and the target
-      configuration file.  This will produce a CSV file for each target with the gimbal poses and
-      the number of frames for each FrameIndex value.  The files will be target_1_poses.csv and
-      target_2_poses.csv.
+    - Run **Target_Calibration_Make_Scan** and give it the camera, target, and gimbal
+      configuration files.  This will produce a CSV file for each target with the gimbal poses and
+      the number of frames for each FrameIndex value.  This will write **target_1_poses.csv** (and
+      **target_2_poses.csv** if there are two targets).
     - Copy the target_*_poses.csv files into the calibration directory.
     - Capture or simulate the frames for each target and save them in a directory named for the target.
         - If simulating for validation:
-            - Open the **calibration_v2.blend** file from the **FlightSim** repository in Blender 4.0 and
-              edit the file names at the top of the script to point at the camera configuration file and
-              the target configuration file and the poses file for each of the targets, setting the
-              renderPath to an empty subdirectory named target_lateral_N (where N is the target number).  Run the
-              script to generate the TIFF files.
+            - Open the **calibration_v5.blend** file from the **FlightSim** repository in Blender 4.0 and
+              edit the file names at the top of the script to point at the camera, traget and gimbal
+              configuration files and the poses file for each of the targets, setting the
+              renderPath to an empty subdirectory in the calibration directory
+              named **target_lateral_N** (where N is the target number).  Run the script to generate the TIFF files.
             - Run the **tif_to_pgm.bash** script from the **FlightSim** repository to convert the TIFF files
               to PGM files, running for each of the target subdirectories.
             - Run the **SimToCalibration** program from the **FlightSim** repository to generate the
-              calibration files for each of the targets, using `--configFile` and `--poseFile` to point at
+              video files for each of the targets, using `--configFile` and `--poseFile` to point at
               the appropriate JSON and CSV file, then give it the target_lateral_N directory and another
-              in the same directory called target_lateral_N_images. Do this for each target.
+              name in the same directory called **target_lateral_N_images**. Do this for each target.
         - If taking measurements:
             - Run the **Collect_Calibration_Data** program from the **ASDP_Render_Module** repository to
               capture the frames for each target, providing it the name of the serial device, the IP
-              address of the NIC to talk with the camera on, and target_N_poses.csv file name and the
-              output directory name target_lateral_N_images (where N is the target number).  Do this for
-              each target.
-    - Run the **Target_Calibration_Estimate_Lateral** program and give it the camera configuration
-      file, target configuration file, the threshold value for the target center, and the root directory
+              address of the NIC to talk with the camera on, and target_N_poses.csv file name and a
+              subdirectory of the configuration directory named **target_lateral_N_images** (where N is
+              the target number).  Do this for each target.
+    - Run the **Target_Calibration_Estimate_Lateral** program and give it the camera, target and
+      gimbal configuration files, the threshold value for the target center, and the root directory
       where the simulation or measurement data was stored (where the target_lateral_N_images directories
       and the target_*_poses.csv files are).  This will produce a **targets_lateral_opt.json**
       file in the root directory with the estimated lateral positions of the targets updated based on the
       image data.
-    - Run the **Camera_Calibration_Make_Scan** program and give it the camera configuration file and
-      the optimized target configuration file.  It will produce a poses.csv file for all cameras.
-      Copy this file into the calibration directory.
+    - Run the **Camera_Calibration_Make_Scan** program and give it the camera, optimized target, and
+      gimbal configuration files.  It will produce a **poses.csv** file for all cameras.
     - Copy the poses.csv file into the calibration directory.
-    - Capture or simulate the frames for the cameras and save them.
-        - If simulating for validation:
-            - Open the **calibration_v2.blend** file from the **FlightSim** repository in Blender 4.0 and
-              edit the file names at the top of the script to point at the camera configuration file and
-              the target configuration file and the poses file, setting the renderPath to an empty
-             subdirectory named cameras.  Run the script to generate the TIFF files.
-            - Run the **tif_to_pgm.bash** script from the **FlightSim** repository to convert the TIFF files
-              to PGM files.
-            - Run the **SimToCalibration** program from the **FlightSim** repository to generate the
-              calibration files, using `--configFile` and `--poseFile` to point at
-              the appropriate JSON and CSV file, then give it the cameras directory and another
-              in the same directory called cameras_images.
-        - If taking measurements:
-            - Run the **Collect_Calibration_Data** program from the **ASDP_Render_Module** repository to
-              capture the frames, providing it the name of the serial device, the IP
-              address of the NIC to talk with the camera on, the serial number of the camera to use,
-              the poses.csv file name, and the dictory under the output directory named cameras_images
-              to write the images into.
+    - Capture or simulate the frames for the cameras and save them, using the same approach described above
+      for the target calibration but reading from poses.csv rather than target_N_poses.csv and saving the
+      images into a directory called **camera_images** rather than target_lateral_N_images.
 
 @todo
 

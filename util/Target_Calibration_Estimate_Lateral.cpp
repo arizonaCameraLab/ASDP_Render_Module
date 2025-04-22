@@ -35,9 +35,10 @@ static std::string VERSION = "1.0.0";
 
 void usage(std::string name)
 {
-  std::cerr << "Usage: " << name << " [options] camConfig.json targetConfig.json threshold baseDirectory" << std::endl;
+  std::cerr << "Usage: " << name << " [options] camConfig.json targetConfig.json gimbalConfig.json threshold baseDirectory" << std::endl;
   std::cerr << "  camConfig.json                Camera configuration file." << std::endl;
   std::cerr << "  targetConfig.json             Target configuration file." << std::endl;
+  std::cerr << "  gimbalConfig.json             Gimbal configuration file." << std::endl;
   std::cerr << "  threshold                     Threshold brightness (int value) for target center." << std::endl;
   std::cerr << "  baseDirectory                 Base directory for the data files (where target_1_poses.csv, target_lateral_1_images, etc. are found)." << std::endl;
   std::cerr << "  Options:" << std::endl;
@@ -47,7 +48,7 @@ void usage(std::string name)
 
 int main(int argc, char** argv)
 {
-  std::string camConfigFile, targetConfigFile, baseDirectory;
+  std::string camConfigFile, targetConfigFile, gimbalConfigFile, baseDirectory;
   int targetBrightnessThreshold = 35767;
   size_t realParams = 0;          ///< The number of non-flag parameters we've seen.
 
@@ -67,9 +68,12 @@ int main(int argc, char** argv)
       targetConfigFile = argv[i];
       break;
     case 2:
-      targetBrightnessThreshold = std::stoi(argv[i]);
+      gimbalConfigFile = argv[i];
       break;
     case 3:
+      targetBrightnessThreshold = std::stoi(argv[i]);
+      break;
+    case 4:
       baseDirectory = argv[i];
       break;
     default:
@@ -77,7 +81,7 @@ int main(int argc, char** argv)
       return 2;
     }
   }
-  if (realParams != 4) {
+  if (realParams != 5) {
     usage(argv[0]);
     return 2;
   }
@@ -87,12 +91,14 @@ int main(int argc, char** argv)
     std::cout << "Target_Calibration_Estimate_Lateral version " << VERSION << std::endl;
 
     // Read the configuration files.
-    if (!std::filesystem::exists(camConfigFile)) {
-      std::cerr << "Configuration file not found: " << camConfigFile << std::endl;
+    std::vector<asdp::render::CameraRenderInfo> cameraRenderInfos;
+    try {
+      cameraRenderInfos = GetCameraRenderInfos(camConfigFile);
+    }
+    catch (...) {
+      std::cerr << "Error: Unable to read camera configuration file: " << camConfigFile << std::endl;
       return 14;
     }
-    std::ifstream configFile1(camConfigFile);
-    json camConfig = json::parse(configFile1);
     std::cout << "Read camera configuration from " << camConfigFile << std::endl;
 
     if (!std::filesystem::exists(targetConfigFile)) {
@@ -103,54 +109,14 @@ int main(int argc, char** argv)
     json targetConfig = json::parse(configFile2);
     std::cout << "Read target configuration from " << targetConfigFile << std::endl;
 
-    // Construct CameraRenderInfos for each configuration file.
-    std::vector<asdp::render::CameraRenderInfo> cameraRenderInfos;
-    for (const auto& camera : camConfig["cameras"]) {
-      std::shared_ptr<Distortion> dist;
-      json distortion = camera["distortion"];
-      if (distortion["type"] == "none") {
-        DistortionNone* distortion = new DistortionNone;
-        dist = std::shared_ptr<Distortion>(distortion);
-      } else if (distortion["type"] == "radial") {
-        json parameters = distortion["parameters"];
-        std::array<double, 2> center = parameters["COP"];
-        json map = parameters["map"];
-        std::vector< std::array<double, 2> > mapPoints = map;
-        DistortionRadialLERP* distortion = new DistortionRadialLERP(center, mapPoints);
-        dist = std::shared_ptr<Distortion>(distortion);
-      } else {
-        std::cerr << "Error: Unknown distortion type: " << distortion["type"] << std::endl;
-        return 17;
-      }
-
-      std::shared_ptr<Vignette> vig(new VignetteNone);
-      try {
-        json vignette = camera["vignette"];
-        if (vignette["type"] == "evenPolynomial") {
-          json parameters = vignette["parameters"];
-          std::array<double, 2> center = parameters["COP"];
-          std::array<double, 2> cArray = parameters["coefficients"];
-          std::vector<double> coefficients(cArray.begin(), cArray.end());
-          VignetteRadialPolynomail* vignette = new VignetteRadialPolynomail(center, camera["fieldOfViewDegrees"], coefficients);
-          vig = std::shared_ptr<Vignette>(vignette);
-        }
-        else if (vignette["type"] == nullptr) {
-          // No vignette specified, so use the default.
-        }
-        else {
-          std::cerr << "Error: Unknown vignette type: " << vignette["type"] << std::endl;
-          return 18;
-        }
-      }
-      catch (...) {
-        // No vignette specified, so use the default.
-      }
-
-      asdp::render::CameraRenderInfo info(camera["id"],
-        camera["positionMeters"], camera["orientationDegrees"],
-        camera["resolutionPixels"], camera["fieldOfViewDegrees"],
-        dist, vig, std::make_shared<asdp::render::ImageQueue>(), -1.0f);
-      cameraRenderInfos.push_back(info);
+    GimbalInfo gimbalInfo;
+    try {
+      gimbalInfo = GetGimbalInfo(gimbalConfigFile);
+    }
+    catch (const std::exception& e) {
+      std::cerr << "Error: Unable to read gimbal configuration file: " << gimbalConfigFile
+        << ": " << e.what() << std::endl;
+      return 14;
     }
 
     // Parse the target information for each target and read the information from
@@ -197,8 +163,8 @@ int main(int argc, char** argv)
 
         targetInfos.push_back(info);
       }
-      catch (...) {
-        std::cerr << "Error: Unable to parse target information." << std::endl;
+      catch (const std::exception& e) {
+        std::cerr << "Error: Unable to parse target information: " << e.what() << std::endl;
         return 29;
       }
     }
@@ -332,7 +298,7 @@ int main(int argc, char** argv)
         // camera position. Then find the ray direction, which is the ray in camera space rotated by the
         // camera rotation.
         glm::dvec3 rayStartInWorld, rayDirectionInWorld;
-        WorldSpaceRayNoDistortion(*cri, x, y, pose.zRotation, pose.xRotation,
+        WorldSpaceRayNoDistortion(*cri, x, y, gimbalInfo.pitchFirst, pose.zRotation, pose.xRotation,
           rayStartInWorld, rayDirectionInWorld, true);
 
         // Compute the intersection of the ray with the plane.

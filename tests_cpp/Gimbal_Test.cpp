@@ -6,22 +6,20 @@
 #include <memory>
 #include <string>
 #include <Gimbal.h>
+#include <Calibration_Helpers.h>
 
 static void usage(const char* progName)
 {
-  std::cerr << "Usage: " << progName << " [--home] [--speed <degPerSec>] [--accel <degPerSec2>] [--moveTo <yawDeg> <pitchDeg>] COM_DEVICE" << std::endl;
-  std::cerr << "       COM_DEVICE: The COM port device name (e.g., /dev/ttyUSB0 or COM3)." << std::endl;
+  std::cerr << "Usage: " << progName << " [--home] [--gimbalConfig <filename>] [--speed <degPerSec>] [--accel <degPerSec2>] [--moveTo <yawDeg> <pitchDeg>] COM_DEVICE" << std::endl;
+  std::cerr << "       --gimbalConfig <string>: The gimbal configuration file name (default gimbal.json)." << std::endl;
   std::cerr << "       --home: Move to home position." << std::endl;
-  std::cerr << "       --speed <degPerSec>: Set the speed in degrees/second." << std::endl;
-  std::cerr << "       --accel <degPerSec2>: Set the acceleration in degrees/second^2." << std::endl;
   std::cerr << "       --moveTo <yawDeg> <pitchDeg>: Move to the specified yaw and pitch angles." << std::endl;
+  std::cerr << "       --help: Print this information and quit." << std::endl;
 }
 
 int main(int argc, char** argv)
 {
-  std::string comDevice;
-  double maxVelocityDeg = -1;
-  double maxAccelDeg = -1;
+  std::string gimbalConfigFile = "gimbal.json";
   double yawDegrees = 0;
   double pitchDegrees = 0;
   bool home = false;
@@ -32,19 +30,16 @@ int main(int argc, char** argv)
     if (std::string("--home") == argv[i]) {
       home = true;
     }
-    else if (std::string("--speed") == argv[i]) {
+    else if (std::string("--gimbalConfig") == argv[i]) {
       if (++i >= argc) {
-        usage(argv[0]);
+        std::cerr << "Error: Missing gimbal configuration file name." << std::endl;
         return 1;
       }
-      maxVelocityDeg = std::stod(argv[i]);
+      gimbalConfigFile = argv[i];
     }
-    else if (std::string("--accel") == argv[i]) {
-      if (++i >= argc) {
-        usage(argv[0]);
-        return 1;
-      }
-      maxAccelDeg = std::stod(argv[i]);
+    else if (std::string("--help") == argv[i]) {
+      usage(argv[0]);
+      return 0;
     }
     else if (std::string("--moveTo") == argv[i]) {
       moveTo = true;
@@ -64,24 +59,38 @@ int main(int argc, char** argv)
       return 1;
     }
     else switch (++realParams) {
-      case 1:
-        comDevice = argv[i];
-        break;
       default:
         usage(argv[0]);
         return 1;
     }
   }
-  if (realParams != 1) {
+  if (realParams != 0) {
     usage(argv[0]);
     return 1;
   }
 
   // Put the code into a block so that objects will be go out of scope before we exit.
   {
+    // Read the gimbal configuration file.
+    asdp::render::calibration::GimbalInfo gimbalInfo;
+    try {
+      gimbalInfo = asdp::render::calibration::GetGimbalInfo(gimbalConfigFile);
+    }
+    catch (const std::exception& e) {
+      std::cerr << "Error: Unable to read gimbal configuration file: " << e.what() << std::endl;
+      return 2;
+    }
+
     // Open the gimbal on the specified COM port, setting its speed and acceleration if provided.
     // Then verify the gimbal is connected and operational.
-    std::shared_ptr<Gimbal> gimbal = std::make_shared<GimbalZaber_X_G_RST>(comDevice, 1, maxVelocityDeg, maxAccelDeg);
+    std::shared_ptr<Gimbal> gimbal;
+    try {
+      gimbal = ConstructGimbal(gimbalInfo);
+    }
+    catch (const std::exception& e) {
+      std::cerr << "Error: Unable to construct gimbal: " << e.what() << std::endl;
+      return 3;
+    }    
     if (!gimbal->Status()) {
       std::cerr << "Gimbal not connected or not operational." << std::endl;
       return 10;

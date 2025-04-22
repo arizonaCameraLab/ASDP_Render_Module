@@ -43,6 +43,16 @@ protected:
   Gimbal() = default;
 };
 
+// A fake Gimbal class that prints where it is going to and moves instantly.
+class GimbalFake : public Gimbal
+{
+public:
+  GimbalFake() : Gimbal() {}
+  bool Status() override { return true; }
+  bool Home() override { return true; }
+  bool MoveAbsolute(double yawDegrees, double pitchDegrees) override;
+};
+
 class GimbalZaber_X_G_RST : public Gimbal
 {
 public:

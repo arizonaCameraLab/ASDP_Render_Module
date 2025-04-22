@@ -1,0 +1,12 @@
+{
+  "name": "iOptics_CEM40",
+  "pitchFirst": true,
+  "comPort": "COM3",
+  "baud": 115200,
+  "speed": 4.5,
+  "acceleration": 100.0,
+  "minPitchDegrees": -90.0,
+  "maxPitchDegrees": 90.0,
+  "minYawDegrees": -180.0,
+  "maxYawDegrees": 180.0
+}

@@ -18,33 +18,16 @@ using namespace asdp;
 
 static void usage(const char* progName)
 {
-  std::cerr << "Usage: " << progName << " [options] COM_DEVICE NIC SERIAL POSES.csv OUTDIR" << std::endl;
-  std::cerr << "       COM_DEVICE: The COM port device name (e.g., /dev/ttyUSB0 or COM3, FAKE for testing)." << std::endl;
+  std::cerr << "Usage: " << progName << " [options] NIC SERIAL POSES.csv OUTDIR" << std::endl;
   std::cerr << "       NIC: The network interface card (NIC) IP address for the camera (e.g., 10.10.10.32)." << std::endl;
   std::cerr << "       SERIAL: The serial number of the camera." << std::endl;
   std::cerr << "       POSES.csv: Poses to take images at." << std::endl;
   std::cerr << "       OUTDIR: The output directory for the calibration data (probably named cameras_images)." << std::endl;
   std::cerr << "       Options:" << std::endl;
   std::cerr << "         --home: Move to home position." << std::endl;
-  std::cerr << "         --speed <degPerSec>: Set the speed in degrees/second." << std::endl;
-  std::cerr << "         --accel <degPerSec2>: Set the acceleration in degrees/second^2." << std::endl;
-  std::cerr << "         --gimbalRange <minYaw> <minPitch> <maxYaw> <maxPitch> (default: -60, 240, -180, 180)." << std::endl;
+  std::cerr << "         --gimbalConfig <string>: The gimbal configuration file name (default gimbal.json)." << std::endl;
   std::cerr << "         --help: Print this information and quit." << std::endl;
 }
-
-// A fake Gimbal class that prints where it is going to and moves instantly.
-class GimbalFake : public Gimbal
-{
-public:
-  GimbalFake() : Gimbal() { }
-  bool Status() override { return true; }
-  bool Home() override { return true; }
-  bool MoveAbsolute(double yawDegrees, double pitchDegrees) override
-  {
-    std::cout << "GimbalFake: Move to (" << yawDegrees << ", " << pitchDegrees << ")" << std::endl;
-    return true;
-  }
-};
 
 static std::shared_ptr<Message> WaitForMessageType(std::shared_ptr<Receiver> receiver, MessageID type, float seconds)
 {
@@ -106,47 +89,24 @@ static void fixEndian(uint8_t* data, size_t size) {
 
 int main(int argc, char** argv)
 {
-  std::string comDevice;
+  std::string gimbalConfigFile = "gimbal.json";
   std::string nic;
   unsigned int serial = 0;
   std::string posesFile;
   std::string outDir;
-  double maxVelocityDeg = -1;
-  double maxAccelDeg = -1;
   bool home = false;
-  double minYaw = -180;
-  double minPitch = -60;
-  double maxYaw = 180;
-  double maxPitch = 240;
 
   size_t realParams = 0;
   for (int i = 1; i < argc; ++i) {
     if (std::string("--home") == argv[i]) {
       home = true;
     }
-    else if (std::string("--speed") == argv[i]) {
+    else if (std::string("--gimbalConfig") == argv[i]) {
       if (++i >= argc) {
-        usage(argv[0]);
+        std::cerr << "Error: Missing gimbal configuration file name." << std::endl;
         return 1;
       }
-      maxVelocityDeg = std::stod(argv[i]);
-    }
-    else if (std::string("--accel") == argv[i]) {
-      if (++i >= argc) {
-        usage(argv[0]);
-        return 1;
-      }
-      maxAccelDeg = std::stod(argv[i]);
-    }
-    else if (std::string("--gimbalRange") == argv[i]) {
-      if (i + 4 >= argc) {
-        usage(argv[0]);
-        return 1;
-      }
-      minYaw = std::stod(argv[++i]);
-      minPitch = std::stod(argv[++i]);
-      maxYaw = std::stod(argv[++i]);
-      maxPitch = std::stod(argv[++i]);
+      gimbalConfigFile = argv[i];
     }
     else if (std::string("--help") == argv[i]) {
       usage(argv[0]);
@@ -158,18 +118,15 @@ int main(int argc, char** argv)
     }
     else switch (++realParams) {
       case 1:
-        comDevice = argv[i];
-        break;
-      case 2:
         nic = argv[i];
         break;
-      case 3:
+      case 2:
         serial = std::atoi(argv[i]);
         break;
-      case 4:
+      case 3:
         posesFile = argv[i];
         break;
-      case 5:
+      case 4:
         outDir = argv[i];
         break;
       default:
@@ -177,13 +134,24 @@ int main(int argc, char** argv)
         return 1;
     }
   }
-  if (realParams != 5) {
+  if (realParams != 4) {
     usage(argv[0]);
     return 1;
   }
 
   // Put the code into a block so that objects will be go out of scope before we exit.
   {
+    //=============================================================================================
+    // Read the gimbal configuration file.
+    asdp::render::calibration::GimbalInfo gimbalInfo;
+    try {
+      gimbalInfo = asdp::render::calibration::GetGimbalInfo(gimbalConfigFile);
+    }
+    catch (const std::exception& e) {
+      std::cerr << "Error: Unable to read gimbal configuration file: " << e.what() << std::endl;
+      return 10;
+    }
+
     //=============================================================================================
     // Read the poses file and verify that the poses are all within bounds
 
@@ -202,8 +170,10 @@ int main(int argc, char** argv)
     std::cout << "Read " << poseInfos.size() << " poses from " << posesFile << std::endl;
 
     for (const auto& pose : poseInfos) {
-      if (pose.zRotationDegrees < minYaw || pose.zRotationDegrees > maxYaw ||
-          pose.xRotationDegrees < minPitch || pose.xRotationDegrees > maxPitch) {
+      if (pose.zRotationDegrees < gimbalInfo.minYawDegrees ||
+          pose.zRotationDegrees > gimbalInfo.maxYawDegrees ||
+          pose.xRotationDegrees < gimbalInfo.minPitchDegrees ||
+          pose.xRotationDegrees > gimbalInfo.maxPitchDegrees) {
         std::cerr << "Error: Pose out of bounds: " << pose.zRotationDegrees << ", " << pose.xRotationDegrees << std::endl;
         return 13;
       }
@@ -333,23 +303,24 @@ int main(int argc, char** argv)
 
     // Open the gimbal on the specified COM port, setting its speed and acceleration if provided.
     // Then verify the gimbal is connected and operational.
-    std::cout << "Opening gimbal on " << comDevice << " with speed " << maxVelocityDeg << " and acceleration " << maxAccelDeg << std::endl;
     std::shared_ptr<Gimbal> gimbal;
-    if (comDevice == "FAKE") {
-      gimbal = std::make_shared<GimbalFake>();
-    } else {
-      gimbal = std::make_shared<GimbalZaber_X_G_RST>(comDevice, 1, maxVelocityDeg, maxAccelDeg);
+    try {
+      gimbal = ConstructGimbal(gimbalInfo);
+    }
+    catch (const std::exception& e) {
+      std::cerr << "Error: Unable to construct gimbal: " << e.what() << std::endl;
+      return 100;
     }
     if (!gimbal->Status()) {
       std::cerr << "Gimbal not connected or not operational." << std::endl;
-      return 100;
+      return 101;
     }
 
     // If we've been asked to home the gimbal, do so.
     if (home) {
       if (!gimbal->Home()) {
         std::cerr << "Failed to home the gimbal." << std::endl;
-        return 101;
+        return 102;
       }
     }
 

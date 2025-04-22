@@ -31,9 +31,10 @@ static std::string VERSION = "1.1.0";
 
 void usage(std::string name)
 {
-  std::cerr << "Usage: " << name << " [options] camConfig.json targetConfig.json" << std::endl;
+  std::cerr << "Usage: " << name << " [options] camConfig.json targetConfig.json, gimbalConfigFile" << std::endl;
   std::cerr << "  camConfig.json                Camera configuration file." << std::endl;
   std::cerr << "  targetConfig.json             Target configuration file." << std::endl;
+  std::cerr << "  gimbalConfig.json             Gimbal configuration file." << std::endl;
   std::cerr << "  Options:" << std::endl;
   std::cerr << "    --frames <int>              Number of frames per location (default 10)." << std::endl;
   std::cerr << "    --stepPixels <int>          Step size in pixels (default 30)." << std::endl;
@@ -48,6 +49,7 @@ void usage(std::string name)
 static void RunAlongEdge(std::ofstream& outFile, int& frameIndex,
   std::vector<CameraRenderInfo> const& cameraRenderInfos, int numFrames,
   CameraRenderInfo const& cri, glm::dvec3 const& targetPoint,
+  bool pitchFirst,
   int topMarginPixels, int bottomMarginPixels,
   int leftMarginPixels, int rightMarginPixels,
   int startX, int startY, int stepX, int stepY, int numSteps
@@ -61,7 +63,7 @@ static void RunAlongEdge(std::ofstream& outFile, int& frameIndex,
     // Compute the gimbal angles to point the camera at the target point.
     double xRotationDegrees, zRotationDegrees;
     PointPixelAtTargetNoDistortion(cri, x, y, -60, 240,
-      targetPoint,
+      targetPoint, pitchFirst,
       zRotationDegrees, xRotationDegrees);
 
     // Check each camera to see if it can see the target within its margin.
@@ -71,7 +73,7 @@ static void RunAlongEdge(std::ofstream& outFile, int& frameIndex,
     ++frameIndex;
     for (auto const& camera : cameraRenderInfos) {
       double xPixels, yPixels;
-      TargetProjectedLocationNoDistortion(camera, zRotationDegrees, xRotationDegrees, targetPoint,
+      TargetProjectedLocationNoDistortion(camera, pitchFirst, zRotationDegrees, xRotationDegrees, targetPoint,
         xPixels, yPixels);
       // The pixel is always in range in the reference camera, by construction.
       if (camera.m_ID == cri.m_ID ||
@@ -86,7 +88,7 @@ static void RunAlongEdge(std::ofstream& outFile, int& frameIndex,
 
 int main(int argc, char** argv)
 {
-  std::string camConfigFile, targetConfigFile;
+  std::string camConfigFile, targetConfigFile, gimbalConfigFile;
   int frames = 10;
   int stepPixels = 30;
   int topMarginPixels = 10;
@@ -146,12 +148,15 @@ int main(int argc, char** argv)
     case 1:
       targetConfigFile = argv[i];
       break;
+    case 2:
+      gimbalConfigFile = argv[i];
+      break;
     default:
       usage(argv[0]);
       return 2;
     }
   }
-  if (realParams != 2) {
+  if (realParams != 3) {
     usage(argv[0]);
     return 2;
   }
@@ -181,6 +186,16 @@ int main(int argc, char** argv)
       return 11;
     }
     std::cout << "Read target configuration from " << targetConfigFile << std::endl;
+
+    // Read the gimbal information.
+    GimbalInfo gimbalInfo;
+    try {
+      gimbalInfo = asdp::render::calibration::GetGimbalInfo(gimbalConfigFile);
+    }
+    catch (const std::exception& e) {
+      std::cerr << "Error: Unable to read gimbal configuration file: " << e.what() << std::endl;
+      return 12;
+    }
 
     // Open the output file
     std::string filename = "poses.csv";
@@ -228,7 +243,7 @@ int main(int argc, char** argv)
           int y = yStart + s * stepPixels;
           double zRotation, xRotation;
           PointPixelAtTargetNoDistortion(cri, x, y, -60, 240,
-            targetPoint,
+            targetPoint, gimbalInfo.pitchFirst,
             zRotation, xRotation);
 
           outFile << ++frameIndex << "," << zRotation << "," << xRotation
@@ -243,7 +258,7 @@ int main(int argc, char** argv)
           int y = yStart + s * stepPixels;
           double zRotation, xRotation;
           PointPixelAtTargetNoDistortion(cri, x, y, -60, 240,
-            targetPoint,
+            targetPoint, gimbalInfo.pitchFirst,
             zRotation, xRotation);
           outFile << ++frameIndex << "," << zRotation << "," << xRotation
             << "," << cri.m_ID << "," << frames << std::endl;
@@ -263,18 +278,22 @@ int main(int argc, char** argv)
           int numYSteps = (yMax - yMin) / stepPixels;
 
           RunAlongEdge(outFile, frameIndex, cameraRenderInfos, frames, cri, targetPoint,
+            gimbalInfo.pitchFirst,
             topMarginPixels, bottomMarginPixels,
             leftMarginPixels, rightMarginPixels,
             xMin, yMin, stepPixels, 0, numXSteps);
           RunAlongEdge(outFile, frameIndex, cameraRenderInfos, frames, cri, targetPoint,
+            gimbalInfo.pitchFirst,
             topMarginPixels, bottomMarginPixels,
             leftMarginPixels, rightMarginPixels,
             xMax, yMin, 0, stepPixels, numYSteps);
           RunAlongEdge(outFile, frameIndex, cameraRenderInfos, frames, cri, targetPoint,
+            gimbalInfo.pitchFirst,
             topMarginPixels, bottomMarginPixels,
             leftMarginPixels, rightMarginPixels,
             xMin, yMax, stepPixels, 0, numXSteps);
           RunAlongEdge(outFile, frameIndex, cameraRenderInfos, frames, cri, targetPoint,
+            gimbalInfo.pitchFirst,
             topMarginPixels, bottomMarginPixels,
             leftMarginPixels, rightMarginPixels,
             xMax, yMin, 0, stepPixels, numYSteps);

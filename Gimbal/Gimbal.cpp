@@ -14,6 +14,13 @@
 #include <vrpn_Serial.h>
 #include <cstdint>
 #include <vector>
+#include <iostream>
+
+bool GimbalFake::MoveAbsolute(double yawDegrees, double pitchDegrees)
+{
+  std::cout << "GimbalFake: Move to (" << yawDegrees << ", " << pitchDegrees << ")" << std::endl;
+  return true;
+}
 
 class GimbalZaber_X_G_RST::GimbalZaber_X_G_RST_Impl
 {
