@@ -49,7 +49,7 @@ void usage(std::string name)
 static void RunAlongEdge(std::ofstream& outFile, int& frameIndex,
   std::vector<CameraRenderInfo> const& cameraRenderInfos, int numFrames,
   CameraRenderInfo const& cri, glm::dvec3 const& targetPoint,
-  bool pitchFirst,
+  GimbalInfo const& gimbalInfo,
   int topMarginPixels, int bottomMarginPixels,
   int leftMarginPixels, int rightMarginPixels,
   int startX, int startY, int stepX, int stepY, int numSteps
@@ -62,8 +62,8 @@ static void RunAlongEdge(std::ofstream& outFile, int& frameIndex,
 
     // Compute the gimbal angles to point the camera at the target point.
     double xRotationDegrees, zRotationDegrees;
-    PointPixelAtTargetNoDistortion(cri, x, y, -60, 240,
-      targetPoint, pitchFirst,
+    PointPixelAtTargetNoDistortion(cri, x, y, gimbalInfo.minPitchDegrees, gimbalInfo.maxPitchDegrees,
+      targetPoint, gimbalInfo.pitchFirst,
       zRotationDegrees, xRotationDegrees);
 
     // Check each camera to see if it can see the target within its margin.
@@ -73,7 +73,7 @@ static void RunAlongEdge(std::ofstream& outFile, int& frameIndex,
     ++frameIndex;
     for (auto const& camera : cameraRenderInfos) {
       double xPixels, yPixels;
-      TargetProjectedLocationNoDistortion(camera, pitchFirst, zRotationDegrees, xRotationDegrees, targetPoint,
+      TargetProjectedLocationNoDistortion(camera, gimbalInfo.pitchFirst, zRotationDegrees, xRotationDegrees, targetPoint,
         xPixels, yPixels);
       // The pixel is always in range in the reference camera, by construction.
       if (camera.m_ID == cri.m_ID ||
@@ -242,7 +242,7 @@ int main(int argc, char** argv)
           int x = xStart + s * stepPixels;
           int y = yStart + s * stepPixels;
           double zRotation, xRotation;
-          PointPixelAtTargetNoDistortion(cri, x, y, -60, 240,
+          PointPixelAtTargetNoDistortion(cri, x, y, gimbalInfo.minPitchDegrees, gimbalInfo.maxPitchDegrees,
             targetPoint, gimbalInfo.pitchFirst,
             zRotation, xRotation);
 
@@ -257,7 +257,7 @@ int main(int argc, char** argv)
           int x = xStart - s * stepPixels;
           int y = yStart + s * stepPixels;
           double zRotation, xRotation;
-          PointPixelAtTargetNoDistortion(cri, x, y, -60, 240,
+          PointPixelAtTargetNoDistortion(cri, x, y, gimbalInfo.minPitchDegrees, gimbalInfo.maxPitchDegrees,
             targetPoint, gimbalInfo.pitchFirst,
             zRotation, xRotation);
           outFile << ++frameIndex << "," << zRotation << "," << xRotation
@@ -278,22 +278,22 @@ int main(int argc, char** argv)
           int numYSteps = (yMax - yMin) / stepPixels;
 
           RunAlongEdge(outFile, frameIndex, cameraRenderInfos, frames, cri, targetPoint,
-            gimbalInfo.pitchFirst,
+            gimbalInfo,
             topMarginPixels, bottomMarginPixels,
             leftMarginPixels, rightMarginPixels,
             xMin, yMin, stepPixels, 0, numXSteps);
           RunAlongEdge(outFile, frameIndex, cameraRenderInfos, frames, cri, targetPoint,
-            gimbalInfo.pitchFirst,
+            gimbalInfo,
             topMarginPixels, bottomMarginPixels,
             leftMarginPixels, rightMarginPixels,
             xMax, yMin, 0, stepPixels, numYSteps);
           RunAlongEdge(outFile, frameIndex, cameraRenderInfos, frames, cri, targetPoint,
-            gimbalInfo.pitchFirst,
+            gimbalInfo,
             topMarginPixels, bottomMarginPixels,
             leftMarginPixels, rightMarginPixels,
             xMin, yMax, stepPixels, 0, numXSteps);
           RunAlongEdge(outFile, frameIndex, cameraRenderInfos, frames, cri, targetPoint,
-            gimbalInfo.pitchFirst,
+            gimbalInfo,
             topMarginPixels, bottomMarginPixels,
             leftMarginPixels, rightMarginPixels,
             xMax, yMin, 0, stepPixels, numYSteps);
