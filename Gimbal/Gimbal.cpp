@@ -16,17 +16,21 @@
 #include <vector>
 #include <iostream>
 
-bool GimbalFake::MoveAbsolute(double yawDegrees, double pitchDegrees)
+void GimbalFake::Home()
+{
+  std::cout << "GimbalFake: Home" << std::endl;
+}
+
+void GimbalFake::MoveAbsolute(double yawDegrees, double pitchDegrees)
 {
   std::cout << "GimbalFake: Move to (" << yawDegrees << ", " << pitchDegrees << ")" << std::endl;
-  return true;
 }
 
 class GimbalZaber_X_G_RST::GimbalZaber_X_G_RST_Impl
 {
 public:
   int deviceID = -1;    ///< The device ID of the gimbal we're using.
-  int commPort = -1;    ///< Theserial port index we're using.
+  int commPort = -1;    ///< The serial port index we're using.
   //bool status = false;  ///< The status of the gimbal, true = good, false = broken.
 
   // The microstep size is at the default resolution of 1/64th step is 0.00015625 degrees,
@@ -102,11 +106,14 @@ public:
 
   /// @brief Move the gimbal to the home position.
   /// @details The home position is defined as the position where the gimbal is on its limit switches.
-  /// @return True if the move was successful, false otherwise.
-  bool home();
+  /// @return Empty string if successful, error message otherwise.
+  std::string home();
 
   /// @brief Move at the velocity and acceleration defined in the constructor to this absolute location.
-  bool moveAbsolute(double yawDegrees, double pitchDegrees);
+  /// @param yawDegrees The yaw angle in degrees.
+  /// @param pitchDegrees The pitch angle in degrees.
+  /// @return Empty string if successful, error message otherwise.
+  std::string moveAbsolute(double yawDegrees, double pitchDegrees);
 };
 
 bool GimbalZaber_X_G_RST::GimbalZaber_X_G_RST_Impl::sendCommand(uint8_t axis, std::string cmd)
@@ -309,21 +316,21 @@ bool GimbalZaber_X_G_RST::GimbalZaber_X_G_RST_Impl::getStatus(uint8_t axis, Resp
   return true;
 }
 
-bool GimbalZaber_X_G_RST::GimbalZaber_X_G_RST_Impl::home()
+std::string GimbalZaber_X_G_RST::GimbalZaber_X_G_RST_Impl::home()
 {
   // Send the home command to each axis, awaiting a response within 10ms from each axis.
   for (int axis = 1; axis <= 2; axis++) {
     if (!sendCommand(axis, "home")) {
-      return false;
+      return "Could not send home command";
     }
     struct timeval timeout = { 0, 10000 };
     std::vector<Response> responses = getResponses(&timeout);
     if (responses.size() != 1) {
-      return false;
+      return "No response to home command";
     }
     Response const& r = responses[0];
     if (r.deviceID != deviceID || r.scope != axis || !r.success || r.faults) {
-      return false;
+      return "Failure reported after home command";
     }
   }
   // Wait for both axes to come to a halt.
@@ -333,17 +340,17 @@ bool GimbalZaber_X_G_RST::GimbalZaber_X_G_RST_Impl::home()
     for (int axis = 1; axis <= 2; axis++) {
       Response status;
       if (!getStatus(axis, status)) {
-        return false;
+        return "Bad status after home command";
       }
       if (!status.idle) {
         axisRunning = true;
       }
     }
   } while (axisRunning);
-  return true;
+  return "";
 }
 
-bool GimbalZaber_X_G_RST::GimbalZaber_X_G_RST_Impl::moveAbsolute(double yawDegrees, double pitchDegrees)
+std::string GimbalZaber_X_G_RST::GimbalZaber_X_G_RST_Impl::moveAbsolute(double yawDegrees, double pitchDegrees)
 {
   // Send the motion command to each axis, scaling the physical units to device units.
   std::vector<double> axes = { yawDegrees, pitchDegrees };
@@ -353,16 +360,16 @@ bool GimbalZaber_X_G_RST::GimbalZaber_X_G_RST_Impl::moveAbsolute(double yawDegre
     unsigned accelData = valueForAccel(accel);
     // Send move on both axes on the device, awaiting a response within 10ms from each axis.
     if (!sendCommand(axis, "move abs " + std::to_string(locationData))) {
-      return false;
+      return "Could not send move command";
     }
     struct timeval timeout = { 0, 10000 };
     std::vector<Response> responses = getResponses(&timeout);
     if (responses.size() != 1) {
-      return false;
+      return "No response to move command";
     }
     Response const& r = responses[0];
     if (r.deviceID != deviceID || r.scope != axis || !r.success || r.faults) {
-      return false;
+      return "Failure reported after move command";
     }
   }
 
@@ -373,7 +380,7 @@ bool GimbalZaber_X_G_RST::GimbalZaber_X_G_RST_Impl::moveAbsolute(double yawDegre
     for (int axis = 1; axis <= 2; axis++) {
       Response status;
       if (!getStatus(axis, status)) {
-        return false;
+        return "Bad status after move command";
       }
       if (!status.idle) {
         axisRunning = true;
@@ -381,7 +388,7 @@ bool GimbalZaber_X_G_RST::GimbalZaber_X_G_RST_Impl::moveAbsolute(double yawDegre
     }
   } while (axisRunning);
 
-  return true;
+  return "";
 }
 
 GimbalZaber_X_G_RST::GimbalZaber_X_G_RST(std::string comPortName, int deviceID,
@@ -391,6 +398,9 @@ GimbalZaber_X_G_RST::GimbalZaber_X_G_RST(std::string comPortName, int deviceID,
   // Open the serial port using the defaults of 8 bits, no parity, 1 start and stop bits with no
   // RTS (hardware) flow control.
   m_impl->commPort = vrpn_open_commport(comPortName.c_str(), 115200);
+  if (m_impl->commPort == -1) {
+    throw std::runtime_error("Unable to open COM port " + comPortName);
+  }
   if (m_impl->commPort != -1) {
     // Set the device parameters
     m_impl->deviceID = deviceID;
@@ -443,20 +453,270 @@ GimbalZaber_X_G_RST::~GimbalZaber_X_G_RST()
   }
 }
 
-bool GimbalZaber_X_G_RST::Home()
+void GimbalZaber_X_G_RST::Home()
 {
   if (!m_impl) {
-    return false;
+    throw std::runtime_error("No implementation defined");
   }
   // Move the gimbal to the specified absolute position.
-  return m_impl->home();
+  std::string res = m_impl->home();
+  if (!res.empty()) {
+    throw std::runtime_error("Error homing gimbal: " + res);
+  }
 }
 
-bool GimbalZaber_X_G_RST::MoveAbsolute(double yawDegrees, double pitchDegrees)
+void GimbalZaber_X_G_RST::MoveAbsolute(double yawDegrees, double pitchDegrees)
 {
   if (!m_impl) {
-    return false;
+    throw std::runtime_error("No implementation defined");
   }
   // Move the gimbal to the specified absolute position.
-  return m_impl->moveAbsolute(yawDegrees, pitchDegrees);
+  std::string res = m_impl->moveAbsolute(yawDegrees, pitchDegrees);
+  if (!res.empty()) {
+    throw std::runtime_error("Error moving gimbal: " + res);
+  }
+}
+
+class Gimbal_iOptron_CEM40::Gimbal_iOptron_CEM40_Impl
+{
+public:
+  int commPort = -1;    ///< The serial port index we're using.
+
+  /// @brief Send a command to the gimbal without waiting for a response.
+  /// @param cmd The command to send, including all parameters after spaces.
+  /// @return True if the command was sent successfully, false otherwise.
+  bool sendCommand(std::string cmd);
+
+  /// @brief Get a response from the gimbal.
+  /// @param timeout The maximum amount of time to wait for a response.  A null pointer will
+  /// wait forever.
+  /// @param numChars The number of characters to read from the gimbal.
+  /// @return The response from the gimbal, or an empty string if there was no response.
+  std::string getResponse(struct timeval* timeout, size_t numChars)
+  {
+    std::string response;
+    if (commPort == -1) {
+      return response;
+    }
+
+    // Allocate a buffer that is large enough to hold the longest response and then try to
+    // read that many characters.
+    std::vector<uint8_t> buffer(1024);
+    int ret = vrpn_read_available_characters(commPort, buffer.data(), buffer.size(), timeout);
+    // If we got nothing, return an empty response.
+    if (ret <= 1) {
+      return response;
+    }
+
+    // Copy the response into a string and return it.
+    response.assign(buffer.begin(), buffer.begin() + ret);
+    return response;
+  }
+};
+
+bool Gimbal_iOptron_CEM40::Gimbal_iOptron_CEM40_Impl::sendCommand(std::string cmd)
+{
+  if (commPort == -1) {
+    return false;
+  }
+
+  // Send the command to the gimbal.
+  int result = vrpn_write_characters(commPort, (unsigned char*)(cmd.c_str()), cmd.length());
+  return result == cmd.length();
+}
+
+Gimbal_iOptron_CEM40::Gimbal_iOptron_CEM40(std::string comPortName)
+  : m_impl(new Gimbal_iOptron_CEM40_Impl())
+{
+  // Open the serial port using the defaults of 8 bits, no parity, 1 start and stop bits with no
+  // RTS (hardware) flow control.
+  m_impl->commPort = vrpn_open_commport(comPortName.c_str(), 115200);
+  if (m_impl->commPort == -1) {
+    throw std::runtime_error("Unable to open COM port " + comPortName);
+  }
+  if (m_impl->commPort != -1) {
+
+    // Gobble up any full or partial responses that have come from the device.
+    std::string gobble = m_impl->getResponse(nullptr, 10000);
+
+    // Send a command to get the mount number.  Wait for a response and verify that
+    // it matches what we expect for a CEM40.
+    if (!m_impl->sendCommand(":MountInfo#")) {
+      throw std::runtime_error("Unable to send MountInfo command");
+      return;
+    }
+    struct timeval timeout = { 1, 0 };
+    std::string response = m_impl->getResponse(&timeout, 4);
+    if (response != "0040") {
+      throw std::runtime_error("Gimbal not a CEM40, got " + response);
+      vrpn_close_commport(m_impl->commPort);
+      m_impl->commPort = -1;
+      return;
+    }
+
+    // Send a command to use the maximum slew rate.
+    if (!m_impl->sendCommand(":MSR9#")) {
+      throw std::runtime_error("Unable to send SlewRate command");
+      return;
+    }
+    // Wait for a response and verify that it matches what we expect.
+    timeout = { 1, 0 };
+    response = m_impl->getResponse(&timeout, 2);
+    if (response != "9#") {
+      throw std::runtime_error("Unable to set slew rate");
+      vrpn_close_commport(m_impl->commPort);
+      m_impl->commPort = -1;
+      return;
+    }
+
+    // Set the altitude limit to as low a possible.
+    if (!m_impl->sendCommand(":SAL-89#")) {
+      throw std::runtime_error("Unable to send altitude limit command");
+      return;
+    }
+    // Wait for a response and verify that it matches what we expect.
+    timeout = { 1, 0 };
+    response = m_impl->getResponse(&timeout, 1);
+    if (response != "1") {
+      throw std::runtime_error("Unable to set altitude limit");
+      vrpn_close_commport(m_impl->commPort);
+      m_impl->commPort = -1;
+      return;
+    }
+
+    // Disable tracking.
+    if (!m_impl->sendCommand(":ST0#")) {
+      throw std::runtime_error("Unable to send stop-tracking command");
+      return;
+    }
+    // Wait for a response and verify that it matches what we expect.
+    timeout = { 1, 0 };
+    response = m_impl->getResponse(&timeout, 1);
+    if (response != "1") {
+      throw std::runtime_error("Unable to set stop-tracking");
+      vrpn_close_commport(m_impl->commPort);
+      m_impl->commPort = -1;
+      return;
+    }
+
+  }
+}
+
+Gimbal_iOptron_CEM40::~Gimbal_iOptron_CEM40()
+{
+  if (m_impl) {
+    if (m_impl->commPort != -1) {
+      vrpn_close_commport(m_impl->commPort);
+    }
+  }
+}
+
+bool Gimbal_iOptron_CEM40::Status()
+{
+  if (!m_impl || m_impl->commPort == -1) {
+    return false;
+  }
+  return true;
+}
+
+void Gimbal_iOptron_CEM40::Home()
+{
+  if (!m_impl || m_impl->commPort == -1) {
+    throw std::runtime_error("No connection");
+  }
+  // Send the home command to the gimbal.
+  if (!m_impl->sendCommand(":MSH#")) {
+    throw std::runtime_error("Could not send home command");
+  }
+
+  // Wait for a response from the gimbal.  This has a long timeout because the mount may
+  // have to move a long distance to get to home.
+  struct timeval timeout = { 60, 0 };
+  std::string response = m_impl->getResponse(&timeout, 1);
+  if (response != "1") {
+    throw std::runtime_error("Unable to home");
+  }
+}
+
+void Gimbal_iOptron_CEM40::MoveAbsolute(double yawDegrees, double pitchDegrees)
+{
+  if (!m_impl || m_impl->commPort == -1) {
+    throw std::runtime_error("No connection");
+  }
+
+  // Set the azimuth to be slewed to.  This value is in units of 0.01 arc-seconds, so we
+  // convert from degrees to arc-seconds and then multiply by 100.  We then put this into
+  // an 8-character (padded with 0 to the left) string.
+  size_t yawArcSeconds = static_cast<size_t>(yawDegrees * 3600.0);
+  size_t yawTicks = yawArcSeconds * 100;
+  std::string yawString = std::to_string(yawTicks);
+  while (yawString.length() < 8) {
+    yawString = "0" + yawString;
+  }
+  if (!m_impl->sendCommand(":Sas" + yawString + "#")) {
+    vrpn_close_commport(m_impl->commPort);
+    m_impl->commPort = -1;
+    throw std::runtime_error("Unable to send azimuth command");
+  }
+  // Wait for a response and verify that it matches what we expect.
+  struct timeval timeout = { 1, 0 };
+  std::string response = m_impl->getResponse(&timeout, 1);
+  if (response != "1") {
+    vrpn_close_commport(m_impl->commPort);
+    m_impl->commPort = -1;
+    throw std::runtime_error("Unable to set azimuth");
+  }
+
+  // Set the altitude to be slewed to.  This value is in units of 0.01 arc-seconds, so we
+  // convert from degrees to arc-seconds and then multiply by 100.  We then put this into
+  // an 8-character (padded with 0 to the left) string.
+  size_t pitchArcSeconds = static_cast<size_t>(pitchDegrees * 3600.0);
+  size_t pitchTicks = pitchArcSeconds * 100;
+  std::string pitchString = std::to_string(pitchTicks);
+  while (pitchString.length() < 8) {
+    pitchString = "0" + pitchString;
+  }
+  if (!m_impl->sendCommand(":Sz" + pitchString + "#")) {
+    vrpn_close_commport(m_impl->commPort);
+    m_impl->commPort = -1;
+    throw std::runtime_error("Unable to send altitude command");
+  }
+  // Wait for a response and verify that it matches what we expect.
+  timeout = { 1, 0 };
+  response = m_impl->getResponse(&timeout, 1);
+  if (response != "1") {
+    vrpn_close_commport(m_impl->commPort);
+    m_impl->commPort = -1;
+    throw std::runtime_error("Unable to set altitude");
+  }
+
+  // Slew to the requested location, in the "counterweight down" configuration.
+  if (!m_impl->sendCommand(":MSS#")) {
+    vrpn_close_commport(m_impl->commPort);
+    m_impl->commPort = -1;
+    throw std::runtime_error("Unable to send slew command");
+  }
+  // Wait for a response and verify that it matches what we expect.
+  timeout = { 1, 0 };
+  response = m_impl->getResponse(&timeout, 1);
+  if (response != "1") {
+    vrpn_close_commport(m_impl->commPort);
+    m_impl->commPort = -1;
+    throw std::runtime_error("Unable to slew");
+  }
+
+  // Disable tracking, which the slew command re-enables every time.
+  if (!m_impl->sendCommand(":ST0#")) {
+    vrpn_close_commport(m_impl->commPort);
+    m_impl->commPort = -1;
+    throw std::runtime_error("Unable to send stop-tracking command");
+  }
+  // Wait for a response and verify that it matches what we expect.
+  timeout = { 1, 0 };
+  response = m_impl->getResponse(&timeout, 1);
+  if (response != "1") {
+    vrpn_close_commport(m_impl->commPort);
+    m_impl->commPort = -1;
+    throw std::runtime_error("Unable to set stop-tracking");
+  }
 }

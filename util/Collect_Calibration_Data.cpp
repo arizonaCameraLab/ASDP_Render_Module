@@ -318,8 +318,11 @@ int main(int argc, char** argv)
 
     // If we've been asked to home the gimbal, do so.
     if (home) {
-      if (!gimbal->Home()) {
-        std::cerr << "Failed to home the gimbal." << std::endl;
+      try {
+        gimbal->Home();
+      }
+      catch (const std::exception& e) {
+        std::cerr << "Failed to home the gimbal: " << e.what() << std::endl;
         return 102;
       }
     }
@@ -338,8 +341,13 @@ int main(int argc, char** argv)
       // Move if we have a new index (the first one in the file is 1).
       if (pose.frameIndex != lastFrameIndex) {
         // Move the gimbal to the new pose, waiting until it arrives.
-        if (!gimbal->MoveAbsolute(pose.zRotationDegrees, pose.xRotationDegrees)) {
-          std::cerr << "Failed to move gimbal to pose: " << pose.zRotationDegrees << ", " << pose.xRotationDegrees << std::endl;
+        try {
+          gimbal->MoveAbsolute(pose.zRotationDegrees, pose.xRotationDegrees);
+        }
+        catch (const std::exception& e) {
+          std::cerr << "Failed to move gimbal to pose: "
+            << pose.zRotationDegrees << ", " << pose.xRotationDegrees
+            << ": " << e.what() << std::endl;
           return 200;
         }
         lastFrameIndex = pose.frameIndex;

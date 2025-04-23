@@ -98,16 +98,22 @@ int main(int argc, char** argv)
 
     // If we've been asked to home the gimbal, do so.
     if (home) {
-      if (!gimbal->Home()) {
-        std::cerr << "Failed to home the gimbal." << std::endl;
+      try {
+        gimbal->Home();
+      }
+      catch (const std::exception& e) {
+        std::cerr << "Failed to home the gimbal: " << e.what() << std::endl;
         return 20;
       }
     }
 
     // If we've been asked to move to a specific position, do so.
     if (moveTo) {
-      if (!gimbal->MoveAbsolute(yawDegrees, pitchDegrees)) {
-        std::cerr << "Failed to move the gimbal to the specified position." << std::endl;
+      try {
+        gimbal->MoveAbsolute(yawDegrees, pitchDegrees);
+      }
+      catch (const std::exception& e) {
+        std::cerr << "Failed to move the gimbal to the specified position: " << e.what() << std::endl;
         return 30;
       }
     }

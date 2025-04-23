@@ -349,7 +349,7 @@ described in Appendix A.  The workflow is as follows:
       towards one of the forks and the +Z axis pointing up.
     - Generate an as-designed target location JSON file for the two targets to be used in calibration.
     - Generate a **gimbal.json** file to describe the gimbal configuration (see util/gimbal.json for an
-      example). Its "name" field selects which physical gimbal to use: "Zaber_X_G_RST" or "iOptics_CEM40",
+      example). Its "name" field selects which physical gimbal to use: "Zaber_X_G_RST" or "iOptron_CEM40",
       and its "pitchFirst" field specifies whether the gimbal is rotated first around the X or Z axis
       first (X first if true). Its "speed" and "acceleration" fields specify the maximum speed and
       acceleration of the gimbal in degrees per second and degrees per second squared, respectively.

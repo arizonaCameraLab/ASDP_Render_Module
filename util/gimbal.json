@@ -1,5 +1,5 @@
 {
-  "name": "iOptics_CEM40",
+  "name": "iOptron_CEM40",
   "pitchFirst": true,
   "comPort": "COM3",
   "baud": 115200,

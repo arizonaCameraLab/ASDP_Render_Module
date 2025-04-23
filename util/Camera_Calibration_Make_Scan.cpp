@@ -223,6 +223,8 @@ int main(int argc, char** argv)
       // image, producing distortion correction samples along the entire radius.
       // Then run along each edge of the camera, asking for images from all cameras that can
       // see the requested point.
+      // Then sweep along the four edges of the camera, asking for images from all cameras that can
+      // see the requested point.
       for (auto const &cri : cameraRenderInfos) {
 
         // Compute quantities useful to determine our paths
@@ -267,8 +269,6 @@ int main(int argc, char** argv)
         //===========================================================
         // Run along each edge of the camera, asking for images from all cameras that can
         // see the requested point within their margins.
-        /// @todo Don't repeat the corner points and go clockwise around the edges so we always
-        /// have a single copy of the corners and minimize motion.
         {
           int xMin = leftMarginPixels;
           int xMax = cri.m_resolutionPixels[0] - rightMarginPixels - 1;
@@ -277,6 +277,7 @@ int main(int argc, char** argv)
           int numXSteps = (xMax - xMin) / stepPixels;
           int numYSteps = (yMax - yMin) / stepPixels;
 
+          // Go smoothly around the edges so we minimize motion.
           RunAlongEdge(outFile, frameIndex, cameraRenderInfos, frames, cri, targetPoint,
             gimbalInfo,
             topMarginPixels, bottomMarginPixels,
@@ -291,15 +292,15 @@ int main(int argc, char** argv)
             gimbalInfo,
             topMarginPixels, bottomMarginPixels,
             leftMarginPixels, rightMarginPixels,
-            xMin, yMax, stepPixels, 0, numXSteps);
+            xMax, yMax, -stepPixels, 0, numXSteps);
           RunAlongEdge(outFile, frameIndex, cameraRenderInfos, frames, cri, targetPoint,
             gimbalInfo,
             topMarginPixels, bottomMarginPixels,
             leftMarginPixels, rightMarginPixels,
-            xMax, yMin, 0, stepPixels, numYSteps);
+            xMin, yMax, 0, -stepPixels, numYSteps);
         }
 
-      } // End of diagonals loop over cameras.
+      } // End of loop over cameras.
 
     } // End of loop over targets.
     outFile.close();
