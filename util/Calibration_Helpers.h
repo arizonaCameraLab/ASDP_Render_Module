@@ -42,6 +42,7 @@ struct PoseInfo {
   double xRotationDegrees;
   int cameraID;
   int numFrames;
+  int targetID;
 };
 
 /// @brief Read the pose information from the specified JSON file.

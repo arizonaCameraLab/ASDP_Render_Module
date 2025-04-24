@@ -131,7 +131,8 @@ std::vector<PoseInfo> asdp::render::calibration::GetPoseInfos(
     // Note that we use the >> operator to read the values, which will skip whitespace.
     // The format is: frameIndex,zRotationDegrees,xRotationDegrees,cameraID,numFrames
     if (!(iss >> info.frameIndex >> comma >> info.zRotationDegrees >> comma >>
-          info.xRotationDegrees >> comma >> info.cameraID >> comma >> info.numFrames)) {
+          info.xRotationDegrees >> comma >> info.cameraID >> comma >> info.numFrames >>
+          comma >> info.targetID)) {
       throw std::runtime_error("Unable to parse pose information.");
     }
     poseInfos.push_back(info);

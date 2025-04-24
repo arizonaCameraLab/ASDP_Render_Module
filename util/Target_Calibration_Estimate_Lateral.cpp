@@ -31,7 +31,7 @@ using namespace asdp::render;
 using namespace asdp::render::calibration;
 using json = nlohmann::json;
 
-static std::string VERSION = "1.0.0";
+static std::string VERSION = "2.0.0";
 
 void usage(std::string name)
 {
@@ -121,13 +121,6 @@ int main(int argc, char** argv)
 
     // Parse the target information for each target and read the information from
     // its target_N_poses.csv file.
-    struct PoseInfo {
-      int frameIndex;
-      double zRotation;
-      double xRotation;
-      uint16_t cameraID;
-      int numFrames;
-    };
     struct TargetInfo {
       int id;
       std::array<double, 3> position;
@@ -143,24 +136,7 @@ int main(int argc, char** argv)
         // Read the poses from the target_N_poses.csv file in the root directory.
         std::string filename = baseDirectory + "/target_" + std::to_string(info.id) + "_poses.csv";
         std::cout << "  Reading poses for target " << info.id << " from " << filename << std::endl;
-        std::ifstream poseFile(filename);
-        if (!poseFile) {
-          std::cerr << "Error: Unable to open pose file " << filename << std::endl;
-          return 20;
-        }
-        std::string line;
-        std::getline(poseFile, line); // Skip the header line.
-        while (std::getline(poseFile, line)) {
-          PoseInfo pose;
-          std::istringstream ss(line);
-          char comma;
-          ss >> pose.frameIndex >> comma >> pose.zRotation >> comma >> pose.xRotation >> comma
-            >> pose.cameraID >> comma >> pose.numFrames;
-          info.poses.push_back(pose);
-          std::cout << "    " << pose.frameIndex << " " << pose.zRotation << " " << pose.xRotation << " " << pose.cameraID << " " << pose.numFrames << std::endl;
-        }
-        poseFile.close();
-
+        info.poses = GetPoseInfos(filename);
         targetInfos.push_back(info);
       }
       catch (const std::exception& e) {
@@ -298,7 +274,8 @@ int main(int argc, char** argv)
         // camera position. Then find the ray direction, which is the ray in camera space rotated by the
         // camera rotation.
         glm::dvec3 rayStartInWorld, rayDirectionInWorld;
-        WorldSpaceRayNoDistortion(*cri, x, y, gimbalInfo.pitchFirst, pose.zRotation, pose.xRotation,
+        WorldSpaceRayNoDistortion(*cri, x, y, gimbalInfo.pitchFirst,
+          pose.zRotationDegrees, pose.xRotationDegrees,
           rayStartInWorld, rayDirectionInWorld, true);
 
         // Compute the intersection of the ray with the plane.

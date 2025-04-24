@@ -26,7 +26,7 @@ using namespace asdp;
 using namespace asdp::render;
 using namespace asdp::render::calibration;
 
-static std::string VERSION = "4.0.0";
+static std::string VERSION = "5.0.0";
 
 void usage(std::string name)
 {
@@ -192,7 +192,7 @@ int main(int argc, char** argv)
         return 20;
       }
       // Write the header line.
-      outFile << "FrameIndex,ZRotationDegrees,XRotationDegrees,Camera,NumFrames" << std::endl;
+      outFile << "FrameIndex,ZRotationDegrees,XRotationDegrees,Camera,NumFrames,TargetID" << std::endl;
 
       // Determine the angle of the target in the XY plane, with 0 degrees being the +Y axis
       // and 90 degrees being the -X axis.
@@ -289,7 +289,7 @@ int main(int argc, char** argv)
           zRotationDegrees, xRotationDegrees);
 
         outFile << ++frameIndex << "," << zRotationDegrees << "," << xRotationDegrees
-          << "," << cri.m_ID << "," << frames << std::endl;
+          << "," << cri.m_ID << "," << frames << "," << target.id << std::endl;
       }
 
       outFile.close();

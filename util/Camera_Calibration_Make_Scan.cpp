@@ -27,7 +27,7 @@ using namespace asdp;
 using namespace asdp::render;
 using namespace asdp::render::calibration;
 
-static std::string VERSION = "1.2.0";
+static std::string VERSION = "2.0.0";
 
 void usage(std::string name)
 {
@@ -48,7 +48,7 @@ void usage(std::string name)
 
 static void RunAlongLine(std::ofstream& outFile, int& frameIndex,
   std::vector<CameraRenderInfo> const& cameraRenderInfos, int numFrames,
-  CameraRenderInfo const& cri, glm::dvec3 const& targetPoint,
+  CameraRenderInfo const& cri, glm::dvec3 const& targetPoint, int targetID,
   GimbalInfo const& gimbalInfo,
   int topMarginPixels, int bottomMarginPixels,
   int leftMarginPixels, int rightMarginPixels,
@@ -80,7 +80,7 @@ static void RunAlongLine(std::ofstream& outFile, int& frameIndex,
         (xPixels >= leftMarginPixels && xPixels <= (camera.m_resolutionPixels[0] - 1) - rightMarginPixels &&
         yPixels >= topMarginPixels && yPixels <= (camera.m_resolutionPixels[1] - 1) - bottomMarginPixels)) {
         outFile << frameIndex << "," << zRotationDegrees << "," << xRotationDegrees << ","
-          << camera.m_ID << "," << numFrames << std::endl;
+          << camera.m_ID << "," << numFrames << "," << targetID << std::endl;
       }
     }
   }
@@ -207,7 +207,7 @@ int main(int argc, char** argv)
       return 20;
     }
     // Write the header line.
-    outFile << "FrameIndex,ZRotationDegrees,XRotationDegrees,Camera,NumFrames" << std::endl;
+    outFile << "FrameIndex,ZRotationDegrees,XRotationDegrees,Camera,NumFrames,TargetID" << std::endl;
 
     // For each target, generate a series of poses, writing them to the file.
     // When more than one camera can see the same target, request images from all of them
@@ -242,22 +242,22 @@ int main(int argc, char** argv)
           int numYSteps = 1 + (yMax - yMin) / curStep;
 
           // Go smoothly around the edges so we minimize motion.
-          RunAlongLine(outFile, frameIndex, cameraRenderInfos, frames, cri, targetPoint,
+          RunAlongLine(outFile, frameIndex, cameraRenderInfos, frames, cri, targetPoint, target.id,
             gimbalInfo,
             topMarginPixels, bottomMarginPixels,
             leftMarginPixels, rightMarginPixels,
             xMin, yMin, curStep, 0, numXSteps);
-          RunAlongLine(outFile, frameIndex, cameraRenderInfos, frames, cri, targetPoint,
+          RunAlongLine(outFile, frameIndex, cameraRenderInfos, frames, cri, targetPoint, target.id,
             gimbalInfo,
             topMarginPixels, bottomMarginPixels,
             leftMarginPixels, rightMarginPixels,
             xMax, yMin, 0, curStep, numYSteps);
-          RunAlongLine(outFile, frameIndex, cameraRenderInfos, frames, cri, targetPoint,
+          RunAlongLine(outFile, frameIndex, cameraRenderInfos, frames, cri, targetPoint, target.id,
             gimbalInfo,
             topMarginPixels, bottomMarginPixels,
             leftMarginPixels, rightMarginPixels,
             xMax, yMax, -curStep, 0, numXSteps);
-          RunAlongLine(outFile, frameIndex, cameraRenderInfos, frames, cri, targetPoint,
+          RunAlongLine(outFile, frameIndex, cameraRenderInfos, frames, cri, targetPoint, target.id,
             gimbalInfo,
             topMarginPixels, bottomMarginPixels,
             leftMarginPixels, rightMarginPixels,
