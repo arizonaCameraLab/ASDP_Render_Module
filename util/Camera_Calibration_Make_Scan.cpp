@@ -27,7 +27,7 @@ using namespace asdp;
 using namespace asdp::render;
 using namespace asdp::render::calibration;
 
-static std::string VERSION = "1.1.0";
+static std::string VERSION = "1.2.0";
 
 void usage(std::string name)
 {
@@ -46,7 +46,7 @@ void usage(std::string name)
   std::cerr << "  Writes poses.csv file." << std::endl;
 };
 
-static void RunAlongEdge(std::ofstream& outFile, int& frameIndex,
+static void RunAlongLine(std::ofstream& outFile, int& frameIndex,
   std::vector<CameraRenderInfo> const& cameraRenderInfos, int numFrames,
   CameraRenderInfo const& cri, glm::dvec3 const& targetPoint,
   GimbalInfo const& gimbalInfo,
@@ -217,14 +217,10 @@ int main(int argc, char** argv)
       const TargetInfo& target = targetInfos[i];
       glm::dvec3 targetPoint = glm::dvec3(target.position[0], target.position[1], target.position[2]);
 
-      // For each camera, take sweeps across its diagonals for this target, only asking for
-      // an image from the camera.  These go from near the center to the shorter edge of
-      // all axes.  Note that the edge pixels will continue all the way to the corners of the
-      // image, producing distortion correction samples along the entire radius.
-      // Then run along each edge of the camera, asking for images from all cameras that can
-      // see the requested point.
-      // Then sweep along the four edges of the camera, asking for images from all cameras that can
-      // see the requested point.
+      // For each camera, run along each edge of the camera, asking for images from all cameras that can
+      // see the requested point.  Then repeat with ever-smaller rectangles coming towards the center
+      // with less-dense points, so that we have more samples near the edges where distortion gradient
+      // magnitude is expected to be the largest.
       for (auto const &cri : cameraRenderInfos) {
 
         // Compute quantities useful to determine our paths
@@ -234,70 +230,51 @@ int main(int argc, char** argv)
         int xMax = cri.m_resolutionPixels[0] - rightMarginPixels - 1;
         int yMin = topMarginPixels;
         int yMax = cri.m_resolutionPixels[1] - bottomMarginPixels - 1;
-        int numSteps = std::min((xMax - xMin) / stepPixels, (yMax - yMin) / stepPixels);
+        double curStep = stepPixels;
 
-        //===========================================================
-        // One diagonal
-        int xStart = xCenter - numSteps * stepPixels / 2;
-        int yStart = yCenter - numSteps * stepPixels / 2;
-        for (int s = 0; s < numSteps; s++) {
-          int x = xStart + s * stepPixels;
-          int y = yStart + s * stepPixels;
-          double zRotation, xRotation;
-          PointPixelAtTargetNoDistortion(cri, x, y, gimbalInfo.minPitchDegrees, gimbalInfo.maxPitchDegrees,
-            targetPoint, gimbalInfo.pitchFirst,
-            zRotation, xRotation);
+        constexpr int numRects = 8;
+        for (int i = 0; i < numRects; i++) {
 
-          outFile << ++frameIndex << "," << zRotation << "," << xRotation
-            << "," << cri.m_ID << "," << frames << std::endl;
-        }
-
-        //===========================================================
-        // The other diagonal
-        xStart = xCenter + numSteps * stepPixels / 2;
-        for (int s = 0; s < numSteps; s++) {
-          int x = xStart - s * stepPixels;
-          int y = yStart + s * stepPixels;
-          double zRotation, xRotation;
-          PointPixelAtTargetNoDistortion(cri, x, y, gimbalInfo.minPitchDegrees, gimbalInfo.maxPitchDegrees,
-            targetPoint, gimbalInfo.pitchFirst,
-            zRotation, xRotation);
-          outFile << ++frameIndex << "," << zRotation << "," << xRotation
-            << "," << cri.m_ID << "," << frames << std::endl;
-        }
-
-        //===========================================================
-        // Run along each edge of the camera, asking for images from all cameras that can
-        // see the requested point within their margins.
-        {
-          int xMin = leftMarginPixels;
-          int xMax = cri.m_resolutionPixels[0] - rightMarginPixels - 1;
-          int yMin = topMarginPixels;
-          int yMax = cri.m_resolutionPixels[1] - bottomMarginPixels - 1;
-          int numXSteps = (xMax - xMin) / stepPixels;
-          int numYSteps = (yMax - yMin) / stepPixels;
+          //===========================================================
+          // Run along each edge of the rectangle, asking for images from all cameras that can
+          // see the requested point within their margins.
+          int numXSteps = 1 + (xMax - xMin) / curStep;
+          int numYSteps = 1 + (yMax - yMin) / curStep;
 
           // Go smoothly around the edges so we minimize motion.
-          RunAlongEdge(outFile, frameIndex, cameraRenderInfos, frames, cri, targetPoint,
+          RunAlongLine(outFile, frameIndex, cameraRenderInfos, frames, cri, targetPoint,
             gimbalInfo,
             topMarginPixels, bottomMarginPixels,
             leftMarginPixels, rightMarginPixels,
-            xMin, yMin, stepPixels, 0, numXSteps);
-          RunAlongEdge(outFile, frameIndex, cameraRenderInfos, frames, cri, targetPoint,
+            xMin, yMin, curStep, 0, numXSteps);
+          RunAlongLine(outFile, frameIndex, cameraRenderInfos, frames, cri, targetPoint,
             gimbalInfo,
             topMarginPixels, bottomMarginPixels,
             leftMarginPixels, rightMarginPixels,
-            xMax, yMin, 0, stepPixels, numYSteps);
-          RunAlongEdge(outFile, frameIndex, cameraRenderInfos, frames, cri, targetPoint,
+            xMax, yMin, 0, curStep, numYSteps);
+          RunAlongLine(outFile, frameIndex, cameraRenderInfos, frames, cri, targetPoint,
             gimbalInfo,
             topMarginPixels, bottomMarginPixels,
             leftMarginPixels, rightMarginPixels,
-            xMax, yMax, -stepPixels, 0, numXSteps);
-          RunAlongEdge(outFile, frameIndex, cameraRenderInfos, frames, cri, targetPoint,
+            xMax, yMax, -curStep, 0, numXSteps);
+          RunAlongLine(outFile, frameIndex, cameraRenderInfos, frames, cri, targetPoint,
             gimbalInfo,
             topMarginPixels, bottomMarginPixels,
             leftMarginPixels, rightMarginPixels,
-            xMin, yMax, 0, -stepPixels, numYSteps);
+            xMin, yMax, 0, -curStep, numYSteps);
+
+          //===========================================================
+          // Adjust the rectangle to be smaller and move towards the center and adjust the
+          // pixel density.
+          // We move towards the center less for the further steps, so that we
+          // have more samples near the edges where distortion gradient magnitude is expected.
+          double rangeScale;
+          rangeScale = 1.0 - (i + 1) * 0.1;
+          curStep *= 2;
+          xMin = xCenter - (xCenter - xMin) * rangeScale;
+          xMax = xCenter + (xMax - xCenter) * rangeScale;
+          yMin = yCenter - (yCenter - yMin) * rangeScale;
+          yMax = yCenter + (yMax - yCenter) * rangeScale;
         }
 
       } // End of loop over cameras.
