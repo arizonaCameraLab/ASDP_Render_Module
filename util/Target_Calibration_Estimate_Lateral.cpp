@@ -31,7 +31,7 @@ using namespace asdp::render;
 using namespace asdp::render::calibration;
 using json = nlohmann::json;
 
-static std::string VERSION = "2.0.0";
+static std::string VERSION = "2.1.0";
 
 void usage(std::string name)
 {
@@ -136,7 +136,13 @@ int main(int argc, char** argv)
         // Read the poses from the target_N_poses.csv file in the root directory.
         std::string filename = baseDirectory + "/target_" + std::to_string(info.id) + "_poses.csv";
         std::cout << "  Reading poses for target " << info.id << " from " << filename << std::endl;
-        info.poses = GetPoseInfos(filename);
+        try {
+          info.poses = GetPoseInfos(filename);
+        }
+        catch (const std::exception& e) {
+          std::cerr << "Error: Unable to read pose file: " << filename << ": " << e.what() << std::endl;
+          return 28;
+        }
         targetInfos.push_back(info);
       }
       catch (const std::exception& e) {
