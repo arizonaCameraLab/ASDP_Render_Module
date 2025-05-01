@@ -47,7 +47,20 @@ std::vector<CameraRenderInfo> asdp::render::calibration::GetCameraRenderInfos(
       std::vector< std::array<double, 2> > mapPoints = map;
       DistortionRadialLERP* distortion = new DistortionRadialLERP(center, mapPoints);
       dist = std::shared_ptr<Distortion>(distortion);
-    } else {
+    } else if (distortion["type"] == "bagOfMappings") {
+      try {
+        json map = distortion["map"];
+        DistortionBagOfMappings::Bag mapPoints = map;
+        DistortionBagOfMappings* distortion = new DistortionBagOfMappings(mapPoints);
+        dist = std::shared_ptr<Distortion>(distortion);
+      } catch (std::exception& e) {
+        throw std::runtime_error("Unable to parse distortion parameters: " + std::string(e.what()));
+      }
+    } else if (distortion["type"] == nullptr) {
+      // No distortion specified, so use the default.
+    }
+    
+    else {
       throw std::runtime_error("Unknown distortion type: " + std::string(distortion["type"]));
     }
 

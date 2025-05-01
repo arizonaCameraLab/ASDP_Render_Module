@@ -163,7 +163,7 @@ if(OPENXR_FOUND)
 endif()
 
 add_library(Calibration_Helpers STATIC util/Calibration_Helpers.cpp util/Calibration_Helpers.h)
-target_include_directories(Calibration_Helpers PUBLIC
+include_directories(Calibration_Helpers PUBLIC
   "${CMAKE_CURRENT_SOURCE_DIR}/util"
   "${CMAKE_CURRENT_SOURCE_DIR}/dependencies/glm"
 )
@@ -248,6 +248,7 @@ if(BUILD_UTILITIES)
     Target_Calibration_Estimate_Lateral
     Camera_Calibration_Make_Scan
     Collect_Calibration_Data
+    Camera_Calibration_Estimate_Distortion_Extrinsics
   )
   foreach (BASE ${CPP_UTILS})
     set (APP ${BASE})

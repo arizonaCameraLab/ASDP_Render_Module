@@ -31,9 +31,11 @@
 #include <GL/glew.h>
 #include <ToneMap.h>
 #include <Composite.h>
+#include "Calibration_Helpers.h"
 
 using namespace asdp;
 using namespace asdp::render;
+using namespace asdp::render::calibration;
 using json = nlohmann::json;
 
 static std::string VERSION = "1.1.0";
@@ -89,125 +91,26 @@ int main(int argc, char** argv)
   {
     std::cout << "Compare_Configurations version " << VERSION << std::endl;
 
-    // Read the configuration files.
-    if (!std::filesystem::exists(file1)) {
-      std::cerr << "Configuration file not found: " << file1 << std::endl;
-      return 14;
-    }
-    std::ifstream configFile1(file1);
-    json config1 = json::parse(configFile1);
-    std::cout << "Read configuration from " << file1 << std::endl;
-
-    if (!std::filesystem::exists(file2)) {
-      std::cerr << "Configuration file not found: " << file2 << std::endl;
-      return 14;
-    }
-    std::ifstream configFile2(file2);
-    json config2 = json::parse(configFile2);
-    std::cout << "Read configuration from " << file2 << std::endl;
-
     // Construct CameraRenderInfos for each configuration file.
     std::vector<asdp::render::CameraRenderInfo> cameraRenderInfos1;
-    for (const auto& camera : config1["cameras"]) {
-      std::shared_ptr<Distortion> dist;
-      json distortion = camera["distortion"];
-      if (distortion["type"] == "none") {
-        DistortionNone* distortion = new DistortionNone;
-        dist = std::shared_ptr<Distortion>(distortion);
-      } else if (distortion["type"] == "radial") {
-        json parameters = distortion["parameters"];
-        std::array<double, 2> center = parameters["COP"];
-        json map = parameters["map"];
-        std::vector< std::array<double, 2> > mapPoints = map;
-        DistortionRadialLERP* distortion = new DistortionRadialLERP(center, mapPoints);
-        dist = std::shared_ptr<Distortion>(distortion);
-      } else {
-        std::cerr << "Error: Unknown distortion type: " << distortion["type"] << std::endl;
-        return 17;
-      }
-
-      std::shared_ptr<Vignette> vig(new VignetteNone);
-      try {
-        json vignette = camera["vignette"];
-        if (vignette["type"] == "evenPolynomial") {
-          json parameters = vignette["parameters"];
-          std::array<double, 2> center = parameters["COP"];
-          std::array<double, 2> cArray = parameters["coefficients"];
-          std::vector<double> coefficients(cArray.begin(), cArray.end());
-          VignetteRadialPolynomail* vignette = new VignetteRadialPolynomail(center, camera["fieldOfViewDegrees"], coefficients);
-          vig = std::shared_ptr<Vignette>(vignette);
-        }
-        else if (vignette["type"] == nullptr) {
-          // No vignette specified, so use the default.
-        }
-        else {
-          std::cerr << "Error: Unknown vignette type: " << vignette["type"] << std::endl;
-          return 18;
-        }
-      }
-      catch (...) {
-        // No vignette specified, so use the default.
-      }
-
-      asdp::render::CameraRenderInfo info(camera["id"],
-        camera["positionMeters"], camera["orientationDegrees"],
-        camera["resolutionPixels"], camera["fieldOfViewDegrees"],
-        dist, vig, std::make_shared<asdp::render::ImageQueue>(), -1.0f);
-      info.ComputePlanarCameraMeshInfo(100, 100, depth);
-      cameraRenderInfos1.push_back(info);
+    try {
+      cameraRenderInfos1 = GetCameraRenderInfos(file1);
     }
+    catch (std::runtime_error const& e) {
+      std::cerr << "Error: Unable to read camera configuration file: " << file1 << ": " << e.what() << std::endl;
+      return 14;
+    }
+    std::cout << "Read configuration1 from " << file1 << std::endl;
 
     std::vector<asdp::render::CameraRenderInfo> cameraRenderInfos2;
-    for (const auto& camera : config2["cameras"]) {
-      std::shared_ptr<Distortion> dist;
-      json distortion = camera["distortion"];
-      if (distortion["type"] == "none") {
-        DistortionNone* distortion = new DistortionNone;
-        dist = std::shared_ptr<Distortion>(distortion);
-      }
-      else if (distortion["type"] == "radial") {
-        json parameters = distortion["parameters"];
-        std::array<double, 2> center = parameters["COP"];
-        json map = parameters["map"];
-        std::vector< std::array<double, 2> > mapPoints = map;
-        DistortionRadialLERP* distortion = new DistortionRadialLERP(center, mapPoints);
-        dist = std::shared_ptr<Distortion>(distortion);
-      }
-      else {
-        std::cerr << "Error: Unknown distortion type: " << distortion["type"] << std::endl;
-        return 19;
-      }
-
-      std::shared_ptr<Vignette> vig(new VignetteNone);
-      try {
-        json vignette = camera["vignette"];
-        if (vignette["type"] == "evenPolynomial") {
-          json parameters = vignette["parameters"];
-          std::array<double, 2> center = parameters["COP"];
-          std::array<double, 2> cArray = parameters["coefficients"];
-          std::vector<double> coefficients(cArray.begin(), cArray.end());
-          VignetteRadialPolynomail* vignette = new VignetteRadialPolynomail(center, camera["fieldOfViewDegrees"], coefficients);
-          vig = std::shared_ptr<Vignette>(vignette);
-        }
-        else if (vignette["type"] == nullptr) {
-          // No vignette specified, so use the default.
-        }
-        else {
-          std::cerr << "Error: Unknown vignette type: " << vignette["type"] << std::endl;
-          return 20;
-        }
-      }
-      catch (...) {
-        // No vignette specified, so use the default.
-      }
-
-      asdp::render::CameraRenderInfo info(camera["id"],
-        camera["positionMeters"], camera["orientationDegrees"],
-        camera["resolutionPixels"], camera["fieldOfViewDegrees"],
-        dist, vig, std::make_shared<asdp::render::ImageQueue>(), -1.0f);
-      info.ComputePlanarCameraMeshInfo(100, 100, depth);
-      cameraRenderInfos2.push_back(info);
+    try {
+      cameraRenderInfos2 = GetCameraRenderInfos(file2);
     }
+    catch (std::runtime_error const& e) {
+      std::cerr << "Error: Unable to read camera configuration file: " << file2 << ": " << e.what() << std::endl;
+      return 15;
+    }
+    std::cout << "Read configuration2 from " << file2 << std::endl;
 
     // Compare the two configurations. If they have a different number of cameras, just
     // report that and exit.  Otherwise, compare the camera meshes and report the pairwise
