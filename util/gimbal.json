@@ -1,7 +1,7 @@
 {
   "name": "iOptron_CEM40",
   "pitchFirst": true,
-  "comPort": "COM3",
+  "comPort": "COM6",
   "baud": 115200,
   "speed": 4.5,
   "acceleration": 100.0,
