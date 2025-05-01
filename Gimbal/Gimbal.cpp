@@ -15,6 +15,8 @@
 #include <cstdint>
 #include <vector>
 #include <iostream>
+#include <thread>
+#include <cmath>
 
 void GimbalFake::Home()
 {
@@ -492,26 +494,24 @@ public:
   /// wait forever.
   /// @param numChars The number of characters to read from the gimbal.
   /// @return The response from the gimbal, or an empty string if there was no response.
-  std::string getResponse(struct timeval* timeout, size_t numChars)
-  {
-    std::string response;
-    if (commPort == -1) {
-      return response;
-    }
+  std::string getResponse(struct timeval* timeout, size_t numChars);
 
-    // Allocate a buffer that is large enough to hold the longest response and then try to
-    // read that many characters.
-    std::vector<uint8_t> buffer(1024);
-    int ret = vrpn_read_available_characters(commPort, buffer.data(), buffer.size(), timeout);
-    // If we got nothing, return an empty response.
-    if (ret <= 1) {
-      return response;
-    }
+  /// @brief Send a command to the gimbal and check the response.  Close comms on failure.
+  /// @param cmd The command to send, including all parameters after spaces.
+  /// @param response The expected response from the gimbal.
+  /// @return True if the command was sent successfully and the response was as expected, false otherwise.
+  bool sendCommandCheckReponseAndFail(std::string cmd, std::string response);
 
-    // Copy the response into a string and return it.
-    response.assign(buffer.begin(), buffer.begin() + ret);
-    return response;
-  }
+  /// @brief Wait until the gimbal stops slewing.
+  /// @param timeout The maximum amount of time to wait for a response.
+  /// @return Empty string on succes, error message on failure.
+  std::string waitForSlewStop(std::chrono::milliseconds timeout = std::chrono::milliseconds(60000));
+
+  /// @brief Reset the time on the gimbal to one that has the Earth aligned with Celestial coordinates.
+  /// @details This selects a time when RA is 0, which is not the beginning of the epoch (because the
+  /// Earth points in a different direction then) but is within a day later than that.
+  /// @return Empty string on success, error message on failure.
+  std::string resetTime();
 };
 
 bool Gimbal_iOptron_CEM40::Gimbal_iOptron_CEM40_Impl::sendCommand(std::string cmd)
@@ -525,89 +525,189 @@ bool Gimbal_iOptron_CEM40::Gimbal_iOptron_CEM40_Impl::sendCommand(std::string cm
   return result == cmd.length();
 }
 
+std::string Gimbal_iOptron_CEM40::Gimbal_iOptron_CEM40_Impl::getResponse(struct timeval* timeout, size_t numChars)
+{
+  std::string response;
+  if (commPort == -1) {
+    return response;
+  }
+
+  // Allocate a buffer that is large enough to hold the longest response and then try to
+  // read that many characters.
+  std::vector<uint8_t> buffer(numChars);
+  int ret = vrpn_read_available_characters(commPort, buffer.data(), buffer.size(), timeout);
+  // If we got nothing, return an empty response.
+  if (ret < 1) {
+    return response;
+  }
+
+  // Copy the response into a string and return it.
+  response.assign(buffer.begin(), buffer.begin() + ret);
+  return response;
+}
+
+bool Gimbal_iOptron_CEM40::Gimbal_iOptron_CEM40_Impl::sendCommandCheckReponseAndFail(
+  std::string cmd, std::string response)
+{
+  if (commPort == -1) {
+    return false;
+  }
+  // Send the command to the gimbal.
+  if (!sendCommand(cmd)) {
+    return false;
+  }
+  // Wait for a response from the gimbal.
+  struct timeval timeout = { 1, 0 };
+  std::string resp = getResponse(&timeout, response.length());
+  if (resp != response) {
+    vrpn_close_commport(commPort);
+    commPort = -1;
+    return false;
+  }
+  return true;
+}
+
+std::string Gimbal_iOptron_CEM40::Gimbal_iOptron_CEM40_Impl::waitForSlewStop(std::chrono::milliseconds timeout)
+{
+  if (commPort == -1) {
+    return "commPort not initialized";
+  }
+  std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now();
+  std::chrono::steady_clock::time_point end = start + timeout;
+  while (std::chrono::steady_clock::now() <= end) {
+
+    // Sleep to avoid flooding the gimbal with commands.
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+    // Send the status command to the gimbal.
+    if (!sendCommand(":GLS#")) {
+      return "Could not send status request";
+    }
+
+    // Wait for a response from the gimbal.
+    std::string example = "sTTTTTTTTTTTTTTTTnnnnnn#";
+    struct timeval tv = { 0, 100000 };
+    std::string resp = getResponse(&tv, example.size());
+    if (resp.size() != example.size()) {
+      // The unit sometimes sends a response that is shorter than expected or no response
+      // while it is homing or slewing; ignore this.
+      continue;
+    }
+    if (resp[18] != '2') {
+      // The gimbal is no longer slewing, so we can return.
+      return "";
+    }
+  }
+  return "Timed out waiting for gimbal to stop slewing.";
+}
+
+std::string Gimbal_iOptron_CEM40::Gimbal_iOptron_CEM40_Impl::resetTime()
+{
+  // When the time is set to zero, we get an RA of 41:54.5, so we need to set the
+  // time to 24 hours minus that, converted to milliseconds.
+  // BUT when we do that, the time is still off by a little over 3 minutes, so we
+  // use 44 minutes.  Then it is off by about 49 seconds, so we 54.5+49 = 1:43.5,
+  // or 45 minutes, 43.5 seconds.  Then it is off by ~0.3 seconds, varying from run
+  // to run depending on the time to run homing, so we tweak to 43.4.
+  double minutes = 24 * 60 - (45 + (43.4 / 60.0));
+  size_t milliseconds = static_cast<size_t>(minutes * 60 * 1000);
+  std::string timeString = std::to_string(milliseconds);
+  while (timeString.length() < 13) {
+    timeString = "0" + timeString;
+  }
+  if (!sendCommandCheckReponseAndFail(":SUT" + timeString + "#", "1")) {
+    return "Unable to send set time command";
+  }
+
+  return "";
+}
+
 Gimbal_iOptron_CEM40::Gimbal_iOptron_CEM40(std::string comPortName)
   : m_impl(new Gimbal_iOptron_CEM40_Impl())
 {
-  // Open the serial port using the defaults of 8 bits, no parity, 1 start and stop bits with no
-  // RTS (hardware) flow control.
-  m_impl->commPort = vrpn_open_commport(comPortName.c_str(), 115200);
-  if (m_impl->commPort == -1) {
-    throw std::runtime_error("Unable to open COM port " + comPortName);
-  }
-  if (m_impl->commPort != -1) {
+  // Retry opening the COM port a couple of times in case it is busy.
+  bool success = false;
+  for (int i = 0; i < 3 && !success; ++i) {
+    // Open the serial port using the defaults of 8 bits, no parity, 1 start and stop bits with no
+    // RTS (hardware) flow control.
+    m_impl->commPort = vrpn_open_commport(comPortName.c_str(), 115200);
+    if (m_impl->commPort == -1) {
+      throw std::runtime_error("Unable to open COM port " + comPortName);
+    }
 
     // Gobble up any full or partial responses that have come from the device.
-    std::string gobble = m_impl->getResponse(nullptr, 10000);
+    struct timeval timeout = { 0, 10000 };
+    std::string gobble = m_impl->getResponse(&timeout, 10000);
 
     // Send a command to get the mount number.  Wait for a response and verify that
     // it matches what we expect for a CEM40.
-    if (!m_impl->sendCommand(":MountInfo#")) {
-      throw std::runtime_error("Unable to send MountInfo command");
-      return;
+    if (!m_impl->sendCommandCheckReponseAndFail(":MountInfo#", "0040")) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(100));
+      continue;
     }
-    struct timeval timeout = { 1, 0 };
-    std::string response = m_impl->getResponse(&timeout, 4);
-    if (response != "0040") {
-      throw std::runtime_error("Gimbal not a CEM40, got " + response);
-      vrpn_close_commport(m_impl->commPort);
-      m_impl->commPort = -1;
-      return;
-    }
+    success = true;
+  }
+  if (!success) {
+    throw std::runtime_error("Unable to send MountInfo command");
+  }
 
-    // Send a command to use the maximum slew rate.
-    if (!m_impl->sendCommand(":MSR9#")) {
-      throw std::runtime_error("Unable to send SlewRate command");
-      return;
-    }
-    // Wait for a response and verify that it matches what we expect.
-    timeout = { 1, 0 };
-    response = m_impl->getResponse(&timeout, 2);
-    if (response != "9#") {
-      throw std::runtime_error("Unable to set slew rate");
-      vrpn_close_commport(m_impl->commPort);
-      m_impl->commPort = -1;
-      return;
-    }
+  // Send a command to set the maximum slew rate.
+  if (!m_impl->sendCommandCheckReponseAndFail(":MSR9#", "1")) {
+    throw std::runtime_error("Unable to send SlewRate command");
+  }
 
-    // Set the altitude limit to as low a possible.
-    if (!m_impl->sendCommand(":SAL-89#")) {
-      throw std::runtime_error("Unable to send altitude limit command");
-      return;
-    }
-    // Wait for a response and verify that it matches what we expect.
-    timeout = { 1, 0 };
-    response = m_impl->getResponse(&timeout, 1);
-    if (response != "1") {
-      throw std::runtime_error("Unable to set altitude limit");
-      vrpn_close_commport(m_impl->commPort);
-      m_impl->commPort = -1;
-      return;
-    }
+  // Set the altitude limit to as low a possible.
+  if (!m_impl->sendCommandCheckReponseAndFail(":SAL-89#", "1")) {
+    throw std::runtime_error("Unable to send altitude limit command");
+  }
 
-    // Disable tracking.
-    if (!m_impl->sendCommand(":ST0#")) {
-      throw std::runtime_error("Unable to send stop-tracking command");
-      return;
-    }
-    // Wait for a response and verify that it matches what we expect.
-    timeout = { 1, 0 };
-    response = m_impl->getResponse(&timeout, 1);
-    if (response != "1") {
-      throw std::runtime_error("Unable to set stop-tracking");
-      vrpn_close_commport(m_impl->commPort);
-      m_impl->commPort = -1;
-      return;
-    }
+  // Send a command to get the azimuth limit to be sure it worked.
+  if (!m_impl->sendCommandCheckReponseAndFail(":GAL#", "-89#")) {
+    throw std::runtime_error("Unable to send request azimuth limit command");
+  }
 
+  // Disable tracking.
+  if (!m_impl->sendCommandCheckReponseAndFail(":ST0#", "1")) {
+    throw std::runtime_error("Unable to send stop-tracking command");
+  }
+
+  // Set the longitude to 0 degrees.
+  if (!m_impl->sendCommandCheckReponseAndFail(":SLO+0000000#", "1")) {
+    throw std::runtime_error("Unable to send set longitude command");
+  }
+
+  // Set the latitude to 0 degrees (equator).
+  int lat = 0;
+  int latTicks = static_cast<size_t>(lat * 3600.0) * 100;
+  std::string latString = std::to_string(std::abs(latTicks));
+  while (latString.length() < 8) {
+    latString = "0" + latString;
+  }
+  if (!m_impl->sendCommandCheckReponseAndFail(":SLA+" + latString + "#", "1")) {
+    throw std::runtime_error("Unable to send set latitude command");
+  }
+
+  // Set the offset from UTC to 0.
+  if (!m_impl->sendCommandCheckReponseAndFail(":SG+000#", "1")) {
+    throw std::runtime_error("Unable to send set UTC command");
+  }
+
+  // Set Daylight Savings Time to 0.
+  if (!m_impl->sendCommandCheckReponseAndFail(":SDS0#", "1")) {
+    throw std::runtime_error("Unable to send set DST command");
+  }
+
+  // Reset time to align the Earth with celestial coordinates, so RA=0.
+  std::string ret = m_impl->resetTime();
+  if (ret.size()) {
+    throw std::runtime_error("Unable to reset time: " + ret);
   }
 }
 
 Gimbal_iOptron_CEM40::~Gimbal_iOptron_CEM40()
 {
-  if (m_impl) {
-    if (m_impl->commPort != -1) {
-      vrpn_close_commport(m_impl->commPort);
-    }
+  if (m_impl && m_impl->commPort != -1) {
+    vrpn_close_commport(m_impl->commPort);
   }
 }
 
@@ -624,17 +724,21 @@ void Gimbal_iOptron_CEM40::Home()
   if (!m_impl || m_impl->commPort == -1) {
     throw std::runtime_error("No connection");
   }
+
+  // Reset time to align the Earth with celestial coordinates, so RA=0.
+  std::string ret = m_impl->resetTime();
+  if (ret.size()) {
+    throw std::runtime_error("Unable to reset time: " + ret);
+  }
   // Send the home command to the gimbal.
-  if (!m_impl->sendCommand(":MSH#")) {
+  if (!m_impl->sendCommandCheckReponseAndFail(":MSH#", "1")) {
     throw std::runtime_error("Could not send home command");
   }
 
-  // Wait for a response from the gimbal.  This has a long timeout because the mount may
-  // have to move a long distance to get to home.
-  struct timeval timeout = { 60, 0 };
-  std::string response = m_impl->getResponse(&timeout, 1);
-  if (response != "1") {
-    throw std::runtime_error("Unable to home");
+  // Wait for the gimbal to finish moving.
+  ret = m_impl->waitForSlewStop(std::chrono::milliseconds(60000));
+  if (ret != "") {
+    throw std::runtime_error("Timed out waiting for gimbal to finish moving: " + ret);
   }
 }
 
@@ -644,79 +748,87 @@ void Gimbal_iOptron_CEM40::MoveAbsolute(double yawDegrees, double pitchDegrees)
     throw std::runtime_error("No connection");
   }
 
-  // Set the azimuth to be slewed to.  This value is in units of 0.01 arc-seconds, so we
+  // Ensure that we don't try to hit the rails.
+  if (yawDegrees > 175) {
+    throw std::runtime_error("Yaw too large; limit is 175, value is " + std::to_string(yawDegrees));
+  }
+  if (yawDegrees < -175) {
+    throw std::runtime_error("Yaw too small; limit is -175, value is " + std::to_string(yawDegrees));
+  }
+
+  // When we're in the Northern hemisphere, the home yaw is +90 degrees and negative moves
+  // to the right.  When in the Southern, the home is -90 degrees and negative moves to the left.
+  // Determine which hemisphere we want to be in by checking the sign of the yaw.
+  std::string hemisphere;
+  if (yawDegrees >= 0) {
+    hemisphere = "0"; // Southern
+    yawDegrees = -90 + yawDegrees;
+    // Pitch is backwards in this hemisphere, so we invert it here.
+    pitchDegrees = -pitchDegrees;
+  } else {
+    hemisphere = "1"; // Northern
+    yawDegrees = 90 + yawDegrees;
+  }
+  if (!m_impl->sendCommandCheckReponseAndFail(":SHE"+hemisphere+"#", "1")) {
+    throw std::runtime_error("Unable to send hemisphere command");
+  }
+
+  // Set the declination to be slewed to.  This value is in units of 0.01 arc-seconds, so we
   // convert from degrees to arc-seconds and then multiply by 100.  We then put this into
   // an 8-character (padded with 0 to the left) string.
-  size_t yawArcSeconds = static_cast<size_t>(yawDegrees * 3600.0);
-  size_t yawTicks = yawArcSeconds * 100;
-  std::string yawString = std::to_string(yawTicks);
-  while (yawString.length() < 8) {
+  int yawArcSeconds = static_cast<size_t>(yawDegrees * 3600.0);
+  int yawTicks = yawArcSeconds * 100;
+  std::string yawString = std::to_string(std::abs(yawTicks));
+  while (yawString.length() < 7) {
     yawString = "0" + yawString;
   }
-  if (!m_impl->sendCommand(":Sas" + yawString + "#")) {
-    vrpn_close_commport(m_impl->commPort);
-    m_impl->commPort = -1;
-    throw std::runtime_error("Unable to send azimuth command");
+  std::string sign = "+";
+  if (yawDegrees < 0) {
+    sign = "-";
   }
-  // Wait for a response and verify that it matches what we expect.
-  struct timeval timeout = { 1, 0 };
-  std::string response = m_impl->getResponse(&timeout, 1);
-  if (response != "1") {
-    vrpn_close_commport(m_impl->commPort);
-    m_impl->commPort = -1;
-    throw std::runtime_error("Unable to set azimuth");
+  std::string cmd = ":Sd" + sign + yawString + "#";
+  if (!m_impl->sendCommandCheckReponseAndFail(cmd, "1")) {
+    throw std::runtime_error("Unable to send declination command");
   }
 
-  // Set the altitude to be slewed to.  This value is in units of 0.01 arc-seconds, so we
+  // Set the right ascension to be slewed to.  This value is in units of 0.01 arc-seconds, so we
   // convert from degrees to arc-seconds and then multiply by 100.  We then put this into
   // an 8-character (padded with 0 to the left) string.
-  size_t pitchArcSeconds = static_cast<size_t>(pitchDegrees * 3600.0);
-  size_t pitchTicks = pitchArcSeconds * 100;
-  std::string pitchString = std::to_string(pitchTicks);
-  while (pitchString.length() < 8) {
+  // The range is 0-360, so negative values have 360 added to them
+  if (pitchDegrees < 0) {
+    pitchDegrees += 360;
+  }
+  int pitchArcSeconds = static_cast<size_t>((pitchDegrees) * 3600.0);
+  int pitchTicks = pitchArcSeconds * 100;
+  std::string pitchString = std::to_string(std::abs(pitchTicks));
+  while (pitchString.length() < 9) {
     pitchString = "0" + pitchString;
   }
-  if (!m_impl->sendCommand(":Sz" + pitchString + "#")) {
-    vrpn_close_commport(m_impl->commPort);
-    m_impl->commPort = -1;
-    throw std::runtime_error("Unable to send altitude command");
-  }
-  // Wait for a response and verify that it matches what we expect.
-  timeout = { 1, 0 };
-  response = m_impl->getResponse(&timeout, 1);
-  if (response != "1") {
-    vrpn_close_commport(m_impl->commPort);
-    m_impl->commPort = -1;
-    throw std::runtime_error("Unable to set altitude");
+  cmd = ":SRA" + pitchString + "#";
+  if (!m_impl->sendCommandCheckReponseAndFail(cmd, "1")) {
+    throw std::runtime_error("Unable to send right ascension command");
   }
 
-  // Slew to the requested location, in the "counterweight down" configuration.
-  if (!m_impl->sendCommand(":MSS#")) {
-    vrpn_close_commport(m_impl->commPort);
-    m_impl->commPort = -1;
+  // Reset time to align the Earth with celestial coordinates, so RA=0.
+  std::string ret = m_impl->resetTime();
+  if (ret.size()) {
+    throw std::runtime_error("Unable to reset time: " + ret);
+  }
+
+  // Slew to the requested location, in the "counterweight up" configuration.
+  if (!m_impl->sendCommandCheckReponseAndFail(":MS1#", "1")) {
     throw std::runtime_error("Unable to send slew command");
   }
-  // Wait for a response and verify that it matches what we expect.
-  timeout = { 1, 0 };
-  response = m_impl->getResponse(&timeout, 1);
-  if (response != "1") {
-    vrpn_close_commport(m_impl->commPort);
-    m_impl->commPort = -1;
-    throw std::runtime_error("Unable to slew");
+
+  // Wait for the gimbal to finish moving.
+  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  ret = m_impl->waitForSlewStop(std::chrono::milliseconds(60000));
+  if (ret != "") {
+    throw std::runtime_error("Timed out waiting for gimbal to finish moving: " + ret);
   }
 
   // Disable tracking, which the slew command re-enables every time.
-  if (!m_impl->sendCommand(":ST0#")) {
-    vrpn_close_commport(m_impl->commPort);
-    m_impl->commPort = -1;
+  if (!m_impl->sendCommandCheckReponseAndFail(":ST0#", "1")) {
     throw std::runtime_error("Unable to send stop-tracking command");
-  }
-  // Wait for a response and verify that it matches what we expect.
-  timeout = { 1, 0 };
-  response = m_impl->getResponse(&timeout, 1);
-  if (response != "1") {
-    vrpn_close_commport(m_impl->commPort);
-    m_impl->commPort = -1;
-    throw std::runtime_error("Unable to set stop-tracking");
   }
 }
