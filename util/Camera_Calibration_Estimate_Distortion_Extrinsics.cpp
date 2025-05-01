@@ -243,7 +243,7 @@ int main(int argc, char** argv)
           exit(24);
         }
 
-        // Find the expected location of the target in the image based on ideal camera parameters.
+        // Find the expected location of the target in the image in pixels based on ideal camera parameters.
         std::array<double, 2> expectedLocation;
         if (!TargetProjectedLocationNoDistortion(*cri, gimbalInfo.pitchFirst,
             pose.zRotationDegrees, pose.xRotationDegrees, target->position,
@@ -289,8 +289,13 @@ int main(int argc, char** argv)
 #pragma omp critical
         {
           auto& bag = bags[pose.cameraID];
-          DistortionBagOfMappings::Point2D expected = { expectedLocation[0], expectedLocation[1] };
-          DistortionBagOfMappings::Point2D actual = { x, y };
+          // Convert from pixel coordinates to 2D coordinates in the Z=-1 plane based on the ideal-
+          // camera parameters.
+          std::array<double, 2> idealCameraLocation;
+
+          DistortionBagOfMappings::Point2D expected = PlaneIntersectionForPixel(*cri, expectedLocation);
+          DistortionBagOfMappings::Point2D actual = PlaneIntersectionForPixel(*cri, { x, y });
+
           DistortionBagOfMappings::Mapping mapping = { expected, actual };
           bag.push_back(mapping);
 
@@ -308,6 +313,8 @@ int main(int argc, char** argv)
       // based on the ideal-camera FOV and the target locations.
 
       /// @todo
+      std::cerr << "Error: Multiple targets not yet implemented." << std::endl;
+      return 100;
     }
 
     // Parse the JSON configuration file for the camera configuration directly, then replace

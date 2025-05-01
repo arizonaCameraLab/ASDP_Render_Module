@@ -513,13 +513,11 @@ std::string Distortion::Test()
       }
       for (double x = -15; x <= 15; x += 0.5) {
         for (double y = -15; y <= 15; y += 0.5) {
-          DistortionBagOfMappings::Point2D point = { x, y };
-          DistortionBagOfMappings::Point2D mapped = { 2 * x, 2 * y };
           if (!isNear(distortion.MapPoint({ x, y, 1 }), { 2 * x, 2 * y, 1 })) {
             return "DistortionBagOfMappings: 2x mappings failed for " + std::to_string(x) + "," + std::to_string(y) + ",1:"
               + " " + std::to_string(distortion.MapPoint({ x, y, 1 })[0])
-              + " " + std::to_string(distortion.MapPoint({ x, y, 1 })[1])
-              + " " + std::to_string(distortion.MapPoint({ x, y, 1 })[2]);
+              + "," + std::to_string(distortion.MapPoint({ x, y, 1 })[1])
+              + "," + std::to_string(distortion.MapPoint({ x, y, 1 })[2]);
           }
         }
       }

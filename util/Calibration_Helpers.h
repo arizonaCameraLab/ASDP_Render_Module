@@ -131,6 +131,16 @@ bool TargetProjectedLocationNoDistortion(const asdp::render::CameraRenderInfo& c
   double zRotationDegrees, double xRotationDegrees, const glm::dvec3& targetPoint,
   double &xPixels, double &yPixels);
 
+/// @brief Compute the intersection of a ray thrugh the specified pixel location with the plane at Z = -1.
+/// @details This maps from pixel coordinates (center of upper-left pixel is (0,0)) to the
+/// intersection of the ray through that pixel with the -Z plane in a right-handed coordinate system with
+/// the camera looking from the origin down the -Z axis with the Y axis up.
+/// @param cri The camera render information.
+/// @param locPixels The pixel location in the image, need not be centered on a pixel.
+/// @return The intersection of the ray with the plane at Z = -1.
+std::array<double, 2> PlaneIntersectionForPixel(const asdp::render::CameraRenderInfo& cri,
+  std::array<double, 2> locPixels);
+
 /// @brief Test the calibration helpers.
 /// @return An empty string if the test passes, otherwise an error message.
 std::string Test();
