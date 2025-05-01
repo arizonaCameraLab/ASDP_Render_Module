@@ -89,7 +89,7 @@ namespace asdp {
       typedef std::array<double, 2> Point2D;
       /// @brief A mapping from a point in the ideal camera's projection plane to a distorted point also in the projection plane.
       typedef std::array<Point2D, 2> Mapping;
-      /// @brief A row of points in the projection plane. Every row most have the same number of points.
+      /// @brief A vector of mappings in arbitrary order in the plane.
       typedef std::vector<Mapping> Bag;
 
       /// @brief Constructor that takes the bag of points in the projection plane.
