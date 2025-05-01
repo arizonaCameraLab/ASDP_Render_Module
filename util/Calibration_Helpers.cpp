@@ -32,7 +32,7 @@ std::vector<CameraRenderInfo> asdp::render::calibration::GetCameraRenderInfos(
   std::ifstream configFile1(configFileName);
   json camConfig = json::parse(configFile1);
 
-  // Construct CameraRenderInfos for each configuration file.
+  // Construct CameraRenderInfos for each camera in the configuration file.
   std::vector<asdp::render::CameraRenderInfo> cameraRenderInfos;
   for (const auto& camera : camConfig["cameras"]) {
     std::shared_ptr<Distortion> dist;

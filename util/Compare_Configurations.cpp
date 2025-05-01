@@ -134,7 +134,10 @@ int main(int argc, char** argv)
         return 0;
       }
 
-      // Make sure that the meshes are the same sizes.
+      // Compute camera meshes for both cameras, making them the same size to sample at the same points
+      // and at the requested depth.
+      cameraRenderInfos1[c].ComputePlanarCameraMeshInfo(100, 100, depth);
+      cameraRenderInfos2[c].ComputePlanarCameraMeshInfo(100, 100, depth);
       MeshInfo const &mesh1 = cameraRenderInfos1[c].m_mesh;
       MeshInfo const &mesh2 = cameraRenderInfos2[c].m_mesh;
       if (mesh1.nx != mesh2.nx || mesh1.ny != mesh2.ny) {
