@@ -84,6 +84,7 @@ int main(int argc, char** argv)
     // Open the gimbal on the specified COM port, setting its speed and acceleration if provided.
     // Then verify the gimbal is connected and operational.
     std::shared_ptr<Gimbal> gimbal;
+    std::cout << "Opening gimbal on " << gimbalInfo.comPort << std::endl;
     try {
       gimbal = ConstructGimbal(gimbalInfo);
     }
@@ -91,13 +92,16 @@ int main(int argc, char** argv)
       std::cerr << "Error: Unable to construct gimbal: " << e.what() << std::endl;
       return 3;
     }    
+    std::cout << "Getting status from gimbal" << std::endl;
     if (!gimbal->Status()) {
       std::cerr << "Gimbal not connected or not operational." << std::endl;
       return 10;
     }
+    std::cout << "Gimbal is operational" << std::endl;
 
     // If we've been asked to home the gimbal, do so.
     if (home) {
+      std::cout << "Homing gimbal" << std::endl;
       try {
         gimbal->Home();
       }
@@ -109,6 +113,7 @@ int main(int argc, char** argv)
 
     // If we've been asked to move to a specific position, do so.
     if (moveTo) {
+      std::cout << "Moving gimbal to yaw: " << yawDegrees << ", pitch: " << pitchDegrees << std::endl;
       try {
         gimbal->MoveAbsolute(yawDegrees, pitchDegrees);
       }
