@@ -47,6 +47,7 @@ void usage(std::string name)
   std::cerr << "  file2.json                         The second file to compare." << std::endl;
   std::cerr << "  Options:" << std::endl;
   std::cerr << "  --depth <float>                    Depth to focal planes (default 900)." << std::endl;
+  std::cerr << "  --dumpData <string>                Dump conparison data to the specified file." << std::endl;
   std::cerr << "  --help                             Print this information and quit." << std::endl;
 };
 
@@ -54,6 +55,7 @@ int main(int argc, char** argv)
 {
   std::string file1, file2;
   float depth = 900.0f;
+  std::string dumpDataFile;
   size_t realParams = 0;          ///< The number of non-flag parameters we've seen.
 
   // Parse the command line arguments, with the first non-flag argument being the
@@ -67,6 +69,12 @@ int main(int argc, char** argv)
         return 1;
       }
       depth = std::stof(argv[i]);
+    } else if (std::string("--dumpData") == argv[i]) {
+      if (++i >= argc) {
+        usage(argv[0]);
+        return 1;
+      }
+      dumpDataFile = argv[i];
     } else if (argv[i][0] == '-') {
       usage(argv[0]);
       return 1;
@@ -90,6 +98,17 @@ int main(int argc, char** argv)
   // Run inside a block so that the destructors will be called for all objects before we exit.
   {
     std::cout << "Compare_Configurations version " << VERSION << std::endl;
+
+    // If we've been asked to dump data, open an output file and put the header line in it.
+    std::ofstream dumpData;
+    if (!dumpDataFile.empty()) {
+      dumpData.open(dumpDataFile);
+      if (!dumpData) {
+        std::cerr << "Error: Unable to open output file " << dumpDataFile << std::endl;
+        return 10;
+      }
+      dumpData << "CameraID,X1,Y1,Z1,X2,Y2,Z2,X1/Z1,Y1/Z1,X2/Z2,Y2/Z2" << std::endl;
+    }
 
     // Construct CameraRenderInfos for each configuration file.
     std::vector<asdp::render::CameraRenderInfo> cameraRenderInfos1;
@@ -165,6 +184,16 @@ int main(int argc, char** argv)
             }
             glm::vec3 diff = vertex1 - vertex2;
             double dist = glm::length(diff);
+
+            // If we're dumping data, write the camera ID and the two vertex locations to the file.
+            // Also dump the normalized locations of the two vertices.
+            if (dumpData) {
+              dumpData << cameraRenderInfos1[c].m_ID << ","
+                << vertex1[0] << "," << vertex1[1] << "," << vertex1[2] << ","
+                << vertex2[0] << "," << vertex2[1] << "," << vertex2[2] << ","
+                << vertex1[0] / vertex1[2] << "," << vertex1[1] / vertex1[2] << ","
+                << vertex2[0] / vertex2[2] << "," << vertex2[1] / vertex2[2] << std::endl;
+            }
 
             meanDistDiff += dist;
             maxDistDiff = std::max(maxDistDiff, dist);
