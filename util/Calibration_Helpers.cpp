@@ -503,9 +503,13 @@ bool asdp::render::calibration::TargetProjectedLocationNoDistortion(
   }
 
   // Compute the pixel coordinates of the target point.
-  // The pixel coordinates are in the range [0, width-1] and [0, height-1].
-  xPixels = xFrac * (cri.m_resolutionPixels[0] - 1);
-  yPixels = yFrac * (cri.m_resolutionPixels[1] - 1);
+  // The pixel center coordinates are in the range [0, width-1] and [0, height-1]
+  // but the pixel centers are half a pixel from the frustum edges.
+  // This makes the fraction cover from -0.5 to width-0.5 and -0.5 to height-0.5,
+  // which makes the pixel location at frac 0 be -0.5 and at frac 1 be (width-1)+0.5,
+  // so the range from 0 to 1 is width.
+  xPixels = -0.5 + xFrac * (cri.m_resolutionPixels[0]);
+  yPixels = -0.5 + yFrac * (cri.m_resolutionPixels[1]);
   return true;
 }
 
@@ -804,15 +808,37 @@ std::string asdp::render::calibration::Test()
           return "Test failed: TargetProjectedLocationNoDistortion() center of image no rotation Y.";
         }
 
+        // No gimbal rotation, left edge of image.
+        if (!TargetProjectedLocationNoDistortion(cri, false, 0, 0, { -2.9999999, 3, 0 }, xPixel, yPixel)) {
+          return "Test failed: TargetProjectedLocationNoDistortion() left edge of image no rotation.";
+        }
+        if (fabs(xPixel - -0.5) > 0.01) {
+          return "Test failed: TargetProjectedLocationNoDistortion() left edge of image no rotation X.";
+        }
+        if (fabs(yPixel - 511.5) > 0.01) {
+          return "Test failed: TargetProjectedLocationNoDistortion() left edge of image no rotation Y.";
+        }
+
         // No gimbal rotation, right edge of image.
         if (!TargetProjectedLocationNoDistortion(cri, false, 0, 0, { 2.9999999, 3, 0 }, xPixel, yPixel)) {
           return "Test failed: TargetProjectedLocationNoDistortion() right edge of image no rotation.";
         }
-        if (fabs(xPixel - 1023) > 0.01) {
+        if (fabs(xPixel - 1023.5) > 0.01) {
           return "Test failed: TargetProjectedLocationNoDistortion() right edge of image no rotation X.";
         }
         if (fabs(yPixel - 511.5) > 0.01) {
           return "Test failed: TargetProjectedLocationNoDistortion() right edge of image no rotation Y.";
+        }
+
+        // No gimbal rotation, top edge of image.
+        if (!TargetProjectedLocationNoDistortion(cri, false, 0, 0, { 0, 3, 2.9999999 }, xPixel, yPixel)) {
+          return "Test failed: TargetProjectedLocationNoDistortion() top edge of image no rotation.";
+        }
+        if (fabs(xPixel - 511.5) > 0.01) {
+          return "Test failed: TargetProjectedLocationNoDistortion() top edge of image no rotation X.";
+        }
+        if (fabs(yPixel - -0.5) > 0.01) {
+          return "Test failed: TargetProjectedLocationNoDistortion() top edge of image no rotation Y.";
         }
 
         // No gimbal rotation, outside of image.

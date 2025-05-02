@@ -80,6 +80,7 @@ GimbalInfo GetGimbalInfo(const std::string& filename);
 std::shared_ptr<Gimbal> ConstructGimbal(const GimbalInfo& gimbalInfo);
 
 /// @brief Compute the world-space ray from the camera through the specified pixel, ignoring distortion.
+/// @details This handles the fact that the center of a pixel is half a pixel in from the edge.
 /// @param cri The camera render information to use to determine the ray in camera space.
 /// @param xPixels The X pixel coordinate, need not be centered on a pixel.
 /// @param yPixels The Y pixel coordinate, need not be centered on a pixel.
@@ -97,6 +98,7 @@ void WorldSpaceRayNoDistortion(const asdp::render::CameraRenderInfo& cri, double
 
 /// @brief Compute the gimbal angles to point a camera pixel at the specified 3D target location
 /// as closely as possible, ignoring distortion.
+/// @details This handles the fact that the center of a pixel is half a pixel in from the edge.
 /// @param cri The camera render information to use to determine the ray in camera space.
 /// @param xPixels The X pixel coordinate, need not be centered on a pixel.
 /// @param yPixels The Y pixel coordinate, need not be centered on a pixel.
@@ -118,6 +120,7 @@ void PointPixelAtTargetNoDistortion(const asdp::render::CameraRenderInfo& cri, d
 
 /// @brief See whether the specified target is within the view frustum of the camera at the
 /// specified gimbal angles, not counting distortion.
+/// @details This handles the fact that the center of a pixel is half a pixel in from the edge.
 /// @param cri The camera render information.
 /// @param rotateXFirst If true, rotate around the X axis first, then the Z axis; otherwise, Z first.
 /// @param zRotationDegrees The gimbal rotation around the Z axis in degrees.
