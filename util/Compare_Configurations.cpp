@@ -165,7 +165,7 @@ int main(int argc, char** argv)
         return 0;
       }
 
-      // Compare all border vertices on the meshes, determining their differences in meters and in
+      // Compare all vertices on the meshes, determining their differences in meters and in
       // projected pixel location differences. Also determine the differences in vignette brightness.
       double meanDistDiff = 0.0, meanPixelDiff = 0.0;
       double maxDistDiff = 0.0, maxPixelDiff = 0.0;
@@ -173,63 +173,61 @@ int main(int argc, char** argv)
       int count = 0;
       for (int y = 0; y < mesh1.ny; ++y) {
         for (int x = 0; x < mesh1.nx; ++x) {
-          if (x == 0 || x == mesh1.nx - 1 || y == 0 || y == mesh1.ny - 1) {
-            size_t index = y * mesh1.nx + x;
-            // Add the offset to the camera's base location to get the actual vertex location for each camera.
-            // Then subtract the two to get the difference in meters.
-            glm::dvec3 vertex1, vertex2;
-            for (int i = 0; i < 3; ++i) {
-              vertex1[i] = cameraRenderInfos1[c].m_positionMeters[i] + mesh1.vertexInfo[index].offset[i];
-              vertex2[i] = cameraRenderInfos2[c].m_positionMeters[i] + mesh2.vertexInfo[index].offset[i];
-            }
-            glm::vec3 diff = vertex1 - vertex2;
-            double dist = glm::length(diff);
-
-            // If we're dumping data, write the camera ID and the two vertex locations to the file.
-            // Also dump the normalized locations of the two vertices.
-            if (dumpData) {
-              dumpData << cameraRenderInfos1[c].m_ID << ","
-                << vertex1[0] << "," << vertex1[1] << "," << vertex1[2] << ","
-                << vertex2[0] << "," << vertex2[1] << "," << vertex2[2] << ","
-                << vertex1[0] / vertex1[2] << "," << vertex1[1] / vertex1[2] << ","
-                << vertex2[0] / vertex2[2] << "," << vertex2[1] / vertex2[2] << std::endl;
-            }
-
-            meanDistDiff += dist;
-            maxDistDiff = std::max(maxDistDiff, dist);
-
-            // Find the distance in world units projected onto the plane normal to one of the offset vectors,
-            // which will be essentially the viewing plane.  Do this by finding the normalized dot product with
-            // the offset vector (which is the cosine of the angle between them) and then use the Pythagorean
-            // identity to find its sine, which is the component of the distance in the plane.
-            double projectedDist = 0;
-            if (glm::length(diff) > 0.0) {
-              double normDot = glm::dot(glm::normalize(mesh1.vertexInfo[index].offset), glm::normalize(diff));
-              double projectedSine = std::sqrt(1.0 - normDot * normDot);
-              projectedDist = dist * projectedSine;
-            }
-
-            // Compute the projected pixel location for each camera and compare the differences.
-            // Find the size of a pixel on the first camera when it is projected to a plane at the
-            // specified depth.  This is 1/xPixels times the width of the plane at the depth the vertex.
-            // We ignore distortion for this calculation, assuming that the FOV is specified reasonably.
-            double depth = cameraRenderInfos1[c].m_mesh.vertexInfo[index].depth;
-            double width = 2 * depth * std::tan(glm::radians(cameraRenderInfos1[c].m_fovDegrees[0])/2);
-            double pixelSize = width / cameraRenderInfos1[c].m_resolutionPixels[0];
-            meanPixelDiff += projectedDist / pixelSize;
-            maxPixelDiff = std::max(maxPixelDiff, projectedDist / pixelSize);
-
-            // Find the difference in vignette scaling.
-            double xNorm = 2.0 * x / (mesh1.nx - 1) - 1.0;
-            double yNorm = 2.0 * y / (mesh1.ny - 1) - 1.0;
-            double vig1 = cameraRenderInfos1[c].m_vignette->EvaluateAtPoint({ xNorm, yNorm });
-            double vig2 = cameraRenderInfos2[c].m_vignette->EvaluateAtPoint({ xNorm, yNorm });
-            double vigDiff = fabs(vig1 - vig2);
-            meanVigDiff += vigDiff;
-            maxVigDiff = std::max(maxVigDiff, vigDiff);
-
-            ++count;
+          size_t index = y * mesh1.nx + x;
+          // Add the offset to the camera's base location to get the actual vertex location for each camera.
+          // Then subtract the two to get the difference in meters.
+          glm::dvec3 vertex1, vertex2;
+          for (int i = 0; i < 3; ++i) {
+            vertex1[i] = cameraRenderInfos1[c].m_positionMeters[i] + mesh1.vertexInfo[index].offset[i];
+            vertex2[i] = cameraRenderInfos2[c].m_positionMeters[i] + mesh2.vertexInfo[index].offset[i];
           }
+          glm::vec3 diff = vertex1 - vertex2;
+          double dist = glm::length(diff);
+
+          // If we're dumping data, write the camera ID and the two vertex locations to the file.
+          // Also dump the normalized locations of the two vertices.
+          if (dumpData) {
+            dumpData << cameraRenderInfos1[c].m_ID << ","
+              << vertex1[0] << "," << vertex1[1] << "," << vertex1[2] << ","
+              << vertex2[0] << "," << vertex2[1] << "," << vertex2[2] << ","
+              << vertex1[0] / vertex1[2] << "," << vertex1[1] / vertex1[2] << ","
+              << vertex2[0] / vertex2[2] << "," << vertex2[1] / vertex2[2] << std::endl;
+          }
+
+          meanDistDiff += dist;
+          maxDistDiff = std::max(maxDistDiff, dist);
+
+          // Find the distance in world units projected onto the plane normal to one of the offset vectors,
+          // which will be essentially the viewing plane.  Do this by finding the normalized dot product with
+          // the offset vector (which is the cosine of the angle between them) and then use the Pythagorean
+          // identity to find its sine, which is the component of the distance in the plane.
+          double projectedDist = 0;
+          if (glm::length(diff) > 0.0) {
+            double normDot = glm::dot(glm::normalize(mesh1.vertexInfo[index].offset), glm::normalize(diff));
+            double projectedSine = std::sqrt(1.0 - normDot * normDot);
+            projectedDist = dist * projectedSine;
+          }
+
+          // Compute the projected pixel location for each camera and compare the differences.
+          // Find the size of a pixel on the first camera when it is projected to a plane at the
+          // specified depth.  This is 1/xPixels times the width of the plane at the depth the vertex.
+          // We ignore distortion for this calculation, assuming that the FOV is specified reasonably.
+          double depth = cameraRenderInfos1[c].m_mesh.vertexInfo[index].depth;
+          double width = 2 * depth * std::tan(glm::radians(cameraRenderInfos1[c].m_fovDegrees[0])/2);
+          double pixelSize = width / cameraRenderInfos1[c].m_resolutionPixels[0];
+          meanPixelDiff += projectedDist / pixelSize;
+          maxPixelDiff = std::max(maxPixelDiff, projectedDist / pixelSize);
+
+          // Find the difference in vignette scaling.
+          double xNorm = 2.0 * x / (mesh1.nx - 1) - 1.0;
+          double yNorm = 2.0 * y / (mesh1.ny - 1) - 1.0;
+          double vig1 = cameraRenderInfos1[c].m_vignette->EvaluateAtPoint({ xNorm, yNorm });
+          double vig2 = cameraRenderInfos2[c].m_vignette->EvaluateAtPoint({ xNorm, yNorm });
+          double vigDiff = fabs(vig1 - vig2);
+          meanVigDiff += vigDiff;
+          maxVigDiff = std::max(maxVigDiff, vigDiff);
+
+          ++count;
         }
       }
 

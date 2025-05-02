@@ -395,6 +395,12 @@ described in Appendix A.  The workflow is as follows:
     - Capture or simulate the frames for the cameras and save them, using the same approach described above
       for the target calibration but reading from poses.csv rather than target_N_poses.csv and saving the
       images into a directory called **camera_images** rather than target_lateral_N_images.
+    - Run the **Camera_Calibration_Estimate_Distortion_Extrinsics** program and give it the camera,
+      target and gimbal configuration files, the poses file, the root directory
+      where the simulation or measurement data was stored (camera_images directory), the threshold in
+      pixel counts above which the target brightness will be found, and an output
+      file name. This will produce a JSON configuraion file with the estimated extrinsics and
+      distortion parameters updated based on the image data.
 
 @todo
 

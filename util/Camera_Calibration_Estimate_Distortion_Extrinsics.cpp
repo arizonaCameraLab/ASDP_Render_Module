@@ -210,8 +210,7 @@ int main(int argc, char** argv)
           for (int x = 0; x < width; ++x) {
             double value;
             if (avg->read_pixel(x, y, value)) {
-              value *= scale;
-              avg->write_pixel(x, y, value);
+              avg->write_pixel(x, y, value * scale);
             }
           }
         }
