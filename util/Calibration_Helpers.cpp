@@ -37,7 +37,8 @@ std::vector<CameraRenderInfo> asdp::render::calibration::GetCameraRenderInfos(
   for (const auto& camera : camConfig["cameras"]) {
     std::shared_ptr<Distortion> dist;
     json distortion = camera["distortion"];
-    if (distortion["type"] == "none") {
+    if (distortion["type"] == "none" || distortion["type"] == nullptr) {
+      // No distortion.
       DistortionNone* distortion = new DistortionNone;
       dist = std::shared_ptr<Distortion>(distortion);
     } else if (distortion["type"] == "radial") {
@@ -49,23 +50,19 @@ std::vector<CameraRenderInfo> asdp::render::calibration::GetCameraRenderInfos(
       dist = std::shared_ptr<Distortion>(distortion);
     } else if (distortion["type"] == "bagOfMappings") {
       try {
-        json map = distortion["map"];
-        DistortionBagOfMappings::Bag mapPoints = map;
+        json parameters = distortion["parameters"];
+        DistortionBagOfMappings::Bag mapPoints = parameters["map"];
         DistortionBagOfMappings* distortion = new DistortionBagOfMappings(mapPoints);
         dist = std::shared_ptr<Distortion>(distortion);
       } catch (std::exception& e) {
         throw std::runtime_error("Unable to parse distortion parameters: " + std::string(e.what()));
       }
-    } else if (distortion["type"] == nullptr) {
-      // No distortion specified, so use the default.
-    }
-    
-    else {
+    } else {
       throw std::runtime_error("Unknown distortion type: " + std::string(distortion["type"]));
     }
 
     std::shared_ptr<Vignette> vig(new VignetteNone);
-    try {
+    if (camera.contains("vignette")) try {
       json vignette = camera["vignette"];
       if (vignette["type"] == "evenPolynomial") {
         json parameters = vignette["parameters"];
@@ -87,6 +84,20 @@ std::vector<CameraRenderInfo> asdp::render::calibration::GetCameraRenderInfos(
       camera["positionMeters"], camera["orientationDegrees"],
       camera["resolutionPixels"], camera["fieldOfViewDegrees"],
       dist, vig, std::make_shared<asdp::render::ImageQueue>(), -1.0f);
+
+    // Read the offset and gain from the color object if it is present and they are present.
+    // Override the default values if they are present.
+    if (camera.contains("color")) {
+      float offset = 0.0f, gain = 1.0f;
+      if (camera["color"].contains("offset")) {
+        offset = camera["color"]["offset"];
+      }
+      if (camera["color"].contains("gain")) {
+        gain = camera["color"]["gain"];
+      }
+      info.SetColorOffsetGain(offset, gain);
+    }
+
     cameraRenderInfos.push_back(info);
   }
 

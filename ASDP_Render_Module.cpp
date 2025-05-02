@@ -44,6 +44,7 @@
 #include <DepthEstimator.h>
 #include <ImageStatistics.h>
 #include <RangeEstimator.h>
+#include <Calibration_Helpers.h>
 #include <cuda.h>
 #include <cuda_runtime.h>
 #include <cuda_gl_interop.h>
@@ -52,7 +53,7 @@ using namespace asdp;
 using namespace asdp::render;
 using json = nlohmann::json;
 
-static std::string VERSION = "2.38.1";
+static std::string VERSION = "2.39.0";
 
 /// @brief The path to the configuration file. Defined in the CMakeLists file.
 std::filesystem::path g_dirPath = CONFIG_FILE_PATH;
@@ -757,15 +758,16 @@ int main(int argc, char** argv)
     // Read the configuration file associated with the serial number for the server. Verify that
     // it has a matching serial number and number of cameras.
     std::filesystem::path configPath = g_dirPath / (std::to_string(serialNumber) + ".json");
-    if (!std::filesystem::exists(configPath)) {
-      std::cerr << "Configuration file not found: " << configPath << std::endl;
+    std::vector<CameraRenderInfo> rawCameraRenderInfos;
+    try {
+      rawCameraRenderInfos = asdp::render::calibration::GetCameraRenderInfos(configPath.string());
+    }
+    catch (const std::exception& e) {
+      std::cerr << "Error reading configuration file: " << e.what() << std::endl;
       return 14;
     }
-    std::ifstream configFile(configPath);
-    json config = json::parse(configFile);
-    uint32_t configSerial = config["serialNumber"];
-    if (cameras.size() != config["cameras"].size()) {
-      std::cerr << "Number of cameras mismatch: expected " << cameras.size() << " but got " << config["cameras"].size() << std::endl;
+    if (cameras.size() != rawCameraRenderInfos.size()) {
+      std::cerr << "Number of cameras mismatch: expected " << cameras.size() << " but got " << rawCameraRenderInfos.size() << std::endl;
       return 16;
     }
     std::cout << "Read configuration from " << configPath << std::endl;
@@ -800,76 +802,7 @@ int main(int argc, char** argv)
     // queue to each.
     std::vector< std::shared_ptr<asdp::render::CameraRenderInfo> > cameraRenderInfos;
     try {
-      for (const auto& camera : config["cameras"]) {
-        std::shared_ptr<Distortion> dist;
-        json distortion = camera["distortion"];
-        if (distortion["type"] == "none") {
-          DistortionNone* distortion = new DistortionNone;
-          dist = std::shared_ptr<Distortion>(distortion);
-        } else if (distortion["type"] == "radial") {
-          json parameters = distortion["parameters"];
-          // The center of projection in the file is specified in fractional half-image span in
-          // the X and Y directions, but in piercing location of the Z=-1 plane for the Distortion
-          // object.  We must convert the fractional half-image span to a piercing location.
-          std::array<double, 2> center = parameters["COP"];
-          double halfWidth = tan(glm::radians(double(camera["fieldOfViewDegrees"][0])) / 2.0);
-          double halfHeight = tan(glm::radians(double(camera["fieldOfViewDegrees"][1])) / 2.0);
-          center[0] *= halfWidth;
-          center[1] *= halfHeight;
-          json map = parameters["map"];
-          std::vector< std::array<double, 2> > mapPoints = map;
-          DistortionRadialLERP* distortion = new DistortionRadialLERP(center, mapPoints);
-          dist = std::shared_ptr<Distortion>(distortion);
-        } else if (distortion["type"] == "bagOfMappings") {
-          json parameters = distortion["parameters"];
-          DistortionBagOfMappings::Bag map = parameters["map"];
-          DistortionBagOfMappings* distortion = new DistortionBagOfMappings(map);
-          dist = std::shared_ptr<Distortion>(distortion);
-        } else {
-          std::cerr << "Error: Unknown distortion type: " << distortion["type"] << std::endl;
-          return 17;
-        }
-
-        std::shared_ptr<Vignette> vig(new VignetteNone);
-        if (camera.contains("vignette")) try {
-          json vignette = camera["vignette"];
-          if (!vignette.contains("type")) {
-            // No vignette specified, so use the default.
-          } else if (vignette["type"] == "evenPolynomial") {
-            json parameters = vignette["parameters"];
-            std::array<double, 2> center = parameters["COP"];
-            std::array<double, 2> cArray = parameters["coefficients"];
-            std::vector<double> coefficients(cArray.begin(), cArray.end());
-            VignetteRadialPolynomail* vignette = new VignetteRadialPolynomail(center,
-              camera["fieldOfViewDegrees"], coefficients);
-            vig = std::shared_ptr<Vignette>(vignette);
-          } else {
-            std::cerr << "Error: Unknown vignette type: " << vignette["type"] << std::endl;
-            return 18;
-          }
-        }
-        catch (...) {
-          // No vignette specified, so use the default.
-        }
-
-        std::shared_ptr<asdp::render::CameraRenderInfo> info =
-          std::make_shared<CameraRenderInfo>(camera["id"],
-        camera["positionMeters"], camera["orientationDegrees"],
-        camera["resolutionPixels"], camera["fieldOfViewDegrees"],
-        dist, vig, std::make_shared<asdp::render::ImageQueue>(), -1.0f);
-
-        // Read the offset and gain from the color object if it is present and they are present.
-        // Override the default values if they are present.
-        if (camera.contains("color")) {
-          float offset = 0.0f, gain = 1.0f;
-          if (camera["color"].contains("offset")) {
-            offset = camera["color"]["offset"];
-          }
-          if (camera["color"].contains("gain")) {
-            gain = camera["color"]["gain"];
-          }
-          info->SetColorOffsetGain(offset, gain);
-        }
+      for (const auto& info : rawCameraRenderInfos) {
 
         //==================================================================================================
         // Fill in three textures for this camera, all gray and at time zero.
@@ -879,8 +812,8 @@ int main(int argc, char** argv)
           return 17;
         }
 
-        unsigned int width = info->m_resolutionPixels[0];
-        unsigned int height = info->m_resolutionPixels[1];
+        unsigned int width = info.m_resolutionPixels[0];
+        unsigned int height = info.m_resolutionPixels[1];
         std::vector<uint16_t> image(width * height, 32767);
 
         // Create the textures for the camera. Make two for each Composite to pull when it is looking
@@ -904,7 +837,7 @@ int main(int argc, char** argv)
           glBindTexture(GL_TEXTURE_2D, 0);
 
           imageData->texture = texture;
-          info->m_imageQueue->InsertImage(imageData);
+          info.m_imageQueue->InsertImage(imageData);
         }
 
         if (!displayTexture->ReturnContext()) {
@@ -915,7 +848,7 @@ int main(int argc, char** argv)
         //==================================================================================================
 
         // Push the CameraRenderInfo onto the vector.
-        cameraRenderInfos.push_back(info);
+        cameraRenderInfos.push_back(std::make_shared<CameraRenderInfo>(info));
       }
     }  catch (const std::exception& e) {
       std::cerr << "Error parsing configuration file: " << e.what() << std::endl;

@@ -186,7 +186,7 @@ set (ASDP_Render_Module_SOURCES
 add_executable(ASDP_Render_Module ${ASDP_Render_Module_SOURCES} ${ASDP_Render_Module_HEADERS})
 target_compile_definitions(ASDP_Render_Module PRIVATE
   -DCONFIG_FILE_PATH="${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR}/ASDP_Render_Module_Configs")
-target_link_libraries(ASDP_Render_Module Render_Module nlohmann_json::nlohmann_json)
+target_link_libraries(ASDP_Render_Module Render_Module Calibration_Helpers nlohmann_json::nlohmann_json)
 
 install(TARGETS ASDP_Render_Module EXPORT ${PROJECT_NAME}
   RUNTIME DESTINATION bin COMPONENT bin

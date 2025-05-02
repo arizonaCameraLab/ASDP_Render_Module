@@ -341,11 +341,12 @@ int main(int argc, char** argv)
           camera["orientationDegrees"] = cri.m_orientationDegrees;
 
           // Build the JSON object for the distortion map, which has a "type" field with
-          // "bagOfMappings", and a "map" field with the bag of mappings. Fill this into
-          // the distortion field in the JSON structure.
+          // "bagOfMappings", and a "parameters" field with a "map" field with the bag of mappings.
+          // Fill this into the distortion field in the JSON structure.
           json jsonObject;
           jsonObject["type"] = "bagOfMappings";
-          jsonObject["map"] = json::array();
+          jsonObject["parameters"] = json::object();
+          jsonObject["parameters"]["map"] = json::array();
 
           const auto& bag = bags[cri.m_ID];
           json mappingJson = json::array();
@@ -357,7 +358,7 @@ int main(int argc, char** argv)
             mappingJsonEntry.push_back({ mapping[1][0], mapping[1][1] });
             mappingJson.push_back(mappingJsonEntry);
           }
-          jsonObject["map"] = mappingJson;
+          jsonObject["parameters"]["map"] = mappingJson;
           camera["distortion"] = jsonObject;
           break;
         }
