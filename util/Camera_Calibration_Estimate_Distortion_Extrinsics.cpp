@@ -26,7 +26,7 @@ using namespace asdp::render;
 using namespace asdp::render::calibration;
 using json = nlohmann::json;
 
-static std::string VERSION = "0.2.0";
+static std::string VERSION = "0.9.0";
 
 void usage(std::string name)
 {
@@ -296,7 +296,8 @@ int main(int argc, char** argv)
           DistortionBagOfMappings::Point2D expected = PlaneIntersectionForPixel(*cri, expectedLocation);
           DistortionBagOfMappings::Point2D actual = PlaneIntersectionForPixel(*cri, { x, y });
 
-          DistortionBagOfMappings::Mapping mapping = { expected, actual };
+          // Map from the actual (as rendered) position to the ideal (expected) position.
+          DistortionBagOfMappings::Mapping mapping = { actual, expected };
           bag.push_back(mapping);
 
           count++;
@@ -315,6 +316,8 @@ int main(int argc, char** argv)
       /// @todo
       std::cerr << "Error: Multiple targets not yet implemented." << std::endl;
       return 100;
+
+      /// @todo Remember to map FROM actual location TO ideal (expected) location.
     }
 
     // Parse the JSON configuration file for the camera configuration directly, then replace
