@@ -148,4 +148,4 @@ std::array<double, 2> PlaneIntersectionForPixel(const asdp::render::CameraRender
 /// @return An empty string if the test passes, otherwise an error message.
 std::string Test();
 
-} } };
+} } }; // namespace asdp::render::calibration
