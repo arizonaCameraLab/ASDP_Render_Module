@@ -190,7 +190,7 @@ std::array<double, 3> DistortionBagOfMappings::MapPoint(std::array<double, 3> po
   // This is a brute-force search, but it should be fast enough for most cases.
   GEO::Delaunay_var& d = m_impl->m_delaunay;
   asdp::render::DistortionBagOfMappings::Bag& m = m_impl->m_mappings;
-  double min_distance = std::numeric_limits<double>::max();
+  double min_distance2 = std::numeric_limits<double>::max();
   GEO::index_t closest_triangle = 0;
   for (GEO::index_t t = 0; t < d->nb_cells(); ++t) {
     // Get the vertices of the triangle
@@ -201,25 +201,26 @@ std::array<double, 3> DistortionBagOfMappings::MapPoint(std::array<double, 3> po
     // If we're inside this triangle, then we use it.
     if (IsPointInTriangle(ptInPlane, A, B, C)) {
       closest_triangle = t;
+      min_distance2 = 0;
       break;
     }
 
-    // Compute the average of the three vertices and find the distance from the
+    // Compute the average of the three vertices and find the squared distance (faster
+    // to compute than the distance and still monotonically increasing) from the
     // point to this, use it to determine whether this triangle is closest
     // in case we're not inside any triangle.
     std::array<double, 2> center = { (A[0] + B[0] + C[0]) / 3.0, (A[1] + B[1] + C[1]) / 3.0 };
     double dx = center[0] - ptInPlane[0];
     double dy = center[1] - ptInPlane[1];
-    double distance = std::sqrt(dx * dx + dy * dy);
-    if (distance < min_distance) {
-      min_distance = distance;
+    double distance2 = dx * dx + dy * dy;
+    if (distance2 < min_distance2) {
       closest_triangle = t;
+      min_distance2 = distance2;
     }
   }
 
   // Use the "to" mapping X and Y coordinates based on weighting the Barcycentric coordinates
   // from the triangle and applying them individually to the two indices in the "to" triangle.
-
   double xD = DetermineValue(
     m[d->cell_vertex(closest_triangle, 0)][0], m[d->cell_vertex(closest_triangle, 0)][1][0],
     m[d->cell_vertex(closest_triangle, 1)][0], m[d->cell_vertex(closest_triangle, 1)][1][0],
@@ -374,6 +375,11 @@ std::string Distortion::Test()
     v = DistortionBagOfMappings::DetermineValue(p1, v1, p2, v2, p3, v3, p);
     if (v != -2.0) {
       return "DistortionBagOfMappings: DetermineValue failed for -1.0,0.0: " + std::to_string(v);
+    }
+    p = { 1.0, 1.0 };
+    v = DistortionBagOfMappings::DetermineValue(p1, v1, p2, v2, p3, v3, p);
+    if (v != 3.0) {
+      return "DistortionBagOfMappings: DetermineValue failed for 1.0,1.0: " + std::to_string(v);
     }
   }
 
