@@ -80,131 +80,78 @@ std::array<double, 3> DistortionRadialLERP::MapPoint(std::array<double, 3> point
 //==============================================================================
 // Bag of mappings distortion class
 
-DistortionBagOfMappings::DistortionBagOfMappings(Bag const& mappings)
+class DistortionBagOfMappings::DistortionBagOfMappings_impl {
+public:
+  DistortionBagOfMappings_impl(Bag const& mappings);
+  ~DistortionBagOfMappings_impl() = default;
+
+  /// @brief Keeps track of all of the points that were passed into the constructor.
+  Bag m_mappings;
+
+  /// @brief The delaunay triangulation.
+  GEO::Delaunay_var m_delaunay = nullptr;
+};
+
+DistortionBagOfMappings::DistortionBagOfMappings_impl::DistortionBagOfMappings_impl(Bag const& mappings)
   : m_mappings(mappings)
-  , m_rangeX({0, 0})
-  , m_rangeY({0, 0})
 {
-  // Construct the grid to use when accelerating mappings.  Do this by determining the
-  // range of the mappings and dividing that range into a grid.  Then fill each mapping into
-  // all cells within 1/4 of the grid distance from its location.  Each grid cell is a bag
-  // of mappings.
-  if (mappings.size() > 0) {
-    // Find the range of the mappings
-    double minX = mappings[0][0][0];
-    double maxX = mappings[0][0][0];
-    double minY = mappings[0][0][1];
-    double maxY = mappings[0][0][1];
-    for (auto const& mapping : mappings) {
-      if (mapping[0][0] < minX) {
-        minX = mapping[0][0];
-      }
-      if (mapping[0][0] > maxX) {
-        maxX = mapping[0][0];
-      }
-      if (mapping[0][1] < minY) {
-        minY = mapping[0][1];
-      }
-      if (mapping[0][1] > maxY) {
-        maxY = mapping[0][1];
-      }
-    }
-    m_rangeX = { minX, maxX };
-    m_rangeY = { minY, maxY };
+  try {
+    // Make sure that Geogram is initialized; okay to call more than once.
+    GEO::initialize(GEO::GEOGRAM_INSTALL_HANDLERS);
 
-    // Fill each mapping into the subset of the grid that is within 1/4 of the grid distance (+/- 1/8).
-    size_t quarterX = m_numSamplesX / 8;
-    size_t quarterY = m_numSamplesY / 8;
-    for (auto const& mapping : mappings) {
-      size_t x = static_cast<size_t>(round((mapping[0][0] - minX) / (maxX - minX) * (m_numSamplesX-1)));
-      size_t y = static_cast<size_t>(round((mapping[0][1] - minY) / (maxY - minY) * (m_numSamplesY-1)));
-      for (size_t i = x > quarterX ? x - quarterX : 0; i < m_numSamplesX && i < x + quarterX; i++) {
-        for (size_t j = y > quarterY ? y - quarterY : 0; j < m_numSamplesY && j < y + quarterY; j++) {
-          m_grid[i][j].push_back(mapping);
-        }
-      }
-    }
+    // Create an empty Delaunay triangulation
+    m_delaunay = GEO::Delaunay::create(2, "BDEL2d");
   }
+  catch (std::exception const &e) {
+    throw std::runtime_error("DistortionBagOfMappings: Error initializing Delaunay triangulation: "
+      + std::string(e.what()));
+  }
+
+  if (mappings.size() == 0) {
+    return;
+  }
+
+  // Create a list of input points to use to generate the Delaunay triangulation.
+  std::vector<Point2D> points;
+  for (auto const& mapping : mappings) {
+    points.push_back(mapping[0]);
+  }
+
+  // Create a Delaunay triangulation in 2D from the "from" points in the mapping.
+  m_delaunay->set_vertices(points.size() / 2, points[0].data());
 }
 
-bool DistortionBagOfMappings::NearlyCollinear(DistortionBagOfMappings::Point2D const& p1,
-  DistortionBagOfMappings::Point2D const& p2,
-  DistortionBagOfMappings::Point2D const& p3)
+DistortionBagOfMappings::DistortionBagOfMappings(Bag const& mappings)
+  : m_impl(std::make_shared<DistortionBagOfMappings::DistortionBagOfMappings_impl>(mappings))
 {
-  double dx1 = p2[0] - p1[0];
-  double dy1 = p2[1] - p1[1];
-  double dx2 = p3[0] - p1[0];
-  double dy2 = p3[1] - p1[1];
-  double len1 = sqrt(dx1 * dx1 + dy1 * dy1);
-  double len2 = sqrt(dx2 * dx2 + dy2 * dy2);
-
-  // If either vector is zero length, they are collinear
-  if (len1 * len2 == 0) {
-    return true;
-  }
-
-  // Normalize the vectors
-  double invLen1 = 1 / len1;
-  double invLen2 = 1 / len2;
-  dx1 *= invLen1;
-  dy1 *= invLen1;
-  dx2 *= invLen2;
-  dy2 *= invLen2;
-
-  // See if the magnitude of their dot products is close to 1.
-  double dot = dx1 * dx2 + dy1 * dy2;
-  return fabs(dot) > 0.8;
 }
 
-DistortionBagOfMappings::Bag DistortionBagOfMappings::FindThreeNearestPointsInBag(Point2D const &p, Bag const &points)
+std::array<double, 3> DistortionBagOfMappings::BarycentricCoordinates(const Point2D& p,
+  const Point2D& a, const Point2D& b, const Point2D& c)
 {
-  DistortionBagOfMappings::Bag ret;
-
-  // Make sure we have three points. If not, return an empty bag.
-  if (points.size() < 3) {
-    return ret;
+  // Calculate the area of the triangle formed by p1, p2, and p3
+  double area = 0.5 * (-b[1] * c[0] + a[1] * (-b[0] + c[0]) + a[0] * (b[1] - c[1]) + b[0] * c[1]);
+  if (std::abs(area) < 1e-8) {
+    // The points are collinear, so we can't interpolate. Return the coordinate of the first point.
+    return { 1, 0, 0 };
   }
 
-  // Find the three non-collinear points in the mesh that are nearest
-  // to the normalized point we are trying to look up.  We start by
-  // sorting the points based on distance from our location, selecting
-  // the first two, and then looking through the rest until we find
-  // one that is not collinear with the first two (normalized dot
-  // product magnitude far enough from 1).  If we don't find such
-  // points, we just go with the values from the closest point.
-  typedef std::multimap<double, size_t> PointDistanceIndexMap;
-  PointDistanceIndexMap map;
+  // Calculate the barycentric coordinates of point p
+  double s = 1 / (2 * area) * (a[1] * c[0] - a[0] * c[1] + (c[1] - a[1]) * p[0] + (a[0] - c[0]) * p[1]);
+  double t = 1 / (2 * area) * (a[0] * b[1] - a[1] * b[0] + (a[1] - b[1]) * p[0] + (b[0] - a[0]) * p[1]);
+  double u = 1 - s - t;
 
-  for (size_t i = 0; i < points.size(); i++) {
-    // Insertion into the multimap sorts them by distance.
-    map.insert(std::make_pair(PointDistance(p, points[i][0]), i));
-  }
+  // Return them in the order that allows you to interoplate points.
+  return { u, s, t };
+}
 
-  PointDistanceIndexMap::const_iterator it = map.begin();
-  size_t first = it->second;
-  it++;
-  size_t second = it->second;
-  it++;
-  // In case we don't find a third point, re-use the first. We check for that later and only return two points
-  // if this happens.
-  size_t third = first;
-  while (it != map.end()) {
-    if (!NearlyCollinear(points[first][0], points[second][0], points[it->second][0])) {
-      third = it->second;
-      break;
-    }
-    it++;
-  }
+bool DistortionBagOfMappings::IsPointInTriangle(const Point2D& p,
+  const Point2D& a, const Point2D& b, const Point2D& c)
+{
+  // Calculate the barycentric coordinates of the point p
+  std::array<double, 3> coords = BarycentricCoordinates(p, a, b, c);
 
-  // Push back all of the points we found, which may not include
-  // a third point if the first is the same as the third.
-  ret.push_back(points[first]);
-  ret.push_back(points[second]);
-  if (third != first) {
-    ret.push_back(points[third]);
-  }
-
-  return ret;
+  return coords[0] >= 0 && coords[1] >= 0 && coords[2] >= 0;
 }
 
 double DistortionBagOfMappings::DetermineValue(Point2D const& p1, double v1,
@@ -212,26 +159,17 @@ double DistortionBagOfMappings::DetermineValue(Point2D const& p1, double v1,
   Point2D const& p3, double v3,
   Point2D const& p)
 {
-  // Calculate the area of the triangle formed by p1, p2, and p3
-  double area = 0.5 * (-p2[1] * p3[0] + p1[1] * (-p2[0] + p3[0]) + p1[0] * (p2[1] - p3[1]) + p2[0] * p3[1]);
-  if (std::abs(area) < 1e-8) {
-    // The points are collinear, so we can't interpolate.
-    return v1;
-  }
-
-  // Calculate the barycentric coordinates of point p
-  double s = 1 / (2 * area) * (p1[1] * p3[0] - p1[0] * p3[1] + (p3[1] - p1[1]) * p[0] + (p1[0] - p3[0]) * p[1]);
-  double t = 1 / (2 * area) * (p1[0] * p2[1] - p1[1] * p2[0] + (p1[1] - p2[1]) * p[0] + (p2[0] - p1[0]) * p[1]);
-  double u = 1 - s - t;
+  // Calculate the barycentric coordinates of the point p
+  std::array<double, 3> coords = BarycentricCoordinates(p, p1, p2, p3);
 
   // Interpolate the value using the barycentric coordinates
-  return s * v2 + t * v3 + u * v1;
+  return coords[0] * v1 + coords[1] * v2 + coords[2] * v3;
 }
 
 std::array<double, 3> DistortionBagOfMappings::MapPoint(std::array<double, 3> point) const
 {
   // If we don't have any mappings, return the point unchanged
-  if (m_mappings.size() < 0) {
+  if (!m_impl || !m_impl->m_delaunay || m_impl->m_mappings.size() == 0) {
     return point;
   }
 
@@ -245,30 +183,59 @@ std::array<double, 3> DistortionBagOfMappings::MapPoint(std::array<double, 3> po
   // Inverse scale so we can multiply by it rather than divide by it, speeding up the calculation.
   std::array<double, 2> ptInPlane = { point[0] * scale, point[1] * scale };
 
-  // Find the closest three non-collinear points in the grid, first by checking the cell that the point is in
-  // and then the whole grid if necessary.  If there are not enough points, return the point unchanged.
-  size_t x = static_cast<size_t>(round((ptInPlane[0] - m_rangeX[0]) / (m_rangeX[1] - m_rangeX[0]) * (m_numSamplesX - 1)));
-  size_t y = static_cast<size_t>(round((ptInPlane[1] - m_rangeY[0]) / (m_rangeY[1] - m_rangeY[0]) * (m_numSamplesY - 1)));
-  x = std::max(std::min(x, m_numSamplesX - 1), static_cast<size_t>(0));
-  y = std::max(std::min(y, m_numSamplesY - 1), static_cast<size_t>(0));
-  Bag three = FindThreeNearestPointsInBag(ptInPlane, m_grid[x][y]);
-  if (three.size() < 3) {
-    three = FindThreeNearestPointsInBag(ptInPlane, m_mappings);
-  }
-  if (three.size() < 3) {
-    return point;
+  // Find the triangle that we're going to use to determine the Barycentric coordinates from.
+  // Start by seeing if the point is inside any of the triangles in the Delaunay triangulation.
+  // If it is, use that triangle.
+  // Otherwise, find the triangle whose center is closet to the point.
+  // This is a brute-force search, but it should be fast enough for most cases.
+  GEO::Delaunay_var& d = m_impl->m_delaunay;
+  asdp::render::DistortionBagOfMappings::Bag& m = m_impl->m_mappings;
+  double min_distance = std::numeric_limits<double>::max();
+  GEO::index_t closest_triangle = 0;
+  for (GEO::index_t t = 0; t < d->nb_cells(); ++t) {
+    // Get the vertices of the triangle
+    std::array<double, 2> A = m[d->cell_vertex(t, 0)][0];
+    std::array<double, 2> B = m[d->cell_vertex(t, 1)][0];
+    std::array<double, 2> C = m[d->cell_vertex(t, 2)][0];
+
+    // If we're inside this triangle, then we use it.
+    if (IsPointInTriangle(ptInPlane, A, B, C)) {
+      closest_triangle = t;
+      break;
+    }
+
+    // Compute the average of the three vertices and find the distance from the
+    // point to this, use it to determine whether this triangle is closest
+    // in case we're not inside any triangle.
+    std::array<double, 2> center = { (A[0] + B[0] + C[0]) / 3.0, (A[1] + B[1] + C[1]) / 3.0 };
+    double dx = center[0] - ptInPlane[0];
+    double dy = center[1] - ptInPlane[1];
+    double distance = std::sqrt(dx * dx + dy * dy);
+    if (distance < min_distance) {
+      min_distance = distance;
+      closest_triangle = t;
+    }
   }
 
-  // Interpolate or extrapolate the distortion location based on the three points.
-  // We pass in the 2D coordinates of the undistorted point and then the X coordinate of the distorted point.
-  // We then do the same for the Y coordiante of the distorted point.
-  double xD = DetermineValue(three[0][0], three[0][1][0], three[1][0], three[1][1][0], three[2][0], three[2][1][0], ptInPlane);
-  double yD = DetermineValue(three[0][0], three[0][1][1], three[1][0], three[1][1][1], three[2][0], three[2][1][1], ptInPlane);
+  // Use the "to" mapping X and Y coordinates based on weighting the Barcycentric coordinates
+  // from the triangle and applying them individually to the two indices in the "to" triangle.
+
+  double xD = DetermineValue(
+    m[d->cell_vertex(closest_triangle, 0)][0], m[d->cell_vertex(closest_triangle, 0)][1][0],
+    m[d->cell_vertex(closest_triangle, 1)][0], m[d->cell_vertex(closest_triangle, 1)][1][0],
+    m[d->cell_vertex(closest_triangle, 2)][0], m[d->cell_vertex(closest_triangle, 2)][1][0],
+    ptInPlane);
+  double yD = DetermineValue(
+    m[d->cell_vertex(closest_triangle, 0)][0], m[d->cell_vertex(closest_triangle, 0)][1][1],
+    m[d->cell_vertex(closest_triangle, 1)][0], m[d->cell_vertex(closest_triangle, 1)][1][1],
+    m[d->cell_vertex(closest_triangle, 2)][0], m[d->cell_vertex(closest_triangle, 2)][1][1],
+    ptInPlane);
 
   // Rescale the point and put it back onto same plane as the original point.
   double invScale = 1 / scale;
   return { xD * invScale, yD * invScale, point[2] };
 }
+
 
 //==============================================================================
 // Test and its helper functions
@@ -365,83 +332,6 @@ std::string Distortion::Test()
     }
   }
 
-  // Test PointDistance
-  {
-    DistortionBagOfMappings::Point2D p1 = { 0, 0 };
-    DistortionBagOfMappings::Point2D p2 = { 1, 0 };
-    double dist = DistortionBagOfMappings::PointDistance(p1, p2);
-    if (dist != 1) {
-      return "DistortionBagOfMappings: PointDistance failed for X=1";
-    }
-    p2 = { 0, 1 };
-    dist = DistortionBagOfMappings::PointDistance(p1, p2);
-    if (dist != 1) {
-      return "DistortionBagOfMappings: PointDistance failed for Y=1";
-    }
-    p2 = { 3, 4 };
-    dist = DistortionBagOfMappings::PointDistance(p1, p2);
-    if (dist != 5) {
-      return "DistortionBagOfMappings: PointDistance failed for 3,4";
-    }
-  }
-
-  // Test NearlyCollinear
-  {
-    DistortionBagOfMappings::Point2D p1 = { 0, 0 };
-    DistortionBagOfMappings::Point2D p2 = { 1, 0 };
-    DistortionBagOfMappings::Point2D p3 = { 2, 0 };
-    if (!DistortionBagOfMappings::NearlyCollinear(p1, p2, p3)) {
-      return "DistortionBagOfMappings: NearlyCollinear failed for 2,0";
-    }
-    p3 = { 2, 2 };
-    if (DistortionBagOfMappings::NearlyCollinear(p1, p2, p3)) {
-      return "DistortionBagOfMappings: NearlyCollinear failed for 2,2";
-    }
-    p3 = { 2, 3 };
-    if (DistortionBagOfMappings::NearlyCollinear(p1, p2, p3)) {
-      return "DistortionBagOfMappings: NearlyCollinear failed for 2,3";
-    }
-    p3 = { 10, 1 };
-    if (!DistortionBagOfMappings::NearlyCollinear(p1, p2, p3)) {
-      return "DistortionBagOfMappings: NearlyCollinear failed for 10,1";
-    }
-  }
-
-  // Test FindThreeNearestPointsInBag
-  {
-    DistortionBagOfMappings::Point2D p = { 0, 0 };
-    DistortionBagOfMappings::Point2D p1 = { 0, 0 };
-    DistortionBagOfMappings::Point2D mp1 = { 1, 1 };
-    DistortionBagOfMappings::Point2D p2 = { 1, 0 };
-    DistortionBagOfMappings::Point2D mp2 = { 2, 2 };
-    DistortionBagOfMappings::Point2D p3 = { 2, 2 };
-    DistortionBagOfMappings::Point2D mp3 = { 3, 3 };
-    DistortionBagOfMappings::Mapping m1 = { p1, mp1 };
-    DistortionBagOfMappings::Mapping m2 = { p2, mp2 };
-    DistortionBagOfMappings::Mapping m3 = { p3, mp3 };
-    DistortionBagOfMappings::Bag points = { m1, m2, m3 };
-    DistortionBagOfMappings::Bag three = DistortionBagOfMappings::FindThreeNearestPointsInBag(p, points);
-    if (three.size() != 3) {
-      return "DistortionBagOfMappings: FindThreeNearestPointsInBag failed for 0,0";
-    }
-    if (three[0][0] != points[0][0] || three[1][0] != points[1][0] || three[2][0] != points[2][0]) {
-      return "DistortionBagOfMappings: FindThreeNearestPointsInBag failed for 0,0 points";
-    }
-    p = { 0.6, 0.6 };
-    three = DistortionBagOfMappings::FindThreeNearestPointsInBag(p, points);
-    if (three.size() != 3) {
-      return "DistortionBagOfMappings: FindThreeNearestPointsInBag failed for 0.6,0.6";
-    }
-    if (three[0][0] != points[1][0] || three[1][0] != points[0][0] || three[2][0] != points[2][0]) {
-      return "DistortionBagOfMappings: FindThreeNearestPointsInBag failed for 0.6,0.6 points";
-    }
-    points = { m1, m2 };
-    three = DistortionBagOfMappings::FindThreeNearestPointsInBag(p, points);
-    if (three.size() != 0) {
-      return "DistortionBagOfMappings: FindThreeNearestPointsInBag failed for size 2";
-    }
-  }
-
   // Test DetermineValue
   {
     DistortionBagOfMappings::Point2D p1 = { 0, 0 };
@@ -479,6 +369,11 @@ std::string Distortion::Test()
     v = DistortionBagOfMappings::DetermineValue(p1, v1, p2, v2, p3, v3, p);
     if (v != 2.0) {
       return "DistortionBagOfMappings: DetermineValue failed for 2.0,0.0: " + std::to_string(v);
+    }
+    p = { 0.0, -1.0 };
+    v = DistortionBagOfMappings::DetermineValue(p1, v1, p2, v2, p3, v3, p);
+    if (v != -2.0) {
+      return "DistortionBagOfMappings: DetermineValue failed for -1.0,0.0: " + std::to_string(v);
     }
   }
 

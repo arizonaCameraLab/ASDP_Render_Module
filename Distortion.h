@@ -101,43 +101,32 @@ namespace asdp {
       std::array<double, 3> MapPoint(std::array<double, 3> point) const override;
 
     protected:
-      /// @brief Keeps track of all of the points that were passed into the constructor.
-      Bag m_mappings;
+      /// @brief Implementation class for the DistortionBagOfMappings class to hide details from
+      /// the caller so they don't need to #include Boost headers.
+      class DistortionBagOfMappings_impl;
+      std::shared_ptr<DistortionBagOfMappings_impl> m_impl;
 
-      /// @brief 2D grid of Bags to help speed up the search for the nearest points.
-      /// @details The first dimension is the X coordinate, the second dimension is the Y coordinate.
-      static const size_t m_numSamplesX = 20, m_numSamplesY = 16;
-      std::array<std::array<Bag, m_numSamplesY>, m_numSamplesX> m_grid;
+      /// @brief Compute the Barycentric coordinates for the point in the triangle whose vertices are given.
+      /// @param p Point to compute the barycentric coordinates for.
+      /// @param a First point of the triangle.
+      /// @param b Second point of the triangle.
+      /// @param c Third point of the triangle.
+      /// @return The barycentric coordinates of the point in the triangle.  The coordinates always sum
+      /// to 1 and are all positive if the point is inside the triangle and they are zero if the point
+      /// is on the triangle. You can interpolate or extrapolate values at the triangle corners using
+      /// return[0] * v1 + return[1] * v2 + return[2] * v3, where v1, v2, and v3 are the values at
+      /// vertices a, b, and c respectively.
+      static std::array<double, 3> BarycentricCoordinates(const Point2D& p,
+        const Point2D& a, const Point2D& b, const Point2D& c);
 
-      /// @brief The range of the grid in X and Y.
-      std::array<double, 2> m_rangeX, m_rangeY;
-
-      /// @brief Find the distance between two 2D points.
-      /// @param p1 First point.
-      /// @param p2 Second point.
-      /// @return The distance between the two points.
-      inline static double PointDistance(Point2D const& p1, Point2D const& p2)
-      {
-        double dx = p2[0] - p1[0];
-        double dy = p2[1] - p1[1];
-        return std::sqrt(dx * dx + dy * dy);
-      }
-
-      /// @brief Determine if three points are nearly collinear.  If so, they are not suitable for interpolation.
-      /// @param p1 First point.
-      /// @param p2 Second point.
-      /// @param p3 Third point.
-      /// @return True if the points are nearly collinear, false otherwise.
-      static bool NearlyCollinear(DistortionBagOfMappings::Point2D const& p1,
-        DistortionBagOfMappings::Point2D const& p2,
-        DistortionBagOfMappings::Point2D const& p3);
-
-      /// @brief Find the three nearest non-collinear points in the bag to a given point.
-      /// @param p Point to find the three nearest points to.
-      /// @param points Bag of points to search.
-      /// @return Bag of the three nearest points unless there are not enough, in which case the
-      /// bag will contain fewer than three points.
-      static Bag FindThreeNearestPointsInBag(Point2D const& p, Bag const& points);
+      /// @brief Determine whether a point is inside the triangle whose three points are given.
+      /// @param p Point to test.
+      /// @param a First point of the triangle.
+      /// @param b Second point of the triangle.
+      /// @param c Third point of the triangle.
+      /// @return True if the point is inside the triangle, false otherwise.
+      static bool IsPointInTriangle(const Point2D& p,
+        const Point2D& a, const Point2D& b, const Point2D& c);
 
       /// @brief Interpolate a value given three points with values on a triangle and a fourth point in the plane.
       /// @details This function interpolates a value at a point in the plane given three points in the plane

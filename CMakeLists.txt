@@ -58,9 +58,10 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(Geogram)
 
 # Geogram built GLFW3 for us as part of its build so we just need to find it.
-# Before we used Geogram, we used to build GLFW3 ourselves.
 find_package(glfw3 REQUIRED)
 
+# Before we used Geogram, we built GLFW3 ourselves on Windows and used a system library
+# on Linux.
 #if(WIN32)
 #FetchContent_Declare(
 #  glfw3
