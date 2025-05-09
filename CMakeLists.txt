@@ -57,12 +57,6 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(Geogram)
 
-# Add Geogram to your targets
-if (NOT TARGET geogram)
-  add_subdirectory(${geogram_SOURCE_DIR} ${geogram_BINARY_DIR})
-endif()
-
-
 # Geogram built GLFW3 for us as part of its build so we just need to find it.
 # Before we used Geogram, we used to build GLFW3 ourselves.
 find_package(glfw3 REQUIRED)

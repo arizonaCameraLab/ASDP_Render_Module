@@ -6,6 +6,9 @@
 #include <iostream>
 #include <map>
 #include <Distortion.h>
+#include <geogram/basic/common.h>
+#include <geogram/mesh/mesh.h>
+#include <geogram/delaunay/delaunay.h>
 using namespace asdp::render;
 
 //==============================================================================
