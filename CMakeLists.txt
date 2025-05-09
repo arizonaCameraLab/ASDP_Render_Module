@@ -35,16 +35,73 @@ FetchContent_Declare(
   GIT_TAG        9cca280a4d0ccf0c08f47a99aa71d1b0e52f8d03 # Master as of 5/20/2024
 )
 FetchContent_MakeAvailable(json)
-if(WIN32)
+
+# Set Geogram cache variables explicitly
+set(GEOGRAM_WITH_GRAPHICS OFF CACHE BOOL "Disable Geogram graphics")
+set(GEOGRAM_WITH_LEGACY_NUMERICS OFF CACHE BOOL "Disable Geogram legacy numerics")
+set(GEOGRAM_WITH_HLBFGS OFF CACHE BOOL "Disable Geogram HLBFGS")
+set(GEOGRAM_WITH_TETGEN OFF CACHE BOOL "Disable Geogram Tetgen")
+set(GEOGRAM_WITH_TRIANGLE OFF CACHE BOOL "Disable Geogram Triangle")
+set(GEOGRAM_WITH_LUA OFF CACHE BOOL "Disable Geogram Lua")
+set(GEOGRAM_LIB_ONLY ON CACHE BOOL "Build Geogram as a library only")
+set(GEOGRAM_WITH_FPG OFF CACHE BOOL "Disable Geogram FPG")
+set(GEOGRAM_USE_SYSTEM_GLFW3 OFF CACHE BOOL "Use system GLFW3")
+set(GEOGRAM_WITH_GARGANTUA OFF CACHE BOOL "Disable Geogram Gargantua")
+set(GEOGRAM_WITH_TBB OFF CACHE BOOL "Disable Geogram TBB")
+
 FetchContent_Declare(
-  glfw3
-  GIT_REPOSITORY https://github.com/arizonaCameraLab/glfw.git
-  GIT_TAG        b35641f4a3c62aa86a0b3c983d163bc0fe36026d # Master as of 4/26/2024
+  Geogram
+  GIT_REPOSITORY https://github.com/BrunoLevy/geogram.git
+  GIT_TAG        v1.9.5
+  GIT_SUBMODULES_RECURSE TRUE
+  CMAKE_CACHE_ARGS
+    -DGEOGRAM_WITH_GRAPHICS=OFF
+    -DGEOGRAM_WITH_LEGACY_NUMERICS=OFF
+    -DGEOGRAM_WITH_HLBFGS=OFF
+    -DGEOGRAM_WITH_TETGEN=OFF
+    -DGEOGRAM_WITH_TRIANGLE=OFF
+    -DGEOGRAM_WITH_LUA=OFF
+    -DGEOGRAM_LIB_ONLY=ON
+    -DGEOGRAM_WITH_FPG=OFF
+    -DGEOGRAM_USE_SYSTEM_GLFW3=OFF
+    -DGEOGRAM_WITH_GARGANTUA=OFF
+    -DGEOGRAM_WITH_TBB=OFF
 )
-FetchContent_MakeAvailable(glfw3)
-else(WIN32)
+FetchContent_MakeAvailable(Geogram)
+
+# Set Geogram cache variables explicitly
+set(GEOGRAM_WITH_GRAPHICS OFF CACHE BOOL "Disable Geogram graphics")
+set(GEOGRAM_WITH_LEGACY_NUMERICS OFF CACHE BOOL "Disable Geogram legacy numerics")
+set(GEOGRAM_WITH_HLBFGS OFF CACHE BOOL "Disable Geogram HLBFGS")
+set(GEOGRAM_WITH_TETGEN OFF CACHE BOOL "Disable Geogram Tetgen")
+set(GEOGRAM_WITH_TRIANGLE OFF CACHE BOOL "Disable Geogram Triangle")
+set(GEOGRAM_WITH_LUA OFF CACHE BOOL "Disable Geogram Lua")
+set(GEOGRAM_LIB_ONLY ON CACHE BOOL "Build Geogram as a library only")
+set(GEOGRAM_WITH_FPG OFF CACHE BOOL "Disable Geogram FPG")
+set(GEOGRAM_USE_SYSTEM_GLFW3 OFF CACHE BOOL "Use system GLFW3")
+set(GEOGRAM_WITH_GARGANTUA OFF CACHE BOOL "Disable Geogram Gargantua")
+set(GEOGRAM_WITH_TBB OFF CACHE BOOL "Disable Geogram TBB")
+
+# Add Geogram to your targets
+if (NOT TARGET geogram)
+  add_subdirectory(${geogram_SOURCE_DIR} ${geogram_BINARY_DIR})
+endif()
+
+
+# Geogram built GLFW3 for us as part of its build so we just need to find it.
+# Before we used Geogram, we used to build GLFW3 ourselves.
 find_package(glfw3 REQUIRED)
-endif(WIN32)
+
+#if(WIN32)
+#FetchContent_Declare(
+#  glfw3
+#  GIT_REPOSITORY https://github.com/arizonaCameraLab/glfw.git
+#  GIT_TAG        b35641f4a3c62aa86a0b3c983d163bc0fe36026d # Master as of 4/26/2024
+#)
+#FetchContent_MakeAvailable(glfw3)
+#else(WIN32)
+#find_package(glfw3 REQUIRED)
+#endif(WIN32)
 
 #-----------------------------------------------------------------------------
 # Checking for optional and required packages
@@ -140,7 +197,7 @@ target_include_directories(Render_Module PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/dependencies/glm"
 )
 target_link_libraries(Render_Module PUBLIC
-  ASDP_Core_API::ASDP_Core_API glfw GLEW::glew OpenGL::GL
+  ASDP_Core_API::ASDP_Core_API glfw GLEW::glew OpenGL::GL geogram
 )
 set_property(TARGET Render_Module PROPERTY CUDA_ARCHITECTURES 60 75 80)
 if(OPENXR_FOUND)
