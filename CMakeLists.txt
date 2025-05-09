@@ -36,7 +36,7 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(json)
 
-# Set Geogram cache variables explicitly
+# Set Geogram cache variables explicitly before running FetchContent_Declare
 set(GEOGRAM_WITH_GRAPHICS OFF CACHE BOOL "Disable Geogram graphics")
 set(GEOGRAM_WITH_LEGACY_NUMERICS OFF CACHE BOOL "Disable Geogram legacy numerics")
 set(GEOGRAM_WITH_HLBFGS OFF CACHE BOOL "Disable Geogram HLBFGS")
@@ -56,19 +56,6 @@ FetchContent_Declare(
   GIT_SUBMODULES_RECURSE TRUE
 )
 FetchContent_MakeAvailable(Geogram)
-
-# Set Geogram cache variables explicitly
-set(GEOGRAM_WITH_GRAPHICS OFF CACHE BOOL "Disable Geogram graphics")
-set(GEOGRAM_WITH_LEGACY_NUMERICS OFF CACHE BOOL "Disable Geogram legacy numerics")
-set(GEOGRAM_WITH_HLBFGS OFF CACHE BOOL "Disable Geogram HLBFGS")
-set(GEOGRAM_WITH_TETGEN OFF CACHE BOOL "Disable Geogram Tetgen")
-set(GEOGRAM_WITH_TRIANGLE OFF CACHE BOOL "Disable Geogram Triangle")
-set(GEOGRAM_WITH_LUA OFF CACHE BOOL "Disable Geogram Lua")
-set(GEOGRAM_LIB_ONLY ON CACHE BOOL "Build Geogram as a library only")
-set(GEOGRAM_WITH_FPG OFF CACHE BOOL "Disable Geogram FPG")
-set(GEOGRAM_USE_SYSTEM_GLFW3 OFF CACHE BOOL "Use system GLFW3")
-set(GEOGRAM_WITH_GARGANTUA OFF CACHE BOOL "Disable Geogram Gargantua")
-set(GEOGRAM_WITH_TBB OFF CACHE BOOL "Disable Geogram TBB")
 
 # Add Geogram to your targets
 if (NOT TARGET geogram)
