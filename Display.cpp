@@ -2273,6 +2273,9 @@ DisplayXSight::DisplayXSight(std::string NICName, std::shared_ptr<Composite> com
   // Store info from the constructor.
   m_impl->m_horizontalFOVDegrees = horizontalFOVDegrees;
 
+  // Tell our compositor to use the XSight display.
+  m_composite->m_isXSight = true;
+
   // Construct a single view to be used.  We base is on the requested window size and we compute a
   // field of view that is the requested horizontal and the correct aspect ratio vertical.
   ViewRenderInfo view;
@@ -2593,6 +2596,13 @@ void DisplayXSight::DisplayThread(
       packetCount++;
     }
     //std::cout << "XXX Received " << packetCount << " packets" << std::endl;
+
+    /*
+    // Empirically, the azimuth is backwards from what we expect, so we negate it.
+    azimuth = -azimuth;
+    // Empirically, the root and pitch are swapped, so we swap them.
+    std::swap(roll, elevation);
+    */
 
     // Update the transformation for the view.  We first rotate around roll, then pitch, then yaw.
     glm::quat rotationX = glm::angleAxis(glm::radians(roll), glm::vec3(1.0f, 0.0f, 0.0f));
