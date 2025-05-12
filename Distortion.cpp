@@ -101,6 +101,8 @@ DistortionBagOfMappings::DistortionBagOfMappings_impl::DistortionBagOfMappings_i
 
     // Create an empty Delaunay triangulation
     m_delaunay = GEO::Delaunay::create(2, "BDEL2d");
+    //m_delaunay->set_reorder(false);
+    m_delaunay->set_thread_safe(true);
   }
   catch (std::exception const &e) {
     throw std::runtime_error("DistortionBagOfMappings: Error initializing Delaunay triangulation: "
@@ -189,14 +191,17 @@ std::array<double, 3> DistortionBagOfMappings::MapPoint(std::array<double, 3> po
   // Otherwise, find the triangle whose center is closet to the point.
   // This is a brute-force search, but it should be fast enough for most cases.
   GEO::Delaunay_var& d = m_impl->m_delaunay;
-  asdp::render::DistortionBagOfMappings::Bag& m = m_impl->m_mappings;
   double min_distance2 = std::numeric_limits<double>::max();
   GEO::index_t closest_triangle = 0;
-  for (GEO::index_t t = 0; t < d->nb_cells(); ++t) {
+  for (GEO::index_t t = 0; t < d->nb_finite_cells(); ++t) {
     // Get the vertices of the triangle
-    std::array<double, 2> A = m[d->cell_vertex(t, 0)][0];
-    std::array<double, 2> B = m[d->cell_vertex(t, 1)][0];
-    std::array<double, 2> C = m[d->cell_vertex(t, 2)][0];
+    double const* v;
+    v = d->vertex_ptr(d->cell_vertex(t, 0));
+    std::array<double, 2> A = { v[0], v[1] };
+    v = d->vertex_ptr(d->cell_vertex(t, 1));
+    std::array<double, 2> B = { v[0], v[1] };
+    v = d->vertex_ptr(d->cell_vertex(t, 2));
+    std::array<double, 2> C = { v[0], v[1] };
 
     // If we're inside this triangle, then we use it.
     if (IsPointInTriangle(ptInPlane, A, B, C)) {
@@ -219,10 +224,19 @@ std::array<double, 3> DistortionBagOfMappings::MapPoint(std::array<double, 3> po
     }
   }
 
+  double const* v;
+  v = d->vertex_ptr(d->cell_vertex(closest_triangle, 0));
+  std::array<double, 2> A = { v[0], v[1] };
+  v = d->vertex_ptr(d->cell_vertex(closest_triangle, 1));
+  std::array<double, 2> B = { v[0], v[1] };
+  v = d->vertex_ptr(d->cell_vertex(closest_triangle, 2));
+  std::array<double, 2> C = { v[0], v[1] };
+
   // Use the "to" mapping X and Y coordinates based on weighting the Barcycentric coordinates
   // from the triangle and applying them individually to the two indices in the "to" triangle.
   double xD = DetermineValue(
-    m[d->cell_vertex(closest_triangle, 0)][0], m[d->cell_vertex(closest_triangle, 0)][1][0],
+    /// @todo We need to somehow get the "to" mapping corresponding to this map entry.
+    A, m[d->cell_vertex(closest_triangle, 0)][1][0],
     m[d->cell_vertex(closest_triangle, 1)][0], m[d->cell_vertex(closest_triangle, 1)][1][0],
     m[d->cell_vertex(closest_triangle, 2)][0], m[d->cell_vertex(closest_triangle, 2)][1][0],
     ptInPlane);
