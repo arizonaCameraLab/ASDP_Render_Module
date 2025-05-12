@@ -25,12 +25,13 @@ static void encodeBigEndian(uint32_t const *value, uint8_t* buffer)
 
 static std::vector<uint8_t> encodeMessage(std::array<float, 3> const &RPA, uint32_t timeMilli, bool valid)
 {
-  std::vector<uint8_t> message(15 * sizeof(float) + 2 * sizeof(uint32_t) + 3, 0);
+  std::vector<uint8_t> message(1 + 15 * sizeof(float) + 2 * sizeof(uint32_t) + 3, 0);
+  message[0] = 7;
   for (size_t i = 0; i < 3; i++) {
-    encodeBigEndian(reinterpret_cast<uint32_t const*>(&RPA[i]), &message[(3 + i) * sizeof(float)]);
+    encodeBigEndian(reinterpret_cast<uint32_t const*>(&RPA[i]), &message[1 + (3 + i) * sizeof(float)]);
   }
-  encodeBigEndian(&timeMilli, &message[9 * sizeof(float) + 2]);
-  message[12 * sizeof(float) + 2 * sizeof(uint32_t) + 2] = valid ? 1 : 0;
+  encodeBigEndian(&timeMilli, &message[1 + 9 * sizeof(float) + 2]);
+  message[1 + 12 * sizeof(float) + 2 * sizeof(uint32_t) + 2] = valid ? 1 : 0;
   return message;
 }
 
