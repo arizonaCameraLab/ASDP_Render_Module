@@ -334,11 +334,16 @@ protected:
       /// It is expected to be read from a configuration file and tuned for the specific hardware and software.
       /// @param depthAheadMicroseconds The offset in microseconds to subtract from the time of render start.
       /// @param desiredDisplay The index of the desired display to use (1 = first, default 2).
-      /// @param desiredWidth The width of the display in pixels.
+      /// @param desiredWidth The width of the display in pixels. NOTE: The system embeds two monochrome
+      /// pixels horizontally within each color pixel, so the display width is half of the actual
+      /// number of output pixels.
       /// @param desiredHeight The height of the display in pixels.
       /// @param fps The number of frames per second requested.  The system will busy-wait
       /// to achieve at most this frame rate.  This is the frame rate we ask for on the monitor.
-      /// @param horizontalFOVDegrees The horizontal field of view of the display in degrees.
+      /// @param horizontalFOVDegrees The horizontal field of view of the display in degrees.  This is the
+      /// size of oversized view that will be resampled into the smaller actual field of view to support
+      /// latency compensation, so its value must match the one used by the XSight unit expects
+      /// but does not need to be a particular value tied to the HMD). We set it here to an even number.
       /// @param renderAheadMicroseconds The number of microseconds ahead of the next swap time to begin
       /// rendering.  This is to ensure that the rendering is done in time for the swap to happen while
       /// providing the minimum prediction interval and delaying as long as possible to enable new frames
@@ -356,8 +361,8 @@ protected:
         std::shared_ptr<EventHandlers> handlers = nullptr, void* userData = nullptr,
         RenderTimingInfo* timingInfo = nullptr, bool replaying = false,
         int desiredDisplay = 2,
-        int desiredWidth = 2560, int desiredHeight = 2048, float fps = 50,
-        float horizontalFOVDegrees = 69.33
+        int desiredWidth = 1280, int desiredHeight = 2048, float fps = 50,
+        float horizontalFOVDegrees = 70.0f
       );
 
       void SetNowPlaying(bool nowPlaying) override;
@@ -380,7 +385,7 @@ protected:
       /// @brief Method to implement the display thread.
       void DisplayThread(
         float fps, uint32_t renderAheadMicroseconds,
-        int desiredWidth, int desiredHeight, float horizontalFOVDegrees,
+        int desiredWidth, int desiredHeight,
         Display* sharedWindow,
         int desiredDisplay);
 

@@ -2282,7 +2282,7 @@ DisplayXSight::DisplayXSight(std::string NICName, std::shared_ptr<Composite> com
   // Start the rendering thread.
   m_displayThread = std::thread(&DisplayXSight::DisplayThread, this,
     fps, renderAheadMicroseconds,
-    desiredWidth, desiredHeight, horizontalFOVDegrees,
+    desiredWidth, desiredHeight,
     sharedWindow, desiredDisplay);
 
   // Wait until either the context is ready or there has been a failure so that the
@@ -2315,7 +2315,9 @@ void DisplayXSight::SetViewportSizeAndFOVs(ViewRenderInfo& viewInfo, int width, 
   // The vertical field of view is based on the aspect ratio of the window.  But the aspect ratio
   // is the in-plane width divided by the in-plane height.  The horizontal and vertical fields of view
   // are based on the tangents.
-  double aspectRatio = static_cast<double>(viewInfo.height) / static_cast<double>(viewInfo.width);
+  // NOTE: The system encodes two monochrome pixels horizontally per RGB pixel, so the actual pixel
+  // width in view space is twice the specified resolution.
+  double aspectRatio = static_cast<double>(viewInfo.height) / static_cast<double>(2 * viewInfo.width);
   double halfWidth = tan(glm::radians(m_impl->m_horizontalFOVDegrees / 2.0));
   double halfHeight = halfWidth * aspectRatio;
   double halfAngle = glm::degrees(atan(halfHeight));
@@ -2353,11 +2355,14 @@ static void EmbedLOSData(float azimuth, float elevation, float roll, uint32_t ti
   EmbedField(reinterpret_cast<char const*>(&elevation), lineData.data() + 12);
   EmbedField(reinterpret_cast<char const*>(&roll), lineData.data() + 24);
   EmbedField(reinterpret_cast<char const*>(&time), lineData.data() + 36);
+  // The list entry is a constant check value.
+  const unsigned char checkData[] = { 0xbb, 0x44, 0xaa, 0x55 };
+  EmbedField(reinterpret_cast<char const*>(checkData), lineData.data() + 48);
 }
 
 void DisplayXSight::DisplayThread(
   float fps, uint32_t renderAheadMicroseconds,
-  int desiredWidth, int desiredHeight, float horizontalFOVDegrees,
+  int desiredWidth, int desiredHeight,
   Display* sharedWindow,
   int desiredDisplay)
 {
@@ -2544,29 +2549,35 @@ void DisplayXSight::DisplayThread(
         break;
       }
 
-      // Verify that the packet length is as expected and then parse it.
-      const uint32_t expectedLength = 3*4 + 3*4 + 2 + 3*4 + 4 + 4 + 3*4 + 1 + 3*4;
-      if (length != expectedLength) {
-        m_status = "Received packet of unexpected length (" + std::to_string(length) + ")";
+      // If we don't get opcode 7, then we ignore it -- this is the first byte in the message.
+      if (buffer[0] != 7) {
         break;
       }
 
+      // Verify that the packet length is as expected and then parse it.
+      const uint32_t expectedLength = 1 + 3*4 + 3*4 + 2 + 3*4 + 4 + 4 + 3*4 + 1 + 3*4;
+      if (length != expectedLength) {
+        m_status = "Received packet of unexpected length (" + std::to_string(length) +
+          " received, " + std::to_string(expectedLength) + " expected)";
+        break;
+      }
+      
       // Pull each of the fields out of the packet into a buffer, then perform byte order conversion,
       // then copy into the result. We do the two copies because the bytes are not always aligned in the
       // packet.  We first check to see if the packet is valid and leave things alone if it is not.
-      bool valid = buffer[6 * 4 + 2 + 3 * 4 + 4 + 4 + 3 * 4] != 0;
+      bool valid = buffer[1 + 6 * 4 + 2 + 3 * 4 + 4 + 4 + 3 * 4] != 0;
       if (valid) {
         uint32_t temp;
-        memcpy(&temp, &(buffer[5*4]), sizeof(temp));
+        memcpy(&temp, &(buffer[1 + 5*4]), sizeof(temp));
         temp = ntohl(temp);
         memcpy(&azimuth, &temp, sizeof(azimuth));
-        memcpy(&temp, &(buffer[4*4]), sizeof(temp));
+        memcpy(&temp, &(buffer[1 + 4*4]), sizeof(temp));
         temp = ntohl(temp);
         memcpy(&elevation, &temp, sizeof(elevation));
-        memcpy(&temp, &(buffer[3*4]), sizeof(temp));
+        memcpy(&temp, &(buffer[1 + 3*4]), sizeof(temp));
         temp = ntohl(temp);
         memcpy(&roll, &temp, sizeof(roll));
-        memcpy(&temp, &(buffer[6*4 + 2 + 3*4]), sizeof(temp));
+        memcpy(&temp, &(buffer[1 + 6*4 + 2 + 3*4]), sizeof(temp));
         temp = ntohl(temp);
         memcpy(&time, &temp, sizeof(time));
       }

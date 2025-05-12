@@ -555,10 +555,9 @@ R"(#version 330 core
       // Revised by Sang Yoon to support a cylindrical projection
       // Original: gl_Position = modelViewProjection * vec4(position,1);
       // Revised:
-      if (useCP == 0)
+      if (useCP == 0) {
         gl_Position = modelViewProjection * vec4(position,1);
-      else
-      {
+      } else {
         vec4 p = modelViewMatrix * vec4(position, 1.0);
 
         float length_xz = length(p.xz);
@@ -686,7 +685,9 @@ void CompositeCube::SetupRenderFrame(asdp::Time scanOutTime)
 //======================================
 // Revised by Sang Yoon to support the cylindrical projection
 // The arguments used for the cylindrical projection are added: modelViewMatrix, hFOVf, vFOVf, nearf, and farf.
-void CompositeCube::RenderView(asdp::Time scanOutTime, const float* viewProjection, const float* modelViewMatrix, const float lh_hFOVf, const float rh_hFOVf, const float bh_vFOVf, const float th_vFOVf, const float nearf, const float farf)
+void CompositeCube::RenderView(asdp::Time scanOutTime, const float* viewProjection,
+  const float* modelViewMatrix, const float lh_hFOVf, const float rh_hFOVf,
+  const float bh_vFOVf, const float th_vFOVf, const float nearf, const float farf)
 {
     if (!m_CP_enabled) // If the flag for cylindrical projection is not enabled, use the perspective projection
         // (following the original execution flow of RenderView()).
@@ -806,9 +807,9 @@ R"(#version 330 core
       // Revised by Sang Yoon to support a cylindrical projection
       // Original: gl_Position = viewProjection * poseAdjust * delta * vec4(aPos, 1.0);
       // Revised:
-      if (useCP == 0)
+      if (useCP == 0) {
         gl_Position = viewProjection * poseAdjust * delta * vec4(aPos, 1.0);
-      else {
+      } else {
         vec4 p = modelViewMatrix * poseAdjust * delta * vec4(aPos, 1.0);
         float length_xz = length(p.xz);
         float theta_x = atan(p.x, -p.z); // angle around y axis (angle in horizontal direction)
