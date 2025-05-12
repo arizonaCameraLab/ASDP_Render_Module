@@ -2539,10 +2539,12 @@ void DisplayXSight::DisplayThread(
       m_status = "Failed to check for packet availability";
       break;
     }
+    size_t length = 9000;
+    std::vector<uint8_t> buffer(length);
+    size_t packetCount = 0;
     while (packetReady) {
-      // Read the packet.
-      size_t length = 9000;
-      std::vector<uint8_t> buffer(length);
+      // Read the next packet, letting it fill the whole buffer.
+      length = 9000;
       status = receiver.ReceiveBuffer(buffer.data(), length);
       if (status != OKAY) {
         m_status = "Failed to receive packet";
@@ -2550,36 +2552,36 @@ void DisplayXSight::DisplayThread(
       }
 
       // If we don't get opcode 7, then we ignore it -- this is the first byte in the message.
-      if (buffer[0] != 7) {
-        break;
-      }
+      if (buffer[0] == 7) {
+        // Verify that the packet length is as expected and then parse it.
+        constexpr uint32_t expectedLength = 1 + 3 * 4 + 3 * 4 + 2 + 3 * 4 + 4 + 4 + 3 * 4 + 1 + 3 * 4;
+        if (length != expectedLength) {
+          m_status = "Received packet of unexpected length (" + std::to_string(length) +
+            " received, " + std::to_string(expectedLength) + " expected)";
+          break;
+        }
 
-      // Verify that the packet length is as expected and then parse it.
-      const uint32_t expectedLength = 1 + 3*4 + 3*4 + 2 + 3*4 + 4 + 4 + 3*4 + 1 + 3*4;
-      if (length != expectedLength) {
-        m_status = "Received packet of unexpected length (" + std::to_string(length) +
-          " received, " + std::to_string(expectedLength) + " expected)";
-        break;
-      }
-      
-      // Pull each of the fields out of the packet into a buffer, then perform byte order conversion,
-      // then copy into the result. We do the two copies because the bytes are not always aligned in the
-      // packet.  We first check to see if the packet is valid and leave things alone if it is not.
-      bool valid = buffer[1 + 6 * 4 + 2 + 3 * 4 + 4 + 4 + 3 * 4] != 0;
-      if (valid) {
-        uint32_t temp;
-        memcpy(&temp, &(buffer[1 + 5*4]), sizeof(temp));
-        temp = ntohl(temp);
-        memcpy(&azimuth, &temp, sizeof(azimuth));
-        memcpy(&temp, &(buffer[1 + 4*4]), sizeof(temp));
-        temp = ntohl(temp);
-        memcpy(&elevation, &temp, sizeof(elevation));
-        memcpy(&temp, &(buffer[1 + 3*4]), sizeof(temp));
-        temp = ntohl(temp);
-        memcpy(&roll, &temp, sizeof(roll));
-        memcpy(&temp, &(buffer[1 + 6*4 + 2 + 3*4]), sizeof(temp));
-        temp = ntohl(temp);
-        memcpy(&time, &temp, sizeof(time));
+        // Pull each of the fields out of the packet into a buffer, then perform byte order conversion,
+        // then copy into the result. We do the two copies because the bytes are not always aligned in the
+        // packet.  We first check to see if the packet is valid and leave things alone if it is not.
+        //bool valid = buffer[1 + 6 * 4 + 2 + 3 * 4 + 4 + 4 + 3 * 4] != 0;
+        if (true) { // Do not need to check for the validity of the packet -- that refers to degraded tracking
+          uint32_t temp;
+          memcpy(&temp, &(buffer[1 + 5 * 4]), sizeof(temp));
+          temp = ntohl(temp);
+          memcpy(&azimuth, &temp, sizeof(azimuth));
+          memcpy(&temp, &(buffer[1 + 4 * 4]), sizeof(temp));
+          temp = ntohl(temp);
+          memcpy(&elevation, &temp, sizeof(elevation));
+          memcpy(&temp, &(buffer[1 + 3 * 4]), sizeof(temp));
+          temp = ntohl(temp);
+          memcpy(&roll, &temp, sizeof(roll));
+          memcpy(&temp, &(buffer[1 + 6 * 4 + 2 + 3 * 4]), sizeof(temp));
+          temp = ntohl(temp);
+          memcpy(&time, &temp, sizeof(time));
+          //std::cout << "XXX azimuth = " << azimuth << " elevation = " << elevation << " roll = " << roll
+          //  << " time = " << time << std::endl;
+        }
       }
 
       // Check for another packet, so we gobble up any that are waiting.
@@ -2588,7 +2590,9 @@ void DisplayXSight::DisplayThread(
         m_status = "Failed to check for packet availability";
         break;
       }
+      packetCount++;
     }
+    //std::cout << "XXX Received " << packetCount << " packets" << std::endl;
 
     // Update the transformation for the view.  We first rotate around roll, then pitch, then yaw.
     glm::quat rotationX = glm::angleAxis(glm::radians(roll), glm::vec3(1.0f, 0.0f, 0.0f));
