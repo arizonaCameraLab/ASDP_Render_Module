@@ -101,7 +101,6 @@ int main(int argc, char** argv)
     // Done with the composite object -- let the display objects take over destroying it.
     composite.reset();
 
-    auto start = std::chrono::steady_clock::now();
     bool done = false;
     while (!done) {
       std::this_thread::sleep_for(std::chrono::milliseconds(100));
