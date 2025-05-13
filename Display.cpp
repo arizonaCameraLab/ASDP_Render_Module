@@ -2597,18 +2597,14 @@ void DisplayXSight::DisplayThread(
     }
     //std::cout << "XXX Received " << packetCount << " packets" << std::endl;
 
-    /*
-    // Empirically, the azimuth is backwards from what we expect, so we negate it.
-    azimuth = -azimuth;
-    // Empirically, the root and pitch are swapped, so we swap them.
-    std::swap(roll, elevation);
-    */
-
     // Update the transformation for the view.  We first rotate around roll, then pitch, then yaw.
-    glm::quat rotationX = glm::angleAxis(glm::radians(roll), glm::vec3(1.0f, 0.0f, 0.0f));
-    glm::quat rotationY = glm::angleAxis(glm::radians(elevation), glm::vec3(0.0f, 1.0f, 0.0f));
-    glm::quat rotationZ = glm::angleAxis(glm::radians(azimuth), glm::vec3(0.0f, 0.0f, 1.0f));
-    glm::quat rotationTotal = rotationZ * rotationY * rotationX;
+    // Empirically, the azimuth is backwards from what we expect, so we negate it.
+    // Empirically, the root and pitch are swapped, so we swap them.
+    // Empirically, this order of rotation works.
+    glm::quat rotationX = glm::angleAxis(glm::radians(elevation), glm::vec3(1.0f, 0.0f, 0.0f));
+    glm::quat rotationY = glm::angleAxis(glm::radians(roll), glm::vec3(0.0f, 1.0f, 0.0f));
+    glm::quat rotationZ = glm::angleAxis(glm::radians(-azimuth), glm::vec3(0.0f, 0.0f, 1.0f));
+    glm::quat rotationTotal = rotationZ * rotationX * rotationY;
     m_impl->m_views[0].orientation[0] = rotationTotal.w;
     m_impl->m_views[0].orientation[1] = rotationTotal.x;
     m_impl->m_views[0].orientation[2] = rotationTotal.y;
