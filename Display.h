@@ -334,9 +334,8 @@ protected:
       /// It is expected to be read from a configuration file and tuned for the specific hardware and software.
       /// @param depthAheadMicroseconds The offset in microseconds to subtract from the time of render start.
       /// @param desiredDisplay The index of the desired display to use (1 = first, default 2).
-      /// @param desiredWidth The width of the display in pixels. NOTE: The system embeds two monochrome
-      /// pixels horizontally within each color pixel, so the display width is half of the actual
-      /// number of output pixels.
+      /// @param desiredWidth The width of the display in pixels.  This must be a multiple of two because the
+      /// data is encoded as two monochrome values per color pixel before being sent to the device.
       /// @param desiredHeight The height of the display in pixels.
       /// @param fps The number of frames per second requested.  The system will busy-wait
       /// to achieve at most this frame rate.  This is the frame rate we ask for on the monitor.
@@ -361,7 +360,7 @@ protected:
         std::shared_ptr<EventHandlers> handlers = nullptr, void* userData = nullptr,
         RenderTimingInfo* timingInfo = nullptr, bool replaying = false,
         int desiredDisplay = 2,
-        int desiredWidth = 1280, int desiredHeight = 2048, float fps = 50,
+        int desiredWidth = 2560, int desiredHeight = 2048, float fps = 50,
         float horizontalFOVDegrees = 70.0f
       );
 

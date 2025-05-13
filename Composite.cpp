@@ -1822,3 +1822,59 @@ void CompositeLineRawData::DrawHeadOrientation(float view_farf, int screen_width
     // Do nothing for CompositeLineRawData.
 }
 //======================================
+
+//==================================================================================================
+// Objects needed by the CompositePackXSightFrame class.
+
+static const GLchar* packXSightFrameVertexShader =
+R"(#version 330 core
+
+   layout (location = 0) in vec2 aPos;
+   layout (location = 1) in vec2 aTexCoord;
+   layout (location = 2) in int displayWidth;
+
+   out vec2 TexCoord1, TexCoord2;
+
+   void main()
+   {
+      gl_Position = vec4(aPos, 0.0, 1.0);
+      texCoord1 = aTexCoord;
+      texCoord2 = aTexCoord;
+
+      // The texture coordinates are those of the centers of the two pixels to be merged into
+      // one on the output pixel.  This is a screen-aligned rectangle with a texture whose horizontal size
+      // is half the number of pixels in the image.  We compute the two coordinates that when interpolated
+      // across the triangle will land on the left pixel and the right pixel, respectively.
+      // We do this by truncating the first texture coordinate to the left pixel and adding half a pixel
+      // to it to get the right pixel.
+      int displayPixel = int(aTexCoord.x * float(displayWidth-1));
+      int texturePixel1 = displayPixel * 2;
+      int texturePixel2 = texturePixel1 + 1;
+      TexCoord1.x = float(texturePixel1) / float(displayWidth*2 - 1);
+      TexCoord2.x = float(texturePixel2) / float(displayWidth*2 - 1);
+   })";
+
+static const GLchar* packXSightFrameFragmentShader =
+R"(#version 330 core
+   out vec4 FragColor;
+   in vec2 TexCoord1, TexCoord2;
+
+   uniform sampler1D textureID;
+   void main()
+   {
+      // Read the two neighboring pixel values using the two texture coordinates.
+      vec4 color1 = texture(textureID, TexCoord1);
+      vec4 color2 = texture(textureID, TexCoord2);
+
+      // Compute the average of the R, G, and B channels of each pixel.
+      float avg1 = (color1.r + color1.g + color1.b) / 3.0;
+      float avg2 = (color2.r + color2.g + color2.b) / 3.0;
+
+      // Store the first pixel into the blue channel and the second into the green channel,
+      // making red 0 and the alpha 1.
+      FragColor.r = 0.0f;
+      FragColor.g = avg2;
+      FragColor.b = avg1;
+      FragColor.a = 1.0f;
+   })";
+

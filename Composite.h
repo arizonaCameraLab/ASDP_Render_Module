@@ -132,7 +132,8 @@ namespace asdp {
 
       //======================================
       // Revised by Sang Yoon to support the cylindrical projection
-      // The arguments used for the cylindrical projection are added: modelViewMatrix, lh_hFOVf, rh_hFOVf, bh_vFOVf, th_vFOVf, nearf, and farf.
+      // The arguments used for the cylindrical projection are added:
+      // modelViewMatrix, lh_hFOVf, rh_hFOVf, bh_vFOVf, th_vFOVf, nearf, and farf.
       // Original: virtual void RenderView(asdp::Time scanOutTime, const float* viewProjection) = 0;
       // Revised:
       virtual void RenderView(asdp::Time scanOutTime, const float* viewProjection, const float* modelViewMatrix, const float lh_hFOVf, const float rh_hFOVf, const float bh_vFOVf, const float th_vFOVf, const float nearf, const float farf) = 0;
@@ -206,7 +207,8 @@ namespace asdp {
 
       //======================================
       // Revised by Sang Yoon to support the cylindrical projection
-      // The arguments used for the cylindrical projection are added: modelViewMatrix, lh_hFOVf, rh_hFOVf, bh_vFOVf, th_vFOVf, nearf, and farf.
+      // The arguments used for the cylindrical projection are added:
+      // modelViewMatrix, lh_hFOVf, rh_hFOVf, bh_vFOVf, th_vFOVf, nearf, and farf.
       // Original: void void RenderView(asdp::Time scanOutTime, const float* viewProjection) override;
       // Revised:
       void RenderView(asdp::Time scanOutTime, const float* viewProjection, const float* modelViewMatrix, const float lh_hFOVf, const float rh_hFOVf, const float bh_vFOVf, const float th_vFOVf, const float nearf, const float farf) override;
@@ -409,8 +411,7 @@ namespace asdp {
         GLint px1, GLint py1, GLfloat &x0, GLfloat& y0, GLfloat& x1, GLfloat& y1);
 
     protected:
-      /// Information about the cameras, filled in by the constructor.
-      std::vector< std::shared_ptr<CameraRenderInfo> > m_cameraRenderInfos;
+      /// Information filled in by the constructor.
       GLfloat m_x0, m_y0, m_x1, m_y1;
       size_t m_numPixels;
 
@@ -431,10 +432,61 @@ namespace asdp {
 
       //======================================
       // Revised by Sang Yoon to match the function declaration of Composite class
-      // The arguments used for the cylindrical projection are added: modelViewMatrix, lh_hFOVf, rh_hFOVf, bh_vFOVf, th_vFOVf, nearf, and farf.
+      // The arguments used for the cylindrical projection are added:
+      // modelViewMatrix, lh_hFOVf, rh_hFOVf, bh_vFOVf, th_vFOVf, nearf, and farf.
       // Original: void RenderView(asdp::Time scanOutTime, const float* viewProjection) override;
       // Revised:
-      void RenderView(asdp::Time scanOutTime, const float* viewProjection, const float* modelViewMatrix, const float lh_hFOVf, const float rh_hFOVf, const float bh_vFOVf, const float th_vFOVf, const float nearf, const float farf) override;
+      void RenderView(asdp::Time scanOutTime, const float* viewProjection, const float* modelViewMatrix,
+        const float lh_hFOVf, const float rh_hFOVf, const float bh_vFOVf, const float th_vFOVf,
+        const float nearf, const float farf) override;
+      //======================================
+
+      void SetupRenderFrame(asdp::Time scanOutTime) override;
+      void TearDownRenderFrame() override;
+
+      //======================================
+      // Added by Sang Yoon to draw a rectangle showing the head orientation of detailed view in overview window.
+      void DrawHeadOrientation(float view_farf, int screen_width) override;
+      //======================================
+    };
+
+    /// @brief Composite class that packs each pair of horizontal pixels into a single pixel for XSight display.
+    /// @details This is the class that is most likely to be used in
+    /// an application.
+    class CompositePackXSightFrame : public Composite {
+    public:
+      /// @brief Constructor
+      /// @param inputTexture The OpenGL texture ID of the input texture to pack.
+      CompositePackXSightFrame(GLuint inputTexture);
+
+      /// @brief Destructor
+      ~CompositePackXSightFrame();
+
+    protected:
+      /// Information filled in by the constructor.
+      GLuint m_inputTexture;
+
+      /// @brief The OpenGL program ID.
+      GLuint m_programId;
+
+      /// The texture ID for the line data.
+      GLuint m_texture;
+
+      /// The uniform identifier for the texture.
+      GLuint m_textureId;
+
+      // Overridden methods
+      bool SetupRendering() override;
+
+      //======================================
+      // Revised by Sang Yoon to match the function declaration of Composite class
+      // The arguments used for the cylindrical projection are added:
+      // modelViewMatrix, lh_hFOVf, rh_hFOVf, bh_vFOVf, th_vFOVf, nearf, and farf.
+      // Original: void RenderView(asdp::Time scanOutTime, const float* viewProjection) override;
+      // Revised:
+      void RenderView(asdp::Time scanOutTime, const float* viewProjection, const float* modelViewMatrix,
+        const float lh_hFOVf, const float rh_hFOVf, const float bh_vFOVf, const float th_vFOVf,
+        const float nearf, const float farf) override;
       //======================================
 
       void SetupRenderFrame(asdp::Time scanOutTime) override;

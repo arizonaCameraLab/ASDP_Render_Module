@@ -2245,6 +2245,15 @@ public:
 
   /// Time point in the middle of the next frame we will render.
   std::chrono::steady_clock::time_point m_nextFrameTime;
+
+  /// Frame buffer object that we will render the full-sized image into.
+  GLuint m_framebuffer{ 0 };
+
+  /// Color buffer that we will render the full-sized image into.
+  GLuint m_colorBuffer{ 0 };
+
+  /// Depth buffer that we will render the full-sized image into.
+  GLuint m_depthBuffer{ 0 };
 };
 
 DisplayXSight::DisplayXSight(std::string NICName, std::shared_ptr<Composite> composite, Display* sharedWindow,
@@ -2262,10 +2271,9 @@ DisplayXSight::DisplayXSight(std::string NICName, std::shared_ptr<Composite> com
   , m_timingInfo(timingInfo)
   , m_replaying(replaying)
   , m_impl(new DisplayXSightImpl)
-
 {
   // Check our parameters.
-  if ((desiredWidth <= 0) || (desiredHeight <= 0) || (horizontalFOVDegrees <= 0.0f)) {
+  if ((desiredWidth <= 0) || (desiredWidth % 2 != 0) || (desiredHeight <= 0) || (horizontalFOVDegrees <= 0.0f)) {
     m_status = "Invalid window size or field of view";
     return;
   }
@@ -2309,7 +2317,9 @@ void DisplayXSight::SetViewportSizeAndFOVs(ViewRenderInfo& viewInfo, int width, 
   }
   if ((width == 0) || (height == 0)) {
     glfwGetWindowSize(Display::m_impl->m_window, &width, &height);
-    viewInfo.width = width;
+    // NOTE: The final image packs two monochrome pixels horizontally into a single
+    // color pixel -- the rendered width is twice the final output width.
+    viewInfo.width = 2 * width;
     viewInfo.height = height;
   }
   viewInfo.leftHalfFOV = -m_impl->m_horizontalFOVDegrees / 2.0f;
@@ -2318,9 +2328,7 @@ void DisplayXSight::SetViewportSizeAndFOVs(ViewRenderInfo& viewInfo, int width, 
   // The vertical field of view is based on the aspect ratio of the window.  But the aspect ratio
   // is the in-plane width divided by the in-plane height.  The horizontal and vertical fields of view
   // are based on the tangents.
-  // NOTE: The system encodes two monochrome pixels horizontally per RGB pixel, so the actual pixel
-  // width in view space is twice the specified resolution.
-  double aspectRatio = static_cast<double>(viewInfo.height) / static_cast<double>(2 * viewInfo.width);
+  double aspectRatio = static_cast<double>(viewInfo.height) / static_cast<double>(viewInfo.width);
   double halfWidth = tan(glm::radians(m_impl->m_horizontalFOVDegrees / 2.0));
   double halfHeight = halfWidth * aspectRatio;
   double halfAngle = glm::degrees(atan(halfHeight));
@@ -2383,7 +2391,8 @@ void DisplayXSight::DisplayThread(
       // Tell it not to iconify full-screen windows that lose focus.
       glfwWindowHint(GLFW_AUTO_ICONIFY, GLFW_FALSE);
 
-      // Create a windowed mode window and its OpenGL context.
+      // Create a windowed mode window and its OpenGL context. This window will be half the desired
+      // height because it will encode two monochrome pixels into a single color pixel.
       // This must be done in the same thread that will do the rendering so that the window events will
       // be handled properly on all architectures.
       // We must make the OpenGL context of the window we want to share current on this thread
@@ -2397,7 +2406,7 @@ void DisplayXSight::DisplayThread(
           return;
         }
       }
-      Display::m_impl->m_window = glfwCreateWindow(desiredWidth, desiredHeight, "XSight", nullptr,
+      Display::m_impl->m_window = glfwCreateWindow(desiredWidth/2, desiredHeight, "XSight", nullptr,
         windowToShare);
       if (sharedWindow) {
         if (!sharedWindow->ReturnContext()) {
@@ -2426,8 +2435,9 @@ void DisplayXSight::DisplayThread(
     }
     GLFWmonitor* fullScreenMonitor = monitors[desiredDisplay-1];
 
-    // Engage full screen here along with specifying the refresh rate.
-    glfwSetWindowMonitor(Display::m_impl->m_window, fullScreenMonitor, 0, 0, desiredWidth, desiredHeight, fps);
+    // Engage full screen here along with specifying the refresh rate.  The width is half of that specified
+    // because the final render pass will encode two monochrome pixels into each color pixel.
+    glfwSetWindowMonitor(Display::m_impl->m_window, fullScreenMonitor, 0, 0, desiredWidth/2, desiredHeight, fps);
 
     // Grab the context mutex for the duration of the setup.  Once we have it, we know
     // that the context is not active in another thread.
@@ -2448,6 +2458,27 @@ void DisplayXSight::DisplayThread(
 
     // Disable SRGB on the frame buffer so our pixel values are not gamma corrected.
     glDisable(GL_FRAMEBUFFER_SRGB);
+
+    // Construct the frame buffer object that we will render the full-sized image into, along with
+    // its color and depth buffers.
+    glGenFramebuffers(1, &m_impl->m_framebuffer);
+    glBindFramebuffer(GL_FRAMEBUFFER, m_impl->m_framebuffer);
+    glGenTextures(1, &m_impl->m_colorBuffer);
+    glBindTexture(GL_TEXTURE_2D, m_impl->m_colorBuffer);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, desiredWidth, desiredHeight, 0,
+      GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+    glGenTextures(1, &m_impl->m_depthBuffer);
+    glBindTexture(GL_TEXTURE_2D, m_impl->m_depthBuffer);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT32F, desiredWidth, desiredHeight, 0,
+      GL_DEPTH_COMPONENT, GL_FLOAT, nullptr);
 
     // Release the window's current context in case another Display wants to borrow it.
     glfwMakeContextCurrent(nullptr);
@@ -2473,8 +2504,9 @@ void DisplayXSight::DisplayThread(
   }
 
   // Construct a CompositeLineRawData to render frame metadata into the first line, using the whole first line.
+  // Note that this is an encoded first line, so is half as long as the requested width.
   Display::m_impl->m_contextMutex.lock();
-  std::vector<uint8_t> lineData(desiredWidth * 3);
+  std::vector<uint8_t> lineData(desiredWidth/2 * 3);
   glfwMakeContextCurrent(Display::m_impl->m_window);
   CompositeLineRawData lineComposite(-1, 1, 1, 1, lineData);
   glfwMakeContextCurrent(nullptr);
@@ -2613,6 +2645,11 @@ void DisplayXSight::DisplayThread(
     // Handle any window resizing
     SetViewportSizeAndFOVs(m_impl->m_views[0]);
 
+    // Set the viewport to use the frame buffer and its associated color and depth buffers.
+    m_impl->m_views[0].frameBuffer = m_impl->m_framebuffer;
+    m_impl->m_views[0].colorBuffer = m_impl->m_colorBuffer;
+    m_impl->m_views[0].depthBuffer = m_impl->m_depthBuffer;
+
     // Trigger the cameras, saying that we need the data now. The base class will handle offsetting
     // by the specified transmission/processing time as passed to its constructor by the client.
     TriggerCameras(std::chrono::steady_clock::now());
@@ -2636,6 +2673,31 @@ void DisplayXSight::DisplayThread(
     // Render the frame data
     m_composite->Render(renderTime, m_impl->m_views);
 
+    // Wait for the rendering to finish so that the frame buffer textures will be ready to read.
+    // Use a fence to wait for the rendering to finish.
+    GLsync fence = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
+    if (fence == nullptr) {
+      m_status = "Failed to create fence";
+      return;
+    }
+    GLenum fenceWait = glClientWaitSync(fence, GL_SYNC_FLUSH_COMMANDS_BIT, 1000000000);
+    if (fenceWait != GL_ALREADY_SIGNALED && fenceWait != GL_CONDITION_SATISFIED) {
+      m_status = "glClientWaitSync() failed for xSight: code " + std::to_string(fenceWait);
+    }
+
+    // Set the viewport to use the default frame buffer and to render to half the width, as we're converting
+    // from 2x wide color to mono and then embedding in 1x wide color.
+    m_impl->m_views[0].frameBuffer = 0;
+    m_impl->m_views[0].colorBuffer = 0;
+    m_impl->m_views[0].depthBuffer = 0;
+    m_impl->m_views[0].width = desiredWidth / 2;
+
+    // Do a second rendering pass where we read from the double-width color buffer and write to the output
+    // buffer, packing two horizontal pixels into one.  This uses a custom compositor that does the pixel
+    // packing.
+
+    /// @todo
+
     // Render the frame metadata into the first line.
     lineComposite.Render(renderTime, m_impl->m_views);
 
@@ -2655,6 +2717,19 @@ void DisplayXSight::DisplayThread(
       std::chrono::microseconds(static_cast<long long>(1e6 / fps) * 3 / 2);
 
     // Release the window's current context in case another Display wants to borrow it.
+    glfwMakeContextCurrent(nullptr);
+  }
+
+  // Grab the context so we can destroy our framebuffer and textures.
+  {
+    std::lock_guard<std::mutex> lock(Display::m_impl->m_contextMutex);
+    glfwMakeContextCurrent(Display::m_impl->m_window);
+    glDeleteTextures(1, &m_impl->m_colorBuffer);
+    m_impl->m_colorBuffer = 0;
+    glDeleteTextures(1, &m_impl->m_depthBuffer);
+    m_impl->m_depthBuffer = 0;
+    glDeleteFramebuffers(1, &m_impl->m_framebuffer);
+    m_impl->m_framebuffer = 0;
     glfwMakeContextCurrent(nullptr);
   }
 
