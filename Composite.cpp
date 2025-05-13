@@ -1878,15 +1878,19 @@ R"(#version 330 core
       FragColor.a = 1.0f;
    })";
 
-CompositePackXSightFrame::CompositePackXSightFrame(GLuint inputTexture)
+CompositePackXSightFrame::CompositePackXSightFrame(GLuint inputTexture, int displayWidth)
   : Composite()
   , m_inputTexture(inputTexture)
-  , m_programId(0)
   , m_displayWidth(0)
+  , m_programId(0)
+  , m_displayWidthID(0)
 {
   // Check the input parameters
   if (inputTexture == 0) {
     throw std::runtime_error("Zero texture ID");
+  }
+  if (displayWidth <= 0) {
+    throw std::runtime_error("Invalid display width");
   }
 
   // Initialize GLEW in our context. It is okay to initialize it more than once.
@@ -1898,6 +1902,12 @@ CompositePackXSightFrame::CompositePackXSightFrame(GLuint inputTexture)
   // Clear any GL error that Glew caused.  Apparently on Non-Windows
   // platforms, this can cause a spurious error 1280.
   glGetError();
+
+  // Create and fill in the vertex buffer object for the line.
+  glGenBuffers(1, &m_vertexBufferObject);
+  if (m_vertexBufferObject == 0) {
+    throw std::runtime_error("glGenBuffers failed");
+  }
 }
 
 bool CompositePackXSightFrame::SetupRendering()
@@ -1933,8 +1943,8 @@ bool CompositePackXSightFrame::SetupRendering()
   }
 
   // Get the IDs for all of the uniform parameters we will want to change.
-  m_displayWidth = glGetUniformLocation(m_programId, "displayWidth");
-  if (m_displayWidth == -1) {
+  m_displayWidthID = glGetUniformLocation(m_programId, "displayWidth");
+  if (m_displayWidthID == -1) {
     std::cerr << "Failed to get uniform texture ID" << std::endl;
     return false;
   }
@@ -1944,7 +1954,8 @@ bool CompositePackXSightFrame::SetupRendering()
 
 CompositePackXSightFrame::~CompositePackXSightFrame()
 {
-  // Delete the shader program (all calls ignore being called on an invalid ID).
+  // Delete the buffer and shader program (all calls ignore being called on an invalid ID).
+  glDeleteBuffers(1, &m_vertexBufferObject);
   glDeleteProgram(m_programId);
 }
 
@@ -1957,7 +1968,9 @@ void CompositePackXSightFrame::SetupRenderFrame(asdp::Time /* scanOutTime */)
 
 //======================================
 // Revised by Sang Yoon to match the function declaration of the Composite class revised for the cylinderical projection
-void CompositePackXSightFrame::RenderView(asdp::Time /* scanOutTime */, const float* /* viewProjection */, const float* /* modelViewMatrix */, const float /* lh_hFOVf */, const float /* rh_hFOVf */, const float /* bh_vFOVf */, const float /* th_vFOVf */, const float /* nearf */, const float /* farf */)
+void CompositePackXSightFrame::RenderView(asdp::Time /* scanOutTime */, const float* /* viewProjection */,
+  const float* /* modelViewMatrix */, const float /* lh_hFOVf */, const float /* rh_hFOVf */,
+  const float /* bh_vFOVf */, const float /* th_vFOVf */, const float /* nearf */, const float /* farf */)
 //======================================
 {
   // Turn off depth testing, we always want to draw the quad.
@@ -1968,6 +1981,9 @@ void CompositePackXSightFrame::RenderView(asdp::Time /* scanOutTime */, const fl
   glBindTexture(GL_TEXTURE_2D, m_inputTexture);
   glUniform1i(m_inputTexture, 0);
 
+  // Set the display-width uniform.
+  glUniform1i(m_displayWidthID, m_displayWidth);
+
   // Compute the vertex coordinate data and texture coordinates for the quad that we want to draw.
   // The vertex coordinate are the start and end of the line, which is based on the constructor
   // parameters along with the viewport render information.
@@ -1975,13 +1991,15 @@ void CompositePackXSightFrame::RenderView(asdp::Time /* scanOutTime */, const fl
   // Fill in the vertex data.
   // There are two spatial coordinates and one texture coordinate per vertex.
   // The texture coordinates are the normalized position along the line.
-  std::vector<GLfloat> vertices;
-  vertices.push_back(m_x0);
-  vertices.push_back(m_y0);
-  vertices.push_back(0.0f);
-  vertices.push_back(m_x1);
-  vertices.push_back(m_y1);
-  vertices.push_back(1.0f);
+  std::vector<GLfloat> vertices = {
+      -1.0f, -1.0f, 0.0f, 0.0f, 0.0f,
+       1.0f, -1.0f, 0.0f, 1.0f, 0.0f,
+       1.0f,  1.0f, 0.0f, 1.0f, 1.0f,
+      -1.0f,  1.0f, 0.0f, 0.0f, 1.0f
+  };
+
+  // Index data to share position data
+  GLushort indices[] = { 0, 1, 2, 0, 2, 3 };
 
   // Unbind any currently bound vertex array object.
   // We cannot use vertex array objects because we're potentially going to be called
@@ -1997,8 +2015,8 @@ void CompositePackXSightFrame::RenderView(asdp::Time /* scanOutTime */, const fl
   // Draw the final point on the line because OpenGL doesn't fill that point in.
   glBindBuffer(GL_ARRAY_BUFFER, m_vertexBufferObject);
   glBufferData(GL_ARRAY_BUFFER, sizeof(vertices[0]) * vertices.size(), vertices.data(), GL_DYNAMIC_DRAW);
-  glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 3 * sizeof(GLfloat), (GLvoid*)0);
-  glVertexAttribPointer(1, 1, GL_FLOAT, GL_FALSE, 3 * sizeof(GLfloat), (GLvoid*)(2 * sizeof(GLfloat)));
+  glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), 0);
+  glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3 * sizeof(float)));
   glDrawArrays(GL_LINES, 0, vertices.size() / 3);
   glDrawArrays(GL_POINTS, 1, 1);
   glBindBuffer(GL_ARRAY_BUFFER, 0);

@@ -457,7 +457,8 @@ namespace asdp {
     public:
       /// @brief Constructor
       /// @param inputTexture The OpenGL texture ID of the input texture to pack.
-      CompositePackXSightFrame(GLuint inputTexture);
+      /// @param displayWidth The width of the output display in pixels (half the width of the texture).
+      CompositePackXSightFrame(GLuint inputTexture, int displayWidth);
 
       /// @brief Destructor
       ~CompositePackXSightFrame();
@@ -465,12 +466,16 @@ namespace asdp {
     protected:
       /// Information filled in by the constructor.
       GLuint m_inputTexture;
+      int m_displayWidth;
+
+      /// @brief Vertex buffer object for the quad
+      GLuint m_vertexBufferObject;
 
       /// @brief The OpenGL program ID.
       GLuint m_programId;
 
       /// The uniform identifier for the display width shader parameter.
-      int m_displayWidth;
+      int m_displayWidthID;
 
       // Overridden methods
       bool SetupRendering() override;
