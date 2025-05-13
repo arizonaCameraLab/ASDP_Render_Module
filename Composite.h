@@ -469,11 +469,8 @@ namespace asdp {
       /// @brief The OpenGL program ID.
       GLuint m_programId;
 
-      /// The texture ID for the line data.
-      GLuint m_texture;
-
-      /// The uniform identifier for the texture.
-      GLuint m_textureId;
+      /// The uniform identifier for the display width shader parameter.
+      int m_displayWidth;
 
       // Overridden methods
       bool SetupRendering() override;
