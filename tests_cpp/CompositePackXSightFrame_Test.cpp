@@ -113,7 +113,7 @@ int main()
   asdp::render::CompositePackXSightFrame composite(texture, windowWidth);
 
   // Loop until the user closes the window.
-  std::cout << "You should see vertical lines that are darker at the top and brighter at the bottom." << std::endl;
+  std::cout << "You should see vertical lines that are darker at the bottom and brighter at the top." << std::endl;
   std::cout << "There should be two dim blue lines, then a dim green line, then a brighter green line." << std::endl;
   std::cout << "Next should be a one-pixel-wide aqua line and a two-pixel-wide green/blue line." << std::endl;
   std::cout << "" << std::endl;

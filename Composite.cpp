@@ -1959,10 +1959,10 @@ bool CompositePackXSightFrame::SetupRendering()
   // There are two spatial coordinates and two texture coordinate per vertex.
   // The texture coordinates are the normalized position along the line.
   std::vector<GLfloat> vertices = {
-      -1.0f, -1.0f, 0.0f, 1.0f,
-       1.0f, -1.0f, 1.0f, 1.0f,
-       1.0f,  1.0f, 1.0f, 0.0f,
-      -1.0f,  1.0f, 0.0f, 0.0f
+      -1.0f, -1.0f, 0.0f, 0.0f,
+       1.0f, -1.0f, 1.0f, 0.0f,
+       1.0f,  1.0f, 1.0f, 1.0f,
+      -1.0f,  1.0f, 0.0f, 1.0f
   };
 
   // Index data to share position data
