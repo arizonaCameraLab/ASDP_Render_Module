@@ -86,14 +86,17 @@ public:
   ~DistortionBagOfMappings_impl() = default;
 
   /// @brief Keeps track of all of the points that were passed into the constructor.
-  Bag m_mappings;
+  Bag m_bag;
+
+  /// @brief Map from "from" points to "to" points required because Delaunay triangulation reorders points
+  std::map<Point2D, Point2D> m_map;
 
   /// @brief The delaunay triangulation.
   GEO::Delaunay_var m_delaunay = nullptr;
 };
 
 DistortionBagOfMappings::DistortionBagOfMappings_impl::DistortionBagOfMappings_impl(Bag const& mappings)
-  : m_mappings(mappings)
+  : m_bag(mappings)
 {
   try {
     // Make sure that Geogram is initialized; okay to call more than once.
@@ -109,18 +112,24 @@ DistortionBagOfMappings::DistortionBagOfMappings_impl::DistortionBagOfMappings_i
       + std::string(e.what()));
   }
 
-  if (mappings.size() == 0) {
+  if (m_bag.size() == 0) {
     return;
   }
 
   // Create a list of input points to use to generate the Delaunay triangulation.
-  std::vector<Point2D> points;
-  for (auto const& mapping : mappings) {
-    points.push_back(mapping[0]);
+  std::vector<double> points;
+  for (auto const& mapping : m_bag) {
+    points.push_back(mapping[0][0]);
+    points.push_back(mapping[0][1]);
   }
 
   // Create a Delaunay triangulation in 2D from the "from" points in the mapping.
-  m_delaunay->set_vertices(points.size() / 2, points[0].data());
+  m_delaunay->set_vertices(m_bag.size(), points.data());
+
+  // Create a mapping from the "from" points to the "to" points in the mapping.
+  for (size_t i = 0; i < m_bag.size(); ++i) {
+    m_map[m_bag[i][0]] = m_bag[i][1];
+  }
 }
 
 DistortionBagOfMappings::DistortionBagOfMappings(Bag const& mappings)
@@ -171,7 +180,7 @@ double DistortionBagOfMappings::DetermineValue(Point2D const& p1, double v1,
 std::array<double, 3> DistortionBagOfMappings::MapPoint(std::array<double, 3> point) const
 {
   // If we don't have any mappings, return the point unchanged
-  if (!m_impl || !m_impl->m_delaunay || m_impl->m_mappings.size() == 0) {
+  if (!m_impl || !m_impl->m_delaunay || m_impl->m_bag.size() == 0) {
     return point;
   }
 
@@ -224,27 +233,24 @@ std::array<double, 3> DistortionBagOfMappings::MapPoint(std::array<double, 3> po
     }
   }
 
+  // Find the vertices of the closest triangle.
   double const* v;
   v = d->vertex_ptr(d->cell_vertex(closest_triangle, 0));
-  std::array<double, 2> A = { v[0], v[1] };
+  Point2D A = { v[0], v[1] };
   v = d->vertex_ptr(d->cell_vertex(closest_triangle, 1));
-  std::array<double, 2> B = { v[0], v[1] };
+  Point2D B = { v[0], v[1] };
   v = d->vertex_ptr(d->cell_vertex(closest_triangle, 2));
-  std::array<double, 2> C = { v[0], v[1] };
+  Point2D C = { v[0], v[1] };
+
+  // Use the map to find the corresponding points in the "to" triangle.
+  Point2D const& Ato = m_impl->m_map[A];
+  Point2D const& Bto = m_impl->m_map[B];
+  Point2D const& Cto = m_impl->m_map[C];
 
   // Use the "to" mapping X and Y coordinates based on weighting the Barcycentric coordinates
   // from the triangle and applying them individually to the two indices in the "to" triangle.
-  double xD = DetermineValue(
-    /// @todo We need to somehow get the "to" mapping corresponding to this map entry.
-    A, m[d->cell_vertex(closest_triangle, 0)][1][0],
-    m[d->cell_vertex(closest_triangle, 1)][0], m[d->cell_vertex(closest_triangle, 1)][1][0],
-    m[d->cell_vertex(closest_triangle, 2)][0], m[d->cell_vertex(closest_triangle, 2)][1][0],
-    ptInPlane);
-  double yD = DetermineValue(
-    m[d->cell_vertex(closest_triangle, 0)][0], m[d->cell_vertex(closest_triangle, 0)][1][1],
-    m[d->cell_vertex(closest_triangle, 1)][0], m[d->cell_vertex(closest_triangle, 1)][1][1],
-    m[d->cell_vertex(closest_triangle, 2)][0], m[d->cell_vertex(closest_triangle, 2)][1][1],
-    ptInPlane);
+  double xD = DetermineValue(A, Ato[0], B, Bto[0], C, Cto[0], ptInPlane);
+  double yD = DetermineValue(A, Ato[1], B, Bto[1], C, Cto[1], ptInPlane);
 
   // Rescale the point and put it back onto same plane as the original point.
   double invScale = 1 / scale;
