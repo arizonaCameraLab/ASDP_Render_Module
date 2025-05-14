@@ -480,7 +480,8 @@ namespace asdp {
       /// The uniform identifier for the display width shader parameter.
       int m_displayWidthID;
 
-      /// The uniform identifier for the 
+      /// The number of indices in the index buffer.
+      GLsizei m_numIndices;
 
       // Overridden methods
       bool SetupRendering() override;

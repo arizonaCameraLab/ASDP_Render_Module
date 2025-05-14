@@ -1884,6 +1884,7 @@ CompositePackXSightFrame::CompositePackXSightFrame(GLuint inputTexture, int disp
   , m_displayWidth(0)
   , m_programId(0)
   , m_displayWidthID(0)
+  , m_numIndices(0)
 {
   // Check the input parameters
   if (inputTexture == 0) {
@@ -1955,6 +1956,40 @@ bool CompositePackXSightFrame::SetupRendering()
     return false;
   }
 
+  // Fill in the vertex data.
+  // There are two spatial coordinates and two texture coordinate per vertex.
+  // The texture coordinates are the normalized position along the line.
+  std::vector<GLfloat> vertices = {
+      -1.0f, -1.0f, 0.0f, 1.0f,
+       1.0f, -1.0f, 1.0f, 1.0f,
+       1.0f,  1.0f, 1.0f, 0.0f,
+      -1.0f,  1.0f, 0.0f, 0.0f
+  };
+
+  // Index data to share position data
+  std::vector<GLuint> indices = { 0, 1, 2, 0, 2, 3 };
+  m_numIndices = static_cast<GLsizei>(indices.size());
+
+  // Unbind any currently bound vertex array object.
+  // We cannot use vertex array objects because we're potentially going to be called
+  // from multiple OpenGL contexts in different threads and VAOs are not shared between
+  // contexts.
+  glBindVertexArray(0);
+
+  // Enable the vertex attribute arrays we are going to use
+  glEnableVertexAttribArray(0);
+  glEnableVertexAttribArray(1);
+
+  // Draw the line using its vertex buffer objects after specifying its layout.
+  // Draw the final point on the line because OpenGL doesn't fill that point in.
+  glBindBuffer(GL_ARRAY_BUFFER, m_vertexBufferObject);
+  glBufferData(GL_ARRAY_BUFFER, sizeof(vertices[0]) * vertices.size(), vertices.data(), GL_STATIC_DRAW);
+  glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+  glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_indexBufferObject);
+  glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices[0]) * indices.size(), indices.data(), GL_STATIC_DRAW);
+  glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+
   return true;
 }
 
@@ -1992,24 +2027,6 @@ void CompositePackXSightFrame::RenderView(asdp::Time /* scanOutTime */, const fl
   // Set the display-width uniform.
   glUniform1i(m_displayWidthID, m_displayWidth);
 
-  // Compute the vertex coordinate data and texture coordinates for the quad that we want to draw.
-  // The vertex coordinate are the start and end of the line, which is based on the constructor
-  // parameters along with the viewport render information.
-
-  // Fill in the vertex data.
-  // There are two spatial coordinates and two texture coordinate per vertex.
-  // The texture coordinates are the normalized position along the line.
-  /// @todo do this in the render set up to reduce the work.
-  std::vector<GLfloat> vertices = {
-      -1.0f, -1.0f, 0.0f, 1.0f,
-       1.0f, -1.0f, 1.0f, 1.0f,
-       1.0f,  1.0f, 1.0f, 0.0f,
-      -1.0f,  1.0f, 0.0f, 0.0f
-  };
-
-  // Index data to share position data
-  std::vector<GLuint> indices = { 0, 1, 2, 0, 2, 3 };
-
   // Unbind any currently bound vertex array object.
   // We cannot use vertex array objects because we're potentially going to be called
   // from multiple OpenGL contexts in different threads and VAOs are not shared between
@@ -2020,18 +2037,14 @@ void CompositePackXSightFrame::RenderView(asdp::Time /* scanOutTime */, const fl
   glEnableVertexAttribArray(0);
   glEnableVertexAttribArray(1);
 
-  // Draw the line using its vertex buffer objects after specifying its layout.
-  // Draw the final point on the line because OpenGL doesn't fill that point in.
+  // Draw the quad using its vertex buffer objects after specifying its layout.
   glBindBuffer(GL_ARRAY_BUFFER, m_vertexBufferObject);
-  glBufferData(GL_ARRAY_BUFFER, sizeof(vertices[0]) * vertices.size(), vertices.data(), GL_STATIC_DRAW);
   glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), 0);
   glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
-
   glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_indexBufferObject);
-  glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices[0]) * indices.size(), indices.data(), GL_STATIC_DRAW);
-
-  glDrawElements(GL_TRIANGLES, indices.size(), GL_UNSIGNED_INT, 0);
+  glDrawElements(GL_TRIANGLES, m_numIndices, GL_UNSIGNED_INT, 0);
   glBindBuffer(GL_ARRAY_BUFFER, 0);
+  glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 
   // Unbind the image from its texture unit
   glActiveTexture(GL_TEXTURE0);
