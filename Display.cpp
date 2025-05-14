@@ -2581,7 +2581,6 @@ void DisplayXSight::DisplayThread(
     }
     size_t length = 9000;
     std::vector<uint8_t> buffer(length);
-    size_t packetCount = 0;
     while (packetReady) {
       // Read the next packet, letting it fill the whole buffer.
       length = 9000;
@@ -2619,8 +2618,6 @@ void DisplayXSight::DisplayThread(
           memcpy(&temp, &(buffer[1 + 6 * 4 + 2 + 3 * 4]), sizeof(temp));
           temp = ntohl(temp);
           memcpy(&time, &temp, sizeof(time));
-          //std::cout << "XXX azimuth = " << azimuth << " elevation = " << elevation << " roll = " << roll
-          //  << " time = " << time << std::endl;
         }
       }
 
@@ -2630,9 +2627,7 @@ void DisplayXSight::DisplayThread(
         m_status = "Failed to check for packet availability";
         break;
       }
-      packetCount++;
     }
-    //std::cout << "XXX Received " << packetCount << " packets" << std::endl;
 
     // Update the transformation for the view.  We first rotate around roll, then pitch, then yaw.
     // Empirically, the azimuth is backwards from what we expect, so we negate it.
@@ -2713,11 +2708,12 @@ void DisplayXSight::DisplayThread(
     // Swap front and back buffers and wait for it to complete, then compute the next frame time.
     glfwSwapBuffers(Display::m_impl->m_window);
     glFinish();
-    m_impl->m_nextRenderTime = std::chrono::steady_clock::now() +
+    auto nowTime = std::chrono::steady_clock::now();
+    m_impl->m_nextRenderTime = nowTime +
       std::chrono::microseconds(static_cast<long long>(1e6 / fps) - renderAheadMicroseconds);
     m_impl->m_nextDepthTime = m_impl->m_nextRenderTime - std::chrono::microseconds(m_depthAheadMicroseconds);
     // Half way through the next frame, which is when we want the geometry adjusted for.
-    m_impl->m_nextFrameTime = std::chrono::steady_clock::now() +
+    m_impl->m_nextFrameTime = nowTime +
       std::chrono::microseconds(static_cast<long long>(1e6 / fps) * 3 / 2);
 
     // Release the window's current context in case another Display wants to borrow it.
