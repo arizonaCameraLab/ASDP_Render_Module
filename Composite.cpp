@@ -1847,11 +1847,15 @@ R"(#version 330 core
       // across the triangle will land on the left pixel and the right pixel, respectively.
       // We do this by truncating the first texture coordinate to the left pixel and adding half a pixel
       // to it to get the right pixel.
+      // NOTE that texture coordinates 0 and 1 refer to the far corners of their respective texels, not
+      // to their centers.  Also, the corners of the rectangle are at the edges of the pixels, not at their centers.
+      // This means that we want to shift the texture coordinates by half a texel to the left and right, where
+      // there are twice as many texels as pixels in X.
       int displayPixel = int(aTexCoord.x * float(displayWidth-1));
       float texturePixel1 = displayPixel * 2;
       float texturePixel2 = texturePixel1 + 1;
-      TexCoord1.x = texturePixel1 / float(displayWidth*2 - 1);
-      TexCoord2.x = texturePixel2 / float(displayWidth*2 - 1);
+      TexCoord1.x -= 0.5f/(2*displayWidth);
+      TexCoord2.x += 0.5f/(2*displayWidth);
    })";
 
 static const GLchar* packXSightFrameFragmentShader =

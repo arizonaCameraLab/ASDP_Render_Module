@@ -113,20 +113,12 @@ int main()
   asdp::render::CompositePackXSightFrame composite(texture, windowWidth);
 
   // Loop until the user closes the window.
-  std::cout << "You should see @todo" << std::endl;
-  std::cout << "the center of the view, the first and third brighter on the left and the" << std::endl;
-  std::cout << "second brighter on the right." << std::endl;
-  std::cout << "Above should be brighter extensions and below should be darker ones." << std::endl;
-  std::cout << "The extensions meet at dark and then bright boundaries from left to right." << std::endl;
-  std::cout << "A smaller box should be in the center of the view, black at bottom to white at top." << std::endl;
-  std::cout << "" << std::endl;
-  std::cout << "Press the space bar to toggle between the whole color range and only the" << std::endl;
-  std::cout << "range 0.25 through 0.75." << std::endl;
+  std::cout << "You should see vertical lines that are darker at the top and brighter at the bottom." << std::endl;
+  std::cout << "There should be two dim blue lines, then a dim green line, then a brighter green line." << std::endl;
+  std::cout << "Next should be a one-pixel-wide aqua line and a two-pixel-wide green/blue line." << std::endl;
   std::cout << "" << std::endl;
   std::cout << "Close the window to exit." << std::endl;
   auto start = std::chrono::steady_clock::now();
-  bool rangeZoomed = false;
-  bool spacePressed = false;
   while (!glfwWindowShouldClose(window)) {
 
     // Render here
@@ -142,18 +134,6 @@ int main()
 
     // Poll for and process events
     glfwPollEvents();
-
-    // When the space key is pressed, toggle between a range that covers the whole color range and one that
-    // covers only the quarter of it above the middle.
-    if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS) {
-      if (!spacePressed) {
-        rangeZoomed = !rangeZoomed;
-        std::cout << "Range " << (rangeZoomed ? "" : "not ") << "zoomed" << std::endl;
-        spacePressed = true;
-      }
-    } else {
-      spacePressed = false;
-    }
   }
 
   // Clean up resources and exit
