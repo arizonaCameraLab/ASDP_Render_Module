@@ -91,9 +91,6 @@ namespace asdp {
       bool m_detailed_view = false;
       //======================================
 
-      /// @brief Set when we are displaying to an Elbit XSight, which has monochrome double-wide output.
-      bool m_isXSight = false;
-
       /// @brief Destructor, virtual so that derived classes can have their destructors called from pointers.
       virtual ~Composite();
 

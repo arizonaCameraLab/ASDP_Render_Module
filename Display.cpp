@@ -2281,9 +2281,6 @@ DisplayXSight::DisplayXSight(std::string NICName, std::shared_ptr<Composite> com
   // Store info from the constructor.
   m_impl->m_horizontalFOVDegrees = horizontalFOVDegrees;
 
-  // Tell our compositor to use the XSight display.
-  m_composite->m_isXSight = true;
-
   // Construct a single view to be used.  We base is on the requested window size and we compute a
   // field of view that is the requested horizontal and the correct aspect ratio vertical.
   ViewRenderInfo view;

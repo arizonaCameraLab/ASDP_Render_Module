@@ -211,7 +211,7 @@ void Composite::checkProgramError(GLuint programId, const std::string& exception
 /// @brief Helper class that handles defining and drawing a cube.
 class asdp::render::CompositeCube::MeshCube {
 public:
-  MeshCube(GLfloat scale, size_t numTriangles = 6 * 2 * 15 * 15, bool mono = false) {
+  MeshCube(GLfloat scale, size_t numTriangles = 6 * 2 * 15 * 15) {
     // Figure out how many quads we have per edge.  There
     // is a minimum of 1.
     size_t numQuads = numTriangles / 2;
@@ -280,7 +280,6 @@ public:
     // faces.
     {
       std::array<GLfloat, 3> modColor = { 0.0, 0.0, 1.0 };
-      if (mono) modColor = { 1.0, 1.0, 1.0 };
       std::vector<GLfloat> myBufferData =
         colorModulate(whiteBufferData, modColor);
 
@@ -305,7 +304,6 @@ public:
     // original face (mirror all 3).
     {
       std::array<GLfloat, 3> modColor = { 0.0, 1.0, 1.0 };
-      if (mono) modColor = { 1.0, 1.0, 1.0 };
       std::vector<GLfloat> myBufferData =
         colorModulate(whiteBufferData, modColor);
 
@@ -330,7 +328,6 @@ public:
     // around Y.
     {
       std::array<GLfloat, 3> modColor = { 1.0, 0.0, 0.0 };
-      if (mono) modColor = { 1.0, 1.0, 1.0 };
       std::vector<GLfloat> myBufferData =
         colorModulate(whiteBufferData, modColor);
 
@@ -355,7 +352,6 @@ public:
     // around Y.
     {
       std::array<GLfloat, 3> modColor = { 1.0, 0.0, 1.0 };
-      if (mono) modColor = { 1.0, 1.0, 1.0 };
       std::vector<GLfloat> myBufferData =
         colorModulate(whiteBufferData, modColor);
 
@@ -380,7 +376,6 @@ public:
     // around X.
     {
       std::array<GLfloat, 3> modColor = { 0.0, 1.0, 0.0 };
-      if (mono) modColor = { 1.0, 1.0, 1.0 };
       std::vector<GLfloat> myBufferData =
         colorModulate(whiteBufferData, modColor);
 
@@ -405,7 +400,6 @@ public:
     // around X.
     {
       std::array<GLfloat, 3> modColor = { 1.0, 1.0, 0.0 };
-      if (mono) modColor = { 1.0, 1.0, 1.0 };
       std::vector<GLfloat> myBufferData =
         colorModulate(whiteBufferData, modColor);
 
@@ -672,7 +666,7 @@ bool CompositeCube::SetupRendering()
   size_t trianglesPerSide = 2 * quadsPerEdge * quadsPerEdge;
   // 6 faces
   size_t numTriangles = static_cast<size_t>(trianglesPerSide * 6);
-  m_roomCube = std::shared_ptr<MeshCube>(new MeshCube(m_radius, numTriangles, m_isXSight));
+  m_roomCube = std::shared_ptr<MeshCube>(new MeshCube(m_radius, numTriangles));
 
   return true;
 }
