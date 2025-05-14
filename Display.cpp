@@ -2503,6 +2503,14 @@ void DisplayXSight::DisplayThread(
     return;
   }
 
+  // Construct a CompositePackXSightFrame to pack the pixels from the full-screen render into the
+  // physical display.
+  Display::m_impl->m_contextMutex.lock();
+  glfwMakeContextCurrent(Display::m_impl->m_window);
+  CompositePackXSightFrame packComposite(m_impl->m_colorBuffer, desiredWidth / 2);
+  glfwMakeContextCurrent(nullptr);
+  Display::m_impl->m_contextMutex.unlock();
+
   // Construct a CompositeLineRawData to render frame metadata into the first line, using the whole first line.
   // Note that this is an encoded first line, so is half as long as the requested width.
   Display::m_impl->m_contextMutex.lock();
@@ -2695,8 +2703,7 @@ void DisplayXSight::DisplayThread(
     // Do a second rendering pass where we read from the double-width color buffer and write to the output
     // buffer, packing two horizontal pixels into one.  This uses a custom compositor that does the pixel
     // packing.
-
-    /// @todo
+    packComposite.Render(renderTime, m_impl->m_views);
 
     // Render the frame metadata into the first line.
     lineComposite.Render(renderTime, m_impl->m_views);
