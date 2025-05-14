@@ -2698,7 +2698,7 @@ void DisplayXSight::DisplayThread(
     m_impl->m_views[0].frameBuffer = 0;
     m_impl->m_views[0].colorBuffer = 0;
     m_impl->m_views[0].depthBuffer = 0;
-    m_impl->m_views[0].width = desiredWidth / 2;
+    m_impl->m_views[0].width /= 2;
 
     // Do a second rendering pass where we read from the double-width color buffer and write to the output
     // buffer, packing two horizontal pixels into one.  This uses a custom compositor that does the pixel
