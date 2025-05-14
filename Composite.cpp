@@ -1380,11 +1380,6 @@ void CompositeCameras::RenderView(asdp::Time scanOutTime, const float* viewProje
   // Unbind the tone map texture from its texture unit
   glActiveTexture(GL_TEXTURE1);
   glBindTexture(GL_TEXTURE_1D, 0);
-
-  GLenum err = glGetError();
-  if (err != GL_NO_ERROR) {
-    std::cerr << "CompositeCameras::RenderView(): OpenGL error: " << err << std::endl;
-  }
 }
 
 void CompositeCameras::TearDownRenderFrame()
@@ -2023,7 +2018,6 @@ void CompositePackXSightFrame::RenderView(asdp::Time /* scanOutTime */, const fl
   // Bind the texture to texture unit 0.
   glActiveTexture(GL_TEXTURE0);
   glBindTexture(GL_TEXTURE_2D, m_inputTexture);
-  glUniform1i(m_inputTexture, 0);
 
   // Set the display-width uniform.
   glUniform1i(m_displayWidthID, m_displayWidth);
@@ -2050,11 +2044,6 @@ void CompositePackXSightFrame::RenderView(asdp::Time /* scanOutTime */, const fl
   // Unbind the image from its texture unit
   glActiveTexture(GL_TEXTURE0);
   glBindTexture(GL_TEXTURE_2D, 0);
-
-  GLenum err = glGetError();
-  if (err != GL_NO_ERROR) {
-    std::cerr << "CompositePackXSightFrame::RenderView(): OpenGL error: " << err << std::endl;
-  }
 }
 
 void CompositePackXSightFrame::TearDownRenderFrame()
