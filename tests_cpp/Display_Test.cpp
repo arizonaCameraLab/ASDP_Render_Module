@@ -12,7 +12,7 @@
 
 static void usage(const char* progName)
 {
-  std::cerr << "Usage: " << progName << " [--openXR] [--xSight <NIC name>]" << std::endl;
+  std::cerr << "Usage: " << progName << " [--openXR] [--xSight <NIC name> <display>]" << std::endl;
 }
 
 int main(int argc, char** argv)
@@ -22,6 +22,7 @@ int main(int argc, char** argv)
 
   bool useOpenXR = false;
   std::string xSightNICName = "";
+  int xSightDisplay = 0;
   for (int i = 1; i < argc; ++i) {
     if (std::string("--openXR") == argv[i]) {
       useOpenXR = true;
@@ -32,6 +33,11 @@ int main(int argc, char** argv)
         return 1;
       }
       xSightNICName = argv[i];
+      if (++i >= argc) {
+        usage(argv[0]);
+        return 1;
+      }
+      xSightDisplay = std::stoi(argv[i]);
     }
     else {
       usage(argv[0]);
@@ -69,7 +75,8 @@ int main(int argc, char** argv)
         0, 0, 0, 2500, 0, nullptr, nullptr, nullptr, false));
     } else if (xSightNICName != "") {
       displays.push_back(std::make_shared<asdp::render::DisplayXSight>(xSightNICName, composite, &texWindow, client,
-        0, 0, 0));
+        0, 0, 0,
+        2500, nullptr, nullptr, nullptr, false, xSightDisplay));
     } else {
       // Create a Display window to show the CompositeCube object that shares objects with the texWindow.
       // Control it using joystick 0.

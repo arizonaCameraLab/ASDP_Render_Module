@@ -53,7 +53,7 @@ using namespace asdp;
 using namespace asdp::render;
 using json = nlohmann::json;
 
-static std::string VERSION = "2.39.0";
+static std::string VERSION = "2.40.0";
 
 /// @brief The path to the configuration file. Defined in the CMakeLists file.
 std::filesystem::path g_dirPath = CONFIG_FILE_PATH;
@@ -343,6 +343,7 @@ struct DisplayInfo
   ToneMap toneMap = ToneMap();  ///< The tone map to use.
   bool useOpenXR = false;       ///< Use OpenXR for rendering? If so, overrides all of the following.
   std::string XSightNIC = "";   ///< NIC to listen to XSight on for rendering. If not empty, overrides all of the following.
+  int XSightDisplay = 2;        ///< The display to use for XSight rendering.
   int width = 1280;             ///< The width of the display.
   int height = 1024;            ///< The height of the display.
   float hFOV = 40.0f;           ///< The horizontal field of view in degrees.
@@ -410,7 +411,7 @@ static void usage(std::string name)
   std::cerr << "  --enableCP                          Enable the cylindrical projection." << std::endl; // Added by Sang Yoon
   std::cerr << "  --enableOD                          Enable the display interface of overview plus detail view." << std::endl; // Added by Sang Yoon
   std::cerr << "  --openXR                            Use OpenXR for rendering. If set, overrides the following and sets lineBatchesPerGPUSend to 10000." << std::endl;
-  std::cerr << "  --xSight <ip of NIC to listen on>   Render to XSight on specified NIC. If set, overrides the following." << std::endl;
+  std::cerr << "  --xSight <ip of NIC to listen on> <display>   Render to XSight on specified NIC. If set, overrides the following." << std::endl;
   std::cerr << "  --width <width>                     The width of the window (default 1280)." << std::endl;
   std::cerr << "  --height <height>                   The height of the window (default 1024)." << std::endl;
   std::cerr << "  --hFOV <horizontal field of view>   The horizontal field of view in degrees (default 40)." << std::endl;
@@ -492,6 +493,11 @@ int main(int argc, char** argv)
         return 2;
       }
       displayInfos.back().XSightNIC = argv[i];
+      if (++i >= argc) {
+        usage(argv[0]);
+        return 2;
+      }
+      displayInfos.back().XSightDisplay = std::stoi(argv[i]);
     }
     else if (std::string("--fullScreen") == argv[i]) {
       if (++i >= argc) {
@@ -1054,9 +1060,9 @@ int main(int argc, char** argv)
           depthAheadMicroseconds,
           2500,
           handlers, nullptr,
-          (i == 0) ? (&g_timingInfo) : nullptr, replayStreamID != 0
-        )
-        );
+          (i == 0) ? (&g_timingInfo) : nullptr, replayStreamID != 0,
+          displayInfos[i].XSightDisplay
+        ));
       } else {
         displays.push_back(std::make_shared<DisplayWindow>("ASDP Render Module " + std::to_string(i),
           g_composite, client, triggerID, triggerAheadMicroseconds, depthAheadMicroseconds, displayInfos[i].fps, 2500,
