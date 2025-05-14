@@ -53,7 +53,7 @@ using namespace asdp;
 using namespace asdp::render;
 using json = nlohmann::json;
 
-static std::string VERSION = "2.40.0";
+static std::string VERSION = "2.41.0";
 
 /// @brief The path to the configuration file. Defined in the CMakeLists file.
 std::filesystem::path g_dirPath = CONFIG_FILE_PATH;
@@ -343,7 +343,7 @@ struct DisplayInfo
   ToneMap toneMap = ToneMap();  ///< The tone map to use.
   bool useOpenXR = false;       ///< Use OpenXR for rendering? If so, overrides all of the following.
   std::string XSightNIC = "";   ///< NIC to listen to XSight on for rendering. If not empty, overrides all of the following.
-  int XSightDisplay = 2;        ///< The display to use for XSight rendering.
+  int XSightDisplay = 1;        ///< The display to use for XSight rendering.
   int width = 1280;             ///< The width of the display.
   int height = 1024;            ///< The height of the display.
   float hFOV = 40.0f;           ///< The horizontal field of view in degrees.

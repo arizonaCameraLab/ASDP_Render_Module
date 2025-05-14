@@ -1380,6 +1380,11 @@ void CompositeCameras::RenderView(asdp::Time scanOutTime, const float* viewProje
   // Unbind the tone map texture from its texture unit
   glActiveTexture(GL_TEXTURE1);
   glBindTexture(GL_TEXTURE_1D, 0);
+
+  GLenum err = glGetError();
+  if (err != GL_NO_ERROR) {
+    std::cerr << "CompositeCameras::RenderView(): OpenGL error: " << err << std::endl;
+  }
 }
 
 void CompositeCameras::TearDownRenderFrame()
@@ -2003,20 +2008,17 @@ CompositePackXSightFrame::~CompositePackXSightFrame()
 void CompositePackXSightFrame::SetupRenderFrame(asdp::Time /* scanOutTime */)
 {
   glUseProgram(m_programId);
+
+  // Disable face culling, we always want to draw the quad.
   glDisable(GL_CULL_FACE);
-  glPointSize(1.0f);
 }
 
-//======================================
-// Revised by Sang Yoon to match the function declaration of the Composite class revised for the cylinderical projection
 void CompositePackXSightFrame::RenderView(asdp::Time /* scanOutTime */, const float* /* viewProjection */,
   const float* /* modelViewMatrix */, const float /* lh_hFOVf */, const float /* rh_hFOVf */,
   const float /* bh_vFOVf */, const float /* th_vFOVf */, const float /* nearf */, const float /* farf */)
-//======================================
 {
-  // Turn off depth testing and face culling, we always want to draw the quad.
+  // Turn off depth testing, we always want to draw the quad.
   glDisable(GL_DEPTH_TEST);
-  glDisable(GL_CULL_FACE);
 
   // Bind the texture to texture unit 0.
   glActiveTexture(GL_TEXTURE0);

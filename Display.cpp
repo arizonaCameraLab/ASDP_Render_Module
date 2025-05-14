@@ -2426,11 +2426,11 @@ void DisplayXSight::DisplayThread(
       m_status = "No monitors for fullscreen";
       return;
     }
-    if (desiredDisplay > count) {
+    if (desiredDisplay >= count) {
       m_status = "Invalid monitor requested (index larger than available monitors)";
       return;
     }
-    GLFWmonitor* fullScreenMonitor = monitors[desiredDisplay-1];
+    GLFWmonitor* fullScreenMonitor = monitors[desiredDisplay];
 
     // Engage full screen here along with specifying the refresh rate.  The width is half of that specified
     // because the final render pass will encode two monochrome pixels into each color pixel.

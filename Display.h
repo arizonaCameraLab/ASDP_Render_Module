@@ -333,7 +333,7 @@ protected:
       /// This is to ensure that the frames make it all the way through the Composite object before being needed.
       /// It is expected to be read from a configuration file and tuned for the specific hardware and software.
       /// @param depthAheadMicroseconds The offset in microseconds to subtract from the time of render start.
-      /// @param desiredDisplay The index of the desired display to use (1 = first, default 2).
+      /// @param desiredDisplay The index of the desired display to use (0 = first, default 1).
       /// @param desiredWidth The width of the display in pixels.  This must be a multiple of two because the
       /// data is encoded as two monochrome values per color pixel before being sent to the device.
       /// @param desiredHeight The height of the display in pixels.
@@ -359,7 +359,7 @@ protected:
         uint32_t renderAheadMicroseconds = 2500,  ///< @todo Match XSight specs
         std::shared_ptr<EventHandlers> handlers = nullptr, void* userData = nullptr,
         RenderTimingInfo* timingInfo = nullptr, bool replaying = false,
-        int desiredDisplay = 2,
+        int desiredDisplay = 1,
         int desiredWidth = 2560, int desiredHeight = 2048, float fps = 50,
         float horizontalFOVDegrees = 70.0f
       );
