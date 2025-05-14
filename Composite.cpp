@@ -211,7 +211,7 @@ void Composite::checkProgramError(GLuint programId, const std::string& exception
 /// @brief Helper class that handles defining and drawing a cube.
 class asdp::render::CompositeCube::MeshCube {
 public:
-  MeshCube(GLfloat scale, size_t numTriangles = 6 * 2 * 15 * 15, bool mono = false) {
+  MeshCube(GLfloat scale, size_t numTriangles = 6 * 2 * 15 * 15) {
     // Figure out how many quads we have per edge.  There
     // is a minimum of 1.
     size_t numQuads = numTriangles / 2;
@@ -280,7 +280,6 @@ public:
     // faces.
     {
       std::array<GLfloat, 3> modColor = { 0.0, 0.0, 1.0 };
-      if (mono) modColor = { 1.0, 1.0, 1.0 };
       std::vector<GLfloat> myBufferData =
         colorModulate(whiteBufferData, modColor);
 
@@ -305,7 +304,6 @@ public:
     // original face (mirror all 3).
     {
       std::array<GLfloat, 3> modColor = { 0.0, 1.0, 1.0 };
-      if (mono) modColor = { 1.0, 1.0, 1.0 };
       std::vector<GLfloat> myBufferData =
         colorModulate(whiteBufferData, modColor);
 
@@ -330,7 +328,6 @@ public:
     // around Y.
     {
       std::array<GLfloat, 3> modColor = { 1.0, 0.0, 0.0 };
-      if (mono) modColor = { 1.0, 1.0, 1.0 };
       std::vector<GLfloat> myBufferData =
         colorModulate(whiteBufferData, modColor);
 
@@ -355,7 +352,6 @@ public:
     // around Y.
     {
       std::array<GLfloat, 3> modColor = { 1.0, 0.0, 1.0 };
-      if (mono) modColor = { 1.0, 1.0, 1.0 };
       std::vector<GLfloat> myBufferData =
         colorModulate(whiteBufferData, modColor);
 
@@ -380,7 +376,6 @@ public:
     // around X.
     {
       std::array<GLfloat, 3> modColor = { 0.0, 1.0, 0.0 };
-      if (mono) modColor = { 1.0, 1.0, 1.0 };
       std::vector<GLfloat> myBufferData =
         colorModulate(whiteBufferData, modColor);
 
@@ -405,7 +400,6 @@ public:
     // around X.
     {
       std::array<GLfloat, 3> modColor = { 1.0, 1.0, 0.0 };
-      if (mono) modColor = { 1.0, 1.0, 1.0 };
       std::vector<GLfloat> myBufferData =
         colorModulate(whiteBufferData, modColor);
 
@@ -672,7 +666,7 @@ bool CompositeCube::SetupRendering()
   size_t trianglesPerSide = 2 * quadsPerEdge * quadsPerEdge;
   // 6 faces
   size_t numTriangles = static_cast<size_t>(trianglesPerSide * 6);
-  m_roomCube = std::shared_ptr<MeshCube>(new MeshCube(m_radius, numTriangles, m_isXSight));
+  m_roomCube = std::shared_ptr<MeshCube>(new MeshCube(m_radius, numTriangles));
 
   return true;
 }
@@ -1645,7 +1639,7 @@ CompositeLineRawData::CompositeLineRawData(GLfloat x0, GLfloat y0, GLfloat x1, G
   glewExperimental = true;
   GLenum ret = glewInit();
   if (ret != GLEW_OK) {
-    throw std::runtime_error("CompositeLineRawData::SetupRendering(): Failed to initialize GLEW: " + ret);
+    throw std::runtime_error("CompositeLineRawData::CompositeLineRawData(): Failed to initialize GLEW: " + ret);
   }
   // Clear any GL error that Glew caused.  Apparently on Non-Windows
   // platforms, this can cause a spurious error 1280.
@@ -1664,7 +1658,7 @@ CompositeLineRawData::CompositeLineRawData(GLfloat x0, GLfloat y0, GLfloat x1, G
   glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
   glBindTexture(GL_TEXTURE_1D, 0);
 
-  // Create and fill in the vertex buffer object for the line.
+  // Create the vertex buffer object for the line.
   glGenBuffers(1, &m_vertexBufferObject);
   if (m_vertexBufferObject == 0) {
     m_numPixels = 0;
@@ -1820,5 +1814,257 @@ void CompositeLineRawData::TearDownRenderFrame()
 void CompositeLineRawData::DrawHeadOrientation(float view_farf, int screen_width)
 {
     // Do nothing for CompositeLineRawData.
+}
+//======================================
+
+//==================================================================================================
+// Objects needed by the CompositePackXSightFrame class.
+
+static const GLchar* packXSightFrameVertexShader =
+R"(#version 330 core
+   layout (location = 0) in vec2 aPos;
+   layout (location = 1) in vec2 aTexCoord;
+
+   uniform int displayWidth;
+
+   out vec2 TexCoord1, TexCoord2;
+
+   void main()
+   {
+      gl_Position = vec4(aPos, 0.0, 1.0);
+      TexCoord1 = aTexCoord;
+      TexCoord2 = aTexCoord;
+
+      // The texture coordinates are those of the centers of the two pixels to be merged into
+      // one on the output pixel.  This is a screen-aligned rectangle with a texture whose horizontal size
+      // is twice the number of pixels in the image.  We compute the two coordinates that when interpolated
+      // across the triangle will land on the left pixel and the right pixel, respectively.
+      // We do this by truncating the first texture coordinate to the left pixel and adding half a pixel
+      // to it to get the right pixel.
+      // NOTE that texture coordinates 0 and 1 refer to the far corners of their respective texels, not
+      // to their centers.  Also, the corners of the rectangle are at the edges of the pixels, not at their centers.
+      // This means that we want to shift the texture coordinates by half a texel to the left and right, where
+      // there are twice as many texels as pixels in X.
+      int displayPixel = int(aTexCoord.x * float(displayWidth-1));
+      float texturePixel1 = displayPixel * 2;
+      float texturePixel2 = texturePixel1 + 1;
+      TexCoord1.x -= 0.5f/(2*displayWidth);
+      TexCoord2.x += 0.5f/(2*displayWidth);
+   })";
+
+static const GLchar* packXSightFrameFragmentShader =
+R"(#version 330 core
+   uniform sampler2D textureID;
+
+   in vec2 TexCoord1, TexCoord2;
+   out vec4 FragColor;
+
+   void main()
+   {
+      // Read the two neighboring pixel values using the two texture coordinates.
+      vec3 color1 = texture(textureID, TexCoord1).rgb;
+      vec3 color2 = texture(textureID, TexCoord2).rgb;
+
+      // Compute the average of the R, G, and B channels of each pixel.
+      float avg1 = (color1.r + color1.g + color1.b) / 3.0;
+      float avg2 = (color2.r + color2.g + color2.b) / 3.0;
+
+      // Store the first pixel into the blue channel and the second into the green channel,
+      // making red 0 and the alpha 1.
+      FragColor.r = 0.0f;
+      FragColor.g = avg2;
+      FragColor.b = avg1;
+      FragColor.a = 1.0f;
+   })";
+
+CompositePackXSightFrame::CompositePackXSightFrame(GLuint inputTexture, int displayWidth)
+  : Composite()
+  , m_inputTexture(inputTexture)
+  , m_displayWidth(displayWidth)
+  , m_programId(0)
+  , m_displayWidthID(0)
+  , m_numIndices(0)
+{
+  // Check the input parameters
+  if (inputTexture == 0) {
+    throw std::runtime_error("Zero texture ID");
+  }
+  if (displayWidth <= 0) {
+    throw std::runtime_error("Invalid display width");
+  }
+
+  // Initialize GLEW in our context. It is okay to initialize it more than once.
+  glewExperimental = true;
+  GLenum ret = glewInit();
+  if (ret != GLEW_OK) {
+    throw std::runtime_error("Failed to initialize GLEW: " + ret);
+  }
+  // Clear any GL error that Glew caused.  Apparently on Non-Windows
+  // platforms, this can cause a spurious error 1280.
+  glGetError();
+
+  // Create the vertex buffer object for the line.
+  glGenBuffers(1, &m_vertexBufferObject);
+  if (m_vertexBufferObject == 0) {
+    throw std::runtime_error("glGenBuffers failed");
+  }
+
+  // Create the index buffer object for the line.
+  glGenBuffers(1, &m_indexBufferObject);
+  if (m_indexBufferObject == 0) {
+    throw std::runtime_error("glGenBuffers failed");
+  }
+}
+
+bool CompositePackXSightFrame::SetupRendering()
+{
+  GLuint vertexShaderId = glCreateShader(GL_VERTEX_SHADER);
+  GLuint fragmentShaderId = glCreateShader(GL_FRAGMENT_SHADER);
+
+  try {
+    // vertex shader
+    glShaderSource(vertexShaderId, 1, &packXSightFrameVertexShader, NULL);
+    glCompileShader(vertexShaderId);
+    checkShaderError(vertexShaderId, "Vertex shader compilation failed.");
+
+    // fragment shader
+    glShaderSource(fragmentShaderId, 1, &packXSightFrameFragmentShader, NULL);
+    glCompileShader(fragmentShaderId);
+    checkShaderError(fragmentShaderId, "Fragment shader compilation failed.");
+
+    // linking shader program
+    m_programId = glCreateProgram();
+    glAttachShader(m_programId, vertexShaderId);
+    glAttachShader(m_programId, fragmentShaderId);
+    glLinkProgram(m_programId);
+    checkProgramError(m_programId, "Shader program link failed.");
+
+    // once linked into a program, we no longer need the shaders.
+    glDeleteShader(vertexShaderId);
+    glDeleteShader(fragmentShaderId);
+  }
+  catch (std::runtime_error& e) {
+    std::cerr << "Cannot construct shader program: " << e.what() << std::endl;
+    return false;
+  }
+
+  // Get the IDs for all of the uniform parameters we will want to change.
+  m_displayWidthID = glGetUniformLocation(m_programId, "displayWidth");
+  if (m_displayWidthID == -1) {
+    std::cerr << "Failed to get uniform display width ID" << std::endl;
+    return false;
+  }
+
+  // Fill in the vertex data.
+  // There are two spatial coordinates and two texture coordinate per vertex.
+  // The texture coordinates are the normalized position along the line.
+  std::vector<GLfloat> vertices = {
+      -1.0f, -1.0f, 0.0f, 0.0f,
+       1.0f, -1.0f, 1.0f, 0.0f,
+       1.0f,  1.0f, 1.0f, 1.0f,
+      -1.0f,  1.0f, 0.0f, 1.0f
+  };
+
+  // Index data to share position data
+  std::vector<GLuint> indices = { 0, 1, 2, 0, 2, 3 };
+  m_numIndices = static_cast<GLsizei>(indices.size());
+
+  // Unbind any currently bound vertex array object.
+  // We cannot use vertex array objects because we're potentially going to be called
+  // from multiple OpenGL contexts in different threads and VAOs are not shared between
+  // contexts.
+  glBindVertexArray(0);
+
+  // Enable the vertex attribute arrays we are going to use
+  glEnableVertexAttribArray(0);
+  glEnableVertexAttribArray(1);
+
+  // Draw the line using its vertex buffer objects after specifying its layout.
+  // Draw the final point on the line because OpenGL doesn't fill that point in.
+  glBindBuffer(GL_ARRAY_BUFFER, m_vertexBufferObject);
+  glBufferData(GL_ARRAY_BUFFER, sizeof(vertices[0]) * vertices.size(), vertices.data(), GL_STATIC_DRAW);
+  glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+  glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_indexBufferObject);
+  glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices[0]) * indices.size(), indices.data(), GL_STATIC_DRAW);
+  glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+
+  return true;
+}
+
+CompositePackXSightFrame::~CompositePackXSightFrame()
+{
+  // Delete the buffers and shader program (all calls ignore being called on an invalid ID).
+  glDeleteBuffers(1, &m_vertexBufferObject);
+  glDeleteBuffers(1, &m_indexBufferObject);
+  glDeleteProgram(m_programId);
+}
+
+void CompositePackXSightFrame::SetupRenderFrame(asdp::Time /* scanOutTime */)
+{
+  glUseProgram(m_programId);
+  glDisable(GL_CULL_FACE);
+  glPointSize(1.0f);
+}
+
+//======================================
+// Revised by Sang Yoon to match the function declaration of the Composite class revised for the cylinderical projection
+void CompositePackXSightFrame::RenderView(asdp::Time /* scanOutTime */, const float* /* viewProjection */,
+  const float* /* modelViewMatrix */, const float /* lh_hFOVf */, const float /* rh_hFOVf */,
+  const float /* bh_vFOVf */, const float /* th_vFOVf */, const float /* nearf */, const float /* farf */)
+//======================================
+{
+  // Turn off depth testing and face culling, we always want to draw the quad.
+  glDisable(GL_DEPTH_TEST);
+  glDisable(GL_CULL_FACE);
+
+  // Bind the texture to texture unit 0.
+  glActiveTexture(GL_TEXTURE0);
+  glBindTexture(GL_TEXTURE_2D, m_inputTexture);
+  glUniform1i(m_inputTexture, 0);
+
+  // Set the display-width uniform.
+  glUniform1i(m_displayWidthID, m_displayWidth);
+
+  // Unbind any currently bound vertex array object.
+  // We cannot use vertex array objects because we're potentially going to be called
+  // from multiple OpenGL contexts in different threads and VAOs are not shared between
+  // contexts.
+  glBindVertexArray(0);
+
+  // Enable the vertex attribute arrays we are going to use
+  glEnableVertexAttribArray(0);
+  glEnableVertexAttribArray(1);
+
+  // Draw the quad using its vertex buffer objects after specifying its layout.
+  glBindBuffer(GL_ARRAY_BUFFER, m_vertexBufferObject);
+  glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), 0);
+  glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
+  glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_indexBufferObject);
+  glDrawElements(GL_TRIANGLES, m_numIndices, GL_UNSIGNED_INT, 0);
+  glBindBuffer(GL_ARRAY_BUFFER, 0);
+  glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+
+  // Unbind the image from its texture unit
+  glActiveTexture(GL_TEXTURE0);
+  glBindTexture(GL_TEXTURE_2D, 0);
+
+  GLenum err = glGetError();
+  if (err != GL_NO_ERROR) {
+    std::cerr << "CompositePackXSightFrame::RenderView(): OpenGL error: " << err << std::endl;
+  }
+}
+
+void CompositePackXSightFrame::TearDownRenderFrame()
+{
+  glUseProgram(0);
+}
+
+//======================================
+// Added by Sang Yoon for an override method inherited from the Composite class
+// Note that this method is not used in the CompositeLineRawData class.
+void CompositePackXSightFrame::DrawHeadOrientation(float view_farf, int screen_width)
+{
+  // Do nothing for CompositeLineRawData.
 }
 //======================================

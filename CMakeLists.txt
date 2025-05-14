@@ -309,6 +309,7 @@ if(BUILD_TESTS)
     Composite_Test
     CompositeCameras_Test
     CompositeLineRawData_Test
+    CompositePackXSightFrame_Test
     SharedContext_Test
     Display_Test
     Fullscreen_Test
