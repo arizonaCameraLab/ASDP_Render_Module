@@ -93,6 +93,9 @@ public:
 
   /// @brief The delaunay triangulation.
   GEO::Delaunay_var m_delaunay = nullptr;
+
+  /// @brief Stored vector of "from" points used to construct the triangulation.
+  std::vector<double> m_points;
 };
 
 DistortionBagOfMappings::DistortionBagOfMappings_impl::DistortionBagOfMappings_impl(Bag const& mappings)
@@ -117,14 +120,13 @@ DistortionBagOfMappings::DistortionBagOfMappings_impl::DistortionBagOfMappings_i
   }
 
   // Create a list of input points to use to generate the Delaunay triangulation.
-  std::vector<double> points;
   for (auto const& mapping : m_bag) {
-    points.push_back(mapping[0][0]);
-    points.push_back(mapping[0][1]);
+    m_points.push_back(mapping[0][0]);
+    m_points.push_back(mapping[0][1]);
   }
 
   // Create a Delaunay triangulation in 2D from the "from" points in the mapping.
-  m_delaunay->set_vertices(m_bag.size(), points.data());
+  m_delaunay->set_vertices(m_bag.size(), m_points.data());
 
   // Create a mapping from the "from" points to the "to" points in the mapping.
   for (size_t i = 0; i < m_bag.size(); ++i) {
