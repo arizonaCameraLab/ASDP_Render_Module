@@ -1664,7 +1664,7 @@ CompositeLineRawData::CompositeLineRawData(GLfloat x0, GLfloat y0, GLfloat x1, G
   glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
   glBindTexture(GL_TEXTURE_1D, 0);
 
-  // Create and fill in the vertex buffer object for the line.
+  // Create the vertex buffer object for the line.
   glGenBuffers(1, &m_vertexBufferObject);
   if (m_vertexBufferObject == 0) {
     m_numPixels = 0;
@@ -1831,19 +1831,19 @@ R"(#version 330 core
 
    layout (location = 0) in vec2 aPos;
    layout (location = 1) in vec2 aTexCoord;
-   layout (location = 2) in int displayWidth;
+   uniform int displayWidth;
 
    out vec2 TexCoord1, TexCoord2;
 
    void main()
    {
       gl_Position = vec4(aPos, 0.0, 1.0);
-      texCoord1 = aTexCoord;
-      texCoord2 = aTexCoord;
+      TexCoord1 = aTexCoord;
+      TexCoord2 = aTexCoord;
 
       // The texture coordinates are those of the centers of the two pixels to be merged into
       // one on the output pixel.  This is a screen-aligned rectangle with a texture whose horizontal size
-      // is half the number of pixels in the image.  We compute the two coordinates that when interpolated
+      // is twice the number of pixels in the image.  We compute the two coordinates that when interpolated
       // across the triangle will land on the left pixel and the right pixel, respectively.
       // We do this by truncating the first texture coordinate to the left pixel and adding half a pixel
       // to it to get the right pixel.
@@ -1859,12 +1859,12 @@ R"(#version 330 core
    out vec4 FragColor;
    in vec2 TexCoord1, TexCoord2;
 
-   uniform sampler1D textureID;
+   uniform sampler2D textureID;
    void main()
    {
       // Read the two neighboring pixel values using the two texture coordinates.
-      vec4 color1 = texture(textureID, TexCoord1);
-      vec4 color2 = texture(textureID, TexCoord2);
+      vec3 color1 = texture(textureID, TexCoord1).rgb;
+      vec3 color2 = texture(textureID, TexCoord2).rgb;
 
       // Compute the average of the R, G, and B channels of each pixel.
       float avg1 = (color1.r + color1.g + color1.b) / 3.0;
@@ -1903,9 +1903,15 @@ CompositePackXSightFrame::CompositePackXSightFrame(GLuint inputTexture, int disp
   // platforms, this can cause a spurious error 1280.
   glGetError();
 
-  // Create and fill in the vertex buffer object for the line.
+  // Create the vertex buffer object for the line.
   glGenBuffers(1, &m_vertexBufferObject);
   if (m_vertexBufferObject == 0) {
+    throw std::runtime_error("glGenBuffers failed");
+  }
+
+  // Create the index buffer object for the line.
+  glGenBuffers(1, &m_indexBufferObject);
+  if (m_indexBufferObject == 0) {
     throw std::runtime_error("glGenBuffers failed");
   }
 }
@@ -1945,7 +1951,7 @@ bool CompositePackXSightFrame::SetupRendering()
   // Get the IDs for all of the uniform parameters we will want to change.
   m_displayWidthID = glGetUniformLocation(m_programId, "displayWidth");
   if (m_displayWidthID == -1) {
-    std::cerr << "Failed to get uniform texture ID" << std::endl;
+    std::cerr << "Failed to get uniform display width ID" << std::endl;
     return false;
   }
 
@@ -1954,8 +1960,9 @@ bool CompositePackXSightFrame::SetupRendering()
 
 CompositePackXSightFrame::~CompositePackXSightFrame()
 {
-  // Delete the buffer and shader program (all calls ignore being called on an invalid ID).
+  // Delete the buffers and shader program (all calls ignore being called on an invalid ID).
   glDeleteBuffers(1, &m_vertexBufferObject);
+  glDeleteBuffers(1, &m_indexBufferObject);
   glDeleteProgram(m_programId);
 }
 
@@ -1973,8 +1980,9 @@ void CompositePackXSightFrame::RenderView(asdp::Time /* scanOutTime */, const fl
   const float /* bh_vFOVf */, const float /* th_vFOVf */, const float /* nearf */, const float /* farf */)
 //======================================
 {
-  // Turn off depth testing, we always want to draw the quad.
+  // Turn off depth testing and face culling, we always want to draw the quad.
   glDisable(GL_DEPTH_TEST);
+  glDisable(GL_CULL_FACE);
 
   // Bind the texture to texture unit 0.
   glActiveTexture(GL_TEXTURE0);
@@ -1989,17 +1997,18 @@ void CompositePackXSightFrame::RenderView(asdp::Time /* scanOutTime */, const fl
   // parameters along with the viewport render information.
 
   // Fill in the vertex data.
-  // There are two spatial coordinates and one texture coordinate per vertex.
+  // There are two spatial coordinates and two texture coordinate per vertex.
   // The texture coordinates are the normalized position along the line.
+  /// @todo do this in the render set up to reduce the work.
   std::vector<GLfloat> vertices = {
-      -1.0f, -1.0f, 0.0f, 0.0f, 0.0f,
-       1.0f, -1.0f, 0.0f, 1.0f, 0.0f,
-       1.0f,  1.0f, 0.0f, 1.0f, 1.0f,
-      -1.0f,  1.0f, 0.0f, 0.0f, 1.0f
+      -1.0f, -1.0f, 0.0f, 1.0f,
+       1.0f, -1.0f, 1.0f, 1.0f,
+       1.0f,  1.0f, 1.0f, 0.0f,
+      -1.0f,  1.0f, 0.0f, 0.0f
   };
 
   // Index data to share position data
-  GLushort indices[] = { 0, 1, 2, 0, 2, 3 };
+  std::vector<GLuint> indices = { 0, 1, 2, 0, 2, 3 };
 
   // Unbind any currently bound vertex array object.
   // We cannot use vertex array objects because we're potentially going to be called
@@ -2014,16 +2023,24 @@ void CompositePackXSightFrame::RenderView(asdp::Time /* scanOutTime */, const fl
   // Draw the line using its vertex buffer objects after specifying its layout.
   // Draw the final point on the line because OpenGL doesn't fill that point in.
   glBindBuffer(GL_ARRAY_BUFFER, m_vertexBufferObject);
-  glBufferData(GL_ARRAY_BUFFER, sizeof(vertices[0]) * vertices.size(), vertices.data(), GL_DYNAMIC_DRAW);
-  glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), 0);
-  glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3 * sizeof(float)));
-  glDrawArrays(GL_LINES, 0, vertices.size() / 3);
-  glDrawArrays(GL_POINTS, 1, 1);
+  glBufferData(GL_ARRAY_BUFFER, sizeof(vertices[0]) * vertices.size(), vertices.data(), GL_STATIC_DRAW);
+  glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), 0);
+  glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
+
+  glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_indexBufferObject);
+  glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices[0]) * indices.size(), indices.data(), GL_STATIC_DRAW);
+
+  glDrawElements(GL_TRIANGLES, indices.size(), GL_UNSIGNED_INT, 0);
   glBindBuffer(GL_ARRAY_BUFFER, 0);
 
   // Unbind the image from its texture unit
   glActiveTexture(GL_TEXTURE0);
-  glBindTexture(GL_TEXTURE_1D, 0);
+  glBindTexture(GL_TEXTURE_2D, 0);
+
+  GLenum err = glGetError();
+  if (err != GL_NO_ERROR) {
+    std::cerr << "CompositePackXSightFrame::RenderView(): OpenGL error: " << err << std::endl;
+  }
 }
 
 void CompositePackXSightFrame::TearDownRenderFrame()

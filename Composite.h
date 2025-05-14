@@ -471,11 +471,16 @@ namespace asdp {
       /// @brief Vertex buffer object for the quad
       GLuint m_vertexBufferObject;
 
+      /// @brief Index buffer object for the quad
+      GLuint m_indexBufferObject;
+
       /// @brief The OpenGL program ID.
       GLuint m_programId;
 
       /// The uniform identifier for the display width shader parameter.
       int m_displayWidthID;
+
+      /// The uniform identifier for the 
 
       // Overridden methods
       bool SetupRendering() override;

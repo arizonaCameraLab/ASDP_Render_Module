@@ -14,24 +14,45 @@
 #include <ASDP_Core_API.h>
 #include <GLFW/glfw3.h>
 
-/// @brief Make an image whose brightness varies from the top of the image to the bottom.
-/// @details The image will be a gradient from the minimum value at the bottom to the
-/// maximum value at the top.  The image order matches that of stored images, which is
-/// different from OpenGL texture order; the first pixel is at the upper left of the image.
-/// OpenGL must have been initialized before calling this function.
+/// @brief Make an image that is mostly black but has vertical lines that vary from dark at
+/// the top to bright at the bottom.  The lines will be red, green, blue, and white and they
+/// will be separated from each other by twenty pixels.  The line widths will be 1 pixel for the
+/// first repetition, on an odd and even column, and 2 pixels for the second repetition --
+/// again on an odd and even column.
 /// @param width Width of the image.
 /// @param height Height of the image.
-/// @param minVal Minimum value of the image (at the bottom of the image).
-/// @param maxVal Maximum value of the image (at the top of the image).
+/// @param minVal Minimum value of the image (at the top of the texture).
+/// @param maxVal Maximum value of the image (at the bottom of the texture).
 /// @return An OpenGL texture ID.
 GLuint MakeTexture(int width, int height, uint16_t minVal, uint16_t maxVal)
 {
-  std::vector<uint16_t> image(width * height);
+  std::vector<int> columns = { 20, 40, 61, 81, 100,101, 121,122 };
+  std::vector< std::array<double, 3> > colors = {
+    { 1.0, 0, 0 },   // Red
+    { 0, 1.0, 0 },   // Green
+    { 0, 0, 1.0 },   // Blue
+    { 1.0, 1.0, 1.0 }, // White
+    { 1.0, 1.0, 1.0 }, // White
+    { 1.0, 1.0, 1.0 }, // White
+    { 1.0, 1.0, 1.0 }, // White
+    { 1.0, 1.0, 1.0 } // White
+  };
+
+  std::vector<uint16_t> image(width * height * 3);
   float range = static_cast<float>(maxVal - minVal);
   for (int j = 0; j < height; j++) {
     float normJ = static_cast<float>(j) / static_cast<float>(height - 1);
     for (int i = 0; i < width; i++) {
-      image[i + j*width] = static_cast<uint16_t>(maxVal - normJ*range);
+      for (int c = 0; c < 3; c++) {
+        int index = 3 * (i + j * width) + c;
+        image[index] = 0;
+        // If the column is in the list of columns, set the color to the scaled color for that column.
+        for (size_t line = 0; line < columns.size(); line++) {
+          if (i == columns[line]) {
+            image[index] = static_cast<uint16_t>(minVal + normJ * range * colors[line][c]);
+          }
+        }
+      }
     }
   }
 
@@ -46,7 +67,7 @@ GLuint MakeTexture(int width, int height, uint16_t minVal, uint16_t maxVal)
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
    // Load image into texture
-  glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, width, height, 0, GL_RED, GL_UNSIGNED_SHORT, image.data());
+  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16, width, height, 0, GL_RGB, GL_UNSIGNED_SHORT, image.data());
   glBindTexture(GL_TEXTURE_2D, 0);
 
   return texture;
@@ -54,25 +75,9 @@ GLuint MakeTexture(int width, int height, uint16_t minVal, uint16_t maxVal)
 
 int main()
 {
-  int windowSize = 640;
-  int width = 1280;
+  int windowWidth = 640;
+  int width = 2 * windowWidth;
   int height = 1024;
-  int nx = 3;
-  int ny = 3;
-  double hFOV = 40;
-  double vFOV = 32.5;
-  double degreesPerSecond = 15.0;
-
-  asdp::render::ViewRenderInfo viewRenderInfo;
-  viewRenderInfo.width = windowSize;
-  viewRenderInfo.height = windowSize;
-  // Set the view to be +/- 60 degrees so we can see more of the scene
-  viewRenderInfo.bottomHalfFOV = -60;
-  viewRenderInfo.topHalfFOV = 60;
-  viewRenderInfo.leftHalfFOV = -60;
-  viewRenderInfo.rightHalfFOV = 60;
-  std::vector<asdp::render::ViewRenderInfo> views;
-  views.push_back(viewRenderInfo);
 
   // Initialize the library
   if (!glfwInit()) {
@@ -81,7 +86,7 @@ int main()
   }
 
   // Create a windowed mode window and its OpenGL context
-  GLFWwindow* window = glfwCreateWindow(windowSize, windowSize, "CompositeCameras_Test", NULL, NULL);
+  GLFWwindow* window = glfwCreateWindow(windowWidth, height, "CompositePackXSightFrame_Test", NULL, NULL);
   if (!window) {
     std::cerr << "Failed to create GLFW window\n";
     glfwTerminate();
@@ -101,85 +106,14 @@ int main()
   // platforms, this can cause a spurious error 1280.
   glGetError();
 
-  // Construct the cameras to render.
-  // Construct the image queues to render, one per camera.
-  std::vector< std::shared_ptr<asdp::render::CameraRenderInfo> > cameras;
-  for (int x = 0; x < nx; x++) {
-    uint16_t minVal = static_cast<uint16_t>(x * (65535.0/3) / nx);
-    for (int y = 0; y < ny; y++) {
-      // Odd-numbered columns are rotated with X facing up, even with it facing down.
-      // The transformations are complicated by the fact that our Euler order of operations
-      // is XYZ.  We need to rotate around X by 90 or -90 degrees to point straight up or down.
-      // We then need to rotate around the the new Y axis by -90 plus the desired Y rotation
-      // so that the original X axis will be pointing down.  Finally, we need to rotate around
-      // the new Z axis by 90 + the desired vertical rotation.
-      double desiredHor = 1.01 * (x - (nx - 1) / 2.0) * vFOV;  ///< Camera is rotated portrait
-      double desiredVer = 1.01 * (y - (ny - 1) / 2.0) * hFOV;  ///< Camera is rotated portrait
-      std::array<double, 3> orientationDegrees;
-      if (x % 2 == 0) {
-        orientationDegrees[0] = 90;
-        orientationDegrees[1] = -90 - desiredHor;
-        orientationDegrees[2] = 90 - desiredVer;
-      }
-      else {
-        orientationDegrees[0] = 90;
-        orientationDegrees[1] = 90 - desiredHor;
-        orientationDegrees[2] = -90 + desiredVer;
-      }
+  // Create the texture to render to.
+  GLuint texture = MakeTexture(width, height, 0, 65535);
 
-      // Make the image for the camera.
-      uint16_t maxVal = static_cast<uint16_t>(2 * (65535.0 / 3) + y * (65535.0 / 3) / ny);
-      std::shared_ptr<asdp::render::ImageData> image = std::make_shared<asdp::render::ImageData>();
-      image->texture = MakeTexture(width, height, minVal, maxVal);
-      std::shared_ptr<asdp::render::ImageQueue> iq = std::make_shared<asdp::render::ImageQueue>();
-      // We must insert two images because the renderer will grab the newest two images.
-      iq->InsertImage(image);
-      iq->InsertImage(image);
-
-      // Give each camera a unique ID
-      std::shared_ptr<asdp::render::CameraRenderInfo> camera(new asdp::render::CameraRenderInfo(x * ny + y,
-        std::array<double, 3>(), orientationDegrees,
-        std::array<uint16_t, 2>(), std::array<double, 2>({ hFOV, vFOV }),
-        nullptr, nullptr, iq, -1.0f));
-
-      cameras.push_back(camera);
-    }
-  }
-
-  // Make a tenth camera that will be used to test the color offset and gain parameters.
-  // It will be smaller and drawn in the center in front of the other cameras (its position
-  // will be negative Y). Its values will be adjusted by the offset and gain to stretch the
-  // whole value across the image.
-  {
-    std::array<double, 3> position = { 0.0, -0.5, 0.0 };
-    std::array<double, 3> orientation = { 0.0, 0.0, 0.0 };
-    std::array<double, 2> fieldOfView = { hFOV/2, vFOV/2 };
-    std::shared_ptr<asdp::render::ImageData> image = std::make_shared<asdp::render::ImageData>();
-    // Color values run from half of the image value to 3/4 of the image value.
-    image->texture = MakeTexture(width, height, 65535/2, 65535*3/4);
-    std::shared_ptr<asdp::render::ImageQueue> iq = std::make_shared<asdp::render::ImageQueue>();
-    // We must insert two images because the renderer will grab the newest two images.
-    iq->InsertImage(image);
-    iq->InsertImage(image);
-    std::shared_ptr<asdp::render::CameraRenderInfo> camera(new asdp::render::CameraRenderInfo(9, position, orientation, std::array<uint16_t, 2>(), fieldOfView,
-      nullptr, nullptr, iq, -1.0f));
-    // Color values run from half of the image value to 3/4 of the image value.
-    camera->SetColorOffsetGain(-0.5f * 65535, 4);
-    cameras.push_back(camera);
-  }
-
-  // Use the default tone-map texture for the cameras.
-  asdp::render::ToneMap toneMap;
-  GLuint toneMapTexture = toneMap.GenerateTexture();
-  std::shared_ptr<asdp::render::RangeEstimatorFixed> rangeEstimator =
-    std::make_shared<asdp::render::RangeEstimatorFixed>(0.0, 1.0);
-  // Create a CompositeCameras object to render once the window is open and the context is active.
-  std::shared_ptr<asdp::render::PoseAdjuster> poseAdjuster = std::make_shared<asdp::render::PoseAdjuster>();
-  asdp::render::CompositeCameras composite(cameras, toneMapTexture, poseAdjuster, asdp::Time(),
-    0, asdp::Time(), nullptr, rangeEstimator);
+  // Create a CompositePackXSightFrame object to render once the window is open and the context is active.
+  asdp::render::CompositePackXSightFrame composite(texture, windowWidth);
 
   // Loop until the user closes the window.
-  std::cout << "You should see a row of three distorted dark boxes horizontally across" << std::endl;
+  std::cout << "You should see @todo" << std::endl;
   std::cout << "the center of the view, the first and third brighter on the left and the" << std::endl;
   std::cout << "second brighter on the right." << std::endl;
   std::cout << "Above should be brighter extensions and below should be darker ones." << std::endl;
@@ -195,14 +129,12 @@ int main()
   bool spacePressed = false;
   while (!glfwWindowShouldClose(window)) {
 
-    // Set the range to be the whole color range or only the quarter of it above the middle.
-    if (rangeZoomed) {
-      rangeEstimator->SetCurrentRange(0.25, 0.75);
-    } else {
-      rangeEstimator->SetCurrentRange(0.0, 1.0);
-    }
-
     // Render here
+    std::vector<asdp::render::ViewRenderInfo> views;
+    asdp::render::ViewRenderInfo view;
+    view.width = windowWidth;
+    view.height = height;
+    views.push_back(view);
     composite.Render(asdp::Time(), views);
 
     // Swap front and back buffers
