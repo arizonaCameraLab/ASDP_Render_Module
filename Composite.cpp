@@ -1828,9 +1828,9 @@ void CompositeLineRawData::DrawHeadOrientation(float view_farf, int screen_width
 
 static const GLchar* packXSightFrameVertexShader =
 R"(#version 330 core
-
    layout (location = 0) in vec2 aPos;
    layout (location = 1) in vec2 aTexCoord;
+
    uniform int displayWidth;
 
    out vec2 TexCoord1, TexCoord2;
@@ -1848,18 +1848,19 @@ R"(#version 330 core
       // We do this by truncating the first texture coordinate to the left pixel and adding half a pixel
       // to it to get the right pixel.
       int displayPixel = int(aTexCoord.x * float(displayWidth-1));
-      int texturePixel1 = displayPixel * 2;
-      int texturePixel2 = texturePixel1 + 1;
-      TexCoord1.x = float(texturePixel1) / float(displayWidth*2 - 1);
-      TexCoord2.x = float(texturePixel2) / float(displayWidth*2 - 1);
+      float texturePixel1 = displayPixel * 2;
+      float texturePixel2 = texturePixel1 + 1;
+      TexCoord1.x = texturePixel1 / float(displayWidth*2 - 1);
+      TexCoord2.x = texturePixel2 / float(displayWidth*2 - 1);
    })";
 
 static const GLchar* packXSightFrameFragmentShader =
 R"(#version 330 core
-   out vec4 FragColor;
-   in vec2 TexCoord1, TexCoord2;
-
    uniform sampler2D textureID;
+
+   in vec2 TexCoord1, TexCoord2;
+   out vec4 FragColor;
+
    void main()
    {
       // Read the two neighboring pixel values using the two texture coordinates.
@@ -1881,7 +1882,7 @@ R"(#version 330 core
 CompositePackXSightFrame::CompositePackXSightFrame(GLuint inputTexture, int displayWidth)
   : Composite()
   , m_inputTexture(inputTexture)
-  , m_displayWidth(0)
+  , m_displayWidth(displayWidth)
   , m_programId(0)
   , m_displayWidthID(0)
   , m_numIndices(0)
