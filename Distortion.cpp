@@ -103,12 +103,15 @@ DistortionBagOfMappings::DistortionBagOfMappings_impl::DistortionBagOfMappings_i
 {
   try {
     // Make sure that Geogram is initialized; okay to call more than once.
-    GEO::initialize(GEO::GEOGRAM_INSTALL_HANDLERS);
+    GEO::initialize();
 
     // Create an empty Delaunay triangulation
     m_delaunay = GEO::Delaunay::create(2, "BDEL2d");
-    //m_delaunay->set_reorder(false);
+
+    // Configure the triangulation to be deterministic, thread-safe, and to not add external infinite regions.
+    m_delaunay->set_reorder(false);
     m_delaunay->set_thread_safe(true);
+    m_delaunay->set_keeps_infinite(false);
   }
   catch (std::exception const &e) {
     throw std::runtime_error("DistortionBagOfMappings: Error initializing Delaunay triangulation: "
@@ -119,7 +122,8 @@ DistortionBagOfMappings::DistortionBagOfMappings_impl::DistortionBagOfMappings_i
     return;
   }
 
-  // Create a list of input points to use to generate the Delaunay triangulation.
+  // Create a list of "from" points to use to generate the Delaunay triangulation.
+  m_points.reserve(m_bag.size() * 2);
   for (auto const& mapping : m_bag) {
     m_points.push_back(mapping[0][0]);
     m_points.push_back(mapping[0][1]);
@@ -128,7 +132,8 @@ DistortionBagOfMappings::DistortionBagOfMappings_impl::DistortionBagOfMappings_i
   // Create a Delaunay triangulation in 2D from the "from" points in the mapping.
   m_delaunay->set_vertices(m_bag.size(), m_points.data());
 
-  // Create a mapping from the "from" points to the "to" points in the mapping.
+  // Create a mapping from the "from" points to the "to" points in the mapping
+  // so that we can look them up after the points are re-ordered.
   for (size_t i = 0; i < m_bag.size(); ++i) {
     m_map[m_bag[i][0]] = m_bag[i][1];
   }
@@ -142,16 +147,16 @@ DistortionBagOfMappings::DistortionBagOfMappings(Bag const& mappings)
 std::array<double, 3> DistortionBagOfMappings::BarycentricCoordinates(const Point2D& p,
   const Point2D& a, const Point2D& b, const Point2D& c)
 {
-  // Calculate the area of the triangle formed by p1, p2, and p3
-  double area = 0.5 * (-b[1] * c[0] + a[1] * (-b[0] + c[0]) + a[0] * (b[1] - c[1]) + b[0] * c[1]);
-  if (std::abs(area) < 1e-8) {
-    // The points are collinear, so we can't interpolate. Return the coordinate of the first point.
-    return { 1, 0, 0 };
+  // Calculate 2x the area of the triangle formed by a, b, and c
+  double doubleArea = (-b[1] * c[0] + a[1] * (-b[0] + c[0]) + a[0] * (b[1] - c[1]) + b[0] * c[1]);
+  if (std::abs(doubleArea) < 1e-8) {
+    // The points are collinear, so we can't interpolate. Return coordinate slightly outside of the triangle.
+    return { 0.5, 0.4, -0.1 };
   }
 
   // Calculate the barycentric coordinates of point p
-  double s = 1 / (2 * area) * (a[1] * c[0] - a[0] * c[1] + (c[1] - a[1]) * p[0] + (a[0] - c[0]) * p[1]);
-  double t = 1 / (2 * area) * (a[0] * b[1] - a[1] * b[0] + (a[1] - b[1]) * p[0] + (b[0] - a[0]) * p[1]);
+  double s = 1 / (doubleArea) * (a[1] * c[0] - a[0] * c[1] + (c[1] - a[1]) * p[0] + (a[0] - c[0]) * p[1]);
+  double t = 1 / (doubleArea) * (a[0] * b[1] - a[1] * b[0] + (a[1] - b[1]) * p[0] + (b[0] - a[0]) * p[1]);
   double u = 1 - s - t;
 
   // Return them in the order that allows you to interoplate points.
@@ -175,7 +180,7 @@ double DistortionBagOfMappings::DetermineValue(Point2D const& p1, double v1,
   // Calculate the barycentric coordinates of the point p
   std::array<double, 3> coords = BarycentricCoordinates(p, p1, p2, p3);
 
-  // Interpolate the value using the barycentric coordinates
+  // Interpolate/extrapolate the value using the barycentric coordinates
   return coords[0] * v1 + coords[1] * v2 + coords[2] * v3;
 }
 
@@ -204,7 +209,7 @@ std::array<double, 3> DistortionBagOfMappings::MapPoint(std::array<double, 3> po
   GEO::Delaunay_var& d = m_impl->m_delaunay;
   double min_distance2 = std::numeric_limits<double>::max();
   GEO::index_t closest_triangle = 0;
-  for (GEO::index_t t = 0; t < d->nb_finite_cells(); ++t) {
+  for (GEO::index_t t = 0; t < d->nb_cells(); ++t) {
     // Get the vertices of the triangle
     double const* v;
     v = d->vertex_ptr(d->cell_vertex(t, 0));
@@ -223,7 +228,7 @@ std::array<double, 3> DistortionBagOfMappings::MapPoint(std::array<double, 3> po
 
     // Compute the average of the three vertices and find the squared distance (faster
     // to compute than the distance and still monotonically increasing) from the
-    // point to this, use it to determine whether this triangle is closest
+    // point to this center; use it to determine whether this triangle is closest
     // in case we're not inside any triangle.
     std::array<double, 2> center = { (A[0] + B[0] + C[0]) / 3.0, (A[1] + B[1] + C[1]) / 3.0 };
     double dx = center[0] - ptInPlane[0];
@@ -249,7 +254,7 @@ std::array<double, 3> DistortionBagOfMappings::MapPoint(std::array<double, 3> po
   Point2D const& Bto = m_impl->m_map[B];
   Point2D const& Cto = m_impl->m_map[C];
 
-  // Use the "to" mapping X and Y coordinates based on weighting the Barcycentric coordinates
+  // Use the "to" mapping X and Y coordinates based on weighting the Barycentric coordinates
   // from the triangle and applying them individually to the two indices in the "to" triangle.
   double xD = DetermineValue(A, Ato[0], B, Bto[0], C, Cto[0], ptInPlane);
   double yD = DetermineValue(A, Ato[1], B, Bto[1], C, Cto[1], ptInPlane);
@@ -407,6 +412,48 @@ std::string Distortion::Test()
 
   // Test the DistortionBagOfMappings class.
   {
+    /// Check BarycentricCoordinates:
+    {
+      DistortionBagOfMappings::Point2D a = { 12.0, 3.0 };
+      DistortionBagOfMappings::Point2D b = { 1.0, 0.0 };
+      DistortionBagOfMappings::Point2D c = { 0.0, 1.0 };
+      std::array<double, 3> coords = DistortionBagOfMappings::BarycentricCoordinates(a, a, b, c);
+      if (std::abs(coords[0] - 1) > 1e-8) {
+        return "DistortionBagOfMappings: Barycentric coordinates are not correct for point 1";
+      }
+      coords = DistortionBagOfMappings::BarycentricCoordinates(b, a, b, c);
+      if (std::abs(coords[1] - 1) > 1e-8) {
+        return "DistortionBagOfMappings: Barycentric coordinates are not correct for point 2";
+      }
+      coords = DistortionBagOfMappings::BarycentricCoordinates(c, a, b, c);
+      if (std::abs(coords[2] - 1) > 1e-8) {
+        return "DistortionBagOfMappings: Barycentric coordinates are not correct for point 3";
+      }
+    }
+
+    // Check IsPointInTriangle:
+    {
+      DistortionBagOfMappings::Point2D a = { 0.0, 0.0 };
+      DistortionBagOfMappings::Point2D b = { 1.0, 0.0 };
+      DistortionBagOfMappings::Point2D c = { 0.0, 1.0 };
+      if (!DistortionBagOfMappings::IsPointInTriangle(a, a, b, c)) {
+        return "DistortionBagOfMappings: Point A is not in triangle";
+      }
+      if (!DistortionBagOfMappings::IsPointInTriangle(b, a, b, c)) {
+        return "DistortionBagOfMappings: Point B is not in triangle";
+      }
+      if (!DistortionBagOfMappings::IsPointInTriangle(c, a, b, c)) {
+        return "DistortionBagOfMappings: Point C is not in triangle";
+      }
+
+      if (!DistortionBagOfMappings::IsPointInTriangle({ 0.25, 0.25 }, a, b, c)) {
+        return "DistortionBagOfMappings: Point inside triangle is not in triangle";
+      }
+      if (DistortionBagOfMappings::IsPointInTriangle({ 1.0, 1.0 }, a, b, c)) {
+        return "DistortionBagOfMappings: Point outside triangle is in triangle";
+      }
+    }
+
     // A mapping with an empty bag should always return the points unchanged.
     {
       DistortionBagOfMappings::Bag mappings;
