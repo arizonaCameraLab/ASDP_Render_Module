@@ -56,7 +56,7 @@ public:
 class GimbalZaber_X_G_RST : public Gimbal
 {
 public:
-  /// @brief Constructor for the GimbalZaber_X_G_RST class.
+  /// @brief Constructor for the GimbalZaber_X_G_RST class, using two devices each with one axis.
   /// @param comPortName The name of the serial port to use for communication.
   /// @param deviceID The device ID to use, default is 1.
   /// @param maxVelocityDeg The maximum velocity in degrees/second, default -1 leaves unchanged.

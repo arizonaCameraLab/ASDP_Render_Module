@@ -31,7 +31,6 @@ void GimbalFake::MoveAbsolute(double yawDegrees, double pitchDegrees)
 class GimbalZaber_X_G_RST::GimbalZaber_X_G_RST_Impl
 {
 public:
-  int deviceID = -1;    ///< The device ID of the gimbal we're using.
   int commPort = -1;    ///< The serial port index we're using.
   //bool status = false;  ///< The status of the gimbal, true = good, false = broken.
 
@@ -47,10 +46,10 @@ public:
   // Helper functions.
 
   /// @brief Send a command to the gimbal without waiting for a response.
-  /// @param axis The axis number on the device to send the command to.
+  /// @param device The device number to send the command to.
   /// @param cmd The command to send, including all parameters after spaces.
   /// @return True if the command was sent successfully, false otherwise.
-  bool sendCommand(uint8_t axis, std::string cmd);
+  bool sendCommand(uint8_t device, std::string cmd);
 
   struct Response {
     int deviceID = -1;    ///< The device ID of the sender
@@ -75,11 +74,12 @@ public:
   /// not a complete response, the vector will be empty.
   std::vector<Response> getResponses(struct timeval *timeout);
 
-  unsigned valueForLocation(double degrees) {
+  int valueForLocation(double degrees) {
     // The conversion from counts to real-world position is as follows (from the API documentation):
     // position = data * microstepSize;
     // Therefore, data = position / microstepSize;
-    return degrees / microstepSize;
+    // The direction of motion is the opposite of the direction of the gimbal, so we flip the sign.
+    return -degrees / microstepSize;
   }
 
   unsigned valueForSpeed(double degreesPerSecond)   {
@@ -100,11 +100,11 @@ public:
   bool setSpeed(double degreesPerSecond);
   bool setAccel(double degreesPerSecondSquared);
 
-  /// @brief Get the status for a particular axis.
-  /// @param axis The axis number to get the status for.
+  /// @brief Get the status for a particular device.
+  /// @param device The device number to get the status for.
   /// @param out A response structure to fill in with the status data.
-  /// @return True if things are working well, false if there are problems or the wrong axis responds.
-  bool getStatus(uint8_t axis, Response& out);
+  /// @return True if things are working well, false if there are problems or the wrong device responds.
+  bool getStatus(uint8_t device, Response& out);
 
   /// @brief Move the gimbal to the home position.
   /// @details The home position is defined as the position where the gimbal is on its limit switches.
@@ -118,14 +118,15 @@ public:
   std::string moveAbsolute(double yawDegrees, double pitchDegrees);
 };
 
-bool GimbalZaber_X_G_RST::GimbalZaber_X_G_RST_Impl::sendCommand(uint8_t axis, std::string cmd)
+bool GimbalZaber_X_G_RST::GimbalZaber_X_G_RST_Impl::sendCommand(uint8_t device, std::string cmd)
 {
   if (commPort == -1) {
     return false;
   }
 
   // Construct the command string.
-  std::string command = "/" + std::to_string(deviceID) + " " + std::to_string(axis) + " " + cmd + "\n";
+  int axis = 1;
+  std::string command = "/" + std::to_string(device) + " " + std::to_string(axis) + " " + cmd + "\n";
 
   // Send the command to the gimbal.
   int result = vrpn_write_characters(commPort, (unsigned char*)(command.c_str()), command.length());
@@ -143,8 +144,8 @@ bool GimbalZaber_X_G_RST::GimbalZaber_X_G_RST_Impl::parseResponse(uint8_t* buffe
   // warning flag (2 bytes, '--' if okay), data (often '0', varies by command).
 
   // Verify that the places where we expect spaces are spaces.
-  if (buffer[3] != ' ' || buffer[5] != ' ' || buffer[8] != ' ' || buffer[11] != ' ' ||
-      buffer[15] != ' ' || buffer[18] != ' ') {
+  if (buffer[3] != ' ' || buffer[5] != ' ' || buffer[8] != ' ' || buffer[13] != ' ' ||
+      buffer[16] != ' ') {
     return false;
   }
 
@@ -169,15 +170,16 @@ bool GimbalZaber_X_G_RST::GimbalZaber_X_G_RST_Impl::parseResponse(uint8_t* buffe
   statusStr[3] = buffer[12];
   out.idle = std::string(statusStr) == "IDLE";
 
+  // The return code WR means that there is no reference position.
   if (buffer[14] == '-' && buffer[15] == '-') {
     out.faults = false;
   } else {
     out.faults = true;
   }
 
-  uint8_t* status = buffer + 19;
+  uint8_t* status = buffer + 17;
   while (*status != '\r') {
-    out.data += *status;
+    out.data += *(status++);
   }
 
   return true;
@@ -194,7 +196,7 @@ std::vector<GimbalZaber_X_G_RST::GimbalZaber_X_G_RST_Impl::Response>
   int ret = vrpn_read_available_characters(commPort, buffer.data(), buffer.size(), timeout);
 
   // If we got nothing, return an empty response.
-  if (ret <= 1) {
+  if (ret <= 0) {
     return responses;
   }
 
@@ -202,7 +204,10 @@ std::vector<GimbalZaber_X_G_RST::GimbalZaber_X_G_RST_Impl::Response>
   // bad (default) response.
   size_t i = 0;
   if (buffer[0] != '@') {
-    responses.push_back(Response());
+    // Skip over info and alert messages, but push a bad response if we get something else.
+    if (buffer[0] != '!' && buffer[0] != '#') {
+      responses.push_back(Response());
+    }
     while (++i < buffer.size() && buffer[i] != '@') {
       // Skip over the bad data.
     }
@@ -247,18 +252,18 @@ bool GimbalZaber_X_G_RST::GimbalZaber_X_G_RST_Impl::setSpeed(double degreesPerSe
 
   unsigned data = valueForSpeed(degreesPerSecond);
 
-  for (int axis = 1; axis <= 2; axis++) {
-    // Set the speed on both axes on the device, awaiting a response from each axis.
-    if (!sendCommand(axis, "set maxspeed " + std::to_string(data))) {
+  for (int device = 1; device <= 2; device++) {
+    // Set the speed on both devices, awaiting a response from each device.
+    if (!sendCommand(device, "set maxspeed " + std::to_string(data))) {
       return false;
     }
-    struct timeval timeout = { 0, 500000 };
+    struct timeval timeout = { 0, 100000 };
     std::vector<Response> responses = getResponses(&timeout);
     if (responses.size() != 1) {
       return false;
     }
     Response const& r = responses[0];
-    if (r.deviceID != deviceID || r.scope != axis || !r.success || r.faults) {
+    if (r.deviceID != device || r.scope != 1 || !r.success || r.faults) {
       return false;
     }
   }
@@ -274,18 +279,18 @@ bool GimbalZaber_X_G_RST::GimbalZaber_X_G_RST_Impl::setAccel(double degreesPerSe
 
   unsigned data = valueForAccel(degreesPerSecondSquared);
 
-  for (int axis = 1; axis <= 2; axis++) {
-    // Set the speed on both axes on the device, awaiting a response within 10ms from each axis.
-    if (!sendCommand(axis, "set maxspeed " + std::to_string(data))) {
+  for (int device = 1; device <= 2; device++) {
+    // Set the speed on both axes on the device, awaiting a response within 10ms from each device.
+    if (!sendCommand(device, "set accel " + std::to_string(data))) {
       return false;
     }
-    struct timeval timeout = { 0, 10000 };
+    struct timeval timeout = { 0, 100000 };
     std::vector<Response> responses = getResponses(&timeout);
     if (responses.size() != 1) {
       return false;
     }
     Response const& r = responses[0];
-    if (r.deviceID != deviceID || r.scope != axis || !r.success || r.faults) {
+    if (r.deviceID != device || r.scope != 1 || !r.success || r.faults) {
       return false;
     }
   }
@@ -293,25 +298,25 @@ bool GimbalZaber_X_G_RST::GimbalZaber_X_G_RST_Impl::setAccel(double degreesPerSe
   return true;
 }
 
-bool GimbalZaber_X_G_RST::GimbalZaber_X_G_RST_Impl::getStatus(uint8_t axis, Response& out)
+bool GimbalZaber_X_G_RST::GimbalZaber_X_G_RST_Impl::getStatus(uint8_t device, Response& out)
 {
   if (commPort == -1) {
     return false;
   }
 
-  // Send the status command to the axis.
-  if (!sendCommand(axis, "get maxspeed")) {
+  // Send the status command to the device.
+  if (!sendCommand(device, "get maxspeed")) {
     return false;
   }
 
-  // Wait for a response from the axis.
-  struct timeval timeout = { 0, 10000 };
+  // Wait for a response from the device.
+  struct timeval timeout = { 0, 100000 };
   std::vector<Response> responses = getResponses(&timeout);
   if (responses.size() != 1) {
     return false;
   }
   Response const& r = responses[0];
-  if (r.deviceID != deviceID || r.scope != axis || !r.success || r.faults) {
+  if (r.deviceID != device || r.scope != 1 || !r.success) {
     return false;
   }
   out = r;
@@ -320,75 +325,76 @@ bool GimbalZaber_X_G_RST::GimbalZaber_X_G_RST_Impl::getStatus(uint8_t axis, Resp
 
 std::string GimbalZaber_X_G_RST::GimbalZaber_X_G_RST_Impl::home()
 {
-  // Send the home command to each axis, awaiting a response within 10ms from each axis.
-  for (int axis = 1; axis <= 2; axis++) {
-    if (!sendCommand(axis, "home")) {
+  // Send the home command to each device, awaiting a response within 10ms from each device.
+  for (int device = 1; device <= 2; device++) {
+    if (!sendCommand(device, "home")) {
       return "Could not send home command";
     }
-    struct timeval timeout = { 0, 10000 };
+    struct timeval timeout = { 0, 100000 };
     std::vector<Response> responses = getResponses(&timeout);
     if (responses.size() != 1) {
       return "No response to home command";
     }
     Response const& r = responses[0];
-    if (r.deviceID != deviceID || r.scope != axis || !r.success || r.faults) {
+    if (r.deviceID != device || r.scope != 1 || !r.success) {
       return "Failure reported after home command";
     }
   }
   // Wait for both axes to come to a halt.
-  bool axisRunning;
+  bool deviceRunning;
   do {
-    axisRunning = false;
-    for (int axis = 1; axis <= 2; axis++) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    deviceRunning = false;
+    for (int device = 1; device <= 2; device++) {
       Response status;
-      if (!getStatus(axis, status)) {
-        return "Bad status after home command";
+      if (!getStatus(device, status)) {
+        return "Bad status after home command, device " + std::to_string(device);
       }
       if (!status.idle) {
-        axisRunning = true;
+        deviceRunning = true;
       }
     }
-  } while (axisRunning);
+  } while (deviceRunning);
   return "";
 }
 
 std::string GimbalZaber_X_G_RST::GimbalZaber_X_G_RST_Impl::moveAbsolute(double yawDegrees, double pitchDegrees)
 {
-  // Send the motion command to each axis, scaling the physical units to device units.
+  // Send the motion command to each device, scaling the physical units to device units.
   std::vector<double> axes = { yawDegrees, pitchDegrees };
-  for (int axis = 1; axis <= 2; axis++) {
-    unsigned locationData = valueForLocation(axes[axis - 1]);
+  for (int device = 1; device <= 2; device++) {
+    int locationData = valueForLocation(axes[device - 1]);
     unsigned speedData = valueForSpeed(speed);
     unsigned accelData = valueForAccel(accel);
-    // Send move on both axes on the device, awaiting a response within 10ms from each axis.
-    if (!sendCommand(axis, "move abs " + std::to_string(locationData))) {
+    // Send move on both axes on the device, awaiting a response within 10ms from each device.
+    if (!sendCommand(device, "move abs " + std::to_string(locationData))) {
       return "Could not send move command";
     }
-    struct timeval timeout = { 0, 10000 };
+    struct timeval timeout = { 0, 100000 };
     std::vector<Response> responses = getResponses(&timeout);
     if (responses.size() != 1) {
       return "No response to move command";
     }
     Response const& r = responses[0];
-    if (r.deviceID != deviceID || r.scope != axis || !r.success || r.faults) {
+    if (r.deviceID != device || r.scope != 1 || !r.success || r.faults) {
       return "Failure reported after move command";
     }
   }
 
   // Wait for both axes to come to a halt.
-  bool axisRunning;
+  bool deviceRunning;
   do {
-    axisRunning = false;
-    for (int axis = 1; axis <= 2; axis++) {
+    deviceRunning = false;
+    for (int device = 1; device <= 2; device++) {
       Response status;
-      if (!getStatus(axis, status)) {
+      if (!getStatus(device, status)) {
         return "Bad status after move command";
       }
       if (!status.idle) {
-        axisRunning = true;
+        deviceRunning = true;
       }
     }
-  } while (axisRunning);
+  } while (deviceRunning);
 
   return "";
 }
@@ -405,7 +411,6 @@ GimbalZaber_X_G_RST::GimbalZaber_X_G_RST(std::string comPortName, int deviceID,
   }
   if (m_impl->commPort != -1) {
     // Set the device parameters
-    m_impl->deviceID = deviceID;
     m_impl->speed = maxVelocityDeg;
     m_impl->accel = maxAccelDeg;
 
@@ -438,8 +443,8 @@ bool GimbalZaber_X_G_RST::Status()
   // Query the status of the device and verify that none of the error or warning
   // fields are filled in.
   GimbalZaber_X_G_RST_Impl::Response status;
-  for (int axis = 1; axis <= 2; axis++) {
-    if (!m_impl->getStatus(axis, status)) {
+  for (int device = 1; device <= 2; device++) {
+    if (!m_impl->getStatus(device, status)) {
       return false;
     }
   }
