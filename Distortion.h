@@ -16,6 +16,7 @@
 #include <array>
 #include <vector>
 #include <string>
+#include <memory>
 
 namespace asdp {
   namespace render {

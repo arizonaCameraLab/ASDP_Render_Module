@@ -81,7 +81,7 @@ std::array<double, 3> DistortionRadialLERP::MapPoint(std::array<double, 3> point
 // Bag of mappings distortion class
 
 /// @brief Spatial query acceleration structure to determine which triangles are near a given location.
-static class NearbyTriangles {
+class NearbyTriangles {
 public:
 
   /// @brief Constructor
