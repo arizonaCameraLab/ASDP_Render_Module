@@ -80,6 +80,125 @@ std::array<double, 3> DistortionRadialLERP::MapPoint(std::array<double, 3> point
 //==============================================================================
 // Bag of mappings distortion class
 
+/// @brief Spatial query acceleration structure to determine which triangles are near a given location.
+static class NearbyTriangles {
+public:
+
+  /// @brief Constructor
+  /// @param delaunay The Delaunay triangulation to use for the spatial queries.
+  /// @param binsPerSide The number of bins to use for the spatial queries.
+  NearbyTriangles(GEO::Delaunay_var const& delaunay, size_t binsPerSide = 10)
+    : m_binsPerSide(binsPerSide)
+    , m_minX(0), m_maxX(0), m_minY(0), m_maxY(0)
+  {
+    if (delaunay->nb_cells() == 0 || binsPerSide == 0) {
+      return;
+    }
+
+    // Determine the bounding box for all of the points in the Delaunay triangulation.
+    m_minX = m_maxX = delaunay->vertex_ptr(0)[0];
+    m_minY = m_maxY = delaunay->vertex_ptr(0)[1];
+    for (GEO::index_t i = 1; i < delaunay->nb_vertices(); ++i) {
+      double x = delaunay->vertex_ptr(i)[0];
+      double y = delaunay->vertex_ptr(i)[1];
+      if (x < m_minX) { m_minX = x; }
+      if (x > m_maxX) { m_maxX = x; }
+      if (y < m_minY) { m_minY = y; }
+      if (y > m_maxY) { m_maxY = y; }
+    }
+
+    // Construct the (initially empty) bins.
+    m_bins.resize(m_binsPerSide);
+    for (size_t i = 0; i < m_binsPerSide; ++i) {
+      m_bins[i].resize(m_binsPerSide);
+    }
+
+    // Fill each triangle into the bins that its vertices and center fall into along with the bins
+    // to either side in X and Y.
+    for (GEO::index_t t = 0; t < delaunay->nb_cells(); ++t) {
+
+      // Get the vertices of the triangle
+      GEO::index_t v0 = delaunay->cell_vertex(t, 0);
+      GEO::index_t v1 = delaunay->cell_vertex(t, 1);
+      GEO::index_t v2 = delaunay->cell_vertex(t, 2);
+
+      // Get the center of the triangle
+      double x = (delaunay->vertex_ptr(v0)[0] + delaunay->vertex_ptr(v1)[0] + delaunay->vertex_ptr(v2)[0]) / 3;
+      double y = (delaunay->vertex_ptr(v0)[1] + delaunay->vertex_ptr(v1)[1] + delaunay->vertex_ptr(v2)[1]) / 3;
+
+      // Find the bins for each vertex and the center
+      std::array<size_t, 2> bin0 = BinForPoint(delaunay->vertex_ptr(v0)[0], delaunay->vertex_ptr(v0)[1]);
+      std::array<size_t, 2> bin1 = BinForPoint(delaunay->vertex_ptr(v1)[0], delaunay->vertex_ptr(v1)[1]);
+      std::array<size_t, 2> bin2 = BinForPoint(delaunay->vertex_ptr(v2)[0], delaunay->vertex_ptr(v2)[1]);
+      std::array<size_t, 2> binC = BinForPoint(x, y);
+
+      // Add the triangle to the bins
+      AddTriangle(t, bin0);
+      AddTriangle(t, bin1);
+      AddTriangle(t, bin2);
+      AddTriangle(t, binC);
+    }
+  }
+
+  /// @brief Get the set of triangles that are near a given point.
+  /// @param x The X coordinate of the point.
+  /// @param y The Y coordinate of the point.
+  /// @return A set of triangle indices that are near the point.
+  std::set<GEO::index_t> GetTriangles(double x, double y) const
+  {
+    // If there are no bins, return an empty set
+    if (m_bins.size() == 0) {
+      return std::set<GEO::index_t>();
+    }
+
+    // Find the bin for the point
+    std::array<size_t, 2> bin = BinForPoint(x, y);
+
+    // Return the triangles in that bin
+    return m_bins[bin[0]][bin[1]];
+  }
+
+protected:
+  /// @brief Determine which bin a given point falls inside.
+  std::array<size_t, 2> BinForPoint(double x, double y) const
+  {
+    // Find the coordinates of the bin
+    int xi = static_cast<int>((x - m_minX) / (m_maxX - m_minX) * m_binsPerSide);
+    int yi = static_cast<int>((y - m_minY) / (m_maxY - m_minY) * m_binsPerSide);
+
+    // Clamp the bin to the valid range
+    if (xi < 0) { xi = 0; }
+    if (xi >= static_cast<int>(m_binsPerSide)) { xi = m_binsPerSide - 1; }
+    if (yi < 0) { yi = 0; }
+    if (yi >= static_cast<int>(m_binsPerSide)) { yi = m_binsPerSide - 1; }
+
+    std::array<size_t, 2> bin = { xi, yi };
+    return bin;
+  }
+
+  /// @brief Add a triangle to the specified bin and to the bins to either side in X and Y.
+  /// @param t The index of the triangle to add.
+  /// @param bin The bin to add the triangle to.
+  void AddTriangle(GEO::index_t t, std::array<size_t, 2> const& bin)
+  {
+    m_bins[bin[0]][bin[1]].insert(t);
+    if (bin[0] > 0) { m_bins[bin[0] - 1][bin[1]].insert(t); }
+    if (bin[0] < m_binsPerSide - 1) { m_bins[bin[0] + 1][bin[1]].insert(t); }
+    if (bin[1] > 0) { m_bins[bin[0]][bin[1] - 1].insert(t); }
+    if (bin[1] < m_binsPerSide - 1) { m_bins[bin[0]][bin[1] + 1].insert(t); }
+  }
+
+  size_t m_binsPerSide; ///< Number of bins per side of the bounding box
+
+  double m_minX; ///< Minimum X coordinate of the bounding box
+  double m_minY; ///< Minimum Y coordinate of the bounding box
+  double m_maxX; ///< Maximum X coordinate of the bounding box
+  double m_maxY; ///< Maximum Y coordinate of the bounding box
+
+  /// @brief Vector of bins in X by bins in Y by indices of triangles in this bin.
+  std::vector< std::vector < std::set<GEO::index_t> > > m_bins;
+};
+
 class DistortionBagOfMappings::DistortionBagOfMappings_impl {
 public:
   DistortionBagOfMappings_impl(Bag const& mappings);
@@ -88,7 +207,7 @@ public:
   /// @brief Keeps track of all of the points that were passed into the constructor.
   Bag m_bag;
 
-  /// @brief Map from "from" points to "to" points required because Delaunay triangulation reorders points
+  /// @brief Map from "from" points to "to" points required because Delaunay triangulation can reorder points
   std::map<Point2D, Point2D> m_map;
 
   /// @brief The delaunay triangulation.
@@ -96,6 +215,9 @@ public:
 
   /// @brief Stored vector of "from" points used to construct the triangulation.
   std::vector<double> m_points;
+
+  /// @brief Spatial query acceleration structure to determine which triangles are near a given location.
+  std::shared_ptr<NearbyTriangles> m_nearbyTriangles = nullptr;
 };
 
 DistortionBagOfMappings::DistortionBagOfMappings_impl::DistortionBagOfMappings_impl(Bag const& mappings)
@@ -160,6 +282,9 @@ DistortionBagOfMappings::DistortionBagOfMappings_impl::DistortionBagOfMappings_i
   for (size_t i = 0; i < m_bag.size(); ++i) {
     m_map[m_bag[i][0]] = m_bag[i][1];
   }
+
+  // Create a spatial query acceleration structure to determine which triangles are near a given location.
+  m_nearbyTriangles = std::make_shared<NearbyTriangles>(m_delaunay, 5);
 }
 
 DistortionBagOfMappings::DistortionBagOfMappings(Bag const& mappings)
@@ -221,26 +346,30 @@ std::array<double, 3> DistortionBagOfMappings::MapPoint(std::array<double, 3> po
 
   // Project the vector onto the Z = -1 plane (scales it to Z = -1)
   double scale = -1 / point[2];
-  // Inverse scale so we can multiply by it rather than divide by it, speeding up the calculation.
   std::array<double, 2> ptInPlane = { point[0] * scale, point[1] * scale };
+
+  // Inverse scale so we can multiply by it rather than divide by it, speeding up the calculation.
+  double invScale = -point[2];
 
   // Find the triangle that we're going to use to determine the Barycentric coordinates from.
   // Start by seeing if the point is inside any of the triangles in the Delaunay triangulation.
   // If it is, use that triangle.
   // Otherwise, find the triangle whose center is closet to the point.
-  // This is a brute-force search, but it should be fast enough for most cases.
+  // Search only the triangles that are near the point using the spatial query acceleration structure.
   GEO::Delaunay_var& d = m_impl->m_delaunay;
   double min_distance2 = std::numeric_limits<double>::max();
   GEO::index_t closest_triangle = 0;
-  for (GEO::index_t t = 0; t < d->nb_cells(); ++t) {
+  std::set<GEO::index_t> triangles = m_impl->m_nearbyTriangles->GetTriangles(ptInPlane[0], ptInPlane[1]);
+  Point2D A, B, C, center;
+  for (auto t : triangles) {
     // Get the vertices of the triangle
     double const* v;
     v = d->vertex_ptr(d->cell_vertex(t, 0));
-    std::array<double, 2> A = { v[0], v[1] };
+    A = { v[0], v[1] };
     v = d->vertex_ptr(d->cell_vertex(t, 1));
-    std::array<double, 2> B = { v[0], v[1] };
+    B = { v[0], v[1] };
     v = d->vertex_ptr(d->cell_vertex(t, 2));
-    std::array<double, 2> C = { v[0], v[1] };
+    C = { v[0], v[1] };
 
     // If we're inside this triangle, then we use it.
     if (IsPointInTriangle(ptInPlane, A, B, C)) {
@@ -259,7 +388,7 @@ std::array<double, 3> DistortionBagOfMappings::MapPoint(std::array<double, 3> po
     // to compute than the distance and still monotonically increasing) from the
     // point to this center; use it to determine whether this triangle is closest
     // in case we're not inside any triangle.
-    std::array<double, 2> center = { (A[0] + B[0] + C[0]) / 3.0, (A[1] + B[1] + C[1]) / 3.0 };
+    center = { (A[0] + B[0] + C[0]) / 3.0, (A[1] + B[1] + C[1]) / 3.0 };
     double dx = center[0] - ptInPlane[0];
     double dy = center[1] - ptInPlane[1];
     double distance2 = dx * dx + dy * dy;
@@ -272,11 +401,11 @@ std::array<double, 3> DistortionBagOfMappings::MapPoint(std::array<double, 3> po
   // Find the vertices of the closest triangle.
   double const* v;
   v = d->vertex_ptr(d->cell_vertex(closest_triangle, 0));
-  Point2D A = { v[0], v[1] };
+  A = { v[0], v[1] };
   v = d->vertex_ptr(d->cell_vertex(closest_triangle, 1));
-  Point2D B = { v[0], v[1] };
+  B = { v[0], v[1] };
   v = d->vertex_ptr(d->cell_vertex(closest_triangle, 2));
-  Point2D C = { v[0], v[1] };
+  C = { v[0], v[1] };
 
   // Use the map to find the corresponding points in the "to" triangle.
   Point2D const& Ato = m_impl->m_map[A];
@@ -289,7 +418,6 @@ std::array<double, 3> DistortionBagOfMappings::MapPoint(std::array<double, 3> po
   double yD = DetermineValue(A, Ato[1], B, Bto[1], C, Cto[1], ptInPlane);
 
   // Rescale the point and put it back onto same plane as the original point.
-  double invScale = 1 / scale;
   return { xD * invScale, yD * invScale, point[2] };
 }
 
@@ -441,6 +569,23 @@ std::string Distortion::Test()
 
   // Test the DistortionBagOfMappings class.
   {
+    /// Check NearbyTriangles
+    {
+      GEO::initialize();
+      GEO::Delaunay_var delaunay = GEO::Delaunay::create(2, "BDEL2d");
+      std::vector<std::array<double, 2>> points = { {0, 0}, {1, 0}, {0, 1}, {1, 1} };
+      delaunay->set_vertices(points.size(), points[0].data());
+      NearbyTriangles nearby(delaunay, 2);
+      std::set<GEO::index_t> triangles = nearby.GetTriangles(0.5, 0.5);
+      if (triangles.size() != 2) {
+        return "DistortionBagOfMappings: NearbyTriangles failed for 0.5, 0.5";
+      }
+      triangles = nearby.GetTriangles(0,0);
+      if (triangles.size() != 2) {
+        return "DistortionBagOfMappings: NearbyTriangles failed for 0, 0";
+      }
+    }
+
     /// Check BarycentricCoordinates:
     {
       DistortionBagOfMappings::Point2D a = { 12.0, 3.0 };
