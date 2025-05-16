@@ -132,6 +132,29 @@ DistortionBagOfMappings::DistortionBagOfMappings_impl::DistortionBagOfMappings_i
   // Create a Delaunay triangulation in 2D from the "from" points in the mapping.
   m_delaunay->set_vertices(m_bag.size(), m_points.data());
 
+  /*
+  // Write an OBJ file for debugging purposes that has all of the triangles in the Delaunay triangulation.
+  static int ID = 0;
+  std::ofstream objFile("XXX_delaunay" + std::to_string(ID++)+".obj");
+  if (objFile.is_open()) {
+    // Write the vertices
+    for (size_t i = 0; i < m_delaunay->nb_vertices(); ++i) {
+      objFile << "v " << m_delaunay->vertex_ptr(i)[0] << " " << m_delaunay->vertex_ptr(i)[1] << " 0" << std::endl;
+    }
+    // Write the triangles
+    for (GEO::index_t t = 0; t < m_delaunay->nb_cells(); ++t) {
+      objFile << "f";
+      for (GEO::index_t j = 0; j < 3; ++j) {
+        objFile << " " << m_delaunay->cell_vertex(t, j) + 1;
+      }
+      objFile << std::endl;
+    }
+    objFile.close();
+  } else {
+    std::cerr << "DistortionBagOfMappings: Unable to open Delaunay triangulation file for writing." << std::endl;
+  }
+  */
+
   // Create a mapping from the "from" points to the "to" points in the mapping
   // so that we can look them up after the points are re-ordered.
   for (size_t i = 0; i < m_bag.size(); ++i) {
@@ -224,6 +247,12 @@ std::array<double, 3> DistortionBagOfMappings::MapPoint(std::array<double, 3> po
       closest_triangle = t;
       min_distance2 = 0;
       break;
+    }
+
+    // Skip degenerate triangles that have small areas
+    double area = (-B[1] * C[0] + A[1] * (-B[0] + C[0]) + A[0] * (B[1] - C[1]) + B[0] * C[1]);
+    if (std::abs(area) < 1e-3) {
+      continue;
     }
 
     // Compute the average of the three vertices and find the squared distance (faster
