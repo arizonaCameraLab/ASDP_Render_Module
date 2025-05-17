@@ -30,20 +30,22 @@
 namespace asdp {
   namespace render {
 
-/// @brief Summary of information from image messages, including start, data, and end.
+/// @brief Summary of information from image messages.
 /// @details This enables us to retain the information about what messages were in a packet
 /// so that the data can be processed in the other thread without needing to keep around the
 /// stream packet object or re-parse it. This is necessary to avoid causing a bottleneck in the
 /// ReceiveDataThread.
 struct MessageSummary {
-  asdp::MessageID messageType = asdp::DISCOVERY;  ///< The type of message (filling in an arbitrary one here)
+  bool isFrameBegin = false;        ///< True if this is the start of a frame
+  bool isFrameEnd = false;          ///< True if this is the end of a frame
+  asdp::Time frameStartTime;       ///< The time the frame started
   asdp::Time time;                  ///< The time associated with the message
   uint32_t cameraID = 0;            ///< The camera ID
   uint16_t width = 0;               ///< The width of the image data (if present for a message type)
   uint16_t height = 0;              ///< The height of the image data (if present for a message type)
   uint16_t left = 0;                ///< The left edge of the region to process (if present for a message type)
-  uint16_t right = 0;               ///< The right edge of the region to process (if present for a message type)
   uint16_t top = 0;                 ///< The top edge of the region to process (if present for a message type)
+  uint16_t right = 0;               ///< The right edge of the region to process (if present for a message type)
   uint16_t bottom = 0;              ///< The bottom edge of the region to process (if present for a message type)
   float exposure = 0.0f;            ///< The exposure time for the image (if present for a message type)
   float gain = 0.0f;                ///< The gain for the image (if present for a message type)
