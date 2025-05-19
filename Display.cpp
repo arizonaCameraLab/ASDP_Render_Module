@@ -2254,6 +2254,17 @@ public:
 
   /// Depth buffer that we will render the full-sized image into.
   GLuint m_depthBuffer{ 0 };
+
+  //======================================
+  // For the X-sight helmet display, added by Sang Yoon to add key mappings
+
+  /// Whether the space bar was pressed during the last loop, used to toggle play/pause.
+  bool m_spacePressed = false;
+
+  /// Whether or no the 'd' key was pressed during the last loop, used to toggle depth computation.
+  bool m_dPressed = false;
+  bool m_displayingDepth = false;
+  //======================================
 };
 
 DisplayXSight::DisplayXSight(std::string NICName, std::shared_ptr<Composite> composite, Display* sharedWindow,
@@ -2571,6 +2582,39 @@ void DisplayXSight::DisplayThread(
       m_status = "Done";
       break;
     }
+
+    //======================================
+    // For the X-sight helmet display, added by Sang Yoon to add key mappings for closing windows (Q or ESCAPE key on keyboard),
+    // pausing/resuming replaying (SPACE key on keyboard),
+    // and enabling/disabling depth computation (d key on keyboard)
+
+    // Adding key mappings for closing windows
+    if (glfwGetKey(Display::m_impl->m_window, GLFW_KEY_Q) == GLFW_PRESS
+      || glfwGetKey(Display::m_impl->m_window, GLFW_KEY_ESCAPE) == GLFW_PRESS) {
+      m_composite.reset();
+      m_status = "Done";
+      break;
+    }
+
+    // Toggle play/pause when the space key is pressed (once per press/release cycle).
+    bool spacePressed = (glfwGetKey(Display::m_impl->m_window, GLFW_KEY_SPACE) == GLFW_PRESS);
+    if (spacePressed && !m_impl->m_spacePressed) {
+      if (m_eventHandlers && m_eventHandlers->ChangePlayPause) {
+          m_eventHandlers->ChangePlayPause(!m_nowPlaying, m_userData);
+      }
+    }
+    m_impl->m_spacePressed = spacePressed;
+
+    // Toggle depth computation when the 'd' key is pressed (once per press/release cycle).
+    bool dPressed = (glfwGetKey(Display::m_impl->m_window, GLFW_KEY_D) == GLFW_PRESS);
+    if (dPressed && !m_impl->m_dPressed) {
+      m_impl->m_displayingDepth = !m_impl->m_displayingDepth;
+      if (m_eventHandlers && m_eventHandlers->SetToRenderDepth) {
+        m_eventHandlers->SetToRenderDepth(m_impl->m_displayingDepth, m_userData);
+      }
+    }
+    m_impl->m_dPressed = dPressed;
+    //======================================
 
     // Process any incoming pose requests; update view orientation to match.
     bool packetReady = false;

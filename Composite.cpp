@@ -39,6 +39,10 @@ float g_detailed_view_bottomf;
 float g_detailed_view_nearf;
 //======================================
 
+//======================================
+// Added by Sang Yoon to fix a bug in drawing a line where the cylindrical projection is used
+glm::mat4 g_overview_translate; // model-view matrix of overview window; copied in the Render() method and used in the DrawHeadOrientation() method
+//======================================
 
 Composite::~Composite()
 {
@@ -155,6 +159,12 @@ void Composite::Render(asdp::Time scanOutTime, std::vector<ViewRenderInfo> views
     //RenderView(scanOutTime, glm::value_ptr(VP));
     // Revised:
     RenderView(scanOutTime, glm::value_ptr(VP), glm::value_ptr(ViewTranslate), view.leftHalfFOV, view.rightHalfFOV, view.bottomHalfFOV, view.topHalfFOV, view.nearClip, view.farClip);
+    //======================================
+
+    //======================================
+    // Added by Sang Yoon to fix a bug in drawing a line where the cylindrical projection is used
+    if (m_overview)
+        g_overview_translate = ViewTranslate; // This matrix is used in DrawHeadOrientation() method.
     //======================================
 
     //======================================
@@ -810,7 +820,13 @@ R"(#version 330 core
       if (useCP == 0) {
         gl_Position = viewProjection * poseAdjust * delta * vec4(aPos, 1.0);
       } else {
-        vec4 p = modelViewMatrix * poseAdjust * delta * vec4(aPos, 1.0);
+        //======================================
+        // Revised by Sang Yoon to fix a bug in drawing a line where the cylindrical projection is used
+        // Original: vec4 p = modelViewMatrix * poseAdjust * delta * vec4(aPos, 1.0);
+        // Revised:
+        vec4 p = modelViewMatrix * vec4(aPos, 1.0);
+        //======================================
+
         float length_xz = length(p.xz);
         float theta_x = atan(p.x, -p.z); // angle around y axis (angle in horizontal direction)
         float theta_y = atan(p.y, length_xz); // angle around bent x axis (angle in vertical direction)
@@ -1397,6 +1413,81 @@ void CompositeCameras::TearDownRenderFrame()
 }
 
 //======================================
+// Added by Sang Yoon to fix a bug in drawing a line where the cylindrical projection is used
+// Check if the line must be split or not. If the line must be split, the split points (view_sp1 and view_sp2) are calculated and true is returned.
+#define SPLIT_DIFF      0.00001
+bool CheckLineSplit(double view_a1, double view_a2, double view_p1[3], double view_p2[3], double view_sp1[3], double view_sp2[3])
+{
+  if (view_a1 == view_a2 || view_p1[0] == view_p2[0]) return false;
+  if (180.0 - view_a1 + view_a2 + 180.0 <= 180) {
+    double t = view_p2[0] / (view_p2[0] - view_p1[0]);
+
+    if (t + SPLIT_DIFF <= 1.0) {
+      view_sp1[0] = view_p2[0] + (t + SPLIT_DIFF) * (view_p1[0] - view_p2[0]);
+      view_sp1[1] = view_p2[1] + (t + SPLIT_DIFF) * (view_p1[1] - view_p2[1]);
+      view_sp1[2] = view_p2[2] + (t + SPLIT_DIFF) * (view_p1[2] - view_p2[2]);
+    }
+      else
+        return false;
+
+    if (t - SPLIT_DIFF >= 0.0) {
+      view_sp2[0] = view_p2[0] + (t - SPLIT_DIFF) * (view_p1[0] - view_p2[0]);
+      view_sp2[1] = view_p2[1] + (t - SPLIT_DIFF) * (view_p1[1] - view_p2[1]);
+      view_sp2[2] = view_p2[2] + (t - SPLIT_DIFF) * (view_p1[2] - view_p2[2]);
+    }
+    else
+      return false;
+
+    return true;
+  }
+  return false;
+}
+
+void DrawLineCP(glm::mat4 inverse_view_translate, glm::vec4 view_point1, double angle1, glm::vec4 view_point2, double angle2)
+{
+  bool line_split;
+  double view_a1, view_a2;
+  double view_p1[3], view_p2[3], view_sp1[3], view_sp2[3];
+  double tmpd;
+
+  view_a1 = angle1;
+  view_a2 = angle2;
+  view_p1[0] = view_point1[0]; view_p1[1] = view_point1[1]; view_p1[2] = view_point1[2];
+  view_p2[0] = view_point2[0]; view_p2[1] = view_point2[1]; view_p2[2] = view_point2[2];
+
+  if (view_a1 < view_a2) {
+    // Swap a1 and a2, and also p1 and p2, so that a1 is larger than a2.
+    tmpd = view_a1; view_a1 = view_a2; view_a2 = tmpd;
+    tmpd = view_p1[0]; view_p1[0] = view_p2[0]; view_p2[0] = tmpd;
+    tmpd = view_p1[1]; view_p1[1] = view_p2[1]; view_p2[1] = tmpd;
+    tmpd = view_p1[2]; view_p1[2] = view_p2[2]; view_p2[2] = tmpd;
+  }
+
+  glm::vec4 p1 = inverse_view_translate * glm::vec4(view_p1[0], view_p1[1], view_p1[2], 1.0);
+  glm::vec4 p2 = inverse_view_translate * glm::vec4(view_p2[0], view_p2[1], view_p2[2], 1.0);
+
+  line_split = CheckLineSplit(view_a1, view_a2, view_p1, view_p2, view_sp1, view_sp2);
+  if (line_split) {
+    glm::vec4 sp1 = inverse_view_translate * glm::vec4(view_sp1[0], view_sp1[1], view_sp1[2], 1.0);
+    glm::vec4 sp2 = inverse_view_translate * glm::vec4(view_sp2[0], view_sp2[1], view_sp2[2], 1.0);
+
+    glBegin(GL_LINES);
+    glVertex3f((GLfloat)p1[0], (GLfloat)p1[1], (GLfloat)p1[2]);
+    glVertex3f((GLfloat)sp1[0], (GLfloat)sp1[1], (GLfloat)sp1[2]);
+    glVertex3f((GLfloat)p2[0], (GLfloat)p2[1], (GLfloat)p2[2]);
+    glVertex3f((GLfloat)sp2[0], (GLfloat)sp2[1], (GLfloat)sp2[2]);
+    glEnd();
+  }
+  else {
+    glBegin(GL_LINES);
+    glVertex3f((GLfloat)p1[0], (GLfloat)p1[1], (GLfloat)p1[2]);
+    glVertex3f((GLfloat)p2[0], (GLfloat)p2[1], (GLfloat)p2[2]);
+    glEnd();
+  }
+}
+//======================================
+
+//======================================
 // Added by Sang Yoon to draw a rectangle to show the head orientation of detailed view in the overview window
 
 #define SQR(x)  ((x)*(x))
@@ -1563,12 +1654,35 @@ void CompositeCameras::DrawHeadOrientation(float view_farf, int screen_width)
     glUniform1f(m_depthScaleUniformID, -1.0);
 
     // Draw a rectangle
-    glBegin(GL_LINE_LOOP);
-    glVertex3f((GLfloat)intersection_left_bottom_point[0], (GLfloat)intersection_left_bottom_point[1], (GLfloat)intersection_left_bottom_point[2]);
-    glVertex3f((GLfloat)intersection_right_bottom_point[0], (GLfloat)intersection_right_bottom_point[1], (GLfloat)intersection_right_bottom_point[2]);
-    glVertex3f((GLfloat)intersection_right_top_point[0], (GLfloat)intersection_right_top_point[1], (GLfloat)intersection_right_top_point[2]);
-    glVertex3f((GLfloat)intersection_left_top_point[0], (GLfloat)intersection_left_top_point[1], (GLfloat)intersection_left_top_point[2]);
-    glEnd();
+    //======================================
+    // Revised by Sang Yoon to fix a bug in drawing a line where the cylindrical projection is used
+    if (m_CP_enabled) {
+      glm::mat4 inverse_view_translate = glm::inverse(g_overview_translate);
+      double angle_left_bottom, angle_right_bottom, angle_left_top, angle_right_top;
+      glm::vec4 view_intersection_left_bottom_point = g_overview_translate * glm::vec4(intersection_left_bottom_point[0], intersection_left_bottom_point[1], intersection_left_bottom_point[2], 1.0);
+      glm::vec4 view_intersection_right_bottom_point = g_overview_translate * glm::vec4(intersection_right_bottom_point[0], intersection_right_bottom_point[1], intersection_right_bottom_point[2], 1.0);
+      glm::vec4 view_intersection_left_top_point = g_overview_translate * glm::vec4(intersection_left_top_point[0], intersection_left_top_point[1], intersection_left_top_point[2], 1.0);
+      glm::vec4 view_intersection_right_top_point = g_overview_translate * glm::vec4(intersection_right_top_point[0], intersection_right_top_point[1], intersection_right_top_point[2], 1.0);
+
+      angle_left_bottom = atan2(view_intersection_left_bottom_point[0], -view_intersection_left_bottom_point[2]) * 180.0 / M_PI;
+      angle_right_bottom = atan2(view_intersection_right_bottom_point[0], -view_intersection_right_bottom_point[2]) * 180.0 / M_PI;
+      angle_left_top = atan2(view_intersection_left_top_point[0], -view_intersection_left_top_point[2]) * 180.0 / M_PI;
+      angle_right_top = atan2(view_intersection_right_top_point[0], -view_intersection_right_top_point[2]) * 180.0 / M_PI;
+
+      DrawLineCP(inverse_view_translate, view_intersection_left_bottom_point, angle_left_bottom, view_intersection_right_bottom_point, angle_right_bottom);
+      DrawLineCP(inverse_view_translate, view_intersection_right_bottom_point, angle_right_bottom, view_intersection_right_top_point, angle_right_top);
+      DrawLineCP(inverse_view_translate, view_intersection_right_top_point, angle_right_top, view_intersection_left_top_point, angle_left_top);
+      DrawLineCP(inverse_view_translate, view_intersection_left_top_point, angle_left_top, view_intersection_left_bottom_point, angle_left_bottom);
+    }
+    else {
+      glBegin(GL_LINE_LOOP);
+      glVertex3f((GLfloat)intersection_left_bottom_point[0], (GLfloat)intersection_left_bottom_point[1], (GLfloat)intersection_left_bottom_point[2]);
+      glVertex3f((GLfloat)intersection_right_bottom_point[0], (GLfloat)intersection_right_bottom_point[1], (GLfloat)intersection_right_bottom_point[2]);
+      glVertex3f((GLfloat)intersection_right_top_point[0], (GLfloat)intersection_right_top_point[1], (GLfloat)intersection_right_top_point[2]);
+      glVertex3f((GLfloat)intersection_left_top_point[0], (GLfloat)intersection_left_top_point[1], (GLfloat)intersection_left_top_point[2]);
+      glEnd();
+    }
+    //======================================
     //
 
     // Unbind the color and tone map textures.
