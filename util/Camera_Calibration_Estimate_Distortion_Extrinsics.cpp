@@ -11,6 +11,7 @@
 */
 
 #include <iostream>
+#include <sstream>
 #include <fstream>
 #include <string>
 #include <vector>
@@ -26,7 +27,7 @@ using namespace asdp::render;
 using namespace asdp::render::calibration;
 using json = nlohmann::json;
 
-static std::string VERSION = "0.9.0";
+static std::string VERSION = "0.10.0";
 
 void usage(std::string name)
 {
@@ -40,12 +41,15 @@ void usage(std::string name)
   std::cerr << "  outputConfig.json             Output configuration file." << std::endl;
   std::cerr << "  Options:" << std::endl;
   std::cerr << "    --help                      Print this information and quit." << std::endl;
+  std::cerr << "    --writeMaps <filename.csv>  Write the expected to as-seen mappings to the specified CSV file." << std::endl;
+  std::cerr << "    --readMaps <filename.csv>   Read the expected to as-seen mappings from the specified CSV file, don't compute." << std::endl;
   std::cerr << "  Writes camConfig_opt.json." << std::endl;
 };
 
 int main(int argc, char** argv)
 {
   std::string camConfigFile, targetConfigFile, gimbalConfigFile, posesFile, imageDirectory, outputFile;
+  std::string writeMapsFile, readMapsFile;
   int targetBrightnessThreshold = 35767;
   size_t realParams = 0;          ///< The number of non-flag parameters we've seen.
 
@@ -54,6 +58,18 @@ int main(int argc, char** argv)
   for (int i = 1; i < argc; ++i) {
     if (std::string("--help") == argv[i]) {
       usage(argv[0]);
+    } else if (std::string("--writeMaps") == argv[i]) {
+      if (i + 1 >= argc) {
+        std::cerr << "Error: --writeMaps option requires a filename." << std::endl;
+        return 1;
+      }
+      writeMapsFile = argv[++i];
+    } else if (std::string("--readMaps") == argv[i]) {
+      if (i + 1 >= argc) {
+        std::cerr << "Error: --readMaps option requires a filename." << std::endl;
+        return 1;
+      }
+      readMapsFile = argv[++i];
     } else if (argv[i][0] == '-') {
       usage(argv[0]);
       return 1;
@@ -87,6 +103,11 @@ int main(int argc, char** argv)
   if (realParams != 7) {
     usage(argv[0]);
     return 2;
+  }
+
+  if (!writeMapsFile.empty() && !readMapsFile.empty()) {
+    std::cerr << "Error: Cannot specify both --writeMaps and --readMaps options." << std::endl;
+    return 3;
   }
 
   // Run inside a block so that the destructors will be called for all objects before we exit.
@@ -137,21 +158,82 @@ int main(int argc, char** argv)
     }
     std::cout << "Read pose information from " << posesFile << std::endl;
 
+    // Map per targetID of a map per cameraID of a bag of mappings.
+    std::map<uint16_t, std::map<uint16_t, DistortionBagOfMappings::Bag> > perTargetBags;
+
     // We always do a bag-of-mappings distortion model.
     // Bag of mappings per camera, looked up by camera ID.
+    // This is filled in by the optimization routines using the information from the
+    // per-target mappings.
     std::map<uint16_t, DistortionBagOfMappings::Bag> bags;
     for (auto& cri : cameraRenderInfos) {
       // Create an empty bag of mappings for each camera.
       bags[cri.m_ID] = DistortionBagOfMappings::Bag();
     }
 
-    if (targetInfos.size() == 1) {
-      // We have a single target, so we do a direct bag-of-mappings distortion model to make
-      // all points line up at the single target's location (only works for a single depth).
-      std::cout << "Using single-depth distortion model" << std::endl;
+    // If we are writing the mappings to a file, open that file and write the header line.
+    std::ofstream outMapFile;
+    if (!writeMapsFile.empty()) {
+      outMapFile = std::ofstream(writeMapsFile);
+      if (!outMapFile) {
+        std::cerr << "Error: Unable to open output file " << writeMapsFile << std::endl;
+        return 40;
+      }
+      outMapFile << "targetID,frameIndex,cameraID,expectedX,expectedY,actualX,actualY" << std::endl;
+    }
 
+    // If we are reading the mappings from a file, then read them in and skip the calculations.
+    if (!readMapsFile.empty()) {
+      std::ifstream inFile(readMapsFile);
+      if (!inFile) {
+        std::cerr << "Error: Unable to open input file " << readMapsFile << std::endl;
+        return 50;
+      }
+      std::string line;
+      // Skip the header line.
+      std::getline(inFile, line);
+      // Read the mappings from the file.
+      for (int p = 0; p < poseInfos.size(); p++) {
+        auto const& pose = poseInfos[p];
+        if (std::getline(inFile, line)) {
+          // Parse the line as a mapping from expected to actual location.
+          std::istringstream iss(line);
+          int targetID, frameIndex, cameraID;
+          double x1, y1, x2, y2;
+          char comma;
+          if (!(iss >> targetID >> comma >> frameIndex >> comma >> cameraID >> comma
+            >> x1 >> comma >> y1 >> comma >> x2 >> comma >> y2)) {
+            std::cerr << "Error: Unable to parse mapping line: " << line << std::endl;
+            return 51;
+          }
+          // Add the mapping to the appropriate bag of mappings for the appropriate target.
+          // We map from the actual (as rendered) position to the ideal (expected) position.
+          int whichCamera = -1;
+          for (size_t i = 0; i < cameraRenderInfos.size(); ++i) {
+            if (cameraRenderInfos[i].m_ID == cameraID) {
+              whichCamera = i;
+              break;
+            }
+          }
+          if (whichCamera == -1) {
+            std::cerr << "Error: Camera ID " << cameraID << " not found in camera configuration." << std::endl;
+            return 52;
+          }
+          DistortionBagOfMappings::Point2D expected = PlaneIntersectionForPixel(cameraRenderInfos[whichCamera], {x1, y1});
+          DistortionBagOfMappings::Point2D actual = PlaneIntersectionForPixel(cameraRenderInfos[whichCamera], { x2, y2 });
+          DistortionBagOfMappings::Mapping mapping = { actual, expected };
+          perTargetBags[pose.targetID][pose.cameraID].push_back(mapping); // Assuming all mappings are for camera ID 0 for now.
+        } else {
+          std::cerr << "Error: Unable to read mapping line for pose " << pose.frameIndex << " camera " << pose.cameraID << std::endl;
+          return 53;
+        }
+      }
+      inFile.close();
+      std::cout << "Read mappings from " << readMapsFile << std::endl;
+
+    } else {
       // Fill in a mapping entry for the appropriate camera and pose.
-      int count = 0;
+      std::atomic_int count = 0;
 #pragma omp parallel for shared(count)
       for (int p = 0; p < poseInfos.size(); p++) {
         auto const& pose = poseInfos[p];
@@ -287,7 +369,7 @@ int main(int argc, char** argv)
         // and tell what we did.  Make a critical section to avoid thread contention during this time.
 #pragma omp critical
         {
-          auto& bag = bags[pose.cameraID];
+          auto& bag = perTargetBags[pose.targetID][pose.cameraID];
           // Convert from pixel coordinates to 2D coordinates in the Z=-1 plane based on the ideal-
           // camera parameters.
           std::array<double, 2> idealCameraLocation;
@@ -301,22 +383,63 @@ int main(int argc, char** argv)
 
           count++;
           std::cout << count << " / " << poseInfos.size() << " processed; pose " << pose.frameIndex
-            << " for camera " << pose.cameraID << std::endl;
-          std::cout << "  Target expected at (" << expectedLocation[0] << ", " << expectedLocation[1] << ")" << std::endl;
-          std::cout << "  Target initialized at (" << centerX << ", " << centerY << ")" << std::endl;
+            << " for camera " << pose.cameraID << "\n";
+          std::cout << "  Target expected at (" << expectedLocation[0] << ", " << expectedLocation[1] << ")" << "\n";
+          std::cout << "  Target initialized at (" << centerX << ", " << centerY << ")" << "\n";
           std::cout << "  Target optimized to (" << x << ", " << y << ")" << std::endl;
+
+          // Write the mapping to the output file if requested.
+          if (!writeMapsFile.empty()) {
+            outMapFile << std::fixed << std::setprecision(8) << pose.targetID << "," << pose.frameIndex << "," << pose.cameraID << ","
+              << expectedLocation[0] << "," << expectedLocation[1] << ","
+              << x << "," << y << std::endl;
+          }
         }
       }
     }
-    else {
+    // Close the output file if we opened it.
+    if (outMapFile.is_open()) {
+      outMapFile.close();
+      std::cout << "Wrote mappings to " << writeMapsFile << std::endl;
+    }
+
+    // Perform the optimization to determine the camera models, including distortion.
+    if (targetInfos.size() == 1) {
+      // We have a single target, so we do a direct bag-of-mappings distortion model to make
+      // all points line up at the single target's location (only works for a single depth).
+      std::cout << "Using single-depth distortion model" << std::endl;
+
+      // Just grab the bag of mappings for the first (and only) target ID.
+      bags = perTargetBags[targetInfos[0].id];
+
+    } else {
       // We have multiple targets, so do full estimation of position, orientation, and distortion
-      // based on the ideal-camera FOV and the target locations.
+      // for each entry in cameraRenderInfos based on the ideal-camera FOV and the target locations.
+      // Modify the CRI information in place and set the bags distortion for each camera.
 
-      /// @todo
-      std::cerr << "Error: Multiple targets not yet implemented." << std::endl;
-      return 100;
+      std::cout << "Using multiple-depth distortion model" << std::endl;
 
-      /// @todo Remember to map FROM actual location TO ideal (expected) location.
+      // Construct a vector of bags of mappings per camera ID with an entry for each target in the
+      // targetInfos vector.  Use that to optimize the camera parameters for that camera.
+      for (auto& cri : cameraRenderInfos) {
+
+        // Find the bags for this camera ID.
+        std::vector<DistortionBagOfMappings::Bag> myBags;
+        for (auto& target : targetInfos) {
+          auto& bag = perTargetBags[target.id][cri.m_ID];
+          myBags.push_back(bag);
+        }
+
+        // Use the bags to optimize the camera parameters for this camera and to construct its
+        // bag-of-mappings distortion (maps from actual pixel location to location in the ideal
+        // camera, which may be outside of the ideal camera FOV).
+        /// @todo Remember to map FROM actual location TO ideal (expected) location.
+
+        /// @todo
+
+        std::cerr << "Error: Multiple targets not yet implemented." << std::endl;
+        return 100;
+      }
     }
 
     // Parse the JSON configuration file for the camera configuration directly, then replace
