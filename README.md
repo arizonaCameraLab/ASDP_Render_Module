@@ -346,7 +346,7 @@ described in Appendix A.  The workflow is as follows:
 - **Estimate target lateral location:**
     - Generate an as-designed camera calibration JSON file for the camera to be calibrated. This has
       the gimbal center of rotation as the center of helicopter space with the +X axis pointing
-      towards one of the forks and the +Z axis pointing up.
+      towards the axis the gimbal will rotate around for +pitch and the +Z axis pointing up.
     - Generate an as-designed target location JSON file for the two targets to be used in calibration.
     - Generate a **gimbal.json** file to describe the gimbal configuration (see util/gimbal.json for an
       example). Its "name" field selects which physical gimbal to use: "Zaber_X_G_RST" or "iOptron_CEM40",
