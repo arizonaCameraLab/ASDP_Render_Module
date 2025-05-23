@@ -1,0 +1,12 @@
+{
+  "name": "Zaber_X_G_RST",
+  "pitchFirst": false,
+  "comPort": "COM3",
+  "baud": 115200,
+  "speed": 24.0,
+  "acceleration": 100.0,
+  "minPitchDegrees": -90.0,
+  "maxPitchDegrees": 90.0,
+  "minYawDegrees": -180.0,
+  "maxYawDegrees": 180.0
+}
