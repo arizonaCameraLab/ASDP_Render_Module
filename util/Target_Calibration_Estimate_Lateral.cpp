@@ -119,6 +119,14 @@ int main(int argc, char** argv)
       return 14;
     }
 
+    // Add the offset to the camera positions.
+    std::cout << "Adding cameraOffset: " << gimbalInfo.cameraOffset[0] << "," << gimbalInfo.cameraOffset[1] << "," << gimbalInfo.cameraOffset[2] << std::endl;
+    for (auto& camera : cameraRenderInfos) {
+      camera.m_positionMeters[0] += gimbalInfo.cameraOffset[0];
+      camera.m_positionMeters[1] += gimbalInfo.cameraOffset[1];
+      camera.m_positionMeters[2] += gimbalInfo.cameraOffset[2];
+    }
+
     // Parse the target information for each target and read the information from
     // its target_N_poses.csv file.
     struct TargetInfo {

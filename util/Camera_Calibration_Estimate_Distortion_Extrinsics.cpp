@@ -146,6 +146,14 @@ int main(int argc, char** argv)
     }
     std::cout << "Read gimbal configuration from " << gimbalConfigFile << std::endl;
 
+    // Add the offset to the camera positions.
+    std::cout << "Adding cameraOffset: " << gimbalInfo.cameraOffset[0] << "," << gimbalInfo.cameraOffset[1] << "," << gimbalInfo.cameraOffset[2] << std::endl;
+    for (auto& camera : cameraRenderInfos) {
+      camera.m_positionMeters[0] += gimbalInfo.cameraOffset[0];
+      camera.m_positionMeters[1] += gimbalInfo.cameraOffset[1];
+      camera.m_positionMeters[2] += gimbalInfo.cameraOffset[2];
+    }
+
     // Read the pose information from the specified CSV file.
     std::vector<PoseInfo> poseInfos;
     try {
@@ -440,6 +448,13 @@ int main(int argc, char** argv)
         std::cerr << "Error: Multiple targets not yet implemented." << std::endl;
         return 100;
       }
+    }
+
+    // Bring the positions back to the original camera position by subtracting the offsets we added above.
+    for (auto& cri : cameraRenderInfos) {
+      cri.m_positionMeters[0] -= gimbalInfo.cameraOffset[0];
+      cri.m_positionMeters[1] -= gimbalInfo.cameraOffset[1];
+      cri.m_positionMeters[2] -= gimbalInfo.cameraOffset[2];
     }
 
     // Parse the JSON configuration file for the camera configuration directly, then replace

@@ -191,6 +191,7 @@ GimbalInfo asdp::render::calibration::GetGimbalInfo(
   try { gimbalInfo.baud = gimbalConfig["baud"]; } catch (...) { }
   try { gimbalInfo.speed = gimbalConfig["speed"]; } catch (...) { }
   try { gimbalInfo.acceleration = gimbalConfig["acceleration"]; } catch (...) { }
+  try { gimbalInfo.cameraOffset = gimbalConfig["cameraOffset"]; } catch (...) { }
 
   return gimbalInfo;
 }

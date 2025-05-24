@@ -65,6 +65,7 @@ struct GimbalInfo {
   int baud = 9600;                  ///< If required, default is 9600
   double speed = -1;                ///< If required, default leaves unchanged
   double acceleration = -1;         ///< If required, default leaves unchanged
+  std::array<double, 3> cameraOffset = { 0, 0, 0 }; ///< If required, default is {0,0,0}
 };
 
 /// @brief Read the gimbal information from the specified file.

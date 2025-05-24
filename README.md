@@ -345,8 +345,10 @@ Camera calibration is described in **TR-011v3_Geometric_Calibration.docx**, with
 described in Appendix A.  The workflow is as follows:
 - **Estimate target lateral location:**
     - Generate an as-designed camera calibration JSON file for the camera to be calibrated. This has
-      the gimbal center of rotation as the center of helicopter space with the +X axis pointing
-      towards the axis the gimbal will rotate around for +pitch and the +Z axis pointing up.
+      the camera's center of rotation as the center of helicopter space with the +X axis pointing
+      towards the axis the gimbal will rotate around for +pitch and the +Z axis pointing up.  The offset
+      from the gimbal's center of rotation to the camera's center of projection is specified in the
+      gimbal.json configuration file.
     - Generate an as-designed target location JSON file for the two targets to be used in calibration.
     - Generate a **gimbal.json** file to describe the gimbal configuration (see util/gimbal.json for an
       example). Its "name" field selects which physical gimbal to use: "Zaber_X_G_RST" or "iOptron_CEM40",
@@ -356,7 +358,10 @@ described in Appendix A.  The workflow is as follows:
       The "minYawDegrees" and "maxYawDegrees" fields specify the minimum and maximum yaw angles in degrees, and the
       "minPitchDegrees" and "maxPitchDegrees" fields specify the minimum and maximum pitch angles in degrees.
       "comPort" specifies the name of the serial port to use for the gimbal if one is required,
-      and "baud" specifies the baud rate if it is required.
+      and "baud" specifies the baud rate if it is required.  An optional "cameraOffset" field specifies
+      the offset from the gimbal's center of rotation to the camera ball's center of rotation in meters
+      in helicopter coordinates; if it is not specified, the offset is assumed to be zero (the offset
+      is added to each camera's position before calibration and subtracted afterwards).
     - Copy the calibration files to a new calibration directory on the data drive that will hold our calibration
       artifacts.
     - Run **Target_Calibration_Make_Scan** and give it the camera, target, and gimbal
