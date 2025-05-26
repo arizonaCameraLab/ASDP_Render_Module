@@ -235,9 +235,7 @@ void asdp::render::CopyDataToTextures(uint16_t width, uint16_t height,
 
       // Parse all of the messages in the stream packet, handling each of them in turn.
       for (auto& message : data->messages) {
-        switch (message.messageType) {
-        case FRAME_BEGIN:
-        {
+        if (message.isFrameBegin) {
           // Construct the CPUDataToTextureHandler object to handle the data for this frame and store it in the vector
           // of handlers.  This will be used to process the data as it comes in.  Make more handlers as needed.
           if (message.cameraID >= handlers.size()) {
@@ -255,38 +253,27 @@ void asdp::render::CopyDataToTextures(uint16_t width, uint16_t height,
           if (message.cameraID >= frameTimes.size()) {
             frameTimes.resize(message.cameraID + 1);
           }
-          frameTimes[message.cameraID] = message.time;
+          frameTimes[message.cameraID] = message.frameStartTime;
         }
-        break;
 
-        case FRAME_DATA:
-          // Asynchronously send data to the GPU buffer as we get enough data for a minimum block size. 
-          // We send the data to the GPU in chunks so that we amortize the per-send cost and reduce
-          // latency.  We send asynchronously to enable overlap between data copying and processing
-          // (which increases throughput).
-        {
-          // Handle the data
-          if (message.cameraID >= handlers.size()) {
-            std::cerr << "CopyDataToGPU: FRAME_DATA: Error: Camera ID " << message.cameraID << " not found." << std::endl;
-            done = true;
-            return;
-          }
-          if (handlers[message.cameraID] == nullptr) {
-            std::cerr << "CopyDataToGPU: FRAME_DATA: Warning: Camera ID " << message.cameraID << " frame data without begin." << std::endl;
-            break;
-          }
-          std::string ret = handlers[message.cameraID]->ProcessImageSubset(message.left, message.top, message.right, message.bottom);
-          if (!ret.empty()) {
-            std::cerr << "Error processing image subset: " << ret << std::endl;
-            done = true;
-            return;
-          }
+        // Handle the data
+        if (message.cameraID >= handlers.size()) {
+          std::cerr << "CopyDataToGPU: FRAME_DATA: Error: Camera ID " << message.cameraID << " not found." << std::endl;
+          done = true;
+          return;
         }
-        break;
+        if (handlers[message.cameraID] == nullptr) {
+          std::cerr << "CopyDataToGPU: FRAME_DATA: Warning: Camera ID " << message.cameraID << " frame data without begin." << std::endl;
+          break;
+        }
+        std::string ret = handlers[message.cameraID]->ProcessImageSubset(message.left, message.top, message.right, message.bottom);
+        if (!ret.empty()) {
+          std::cerr << "Error processing image subset: " << ret << std::endl;
+          done = true;
+          return;
+        }
 
-        case FRAME_END:
-          // Run the kernel and enqueue the result.
-        {
+        if (message.isFrameEnd) {
           // Set the center time for the image data, which is the average of the frame begin and end times.
           if (message.cameraID >= frameTimes.size()) {
             std::cerr << "CopyDataToGPU: FRAME_END: Error: Camera ID " << message.cameraID << " not found in frameTimes." << std::endl;
@@ -315,13 +302,6 @@ void asdp::render::CopyDataToTextures(uint16_t width, uint16_t height,
             cameraTimings[message.cameraID - 1].textureTimes.push_back(std::chrono::steady_clock::now());
           }
         }
-        break;
-
-        default:
-          // Nothing to do for other message types.
-          break;
-        } // End of switch on message type.
-
       } // End of message summary loop.
     } // End of if we got a message from the queue.
   } // End of while we are not done.
@@ -339,7 +319,7 @@ void asdp::render::CopyDataToTextures(uint16_t width, uint16_t height,
   }
 }
 
-/// @brief Helper function to pull information from a FRAME_BEGIN message.
+/// @brief Helper function to pull information from a CONSOLIDATED_FRAME_DATA message.
 /// @param message The message to pull the information from.
 /// @param cameraID The camera ID that the data is for.
 /// @param width The width of the image data.
@@ -347,53 +327,40 @@ void asdp::render::CopyDataToTextures(uint16_t width, uint16_t height,
 /// @param exposure The exposure time for the image data.
 /// @param gain The gain for the image data.
 /// @return OKAY on success, error status on failure.
-static asdp::Status ParseFrameBeginMessage(Message& message, uint32_t& cameraID, uint16_t& width, uint16_t& height,
-  float& exposure, float& gain)
+static asdp::Status ParseFrameMessage(Message& message, bool &isFrameBegin, bool &isFrameEnd, Time& frameStartTime, Time& time,
+  uint32_t& cameraID, uint16_t& width, uint16_t& height, uint16_t& left, uint16_t& top, uint16_t& right, uint16_t& bottom,
+  float& exposure, float& gain, uint8_t*& dataPtr)
 {
-  MessageFrameBegin frameBegin(message);
-  if (frameBegin.GetConstructorStatus() != OKAY) {
-    return frameBegin.GetConstructorStatus();
-  }
-  Status status = frameBegin.GetCameraID(cameraID);
-  if (status != OKAY) {
-    return status;
-  }
-  status = frameBegin.GetSensorWidth(width);
-  if (status != OKAY) {
-    return status;
-  }
-  status = frameBegin.GetSensorHeight(height);
-  if (status != OKAY) {
-    return status;
-  }
-  status = frameBegin.GetExposure(exposure);
-  if (status != OKAY) {
-    return status;
-  }
-  status = frameBegin.GetGain(gain);
-  if (status != OKAY) {
-    return status;
-  }
-  return OKAY;
-}
-
-/// @brief Helper function to pull information from a FRAME_DATA message.
-/// @param message The message to pull the information from.
-/// @param cameraID The camera ID that the data is for.
-/// @param left The left edge of the region to process.
-/// @param right The right edge of the region to process.
-/// @param top The top edge of the region to process.
-/// @param bottom The bottom edge of the region to process.
-/// @param dataPtr The pointer to the data to process.
-/// @return OKAY on success, error status on failure.
-static asdp::Status ParseFrameDataMessage(Message& message, uint32_t& cameraID,
-  uint16_t& left, uint16_t& right, uint16_t& top, uint16_t& bottom, uint8_t*& dataPtr)
-{
-  MessageFrameData frameData(message);
+  MessageConsolidatedFrameData frameData(message);
   if (frameData.GetConstructorStatus() != OKAY) {
     return frameData.GetConstructorStatus();
   }
-  Status status = frameData.GetCameraID(cameraID);
+  Status status;
+  status = frameData.GetBeginFrameFlag(isFrameBegin);
+  if (status != OKAY) {
+    return status;
+  }
+  status = frameData.GetEndFrameFlag(isFrameEnd);
+  if (status != OKAY) {
+    return status;
+  }
+  status = frameData.GetFrameStartTime(frameStartTime);
+  if (status != OKAY) {
+    return status;
+  }
+  status = frameData.GetTime(time);
+  if (status != OKAY) {
+    return status;
+  }
+  status = frameData.GetCameraID(cameraID);
+  if (status != OKAY) {
+    return status;
+  }
+  status = frameData.GetSensorWidth(width);
+  if (status != OKAY) {
+    return status;
+  }
+  status = frameData.GetSensorHeight(height);
   if (status != OKAY) {
     return status;
   }
@@ -401,11 +368,11 @@ static asdp::Status ParseFrameDataMessage(Message& message, uint32_t& cameraID,
   if (status != OKAY) {
     return status;
   }
-  status = frameData.GetRight(right);
+  status = frameData.GetTop(top);
   if (status != OKAY) {
     return status;
   }
-  status = frameData.GetTop(top);
+  status = frameData.GetRight(right);
   if (status != OKAY) {
     return status;
   }
@@ -417,20 +384,11 @@ static asdp::Status ParseFrameDataMessage(Message& message, uint32_t& cameraID,
   if (status != OKAY) {
     return status;
   }
-  return OKAY;
-}
-
-/// @brief Helper function to pull information from a FRAME_END message.
-/// @param message The message to pull the information from.
-/// @param cameraID The camera ID that the data is for.
-/// @return OKAY on success, error status on failure.
-static asdp::Status ParseFrameEndMessage(Message& message, uint32_t& cameraID)
-{
-  MessageFrameEnd frameEnd(message);
-  if (frameEnd.GetConstructorStatus() != OKAY) {
-    return frameEnd.GetConstructorStatus();
+  status = frameData.GetExposure(exposure);
+  if (status != OKAY) {
+    return status;
   }
-  Status status = frameEnd.GetCameraID(cameraID);
+  status = frameData.GetGain(gain);
   if (status != OKAY) {
     return status;
   }
@@ -513,121 +471,95 @@ void asdp::render::ReceiveDataThread(ReceiverUDP& receiveSocket, size_t maxBytes
           return;
         }
         switch (messageType) {
-        case FRAME_BEGIN:
-        {
-          // Log our timing data.
-          if (frameBeginTimes) { frameBeginTimes->push_back(std::chrono::steady_clock::now()); }
-
-          // We found a begin frame message, so we can start processing the data.
-          waitingForFrameBegin = false;
-
-          // Pull the information from the frame so that we can store the width data for this
-          // camera.
-          uint32_t cameraID;
-          uint16_t width, height;
-          float exposure, gain;
-          status = ParseFrameBeginMessage(*message, cameraID, width, height, exposure, gain);
-          if (OKAY != status) {
-            std::cerr << "ReceiveDataThread: ParseFrameBeginMessage() failed: " << ErrorMessage(status) << std::endl;
-            done = true;
-            return;
-          }
-          cameraWidth = width;
-
-          // Get a new pinned CPU memory and GPU memory buffer to hold the image data.
-          // The old ones will be returned to the pool when the shared pointers are reset.
-          try {
-            // Do not allocate new buffers if they are depleted; wait for them to be returned.
-            cpuImageBufferPtr = cpuImageBuffers->GetBuffer(false);
-            gpuImageBufferPtr = gpuImageBuffers->GetBuffer(false);
-          }
-          catch (std::exception& e) {
-            std::cerr << "Error getting buffers: " << e.what() << std::endl;
-            done = true;
-            return;
-          }
-
-          // Store the summary
-          MessageSummary summary;
-          summary.messageType = FRAME_BEGIN;
-          message->GetTime(summary.time);
-          summary.cameraID = cameraID;
-          summary.width = width;
-          summary.height = height;
-          summary.exposure = exposure;
-          summary.gain = gain;
-          messageSummaries.push_back(summary);
-        }
-        break;
-        case FRAME_DATA:
-          // We're waiting for the frame begin message, so we ignore this packet that does not have one.
-          if (!waitingForFrameBegin) {
-            // Get the region to copy and the data pointer from the message.
+        case CONSOLIDATED_FRAME_DATA:
+          {
+            // Pull the information from the frame so that we can store the width data for this
+            // camera.
+            bool isFrameBegin, isFrameEnd;
+            Time frameStartTime, time;
             uint32_t cameraID;
+            uint16_t width, height;
             uint16_t left, right, top, bottom;
             uint8_t* data;
-            status = ParseFrameDataMessage(*message, cameraID, left, right, top, bottom, data);
+            float exposure, gain;
+            status = ParseFrameMessage(*message, isFrameBegin, isFrameEnd, frameStartTime, time, cameraID, width, height,
+              left, top, right, bottom, exposure, gain, data);
             if (OKAY != status) {
-              std::cerr << "ReceiveDataThread: ParseFrameDataMessage() failed: " << ErrorMessage(status) << std::endl;
+              std::cerr << "ReceiveDataThread: ParseFrameMessage() failed: " << ErrorMessage(status) << std::endl;
               done = true;
               return;
+            }
+            cameraWidth = width;
+
+            if (isFrameBegin) {
+              // Log our timing data.
+              if (frameBeginTimes) { frameBeginTimes->push_back(std::chrono::steady_clock::now()); }
+
+              // We found a begin frame message, so we can start processing the data.
+              waitingForFrameBegin = false;
+
+              // Get a new pinned CPU memory and GPU memory buffer to hold the image data.
+              // The old ones will be returned to the pool when the shared pointers are reset.
+              try {
+                // Do not allocate new buffers if they are depleted; wait for them to be returned.
+                cpuImageBufferPtr = cpuImageBuffers->GetBuffer(false);
+                gpuImageBufferPtr = gpuImageBuffers->GetBuffer(false);
+              }
+              catch (std::exception& e) {
+                std::cerr << "Error getting buffers: " << e.what() << std::endl;
+                done = true;
+                return;
+              }
+            }
+
+            if (waitingForFrameBegin) {
+              // We're waiting for the frame begin message, so we ignore this packet that does not have one.
+              break;
             }
 
             // Copy the data to the pinned CPU memory buffer.
             uint16_t regionWidth = right - left + 1;
+            size_t padding = (regionWidth % 2 == 0) ? 0 : 1;
             uint16_t regionHeight = bottom - top + 1;
             uint16_t* cpuBuffer16 = reinterpret_cast<uint16_t*>(cpuImageBufferPtr.get());
             uint16_t* data16 = reinterpret_cast<uint16_t*>(data);
             if (cameraWidth != 0) {
-              if ((left == 0) && (regionWidth == cameraWidth)) {
-                // If we're copying whole lines, we can do it all at once.
+              if ((left == 0) && (regionWidth == cameraWidth) && (cameraWidth % 2 == 0)) {
+                // If we're copying whole lines and there is no line padding, we can do it all at once.
                 memcpy(cpuBuffer16 + top * regionWidth, data16, regionWidth * regionHeight * sizeof(uint16_t));
               }
               else {
                 // Otherwise, we must do it line by line.
                 for (uint16_t line = top; line <= bottom; ++line) {
-                  memcpy(cpuBuffer16 + line * cameraWidth + left, data16 + (line - top) * regionWidth, regionWidth * sizeof(uint16_t));
+                  memcpy(cpuBuffer16 + line * cameraWidth + left, data16 + (line - top) * regionWidth + padding, regionWidth * sizeof(uint16_t));
                 }
               }
             }
 
             // Store the summary
             MessageSummary summary;
-            summary.messageType = FRAME_DATA;
-            message->GetTime(summary.time);
+            summary.isFrameBegin = isFrameBegin;
+            summary.isFrameEnd = isFrameEnd;
+            summary.frameStartTime = frameStartTime;
+            summary.time = time;
             summary.cameraID = cameraID;
+            summary.width = width;
+            summary.height = height;
             summary.left = left;
-            summary.right = right;
             summary.top = top;
+            summary.right = right;
             summary.bottom = bottom;
+            summary.exposure = exposure;
+            summary.gain = gain;
             messageSummaries.push_back(summary);
-          }
-          break;
-        case FRAME_END:
-          // We're waiting for the frame begin message, so we ignore this packet that does not have one.
-          if (!waitingForFrameBegin) {
 
-            // Log our timing data.
-            if (frameEndTimes) { frameEndTimes->push_back(std::chrono::steady_clock::now()); }
+            if (isFrameEnd) {
+              // Log our timing data.
+              if (frameEndTimes) { frameEndTimes->push_back(std::chrono::steady_clock::now()); }
 
-            // Parse the message so we can make a summary.  We don't do anything else with it here.
-            uint32_t cameraID;
-            status = ParseFrameEndMessage(*message, cameraID);
-            if (OKAY != status) {
-              std::cerr << "ReceiveDataThread: ParseFrameEndMessage() failed: " << ErrorMessage(status) << std::endl;
-              done = true;
-              return;
+              // We're at the end of a frame, so we need to get a begin-frame message next.
+              waitingForFrameBegin = true;
             }
-
-            // Store the summary
-            MessageSummary summary;
-            summary.messageType = FRAME_END;
-            message->GetTime(summary.time);
-            summary.cameraID = cameraID;
-            messageSummaries.push_back(summary);
-
-            // We're at the end of a frame, so we need to get a begin-frame message next.
-            waitingForFrameBegin = true;
           }
           break;
         default:

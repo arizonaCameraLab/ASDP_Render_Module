@@ -444,61 +444,72 @@ int main(int argc, char** argv)
               return 306;
             }
             switch (rID) {
-            case asdp::FRAME_BEGIN:
+            case asdp::CONSOLIDATED_FRAME_DATA:
             {
-              gotFrameBegin = true;
-            }
-            break;
-            case asdp::FRAME_DATA:
-            {
-              // Don't do anything if we haven't gotten a begin-frame yet.
-              if (!gotFrameBegin) { break; }
-              // Find out how many pixels are in the frame and sum their values.
-              asdp::MessageFrameData frameData(*message);
+              MessageConsolidatedFrameData frameData(*message);
               if (frameData.GetConstructorStatus() != asdp::OKAY) {
                 std::cerr << "Error constructing FrameData message: " << ErrorMessage(frameData.GetConstructorStatus()) << std::endl;
                 return 307;
               }
+              bool isFrameBegin;
+              status = frameData.GetBeginFrameFlag(isFrameBegin);
+              if (status != asdp::OKAY) {
+                std::cerr << "Error getting frame begin from FrameData message: " << ErrorMessage(status) << std::endl;
+                return 308;
+              }
+              if (isFrameBegin) {
+                gotFrameBegin = true;
+              }
+
+              // Don't do anything if we haven't gotten a begin-frame yet.
+              if (!gotFrameBegin) { break; }
+
+              // Find out how many pixels are in the frame and sum their values.
               uint16_t stride = width;
               uint16_t left, right, top, bottom;
               status = frameData.GetLeft(left);
               if (status != asdp::OKAY) {
                 std::cerr << "Error getting left from FrameData message: " << ErrorMessage(status) << std::endl;
-                return 308;
+                return 309;
               }
               status = frameData.GetRight(right);
               if (status != asdp::OKAY) {
                 std::cerr << "Error getting right from FrameData message: " << ErrorMessage(status) << std::endl;
-                return 309;
+                return 310;
               }
               status = frameData.GetTop(top);
               if (status != asdp::OKAY) {
                 std::cerr << "Error getting top from FrameData message: " << ErrorMessage(status) << std::endl;
-                return 310;
+                return 311;
               }
               status = frameData.GetBottom(bottom);
               if (status != asdp::OKAY) {
                 std::cerr << "Error getting bottom from FrameData message: " << ErrorMessage(status) << std::endl;
-                return 311;
+                return 312;
               }
               uint8_t* rawData;
               status = frameData.GetDataPointer(rawData);
               if (status != asdp::OKAY) {
                 std::cerr << "Error getting data pointer from FrameData message: " << ErrorMessage(status) << std::endl;
-                return 312;
+                return 313;
               }
               // NOTE: This makes use of the fact that we're asking for the full frame, and that the server sends
               // full lines at once when this is the case.  Otherwise, we'd need to copy the data line by line and
               // adjust for the full-image stride when doing offsets.
               size_t size = (right - left + 1) * (bottom - top + 1) * sizeof(uint16_t);
               memcpy(imageBuffers[receivedFrames].data() + (top * stride + left) * sizeof(uint16_t), rawData, size);
-            }
-            break;
-            case asdp::FRAME_END:
-            {
-              // Don't do anything if we haven't seen a begin-frame message yet.
-              if (!gotFrameBegin) { break; }
-              receivedFrames++;
+
+              bool isFrameEnd;
+              status = frameData.GetEndFrameFlag(isFrameEnd);
+              if (status != asdp::OKAY) {
+                std::cerr << "Error getting frame end from FrameData message: " << ErrorMessage(status) << std::endl;
+                return 314;
+              }
+              if (isFrameEnd) {
+                // We got the end of the frame, so we can process it.
+                gotFrameBegin = false;
+                receivedFrames++;
+              }
             }
             break;
             default:
@@ -508,7 +519,7 @@ int main(int argc, char** argv)
             status = receiveStreamPacket->GetNextMessage(message);
             if (status != asdp::OKAY) {
               std::cerr << "Error getting first message from packet: " << ErrorMessage(status) << std::endl;
-              return 313;
+              return 315;
             }
           }
         }
