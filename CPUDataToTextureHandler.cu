@@ -491,6 +491,16 @@ void asdp::render::ReceiveDataThread(ReceiverUDP& receiveSocket, size_t maxBytes
             }
             cameraWidth = width;
 
+            /// @todo Remove this hack to set the times based on our local clock rather than the message data so we can see images
+            auto now = std::chrono::steady_clock::now();
+            auto us = std::chrono::duration_cast<std::chrono::microseconds>(now.time_since_epoch());
+            int seconds = us.count() / 1000000;
+            int microseconds = us.count() % 1000000;
+            time.seconds = seconds;
+            time.microseconds = microseconds;
+            frameStartTime.seconds = seconds;
+            frameStartTime.microseconds = microseconds;
+
             if (isFrameBegin) {
               // Log our timing data.
               if (frameBeginTimes) { frameBeginTimes->push_back(std::chrono::steady_clock::now()); }
