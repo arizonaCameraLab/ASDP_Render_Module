@@ -215,6 +215,16 @@
                 <item>
                  <widget class="QComboBox" name="comboBoxCamera"/>
                 </item>
+                <item>
+                 <widget class="QCheckBox" name="checkBoxIR">
+                  <property name="text">
+                   <string>IR</string>
+                  </property>
+                  <property name="checked">
+                   <bool>true</bool>
+                  </property>
+                 </widget>
+                </item>
                </layout>
               </widget>
              </item>
@@ -452,7 +462,7 @@
    <slot>ViewCamera(QString)</slot>
    <hints>
     <hint type="sourcelabel">
-     <x>240</x>
+     <x>229</x>
      <y>447</y>
     </hint>
     <hint type="destinationlabel">
@@ -493,6 +503,22 @@
     </hint>
    </hints>
   </connection>
+  <connection>
+   <sender>checkBoxIR</sender>
+   <signal>toggled(bool)</signal>
+   <receiver>MainWindow</receiver>
+   <slot>UseIRCamera(bool)</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>256</x>
+     <y>439</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>48</x>
+     <y>697</y>
+    </hint>
+   </hints>
+  </connection>
  </connections>
  <slots>
   <signal>ShowServers(bool)</signal>
@@ -508,5 +534,6 @@
   <slot>ViewCamera(QString)</slot>
   <slot>RecordAtStartup()</slot>
   <slot>NoRecordAtStartup()</slot>
+  <slot>UseIRCamera(bool)</slot>
  </slots>
 </ui>

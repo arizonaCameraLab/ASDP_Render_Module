@@ -29,7 +29,7 @@
 #include <CPUDataToTextureHandler.h>
 
 // Define the version number
-const QString VERSION_NUMBER = "1.2.0";
+const QString VERSION_NUMBER = "1.3.0";
 
 static std::vector<std::string> getIPAddresses()
 {
@@ -558,6 +558,15 @@ void MainWindow::NoRecordAtStartup()
   }
 }
 
+void MainWindow::UseIRCamera(bool isIR)
+{
+  m_useIRCamera = isIR;
+  if (m_streamingCameraID != 0) {
+    std::cout << "Launching camera, IR =" << isIR << std::endl;
+    ViewCamera(QString::number(m_streamingCameraID));
+  }
+}
+
 void MainWindow::ViewCamera(const QString& cameraID)
 {
   // Remove any existing streaming and display. We can only have one display at a time.
@@ -626,6 +635,10 @@ void MainWindow::ViewCamera(const QString& cameraID)
   glDeleteTextures(1, &m_toneMap);
   glGenTextures(1, &m_toneMap);
   m_toneMap = ToneMap().GenerateTexture();
+  if (!m_useIRCamera) {
+    // Visible-light cameras only have values in the range 0-1023
+    m_toneMap = ToneMap({ {0.0, 0.0,0.0,0.0}, {1023.0f/65535, 1.0,1.0,1.0} }).GenerateTexture();
+  }
 
   if (!m_displayTexture->ReturnContext()) {
     std::cerr << "Error returning context to displayTexture." << std::endl;
@@ -672,7 +685,8 @@ void MainWindow::ViewCamera(const QString& cameraID)
   std::shared_ptr< SpinFreeQueue < std::shared_ptr<DataToSendToGPU> > > dataQueue =
     std::make_shared< SpinFreeQueue< std::shared_ptr<DataToSendToGPU> > >();
 
-  // Launch the threads to receive and then copy data to the GPU.
+  // Launch the threads to receive and then copy data to the GPU. Send all of the data to the GPU in one
+  // batch at the end of the frame.
   m_doneStreaming = false;
   m_copyThread = std::make_shared<std::thread>(CopyDataToTextures, width, height, std::ref(m_doneStreaming),
     dataQueue, size_t(height), m_displayTexture, std::ref(m_emptyTimingInfo));

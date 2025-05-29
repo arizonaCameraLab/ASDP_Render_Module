@@ -62,6 +62,9 @@ public slots:
     /// @brief Do not record at startup
     void NoRecordAtStartup();
 
+    /// @brief Use an IR camera (as opposed to a visible light camera).
+    void UseIRCamera(bool isIR);
+
 signals:
     /// @brief Signal to show or hide list of servers.
     void ShowServers(bool show);
@@ -112,6 +115,7 @@ private:
   std::vector<RenderTimingInfo::camera> m_emptyTimingInfo;
   StreamEndpoint m_endpoint;
   uint32_t m_streamingCameraID = 0;
+  bool m_useIRCamera = true;
 };
 
 #endif // MAINWINDOW_H
