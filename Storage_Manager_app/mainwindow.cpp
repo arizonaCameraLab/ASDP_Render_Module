@@ -29,7 +29,7 @@
 #include <CPUDataToTextureHandler.h>
 
 // Define the version number
-const QString VERSION_NUMBER = "1.3.0";
+const QString VERSION_NUMBER = "1.4.0";
 
 static std::vector<std::string> getIPAddresses()
 {
@@ -217,6 +217,9 @@ void MainWindow::ResetStreaming()
     m_endpoint = StreamEndpoint();
   }
 
+  // Reset the camera receiver.
+  m_receiverCam.reset();
+
   // Grab the context and then clear the visible cameras and delete the tone map.
   if (m_displayTexture) {
     m_displayTexture->BorrowContext();
@@ -230,6 +233,7 @@ void MainWindow::ResetStreaming()
 
 void MainWindow::SelectServer(const QString& coreURL)
 {
+  m_coreURL = coreURL;
   ResetServer();
   if (coreURL.isEmpty()) {
     return;
@@ -260,14 +264,6 @@ void MainWindow::SelectServer(const QString& coreURL)
   status = m_client->GetMainStreamReceiver(m_receiver);
   if (status != OKAY) {
     std::cerr << "Failed to get main stream receiver: " << ErrorMessage(status) << std::endl;
-    return;
-  }
-
-  // Create a UDP receiver for the camera.
-  m_receiverCam = std::make_shared<ReceiverUDP>(coreURL.toStdString());
-  if (m_receiverCam->GetConstructorStatus() != OKAY) {
-    std::cerr << "Error constructing ReceiverUDP: " << ErrorMessage(m_receiverCam->GetConstructorStatus()) << std::endl;
-    m_receiverCam.reset();
     return;
   }
 
@@ -571,7 +567,6 @@ void MainWindow::ViewCamera(const QString& cameraID)
 {
   // Remove any existing streaming and display. We can only have one display at a time.
   ResetStreaming();
-  m_display.reset();
 
   if (!m_client || cameraID.isEmpty()) {
     return;
@@ -585,6 +580,14 @@ void MainWindow::ViewCamera(const QString& cameraID)
   }
   uint16_t width = m_cameras[index].width;
   uint16_t height = m_cameras[index].height;
+
+  // Create a UDP receiver for the camera.
+  m_receiverCam = std::make_shared<ReceiverUDP>(m_coreURL.toStdString());
+  if (m_receiverCam->GetConstructorStatus() != OKAY) {
+    std::cerr << "Error constructing ReceiverUDP: " << ErrorMessage(m_receiverCam->GetConstructorStatus()) << std::endl;
+    m_receiverCam.reset();
+    return;
+  }
 
   // Construct a DisplayTexture object to handle textures.  It will be the base object that all others will use
   // to share contexts.
