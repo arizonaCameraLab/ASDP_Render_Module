@@ -53,7 +53,7 @@ using namespace asdp;
 using namespace asdp::render;
 using json = nlohmann::json;
 
-static std::string VERSION = "3.1.0";
+static std::string VERSION = "3.2.0";
 
 /// @brief The path to the configuration file. Defined in the CMakeLists file.
 std::filesystem::path g_dirPath = CONFIG_FILE_PATH;
@@ -391,6 +391,7 @@ static void usage(std::string name)
   std::cerr << "  <ip_address>                        The IP address to listen for servers on." << std::endl;
   std::cerr << "  Options:" << std::endl;
   std::cerr << "  --help                              Print this help message." << std::endl;
+  std::cerr << "  --maxCameras <int>                  The maximum number of cameras to render (default 0 means all)." << std::endl;
   std::cerr << "  --frameStride <frame stride>        Read one out of every this many frames. Set to 1 for every frame." << std::endl;
   std::cerr << "  --toneMap <tone map>                The tone map to use.  Options are: linear blackbody bluesky 10bit" << std::endl;
   std::cerr << "  --addDisplay                        Add another display with defaults that can be overridden" << std::endl;
@@ -422,6 +423,7 @@ static void usage(std::string name)
 
 int main(int argc, char** argv)
 {
+  int maxCameras = 0;           ///< The maximum number of cameras to render, 0 means all.
   uint32_t frameStride = 1;     ///< Read one out of every this many frames. Set to 1 for every frame.
   std::vector<DisplayInfo> displayInfos = { DisplayInfo() }; ///< Information for each display that is to be created.
   std::string ip_address;       ///< The IP address to listen on.
@@ -625,7 +627,12 @@ int main(int argc, char** argv)
     else if (std::string("--enableOD") == argv[i]) {
         enableOD = true;
     //======================================
-
+    } else if (std::string("--maxCameras") == argv[i]) {
+      if (++i >= argc) {
+        usage(argv[0]);
+        return 2;
+      }
+      maxCameras = std::stoi(argv[i]);
     } else if (argv[i][0] == '-') {
       usage(argv[0]);
       return 1;
@@ -780,6 +787,16 @@ int main(int argc, char** argv)
       return 16;
     }
     std::cout << "Read configuration from " << configPath << std::endl;
+
+    // If there are more cameras than the maximum, limit the number of cameras to the maximum.
+    if (maxCameras > 0 && cameras.size() > maxCameras) {
+      std::cout << "Limiting number of cameras to " << maxCameras << std::endl;
+      cameras.resize(maxCameras);
+      // Cannot use resize() here because there is not a default constructor for CameraInfo.
+      while (rawCameraRenderInfos.size() > maxCameras) {
+        rawCameraRenderInfos.pop_back();
+      }
+    }
 
     // Construct a DisplayTexture object to handle textures.  It will be the base object that all others will use
     // to share contexts.
