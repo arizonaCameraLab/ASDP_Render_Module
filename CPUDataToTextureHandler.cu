@@ -253,7 +253,7 @@ void asdp::render::CopyDataToTextures(uint16_t width, uint16_t height,
           if (message.cameraID >= frameTimes.size()) {
             frameTimes.resize(message.cameraID + 1);
           }
-          frameTimes[message.cameraID] = message.frameStartTime;
+          frameTimes[message.cameraID] = message.time;
         }
 
         // Handle the data
@@ -275,6 +275,7 @@ void asdp::render::CopyDataToTextures(uint16_t width, uint16_t height,
 
         if (message.isFrameEnd) {
           // Set the center time for the image data, which is the average of the frame begin and end times.
+          // If both of these bits are set for this same frame, we'll average the time with itself, which is fine.
           if (message.cameraID >= frameTimes.size()) {
             std::cerr << "CopyDataToGPU: FRAME_END: Error: Camera ID " << message.cameraID << " not found in frameTimes." << std::endl;
             done = true;
@@ -321,13 +322,21 @@ void asdp::render::CopyDataToTextures(uint16_t width, uint16_t height,
 
 /// @brief Helper function to pull information from a CONSOLIDATED_FRAME_DATA message.
 /// @param message The message to pull the information from.
+/// @param isFrameBegin Reference to a boolean that will be set to true if this is the beginning of a frame.
+/// @param isFrameEnd Reference to a boolean that will be set to true if this is the end of a frame.
+/// @param time The time of the frame.
 /// @param cameraID The camera ID that the data is for.
 /// @param width The width of the image data.
 /// @param height The height of the image data.
+/// @param left The left coordinate of the region of interest in the image data.
+/// @param top The top coordinate of the region of interest in the image data.
+/// @param right The right coordinate of the region of interest in the image data.
+/// @param bottom The bottom coordinate of the region of interest in the image data.
 /// @param exposure The exposure time for the image data.
 /// @param gain The gain for the image data.
+/// @param dataPtr Pointer to the image data in the message.
 /// @return OKAY on success, error status on failure.
-static asdp::Status ParseFrameMessage(Message& message, bool &isFrameBegin, bool &isFrameEnd, Time& frameStartTime, Time& time,
+static asdp::Status ParseFrameMessage(Message& message, bool &isFrameBegin, bool &isFrameEnd, Time& time,
   uint32_t& cameraID, uint16_t& width, uint16_t& height, uint16_t& left, uint16_t& top, uint16_t& right, uint16_t& bottom,
   float& exposure, float& gain, uint8_t*& dataPtr)
 {
@@ -341,10 +350,6 @@ static asdp::Status ParseFrameMessage(Message& message, bool &isFrameBegin, bool
     return status;
   }
   status = frameData.GetEndFrameFlag(isFrameEnd);
-  if (status != OKAY) {
-    return status;
-  }
-  status = frameData.GetFrameStartTime(frameStartTime);
   if (status != OKAY) {
     return status;
   }
@@ -476,13 +481,13 @@ void asdp::render::ReceiveDataThread(ReceiverUDP& receiveSocket, size_t maxBytes
             // Pull the information from the frame so that we can store the width data for this
             // camera.
             bool isFrameBegin, isFrameEnd;
-            Time frameStartTime, time;
+            Time time;
             uint32_t cameraID;
             uint16_t width, height;
             uint16_t left, right, top, bottom;
             uint8_t* data;
             float exposure, gain;
-            status = ParseFrameMessage(*message, isFrameBegin, isFrameEnd, frameStartTime, time, cameraID, width, height,
+            status = ParseFrameMessage(*message, isFrameBegin, isFrameEnd, time, cameraID, width, height,
               left, top, right, bottom, exposure, gain, data);
             if (OKAY != status) {
               std::cerr << "ReceiveDataThread: ParseFrameMessage() failed: " << ErrorMessage(status) << std::endl;
@@ -540,7 +545,6 @@ void asdp::render::ReceiveDataThread(ReceiverUDP& receiveSocket, size_t maxBytes
             MessageSummary summary;
             summary.isFrameBegin = isFrameBegin;
             summary.isFrameEnd = isFrameEnd;
-            summary.frameStartTime = frameStartTime;
             summary.time = time;
             summary.cameraID = cameraID;
             summary.width = width;

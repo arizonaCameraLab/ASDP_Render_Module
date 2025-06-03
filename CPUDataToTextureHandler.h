@@ -38,7 +38,6 @@ namespace asdp {
 struct MessageSummary {
   bool isFrameBegin = false;        ///< True if this is the start of a frame
   bool isFrameEnd = false;          ///< True if this is the end of a frame
-  asdp::Time frameStartTime;       ///< The time the frame started
   asdp::Time time;                  ///< The time associated with the message
   uint32_t cameraID = 0;            ///< The camera ID
   uint16_t width = 0;               ///< The width of the image data (if present for a message type)
