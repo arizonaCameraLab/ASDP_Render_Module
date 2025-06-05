@@ -584,14 +584,6 @@ void asdp::render::ReceiveDataThread(ReceiverUDP& receiveSocket, size_t maxBytes
         continue;
       }
 
-      // Make sure that we only have one message per packet.  If we get more, we will have to modify the
-      // pinned and GPU memory buffers to handle it.
-      if (messageSummaries.size() > 1) {
-        std::cerr << "Error: More than one message per packet." << std::endl;
-        done = true;
-        return;
-      }
-
       // Enqueue the packet for processing.
       data.messages = messageSummaries;
       data.cpuImageBufferPtr = cpuImageBufferPtr;
