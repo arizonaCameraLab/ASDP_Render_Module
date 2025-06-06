@@ -19,12 +19,12 @@
       },
       "color": {
         "offset": 0.0,
-        "gain": 1.0
+        "gain": 64.06
       },
       "orientationDegrees": [
         -90.0,
-        -9.0,
-        -125.00000000000001
+        9.0,
+        54.99999999999998
       ],
       "positionMeters": [
         0.11326936926464728,
@@ -43,14 +43,6 @@
           ]
         }
       },
-      "oversizedResolutionPixels": [
-        1280,
-        1024
-      ],
-      "oversizedFieldOfViewDegrees": [
-        40.0,
-        32.5
-      ],
       "distortion": {
         "type": "radial",
         "parameters": {
@@ -89,12 +81,12 @@
       },
       "color": {
         "offset": 0.0,
-        "gain": 1.0
+        "gain": 64.06
       },
       "orientationDegrees": [
-        90.0,
-        36.0,
-        -54.999999999999986
+        89.99999999999999,
+        -35.999999999999986,
+        125.00000000000001
       ],
       "positionMeters": [
         0.09277910947294837,
@@ -113,14 +105,6 @@
           ]
         }
       },
-      "oversizedResolutionPixels": [
-        1280,
-        1024
-      ],
-      "oversizedFieldOfViewDegrees": [
-        40.0,
-        32.5
-      ],
       "distortion": {
         "type": "radial",
         "parameters": {
@@ -159,12 +143,12 @@
       },
       "color": {
         "offset": 0.0,
-        "gain": 1.0
+        "gain": 64.06
       },
       "orientationDegrees": [
         -90.0,
-        -62.999999999999986,
-        -125.00000000000001
+        63.0,
+        54.999999999999986
       ],
       "positionMeters": [
         0.05206421443292031,
@@ -183,14 +167,6 @@
           ]
         }
       },
-      "oversizedResolutionPixels": [
-        1280,
-        1024
-      ],
-      "oversizedFieldOfViewDegrees": [
-        40.0,
-        32.5
-      ],
       "distortion": {
         "type": "radial",
         "parameters": {
@@ -229,11 +205,11 @@
       },
       "color": {
         "offset": 0.0,
-        "gain": 1.0
+        "gain": 64.06
       },
       "orientationDegrees": [
-        35.0,
-        90.0,
+        -35.000000000000014,
+        -90.0,
         0.0
       ],
       "positionMeters": [
@@ -253,14 +229,6 @@
           ]
         }
       },
-      "oversizedResolutionPixels": [
-        1280,
-        1024
-      ],
-      "oversizedFieldOfViewDegrees": [
-        40.0,
-        32.5
-      ],
       "distortion": {
         "type": "radial",
         "parameters": {
@@ -299,12 +267,12 @@
       },
       "color": {
         "offset": 0.0,
-        "gain": 1.0
+        "gain": 64.06
       },
       "orientationDegrees": [
         90.0,
-        -62.999999999999986,
-        54.999999999999986
+        63.0,
+        -125.00000000000001
       ],
       "positionMeters": [
         -0.05206421443292031,
@@ -323,14 +291,6 @@
           ]
         }
       },
-      "oversizedResolutionPixels": [
-        1280,
-        1024
-      ],
-      "oversizedFieldOfViewDegrees": [
-        40.0,
-        32.5
-      ],
       "distortion": {
         "type": "radial",
         "parameters": {
@@ -369,12 +329,12 @@
       },
       "color": {
         "offset": 0.0,
-        "gain": 1.0
+        "gain": 64.06
       },
       "orientationDegrees": [
         -90.0,
-        36.00000000000003,
-        125.00000000000001
+        -36.00000000000003,
+        -54.999999999999986
       ],
       "positionMeters": [
         -0.09277910947294837,
@@ -393,14 +353,6 @@
           ]
         }
       },
-      "oversizedResolutionPixels": [
-        1280,
-        1024
-      ],
-      "oversizedFieldOfViewDegrees": [
-        40.0,
-        32.5
-      ],
       "distortion": {
         "type": "radial",
         "parameters": {
@@ -439,12 +391,12 @@
       },
       "color": {
         "offset": 0.0,
-        "gain": 1.0
+        "gain": 64.06
       },
       "orientationDegrees": [
-        90.00000000000001,
-        -9.0,
-        55.0
+        89.99999999999999,
+        9.000000000000012,
+        -124.99999999999999
       ],
       "positionMeters": [
         -0.11326936926464728,
@@ -463,14 +415,6 @@
           ]
         }
       },
-      "oversizedResolutionPixels": [
-        1280,
-        1024
-      ],
-      "oversizedFieldOfViewDegrees": [
-        40.0,
-        32.5
-      ],
       "distortion": {
         "type": "radial",
         "parameters": {
@@ -509,12 +453,12 @@
       },
       "color": {
         "offset": 0.0,
-        "gain": 1.0
+        "gain": 64.06
       },
       "orientationDegrees": [
         -90.0,
-        -9.000000000000012,
-        -90.0
+        9.000000000000012,
+        90.0
       ],
       "positionMeters": [
         0.1382763676833193,
@@ -533,14 +477,6 @@
           ]
         }
       },
-      "oversizedResolutionPixels": [
-        1280,
-        1024
-      ],
-      "oversizedFieldOfViewDegrees": [
-        40.0,
-        32.5
-      ],
       "distortion": {
         "type": "radial",
         "parameters": {
@@ -579,12 +515,12 @@
       },
       "color": {
         "offset": 0.0,
-        "gain": 1.0
+        "gain": 64.06
       },
       "orientationDegrees": [
         90.0,
-        36.0,
-        -90.0
+        -35.99999999999998,
+        90.0
       ],
       "positionMeters": [
         0.11326237921249266,
@@ -603,14 +539,6 @@
           ]
         }
       },
-      "oversizedResolutionPixels": [
-        1280,
-        1024
-      ],
-      "oversizedFieldOfViewDegrees": [
-        40.0,
-        32.5
-      ],
       "distortion": {
         "type": "radial",
         "parameters": {
@@ -649,12 +577,12 @@
       },
       "color": {
         "offset": 0.0,
-        "gain": 1.0
+        "gain": 64.06
       },
       "orientationDegrees": [
         -90.0,
-        -63.0,
-        -90.0
+        63.0,
+        90.0
       ],
       "positionMeters": [
         0.06355866996353655,
@@ -673,14 +601,6 @@
           ]
         }
       },
-      "oversizedResolutionPixels": [
-        1280,
-        1024
-      ],
-      "oversizedFieldOfViewDegrees": [
-        40.0,
-        32.5
-      ],
       "distortion": {
         "type": "radial",
         "parameters": {
@@ -719,11 +639,11 @@
       },
       "color": {
         "offset": 0.0,
-        "gain": 1.0
+        "gain": 64.06
       },
       "orientationDegrees": [
         0.0,
-        90.0,
+        -90.0,
         0.0
       ],
       "positionMeters": [
@@ -743,14 +663,6 @@
           ]
         }
       },
-      "oversizedResolutionPixels": [
-        1280,
-        1024
-      ],
-      "oversizedFieldOfViewDegrees": [
-        40.0,
-        32.5
-      ],
       "distortion": {
         "type": "radial",
         "parameters": {
@@ -789,12 +701,12 @@
       },
       "color": {
         "offset": 0.0,
-        "gain": 1.0
+        "gain": 64.06
       },
       "orientationDegrees": [
         90.0,
-        -63.0,
-        90.0
+        63.0,
+        -90.0
       ],
       "positionMeters": [
         -0.06355866996353655,
@@ -813,14 +725,6 @@
           ]
         }
       },
-      "oversizedResolutionPixels": [
-        1280,
-        1024
-      ],
-      "oversizedFieldOfViewDegrees": [
-        40.0,
-        32.5
-      ],
       "distortion": {
         "type": "radial",
         "parameters": {
@@ -859,12 +763,12 @@
       },
       "color": {
         "offset": 0.0,
-        "gain": 1.0
+        "gain": 64.06
       },
       "orientationDegrees": [
         -90.0,
-        36.00000000000003,
-        90.0
+        -36.00000000000003,
+        -90.0
       ],
       "positionMeters": [
         -0.11326237921249266,
@@ -883,14 +787,6 @@
           ]
         }
       },
-      "oversizedResolutionPixels": [
-        1280,
-        1024
-      ],
-      "oversizedFieldOfViewDegrees": [
-        40.0,
-        32.5
-      ],
       "distortion": {
         "type": "radial",
         "parameters": {
@@ -929,12 +825,12 @@
       },
       "color": {
         "offset": 0.0,
-        "gain": 1.0
+        "gain": 64.06
       },
       "orientationDegrees": [
         90.0,
-        -9.0,
-        90.0
+        9.000000000000012,
+        -90.0
       ],
       "positionMeters": [
         -0.1382763676833193,
@@ -953,14 +849,6 @@
           ]
         }
       },
-      "oversizedResolutionPixels": [
-        1280,
-        1024
-      ],
-      "oversizedFieldOfViewDegrees": [
-        40.0,
-        32.5
-      ],
       "distortion": {
         "type": "radial",
         "parameters": {
@@ -999,12 +887,12 @@
       },
       "color": {
         "offset": 0.0,
-        "gain": 1.0
+        "gain": 64.06
       },
       "orientationDegrees": [
         -90.0,
-        -9.0,
-        -54.999999999999986
+        9.000000000000012,
+        125.00000000000001
       ],
       "positionMeters": [
         0.11326936926464728,
@@ -1023,14 +911,6 @@
           ]
         }
       },
-      "oversizedResolutionPixels": [
-        1280,
-        1024
-      ],
-      "oversizedFieldOfViewDegrees": [
-        40.0,
-        32.5
-      ],
       "distortion": {
         "type": "radial",
         "parameters": {
@@ -1069,12 +949,12 @@
       },
       "color": {
         "offset": 0.0,
-        "gain": 1.0
+        "gain": 64.06
       },
       "orientationDegrees": [
         90.0,
-        36.0,
-        -125.00000000000001
+        -35.999999999999986,
+        55.000000000000014
       ],
       "positionMeters": [
         0.09277910947294837,
@@ -1093,14 +973,6 @@
           ]
         }
       },
-      "oversizedResolutionPixels": [
-        1280,
-        1024
-      ],
-      "oversizedFieldOfViewDegrees": [
-        40.0,
-        32.5
-      ],
       "distortion": {
         "type": "radial",
         "parameters": {
@@ -1139,12 +1011,12 @@
       },
       "color": {
         "offset": 0.0,
-        "gain": 1.0
+        "gain": 64.06
       },
       "orientationDegrees": [
         -90.0,
-        -63.0,
-        -54.999999999999986
+        63.0,
+        125.00000000000001
       ],
       "positionMeters": [
         0.05206421443292031,
@@ -1163,14 +1035,6 @@
           ]
         }
       },
-      "oversizedResolutionPixels": [
-        1280,
-        1024
-      ],
-      "oversizedFieldOfViewDegrees": [
-        40.0,
-        32.5
-      ],
       "distortion": {
         "type": "radial",
         "parameters": {
@@ -1209,11 +1073,11 @@
       },
       "color": {
         "offset": 0.0,
-        "gain": 1.0
+        "gain": 64.06
       },
       "orientationDegrees": [
-        -35.00000000000001,
-        90.0,
+        35.000000000000014,
+        -90.0,
         0.0
       ],
       "positionMeters": [
@@ -1233,14 +1097,6 @@
           ]
         }
       },
-      "oversizedResolutionPixels": [
-        1280,
-        1024
-      ],
-      "oversizedFieldOfViewDegrees": [
-        40.0,
-        32.5
-      ],
       "distortion": {
         "type": "radial",
         "parameters": {
@@ -1279,12 +1135,12 @@
       },
       "color": {
         "offset": 0.0,
-        "gain": 1.0
+        "gain": 64.06
       },
       "orientationDegrees": [
         90.0,
-        -62.999999999999986,
-        125.00000000000001
+        63.0,
+        -54.999999999999986
       ],
       "positionMeters": [
         -0.05206421443292031,
@@ -1303,14 +1159,6 @@
           ]
         }
       },
-      "oversizedResolutionPixels": [
-        1280,
-        1024
-      ],
-      "oversizedFieldOfViewDegrees": [
-        40.0,
-        32.5
-      ],
       "distortion": {
         "type": "radial",
         "parameters": {
@@ -1349,12 +1197,12 @@
       },
       "color": {
         "offset": 0.0,
-        "gain": 1.0
+        "gain": 64.06
       },
       "orientationDegrees": [
-        -90.00000000000001,
-        36.00000000000003,
-        55.0
+        -89.99999999999999,
+        -36.00000000000003,
+        -125.00000000000001
       ],
       "positionMeters": [
         -0.09277910947294837,
@@ -1373,14 +1221,6 @@
           ]
         }
       },
-      "oversizedResolutionPixels": [
-        1280,
-        1024
-      ],
-      "oversizedFieldOfViewDegrees": [
-        40.0,
-        32.5
-      ],
       "distortion": {
         "type": "radial",
         "parameters": {
@@ -1419,12 +1259,12 @@
       },
       "color": {
         "offset": 0.0,
-        "gain": 1.0
+        "gain": 64.06
       },
       "orientationDegrees": [
         90.0,
-        -9.0,
-        125.00000000000001
+        9.0,
+        -54.99999999999998
       ],
       "positionMeters": [
         -0.11326936926464728,
@@ -1443,14 +1283,6 @@
           ]
         }
       },
-      "oversizedResolutionPixels": [
-        1280,
-        1024
-      ],
-      "oversizedFieldOfViewDegrees": [
-        40.0,
-        32.5
-      ],
       "distortion": {
         "type": "radial",
         "parameters": {
