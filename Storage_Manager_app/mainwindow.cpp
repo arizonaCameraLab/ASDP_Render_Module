@@ -29,7 +29,7 @@
 #include <CPUDataToTextureHandler.h>
 
 // Define the version number
-const QString VERSION_NUMBER = "1.4.0";
+const QString VERSION_NUMBER = "1.5.0";
 
 static std::vector<std::string> getIPAddresses()
 {
@@ -236,10 +236,13 @@ void MainWindow::SelectServer(const QString& coreURL)
   m_coreURL = coreURL;
   ResetServer();
   if (coreURL.isEmpty()) {
+    Status status = m_client->DisconnectFromServer();
+    if (status != OKAY) {
+      std::cerr << "Failed to disconnect from server: " << ErrorMessage(status) << std::endl;
+    }
     return;
   }
 
-  // Implement the logic for selecting the core here
   std::cout << "Selected Core: " << coreURL.toStdString() << std::endl;
 
   // Connect to the server.
