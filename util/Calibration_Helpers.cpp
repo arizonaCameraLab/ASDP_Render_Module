@@ -525,7 +525,7 @@ bool asdp::render::calibration::TargetProjectedLocationNoDistortion(
   return true;
 }
 
-std::array<double, 2> asdp::render::calibration::PlaneIntersectionForPixel(
+std::array<double, 2> asdp::render::calibration::PlaneIntersectionForPixelNoDistortion(
   const asdp::render::CameraRenderInfo& cri, std::array<double, 2> locPixels)
 {
   // Map the pixel coordinates to the range [0, 1], remembering that the pixels span
@@ -939,52 +939,52 @@ std::string asdp::render::calibration::Test()
 
         // Center of the image.
         std::array<double, 2> locPixels = { 511.5, 255.5 };
-        std::array<double, 2> locPlane = PlaneIntersectionForPixel(cri, locPixels);
+        std::array<double, 2> locPlane = PlaneIntersectionForPixelNoDistortion(cri, locPixels);
         if (fabs(locPlane[0] - 0) > 0.01) {
-          return "Test failed: PlaneIntersectionForPixel() center of image X.";
+          return "Test failed: PlaneIntersectionForPixelNoDistortion() center of image X.";
         }
         if (fabs(locPlane[1] - 0) > 0.01) {
-          return "Test failed: PlaneIntersectionForPixel() center of image Y.";
+          return "Test failed: PlaneIntersectionForPixelNoDistortion() center of image Y.";
         }
 
         // Right center edge (halfway past last pixel).
         locPixels = { 1023.5, 255.5 };
-        locPlane = PlaneIntersectionForPixel(cri, locPixels);
+        locPlane = PlaneIntersectionForPixelNoDistortion(cri, locPixels);
         if (fabs(locPlane[0] - 1) > 0.01) {
-          return "Test failed: PlaneIntersectionForPixel() right center edge X: " + std::to_string(locPlane[0]);
+          return "Test failed: PlaneIntersectionForPixelNoDistortion() right center edge X: " + std::to_string(locPlane[0]);
         }
         if (fabs(locPlane[1] - 0) > 0.01) {
-          return "Test failed: PlaneIntersectionForPixel() right center edge Y.";
+          return "Test failed: PlaneIntersectionForPixelNoDistortion() right center edge Y.";
         }
 
         // Left center edge (halfway past first pixel).
         locPixels = { -0.5, 255.5 };
-        locPlane = PlaneIntersectionForPixel(cri, locPixels);
+        locPlane = PlaneIntersectionForPixelNoDistortion(cri, locPixels);
         if (fabs(locPlane[0] - -1) > 0.01) {
-          return "Test failed: PlaneIntersectionForPixel() left center edge X.";
+          return "Test failed: PlaneIntersectionForPixelNoDistortion() left center edge X.";
         }
         if (fabs(locPlane[1] - 0) > 0.01) {
-          return "Test failed: PlaneIntersectionForPixel() left center edge Y.";
+          return "Test failed: PlaneIntersectionForPixelNoDistortion() left center edge Y.";
         }
 
         // Top center edge (halfway past last pixel).
         locPixels = { 511.5, -0.5 };
-        locPlane = PlaneIntersectionForPixel(cri, locPixels);
+        locPlane = PlaneIntersectionForPixelNoDistortion(cri, locPixels);
         if (fabs(locPlane[0] - 0) > 0.01) {
-          return "Test failed: PlaneIntersectionForPixel() top center edge X.";
+          return "Test failed: PlaneIntersectionForPixelNoDistortion() top center edge X.";
         }
         if (fabs(locPlane[1] - tan(glm::radians(45/2.0))) > 0.01) {
-          return "Test failed: PlaneIntersectionForPixel() top center edge Y: " + std::to_string(locPlane[1]);
+          return "Test failed: PlaneIntersectionForPixelNoDistortion() top center edge Y: " + std::to_string(locPlane[1]);
         }
 
         // Bottom center edge (halfway past first pixel).
         locPixels = { 511.5, 511.5 };
-        locPlane = PlaneIntersectionForPixel(cri, locPixels);
+        locPlane = PlaneIntersectionForPixelNoDistortion(cri, locPixels);
         if (fabs(locPlane[0] - 0) > 0.01) {
-          return "Test failed: PlaneIntersectionForPixel() bottom center edge X.";
+          return "Test failed: PlaneIntersectionForPixelNoDistortion() bottom center edge X.";
         }
         if (fabs(locPlane[1] - -tan(glm::radians(45 / 2.0))) > 0.01) {
-          return "Test failed: PlaneIntersectionForPixel() bottom center edge Y: " + std::to_string(locPlane[1]);
+          return "Test failed: PlaneIntersectionForPixelNoDistortion() bottom center edge Y: " + std::to_string(locPlane[1]);
         }
       }
     }

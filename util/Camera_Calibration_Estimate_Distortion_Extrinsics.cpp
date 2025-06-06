@@ -227,8 +227,8 @@ int main(int argc, char** argv)
             std::cerr << "Error: Camera ID " << cameraID << " not found in camera configuration." << std::endl;
             return 52;
           }
-          DistortionBagOfMappings::Point2D expected = PlaneIntersectionForPixel(cameraRenderInfos[whichCamera], {x1, y1});
-          DistortionBagOfMappings::Point2D actual = PlaneIntersectionForPixel(cameraRenderInfos[whichCamera], { x2, y2 });
+          DistortionBagOfMappings::Point2D expected = PlaneIntersectionForPixelNoDistortion(cameraRenderInfos[whichCamera], {x1, y1});
+          DistortionBagOfMappings::Point2D actual = PlaneIntersectionForPixelNoDistortion(cameraRenderInfos[whichCamera], { x2, y2 });
           DistortionBagOfMappings::Mapping mapping = { actual, expected };
           perTargetBags[pose.targetID][pose.cameraID].push_back(mapping); // Assuming all mappings are for camera ID 0 for now.
         } else {
@@ -382,8 +382,8 @@ int main(int argc, char** argv)
           // camera parameters.
           std::array<double, 2> idealCameraLocation;
 
-          DistortionBagOfMappings::Point2D expected = PlaneIntersectionForPixel(*cri, expectedLocation);
-          DistortionBagOfMappings::Point2D actual = PlaneIntersectionForPixel(*cri, { x, y });
+          DistortionBagOfMappings::Point2D expected = PlaneIntersectionForPixelNoDistortion(*cri, expectedLocation);
+          DistortionBagOfMappings::Point2D actual = PlaneIntersectionForPixelNoDistortion(*cri, { x, y });
 
           // Map from the actual (as rendered) position to the ideal (expected) position.
           DistortionBagOfMappings::Mapping mapping = { actual, expected };
