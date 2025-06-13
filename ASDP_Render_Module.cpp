@@ -908,8 +908,7 @@ int main(int argc, char** argv)
     for (size_t j = 0; j < cameraRenderInfos.size(); j++) {
       if (cameraRenderInfos[j]->m_ID < 22) {
         g_visibleCameras.push_back(cameraRenderInfos[j]);
-      }
-      else if (computeDepth) {
+      } else if (computeDepth) {
         g_depthCameras.push_back(cameraRenderInfos[j]);
       }
     }
@@ -931,9 +930,21 @@ int main(int argc, char** argv)
     // Construct a depth-estimation object if there are any depth-estimation cameras.
     // There must be sets of two camera pairs for depth estimation.
     if (g_depthCameras.size() > 0) {
+      bool enablingCP = false; // Whether cylindrical projection is enabled for any of the displays.
+      for (const auto& displayInfo : displayInfos) {
+        if (displayInfo.enableCP) {
+          enablingCP = true;
+          break;
+        }
+      }
+      if (enablingCP) {
+        std::cerr << "Cylindrical projection is incompatible with depth estimation." << std::endl;
+        return 100;
+      }
+
       if (g_depthCameras.size() % 2 != 0) {
         std::cerr << "Error: There must be an even number of depth-estimation cameras." << std::endl;
-        return 20;
+        return 101;
       }
       std::vector< std::array<std::shared_ptr<asdp::render::CameraRenderInfo>, 2> > cameras;
       for (size_t i = 0; i < g_depthCameras.size(); i += 2) {
@@ -943,14 +954,14 @@ int main(int argc, char** argv)
 
       if (!displayTexture->BorrowContext()) {
         std::cerr << "Error borrowing context from displayTexture for DepthEstimator." << std::endl;
-        return 100;
+        return 102;
       }
 
       // Initialize GLEW in our context. It is okay to initialize it more than once.
       glewExperimental = true;
       if (glewInit() != GLEW_OK) {
         std::cerr << "Failed to initialize GLEW before DepthTexture" << std::endl;
-        return false;
+        return 103;
       }
       // Clear any GL error that Glew caused.  Apparently on Non-Windows
       // platforms, this can cause a spurious error 1280.
@@ -972,7 +983,7 @@ int main(int argc, char** argv)
 
       if (!displayTexture->ReturnContext()) {
         std::cerr << "Error returning context to displayTexture for DepthEstimator." << std::endl;
-        return 101;
+        return 104;
       }
     }
 
