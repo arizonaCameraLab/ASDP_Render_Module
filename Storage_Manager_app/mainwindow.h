@@ -56,6 +56,9 @@ public slots:
     /// @brief View the specified camera.
     void ViewCamera(const QString& cameraID);
 
+    /// @brief The skip interval has changed.
+    void SkipIntervalChanged();
+
     /// @brief Do recording at startup
     void RecordAtStartup();
 

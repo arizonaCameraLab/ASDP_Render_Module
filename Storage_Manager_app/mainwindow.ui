@@ -6,7 +6,7 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>778</width>
+    <width>1059</width>
     <height>702</height>
    </rect>
   </property>
@@ -225,6 +225,16 @@
                   </property>
                  </widget>
                 </item>
+                <item>
+                 <widget class="QLabel" name="label_3">
+                  <property name="text">
+                   <string>Skip frames:</string>
+                  </property>
+                 </widget>
+                </item>
+                <item>
+                 <widget class="QComboBox" name="comboBoxSkip"/>
+                </item>
                </layout>
               </widget>
              </item>
@@ -430,7 +440,7 @@
    <slot>StartReplay(QString)</slot>
    <hints>
     <hint type="sourcelabel">
-     <x>240</x>
+     <x>442</x>
      <y>391</y>
     </hint>
     <hint type="destinationlabel">
@@ -446,7 +456,7 @@
    <slot>DeleteStream(QString)</slot>
    <hints>
     <hint type="sourcelabel">
-     <x>240</x>
+     <x>442</x>
      <y>641</y>
     </hint>
     <hint type="destinationlabel">
@@ -519,6 +529,22 @@
     </hint>
    </hints>
   </connection>
+  <connection>
+   <sender>comboBoxSkip</sender>
+   <signal>currentTextChanged(QString)</signal>
+   <receiver>MainWindow</receiver>
+   <slot>SkipIntervalChanged()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>399</x>
+     <y>435</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>780</x>
+     <y>696</y>
+    </hint>
+   </hints>
+  </connection>
  </connections>
  <slots>
   <signal>ShowServers(bool)</signal>
@@ -535,5 +561,6 @@
   <slot>RecordAtStartup()</slot>
   <slot>NoRecordAtStartup()</slot>
   <slot>UseIRCamera(bool)</slot>
+  <slot>SkipIntervalChanged()</slot>
  </slots>
 </ui>

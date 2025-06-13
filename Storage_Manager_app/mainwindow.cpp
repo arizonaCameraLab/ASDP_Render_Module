@@ -29,7 +29,7 @@
 #include <CPUDataToTextureHandler.h>
 
 // Define the version number
-const QString VERSION_NUMBER = "1.5.0";
+const QString VERSION_NUMBER = "1.6.0";
 
 static std::vector<std::string> getIPAddresses()
 {
@@ -97,6 +97,13 @@ MainWindow::MainWindow(QWidget *parent)
 
   // Set the window title with the version number
   setWindowTitle(QString("Storage Manager v%1").arg(VERSION_NUMBER));
+
+  // Fill in the entries for the skip combo box and set its default value.
+  ui->comboBoxSkip->addItem("0");
+  for (int i = 2; i <= 20; i += 2) {
+    ui->comboBoxSkip->addItem(QString::number(i));
+  }
+  ui->comboBoxSkip->setCurrentIndex(5);  // Default to 10
 
   // Look up the network interfaces that are available and add them to the combo box.
   std::vector<std::string> ipAddresses = getIPAddresses();
@@ -566,6 +573,15 @@ void MainWindow::UseIRCamera(bool isIR)
   }
 }
 
+void MainWindow::SkipIntervalChanged()
+{
+  if (m_streamingCameraID != 0) {
+    std::cout << "Changing skip interval to " << ui->comboBoxSkip->currentText().toStdString() << std::endl;
+    // Stop the current streaming and then restart it with the new skip interval.
+    ViewCamera(QString::number(m_streamingCameraID));
+  }
+}
+
 void MainWindow::ViewCamera(const QString& cameraID)
 {
   // Remove any existing streaming and display. We can only have one display at a time.
@@ -708,7 +724,7 @@ void MainWindow::ViewCamera(const QString& cameraID)
     m_streamingCameraID = cameraID.toUInt();
     SubregionDescription region;
     region.cameraID = m_streamingCameraID;
-    region.skipFrames = 9;
+    region.skipFrames = ui->comboBoxSkip->currentText().toUInt();
     region.startTimeSeconds = 0;
     region.startTimeMicroseconds = 0;
     region.left = 0;
