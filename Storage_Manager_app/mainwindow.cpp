@@ -96,7 +96,8 @@ MainWindow::MainWindow(QWidget *parent)
   ui->setupUi(this);  // Set up the UI
 
   // Set the window title with the version number
-  setWindowTitle(QString("Storage Manager v%1").arg(VERSION_NUMBER));
+  setWindowTitle(QString("Storage Manager v%1").arg(VERSION_NUMBER + "-" + BUILD_TYPE + " using Core API "
+    + asdp::Core::GetVersion().c_str()));
 
   // Fill in the entries for the skip combo box and set its default value.
   ui->comboBoxSkip->addItem("0");

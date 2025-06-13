@@ -218,6 +218,18 @@ add_executable(ASDP_Render_Module ${ASDP_Render_Module_SOURCES} ${ASDP_Render_Mo
 target_compile_definitions(ASDP_Render_Module PRIVATE
   -DCONFIG_FILE_PATH="${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR}/ASDP_Render_Module_Configs")
 target_link_libraries(ASDP_Render_Module Render_Module Calibration_Helpers nlohmann_json::nlohmann_json)
+get_property(isMultiConfig GLOBAL PROPERTY GENERATOR_IS_MULTI_CONFIG)
+if(isMultiConfig)
+  # Multi-config (e.g., Visual Studio, Xcode)
+  target_compile_definitions(ASDP_Render_Module PRIVATE BUILD_TYPE="$<CONFIG>")
+else()
+  # Single-config (e.g., Makefiles, Ninja)
+  if(CMAKE_BUILD_TYPE AND NOT CMAKE_BUILD_TYPE STREQUAL "")
+    target_compile_definitions(ASDP_Render_Module PRIVATE BUILD_TYPE="${CMAKE_BUILD_TYPE}")
+  else()
+    target_compile_definitions(ASDP_Render_Module PRIVATE BUILD_TYPE="Default")
+  endif()
+endif()
 
 install(TARGETS ASDP_Render_Module EXPORT ${PROJECT_NAME}
   RUNTIME DESTINATION bin COMPONENT bin

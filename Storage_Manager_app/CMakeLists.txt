@@ -26,6 +26,18 @@ qt5_wrap_ui(UI_HEADERS ${UI_FILES})
 
 # Add the executable target
 add_executable(Storage_Manager ${SOURCES} ${HEADERS} ${UI_HEADERS})
+get_property(isMultiConfig GLOBAL PROPERTY GENERATOR_IS_MULTI_CONFIG)
+if(isMultiConfig)
+  # Multi-config (e.g., Visual Studio, Xcode)
+  target_compile_definitions(Storage_Manager PRIVATE BUILD_TYPE="$<CONFIG>")
+else()
+  # Single-config (e.g., Makefiles, Ninja)
+  if(CMAKE_BUILD_TYPE AND NOT CMAKE_BUILD_TYPE STREQUAL "")
+    target_compile_definitions(Storage_Manager PRIVATE BUILD_TYPE="${CMAKE_BUILD_TYPE}")
+  else()
+    target_compile_definitions(Storage_Manager PRIVATE BUILD_TYPE="Default")
+  endif()
+endif()
 
 # Link the Qt5 libraries to the target
 target_link_libraries(Storage_Manager PRIVATE Qt5::Core Qt5::Widgets Qt5::Gui Render_Module ASDP_Core_API::ASDP_Core_API)

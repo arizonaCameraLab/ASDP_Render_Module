@@ -652,7 +652,8 @@ int main(int argc, char** argv)
 
   // Run inside a block so that the destructors will be called for all objects before we exit.
   {
-    std::cout << "ASDP Render Module version " << VERSION << std::endl;
+    std::cout << "ASDP Render Module version " << VERSION + "-" + BUILD_TYPE << " using Core API "
+      << asdp::Core::GetVersion() << std::endl;
 
     // Create a PoseAdjuster to handle helicopter motion.
     PoseAdjusterCoordinates poseAdjusterCoordinates = HELICOPTER;
