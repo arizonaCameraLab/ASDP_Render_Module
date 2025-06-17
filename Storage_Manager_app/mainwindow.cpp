@@ -29,7 +29,7 @@
 #include <CPUDataToTextureHandler.h>
 
 // Define the version number
-const QString VERSION_NUMBER = "1.6.0";
+const QString VERSION_NUMBER = "1.6.1";
 
 static std::vector<std::string> getIPAddresses()
 {
@@ -512,7 +512,6 @@ void MainWindow::StopRecording()
 void MainWindow::StartReplay(const QString& streamID)
 {
   if (m_client) {
-    ResetStreaming();
     if (streamID.isEmpty()) {
       Status status = m_client->SendCommandPacket(CommandPacketStopReplay());
       if (status != OKAY) {
