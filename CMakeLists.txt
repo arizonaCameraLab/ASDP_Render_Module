@@ -133,8 +133,7 @@ set (Render_Module_HEADERS
   Distortion.h
   ToneMap.h
   CPUDataToTextureHandler.h
-  PinnedBufferPool.h
-  GPUBufferPool.h
+  CUDABufferPool.h
   PoseAdjuster.h
   DepthEstimator.h
   Vignette.h
@@ -150,8 +149,7 @@ set (Render_Module_SOURCES
   Distortion.cpp
   ToneMap.cpp
   CPUDataToTextureHandler.cu
-  PinnedBufferPool.cpp
-  GPUBufferPool.cpp
+  CUDABufferPool.cpp
   PoseAdjuster.cpp
   DepthEstimator.cu
   Vignette.cpp
@@ -359,8 +357,7 @@ if(BUILD_TESTS)
     Distortion_Test
     ToneMap_Test
     CPUDataToTextureHandler_Test
-    PinnedBufferPool_Test
-    GPUBufferPool_Test
+    CUDABufferPool_Test
     PoseAdjuster_Test
     DepthEstimator_Test
     Vignette_Test

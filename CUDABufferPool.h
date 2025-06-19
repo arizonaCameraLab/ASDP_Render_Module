@@ -1,12 +1,12 @@
 /*
- * Copyright (C) 2024: Arizona Board of Regents on Behalf of the University of Arizona
+ * Copyright (C) 2025: Arizona Board of Regents on Behalf of the University of Arizona
  */
 
 #pragma once
 
 /**
-* @file GPUBufferPool.h
-* @brief Apache Strap-Down Pilotage utility class to provide a pre-allocated pool of pinned-memory buffers.
+* @file CUDABufferPool.h
+* @brief Apache Strap-Down Pilotage utility class to provide a pre-allocated pool of CUDA buffers (CPU or GPU side).
 *
 * @author ReliaSolve.
 * @date September 18th, 2024.
@@ -23,17 +23,19 @@
 namespace asdp {
   namespace render {
 
-    /// @brief Manages a thread-safe pre-allocated pool of CUDA GPU buffers.
-    class GPUBufferPool {
+    /// @brief Manages a thread-safe pre-allocated pool of CUDA pinned CPU buffers or GPU buffers.
+    class CUDABufferPool {
     public:
       /// @brief Constructs a buffer pool with the given buffer size and initial number of buffers.
       /// @param bufferSize The size of each buffer in bytes.
       /// @param bufferCount The initial number of buffers in the pool.
+      /// @PARAM host If true, the buffers will be allocated in pinned memory on the host (CPU) side.
+      ///        Otherwise, they will be allocated on the GPU side.
       /// @throw std::runtime_error if the buffer pool cannot be created.
-      GPUBufferPool(size_t bufferSize, size_t bufferCount);
+      CUDABufferPool(size_t bufferSize, size_t bufferCount, bool host);
 
       /// @brief Destroys the buffer pool after waiting for all outstanding buffers to return to the pool.
-      ~GPUBufferPool();
+      ~CUDABufferPool();
 
       /// @brief Returns a buffer from the pool, or nullptr if the pool is being destroyed.
       /// @details Returns a buffer from the pool, creating a new buffer if necessary.
@@ -46,11 +48,14 @@ namespace asdp {
       /// @throw std::runtime_error if a buffer cannot be created.
       std::shared_ptr<uint8_t> GetBuffer(bool allocateWhenEmpty = true);
 
-      /// @brief Test the GPUBufferPool class.
+      /// @brief Test the CUDABufferPool class.
       /// @return Empty string on success, descriptive error message on failure.
       static std::string Test();
 
     private:
+      /// Whether we're allocating buffers on the host (CPU) side or the GPU side.
+      bool m_host;
+
       /// The size of each buffer in bytes.
       size_t m_bufferSize;
 

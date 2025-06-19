@@ -4,13 +4,13 @@
 
 #include <string>
 #include <iostream>
-#include <GPUBufferPool.h>
+#include <CUDABufferPool.h>
 
 int main()
 {
-  std::string ret = asdp::render::GPUBufferPool::Test();
+  std::string ret = asdp::render::CUDABufferPool::Test();
   if (ret.size() > 0) {
-    std::cerr << "Error in GPUBufferPool::Test(): " << ret << std::endl;
+    std::cerr << "Error in CUDABufferPool::Test(): " << ret << std::endl;
     return 1;
   }
 

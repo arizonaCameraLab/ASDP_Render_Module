@@ -29,8 +29,7 @@
 #include <ASDP_SpinFreeQueue.hpp>
 #include <ASDP_BufferPool.h>
 #include <ASDP_ClockSynchronizer.h>
-#include "PinnedBufferPool.h"
-#include "GPUBufferPool.h"
+#include "CUDABufferPool.h"
 #include <nlohmann/json.hpp>
 #include <GL/glew.h>
 #include <ToneMap.h>
@@ -1112,17 +1111,17 @@ int main(int argc, char** argv)
     // Construct shared pointers to the data structures that we'll need to do rendering, with
     // custom destructors that will clean up when the shared_ptr is destroyed.
     std::atomic<bool> done(false);
-    std::vector< std::shared_ptr<PinnedBufferPool> > cpuPinnedImageBuffers;
-    std::vector< std::shared_ptr<GPUBufferPool> > gpuImageBuffers;
+    std::vector< std::shared_ptr<CUDABufferPool> > cpuPinnedImageBuffers;
+    std::vector< std::shared_ptr<CUDABufferPool> > gpuImageBuffers;
     std::vector< std::shared_ptr<cudaStream_t> > streams;
     std::vector< std::shared_ptr<ReceiverUDP> > UDPReceivers;
     for (size_t i = 0; i < cameras.size(); i++) {
       try {
         // Preload pinned memory buffers for the CPU.
-        cpuPinnedImageBuffers.push_back(std::make_shared<PinnedBufferPool>(cameras[i].width* cameras[i].height * sizeof(uint16_t), 5));
+        cpuPinnedImageBuffers.push_back(std::make_shared<CUDABufferPool>(cameras[i].width* cameras[i].height * sizeof(uint16_t), 5, true));
 
         // Preload pinned memory buffers for the GPU.
-        gpuImageBuffers.push_back(std::make_shared<GPUBufferPool>(cameras[i].width* cameras[i].height * sizeof(uint16_t), 5));
+        gpuImageBuffers.push_back(std::make_shared<CUDABufferPool>(cameras[i].width* cameras[i].height * sizeof(uint16_t), 5, false));
       } catch (std::exception &e) {
         std::cerr << "Error creating buffer pools: " << e.what() << std::endl;
         return 26;

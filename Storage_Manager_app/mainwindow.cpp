@@ -696,8 +696,8 @@ void MainWindow::ViewCamera(const QString& cameraID)
   // Construct shared pointers to the data structures that we'll need to do rendering, with
   // custom destructors that will clean up when the shared_ptr is destroyed.
   try {
-    m_cpuPinnedImageBuffer = std::make_shared<PinnedBufferPool>(width * height * sizeof(uint16_t), 5);
-    m_gpuImageBuffer = std::make_shared<GPUBufferPool>(width * height * sizeof(uint16_t), 5);
+    m_cpuPinnedImageBuffer = std::make_shared<CUDABufferPool>(width * height * sizeof(uint16_t), 5, true);
+    m_gpuImageBuffer = std::make_shared<CUDABufferPool>(width * height * sizeof(uint16_t), 5, false);
   } catch (const std::exception& e) {
     std::cerr << "Error constructing buffers: " << e.what() << std::endl;
     return;

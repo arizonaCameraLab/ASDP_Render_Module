@@ -12,8 +12,7 @@
 #include <ASDP_Core_API.h>
 #include <Display.h>
 #include <ToneMap.h>
-#include <PinnedBufferPool.h>
-#include <GPUBufferPool.h>
+#include <CUDABufferPool.h>
 #include <cuda_runtime.h>
 
 using namespace asdp;
@@ -111,8 +110,8 @@ private:
   std::vector< std::shared_ptr<CameraRenderInfo> > m_visibleCameras;
   GLuint m_toneMap = 0;
   std::atomic<bool> m_doneStreaming{ false };
-  std::shared_ptr<PinnedBufferPool> m_cpuPinnedImageBuffer;
-  std::shared_ptr<GPUBufferPool> m_gpuImageBuffer;
+  std::shared_ptr<CUDABufferPool> m_cpuPinnedImageBuffer;
+  std::shared_ptr<CUDABufferPool> m_gpuImageBuffer;
   std::shared_ptr<cudaStream_t> m_stream;
   std::shared_ptr<std::thread> m_copyThread;
   std::shared_ptr<std::thread> m_receiveThread;

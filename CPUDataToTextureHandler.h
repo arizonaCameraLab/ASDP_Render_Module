@@ -24,8 +24,7 @@
 #include <ASDP_StreamPacketSortedQueue.h>
 #include "Display.h"
 #include "ImageQueue.h"
-#include "PinnedBufferPool.h"
-#include "GPUBufferPool.h"
+#include "CUDABufferPool.h"
 
 namespace asdp {
   namespace render {
@@ -156,7 +155,7 @@ void CopyDataToTextures(uint16_t width, uint16_t height,
 /// @param frameEndTimes Store the times for the end frame message receipts. nullptr
 /// does not record them.
 void ReceiveDataThread(ReceiverUDP& receiveSocket, size_t maxBytesPerPacket, std::atomic<bool>& done,
-  std::shared_ptr<PinnedBufferPool> cpuImageBuffers, std::shared_ptr<GPUBufferPool> gpuImageBuffers,
+  std::shared_ptr<CUDABufferPool> cpuImageBuffers, std::shared_ptr<CUDABufferPool> gpuImageBuffers,
   std::shared_ptr<cudaStream_t> streamPtr,
   std::shared_ptr<asdp::render::ImageQueue> imageQueue,
   std::shared_ptr< SpinFreeQueue< std::shared_ptr<DataToSendToGPU> > > outQueue,

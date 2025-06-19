@@ -1,8 +1,8 @@
 /*
- * Copyright (C) 2024: Arizona Board of Regents on Behalf of the University of Arizona
+ * Copyright (C) 2025: Arizona Board of Regents on Behalf of the University of Arizona
  */
 
-#include "PinnedBufferPool.h"
+#include "CUDABufferPool.h"
 #include <thread>
 #include <iostream>
 #include <stdexcept>
@@ -10,25 +10,46 @@
 
 using namespace asdp::render;
 
-PinnedBufferPool::PinnedBufferPool(size_t bufferSize, size_t bufferCount)
-  : m_bufferSize(bufferSize)
+/// @brief Allocate the appropriate type based on the host flag.
+static cudaError_t mallocBuffer(unsigned char** buffer, size_t size, bool host)
+{
+  if (host) {
+    return cudaMallocHost(buffer, size);
+  } else {
+    return cudaMalloc(buffer, size);
+  }
+}
+
+/// @brief Free the appropriate type based on the host flag.
+static cudaError_t freeBuffer(unsigned char* buffer, bool host)
+{
+  if (host) {
+    return cudaFreeHost(buffer);
+  } else {
+    return cudaFree(buffer);
+  }
+}
+
+CUDABufferPool::CUDABufferPool(size_t bufferSize, size_t bufferCount, bool host)
+  : m_host(host)
+  , m_bufferSize(bufferSize)
   , m_done(false)
 {
   // Fill the buffer pool with buffers.
   // Fill the free-buffer list with pointers to the buffers.
   for (size_t i = 0; i < bufferCount; ++i) {
     unsigned char* buffer = nullptr;
-    cudaError_t ret = cudaMallocHost(&buffer, m_bufferSize);
+    cudaError_t ret = mallocBuffer(&buffer, m_bufferSize, m_host);
     if (ret != cudaSuccess) {
-      std::cerr << "PinnedBufferPool::PinnedBufferPool): cudaMallocHost failed: " << cudaGetErrorString(ret) << std::endl;
-      throw std::runtime_error("cudaMallocHost failed");
+      std::cerr << "PinnedBufferPool::PinnedBufferPool): CUDA malloc failed: " << cudaGetErrorString(ret) << std::endl;
+      throw std::runtime_error("CUDA malloc failed");
     }
     m_allBuffers.push_back(buffer);
     m_freeBuffers.push_back(buffer);
   }
 }
 
-PinnedBufferPool::~PinnedBufferPool()
+CUDABufferPool::~CUDABufferPool()
 {
   // Wait for all the buffers to be returned to the pool.  Because we are setting
   // m_done to true, no more buffers will be allocated in any threads while we're
@@ -46,13 +67,13 @@ PinnedBufferPool::~PinnedBufferPool()
   // Clear the buffer pools while holding the lock.
   std::lock_guard<std::mutex> lock(mtx);
   for (uint8_t* buffer : m_allBuffers) {
-    cudaFreeHost(buffer);
+    freeBuffer(buffer, m_host);
   }
   m_allBuffers.clear();
   m_freeBuffers.clear();
 }
 
-std::shared_ptr<uint8_t> PinnedBufferPool::GetBuffer(bool allocateWhenEmpty)
+std::shared_ptr<uint8_t> CUDABufferPool::GetBuffer(bool allocateWhenEmpty)
 {
   // If we are being destroyed, then we can't return any more buffers
   if (m_done) {
@@ -66,10 +87,10 @@ std::shared_ptr<uint8_t> PinnedBufferPool::GetBuffer(bool allocateWhenEmpty)
     if (allocateWhenEmpty) {
       // Allocate a new buffer and put it on the free list.
       unsigned char* buffer = nullptr;
-      cudaError_t ret = cudaMallocHost(&buffer, m_bufferSize);
+      cudaError_t ret = mallocBuffer(&buffer, m_bufferSize, m_host);
       if (ret != cudaSuccess) {
-        std::cerr << "PinnedBufferPool::GetBuffer(): cudaMallocHost failed: " << cudaGetErrorString(ret) << std::endl;
-        throw std::runtime_error("cudaMallocHost failed");
+        std::cerr << "CUDABufferPool::GetBuffer(): CUDA malloc failed: " << cudaGetErrorString(ret) << std::endl;
+        throw std::runtime_error("CUDA malloc failed");
       }
       m_allBuffers.push_back(buffer);
       m_freeBuffers.push_back(buffer);
@@ -104,7 +125,7 @@ std::shared_ptr<uint8_t> PinnedBufferPool::GetBuffer(bool allocateWhenEmpty)
     });
 }
 
-static void TestBufferPoolAllocationThread(PinnedBufferPool* pool, double tryPeriod, int tryTimes,
+static void TestBufferPoolAllocationThread(CUDABufferPool* pool, double tryPeriod, int tryTimes,
   std::atomic_int *successCount, std::atomic_bool *running, bool allocateWhenEmpty)
 {
   *running = true;
@@ -121,14 +142,14 @@ static void TestBufferPoolAllocationThread(PinnedBufferPool* pool, double tryPer
   // Buffers will be cleared when the function returns.
 }
 
-std::string PinnedBufferPool::Test()
+std::string CUDABufferPool::Test()
 {
   // Single-threaded test of the buffer pool.  Verify that the buffer pool size
   // adjusts as expected when we allocate new buffers.
-  {
-    PinnedBufferPool pool(100, 10);
+  for (bool host : {false, true}) {
+    CUDABufferPool pool(100, 10, host);
     if (pool.m_freeBuffers.size() != 10) {
-      return "PinnedBufferPool::Test() failed: pool.m_freeBuffers.size() != 10";
+      return "CUDABufferPool::Test() failed: pool.m_freeBuffers.size() != 10";
     }
 
     // Check as we allocate free buffers and then get more than are available.
@@ -152,8 +173,8 @@ std::string PinnedBufferPool::Test()
   // Multi-threaded test of the buffer pool.  Verify that the GetBuffer() method
   // returns nullptr when the pool is being destroyed and that the destructor
   // waits for all buffers to be returned to the pool.
-  {
-    PinnedBufferPool *pool = new PinnedBufferPool(100, 10);
+  for (bool host : {false, true}) {
+    CUDABufferPool*pool = new CUDABufferPool(100, 10, host);
     std::atomic_int count = 0;
     std::atomic_bool running(false);
 
@@ -177,8 +198,8 @@ std::string PinnedBufferPool::Test()
 
   /// Test that the read thread waits rather than allocating new buffers when it exhausts a pool.
   /// Also test that it gets buffers that are returned.
-  {
-    PinnedBufferPool *pool = new PinnedBufferPool(100, 10);
+  for (bool host : {false, true}) {
+    CUDABufferPool*pool = new CUDABufferPool(100, 10, host);
     std::atomic_int count = 0;
     std::atomic_bool running(false);
 

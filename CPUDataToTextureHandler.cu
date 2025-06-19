@@ -401,7 +401,7 @@ static asdp::Status ParseFrameMessage(Message& message, bool &isFrameBegin, bool
 }
 
 void asdp::render::ReceiveDataThread(ReceiverUDP& receiveSocket, size_t maxBytesPerPacket, std::atomic<bool>& done,
-  std::shared_ptr<PinnedBufferPool> cpuImageBuffers, std::shared_ptr<GPUBufferPool> gpuImageBuffers,
+  std::shared_ptr<CUDABufferPool> cpuImageBuffers, std::shared_ptr<CUDABufferPool> gpuImageBuffers,
   std::shared_ptr<cudaStream_t> streamPtr,
   std::shared_ptr<asdp::render::ImageQueue> imageQueue,
   std::shared_ptr< SpinFreeQueue< std::shared_ptr<DataToSendToGPU> > > outQueue,
@@ -506,7 +506,8 @@ void asdp::render::ReceiveDataThread(ReceiverUDP& receiveSocket, size_t maxBytes
               // Get a new pinned CPU memory and GPU memory buffer to hold the image data.
               // The old ones will be returned to the pool when the shared pointers are reset.
               try {
-                // Do not allocate new buffers if they are depleted; wait for them to be returned.
+                // Do not allocate new buffers if they are depleted (to avoid filling memory when
+                // the reading gets ahead of the rendering); wait for them to be returned.
                 cpuImageBufferPtr = cpuImageBuffers->GetBuffer(false);
                 gpuImageBufferPtr = gpuImageBuffers->GetBuffer(false);
                 if (cpuImageBufferPtr == nullptr || gpuImageBufferPtr == nullptr) {
