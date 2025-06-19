@@ -509,10 +509,10 @@ void asdp::render::ReceiveDataThread(ReceiverUDP& receiveSocket, size_t maxBytes
                 // Do not allocate new buffers if they are depleted (to avoid filling memory when
                 // the reading gets ahead of the rendering); wait for them to be returned.
                 // Timeout after half a second to avoid blocking indefinitely when we're shutting down.
-                cpuImageBufferPtr = cpuImageBuffers->GetBuffer(false, 500000);
-                gpuImageBufferPtr = gpuImageBuffers->GetBuffer(false, 500000);
+                cpuImageBufferPtr = cpuImageBuffers->GetBuffer(false, 500);
+                gpuImageBufferPtr = gpuImageBuffers->GetBuffer(false, 500);
                 if (cpuImageBufferPtr == nullptr || gpuImageBufferPtr == nullptr) {
-                  std::cerr << "Error getting CPU or GPU image buffer." << std::endl;
+                  // This may be okay because we may be shutting down and the buffers are not available.
                   done = true;
                   return;
                 }
