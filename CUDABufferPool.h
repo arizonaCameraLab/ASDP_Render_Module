@@ -44,9 +44,10 @@ namespace asdp {
       /// This method is thread-safe.
       /// @param allocateWhenEmpty Should we allocate more buffers when the pool is empty? Otherwise, wait
       /// for buffers to be returned to the pool.
+      /// @param timeoutMilli The maximum time to wait for a buffer to be returned to the pool, in milliseconds.
       /// @return A buffer from the pool, or nullptr if the pool is being destroyed.
       /// @throw std::runtime_error if a buffer cannot be created.
-      std::shared_ptr<uint8_t> GetBuffer(bool allocateWhenEmpty = true);
+      std::shared_ptr<uint8_t> GetBuffer(bool allocateWhenEmpty, size_t timeoutMilli);
 
       /// @brief Test the CUDABufferPool class.
       /// @return Empty string on success, descriptive error message on failure.

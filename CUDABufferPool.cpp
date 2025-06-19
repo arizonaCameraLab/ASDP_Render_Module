@@ -73,7 +73,7 @@ CUDABufferPool::~CUDABufferPool()
   m_freeBuffers.clear();
 }
 
-std::shared_ptr<uint8_t> CUDABufferPool::GetBuffer(bool allocateWhenEmpty)
+std::shared_ptr<uint8_t> CUDABufferPool::GetBuffer(bool allocateWhenEmpty, size_t timeoutMilli)
 {
   // If we are being destroyed, then we can't return any more buffers
   if (m_done) {
@@ -97,13 +97,14 @@ std::shared_ptr<uint8_t> CUDABufferPool::GetBuffer(bool allocateWhenEmpty)
     } else {
       // Wait until the free list is not empty, sleeping with an unlocked mutex
       // so that other threads can free buffers.
+      size_t count = 0;
       while (m_freeBuffers.empty()) {
         mtx.unlock();
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
 
         // If we are being destroyed, then we can't return any more buffers.
         // We must check again here because done could have been set in the meantime.
-        if (m_done) {
+        if (m_done || (++count > timeoutMilli)) {
           return nullptr;
         }
         mtx.lock();
@@ -131,7 +132,7 @@ static void TestBufferPoolAllocationThread(CUDABufferPool* pool, double tryPerio
   *running = true;
   std::vector< std::shared_ptr<uint8_t> > buffers;
   for (int i = 0; i < tryTimes; i++) {
-    std::shared_ptr<uint8_t> buffer = pool->GetBuffer(allocateWhenEmpty);
+    std::shared_ptr<uint8_t> buffer = pool->GetBuffer(allocateWhenEmpty, 1000);
     buffers.push_back(buffer);
     if (buffer != nullptr) {
       (*successCount)++;
@@ -156,11 +157,17 @@ std::string CUDABufferPool::Test()
     std::vector < std::shared_ptr<uint8_t> > buffers;
     for (size_t i = 0; i < 20; i++) {
       size_t expected = (i < 9) ? 9 - i : 0;
-      std::shared_ptr<uint8_t> buffer = pool.GetBuffer(true);
+      std::shared_ptr<uint8_t> buffer = pool.GetBuffer(true, 1000);
       buffers.push_back(buffer);
       if (pool.m_freeBuffers.size() != expected) {
         return "Allocation failed: pool.m_freeBuffers.size() != " + std::to_string(expected);
       }
+    }
+
+    // Try to get another buffer without allocating and ensure that we time out.
+    std::shared_ptr<uint8_t> buffer = pool.GetBuffer(false, 10);
+    if (buffer != nullptr) {
+      return "Allocation failed: pool.GetBuffer(false, 10) returned a buffer";
     }
 
     // Check after we return all buffers.
@@ -213,10 +220,10 @@ std::string CUDABufferPool::Test()
     // Wait half a second and then allocate a buffer.  The thread should continue to run
     // and try to allocate buffers, but the pool should not allocate all required buffers.
     std::this_thread::sleep_for(std::chrono::microseconds(500000));
-    std::shared_ptr<uint8_t> buf = pool->GetBuffer(false);
+    std::shared_ptr<uint8_t> buf = pool->GetBuffer(false, 1000);
 
     // Wait a full second, and the thread should have allocated all buffers but should only have
-    // allocagted 9 buffers.
+    // allocated 9 buffers.
     std::this_thread::sleep_for(std::chrono::seconds(1));
     if (count != 9) {
       return "Multi-threaded non-allocating test failed: count = " + std::to_string(count);
