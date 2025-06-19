@@ -513,6 +513,7 @@ void asdp::render::ReceiveDataThread(ReceiverUDP& receiveSocket, size_t maxBytes
                 gpuImageBufferPtr = gpuImageBuffers->GetBuffer(false, 500);
                 if (cpuImageBufferPtr == nullptr || gpuImageBufferPtr == nullptr) {
                   // This may be okay because we may be shutting down and the buffers are not available.
+                  std::cout << "ReceiveDataThread: No CPU or GPU image buffer available, perhaps shutting down?" << std::endl;
                   done = true;
                   return;
                 }
