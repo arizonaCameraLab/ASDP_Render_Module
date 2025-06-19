@@ -28,7 +28,6 @@
 #include <ASDP_Core_API.h>
 #include <ASDP_SpinFreeQueue.hpp>
 #include <ASDP_BufferPool.h>
-#include <ASDP_StreamPacketSortedQueue.h>
 #include <ASDP_ClockSynchronizer.h>
 #include "PinnedBufferPool.h"
 #include "GPUBufferPool.h"
@@ -53,7 +52,7 @@ using namespace asdp;
 using namespace asdp::render;
 using json = nlohmann::json;
 
-static std::string VERSION = "3.4.0";
+static std::string VERSION = "3.5.0";
 
 /// @brief The path to the configuration file. Defined in the CMakeLists file.
 std::filesystem::path g_dirPath = CONFIG_FILE_PATH;
