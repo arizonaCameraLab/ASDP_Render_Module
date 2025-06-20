@@ -551,7 +551,7 @@ int main(int argc, char** argv)
         return 2;
       }
       replayStreamID = std::stoi(argv[i]);
-      renderAheadFrames = 3.5; // Render 3.5 frames ahead for replay.
+      renderAheadFrames = 4.0; // This seemed best as of 6/20/2025; 3.5 caused wobble in 25-cams, 20-25 was not better than 4.0.
     } else if (std::string("--loopReplay") == argv[i]) {
       loopReplay = true;
     } else if (std::string("--noPoses") == argv[i]) {
