@@ -51,7 +51,7 @@ using namespace asdp;
 using namespace asdp::render;
 using json = nlohmann::json;
 
-static std::string VERSION = "3.6.0";
+static std::string VERSION = "3.7.0";
 
 /// @brief The path to the configuration file. Defined in the CMakeLists file.
 std::filesystem::path g_dirPath = CONFIG_FILE_PATH;
@@ -426,6 +426,7 @@ int main(int argc, char** argv)
   std::vector<DisplayInfo> displayInfos = { DisplayInfo() }; ///< Information for each display that is to be created.
   std::string ip_address;       ///< The IP address to listen on.
   uint32_t replayStreamID = 0;  ///< The stream ID to replay, 0 for live.
+  double renderAheadFrames = 0; ///< The number of frames to render ahead of the current frame, set nonzero for replay.
   bool loopReplay = false;      ///< Loop the replay when it reaches the end if this is true.
 #ifdef _WIN32
   // On Windows, throughput tests when receiving data from the network show that we must be larger
@@ -550,6 +551,7 @@ int main(int argc, char** argv)
         return 2;
       }
       replayStreamID = std::stoi(argv[i]);
+      renderAheadFrames = 3.5; // Render 3.5 frames ahead for replay.
     } else if (std::string("--loopReplay") == argv[i]) {
       loopReplay = true;
     } else if (std::string("--noPoses") == argv[i]) {
@@ -844,7 +846,8 @@ int main(int argc, char** argv)
         // Create the textures for the camera. Make two for each Composite to pull when it is looking
         // for the next image to render, one for the texture thread to write to, one for an image-statistics
         // class to use, and one to lie fallow.
-        for (size_t i = 0; i < 2*displayInfos.size() + 1 + 1 + 1; i++) {
+        // Also add as many frames as needed to render ahead the number we want to.
+        for (size_t i = 0; i < 2*displayInfos.size() + 1 + 1 + 1 + ceil(renderAheadFrames); i++) {
           std::shared_ptr<ImageData> imageData = std::make_shared<ImageData>();
 
           unsigned int texture;
@@ -1053,13 +1056,8 @@ int main(int argc, char** argv)
         std::cerr << "Failed to get timer: " << ErrorMessage(status) << std::endl;
         return 24;
       }
-      uint32_t renderOffsetMicroseconds = 0;
-      if (replayStreamID != 0) {
-        // Set up to run 1.5 frames behind the curre
-        // nt time, which empirically was much
-        // smoother than a single frame behind and slightly smoother than 2 frames.
-        renderOffsetMicroseconds = 0.5 * (1000000 / cameraFPS); //1.5
-      }
+      // Rendering offset based on how many frames we want to render ahead.
+      uint32_t renderOffsetMicroseconds = renderAheadFrames * (1000000 / cameraFPS);
       g_composite = std::make_shared<CompositeCameras>(
         g_visibleCameras, toneMapTexture, poseAdjuster, Time(1/cameraFPS),
         renderOffsetMicroseconds,
