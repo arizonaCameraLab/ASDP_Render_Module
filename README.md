@@ -346,10 +346,17 @@ described in Appendix A.  The workflow is as follows:
 - **Estimate target lateral location:**
     - Generate an as-designed camera calibration JSON file for the camera to be calibrated. This has
       the camera's center of rotation as the center of helicopter space with the +X axis pointing
-      towards the axis the gimbal will rotate around for +pitch and the +Z axis pointing up.  The offset
+      towards the axis the gimbal will rotate around for +pitch and the +Z axis pointing up. (The offset
       from the gimbal's center of rotation to the camera's center of projection is specified in the
-      gimbal.json configuration file.
-    - Generate an as-designed target location JSON file for the two targets to be used in calibration.
+      gimbal.json configuration file.) If the camera is mounted right-side-up and we're using camera 1
+      then running `python Make_Camera_Config_File.py --simulation --output 1.json --serial 1` will generate
+      a reasonable starting point. If the camera is mounted upside-down, then the `--upside_down` option
+      should be added to the command line. For visible-light cameras, add `--color_gain 64.04`.
+    - Generate a **targetConfig.json** target location JSON file for the one or two targets to be used in calibration.
+      This holds an array of target objects named **targets**, each of whose entries
+      have an **id** field that is a unique integer and a **positionMeters** field that is an array of three
+      floats.  The position is the center of the target in meters in helicopter coordinates.  Its distance from
+      the camera center must be very accurate; its lateral position will be optimized during the procedure.
     - Generate a **gimbal.json** file to describe the gimbal configuration (see util/gimbal.json for an
       example). Its "name" field selects which physical gimbal to use: "Zaber_X_G_RST" or "iOptron_CEM40",
       and its "pitchFirst" field specifies whether the gimbal is rotated first around the X or Z axis
@@ -406,6 +413,3 @@ described in Appendix A.  The workflow is as follows:
       pixel counts above which the target brightness will be found, and an output
       file name. This will produce a JSON configuraion file with the estimated extrinsics and
       distortion parameters updated based on the image data.
-
-@todo
-
