@@ -51,7 +51,7 @@ using namespace asdp;
 using namespace asdp::render;
 using json = nlohmann::json;
 
-static std::string VERSION = "3.7.0";
+static std::string VERSION = "3.8.0";
 
 /// @brief The path to the configuration file. Defined in the CMakeLists file.
 std::filesystem::path g_dirPath = CONFIG_FILE_PATH;
@@ -906,12 +906,12 @@ int main(int argc, char** argv)
     g_timingInfo.SetNumCameras(maxID);
 
     // Separate the cameras into two groups: those with IDs less than 22 are visible cameras and those
-    // with larger ones are depth-estimation cameras.
+    // with larger ones are depth-estimation cameras. Only do this if we are computing depth.
     for (size_t j = 0; j < cameraRenderInfos.size(); j++) {
-      if (cameraRenderInfos[j]->m_ID < 22) {
-        g_visibleCameras.push_back(cameraRenderInfos[j]);
-      } else if (computeDepth) {
+      if (cameraRenderInfos[j]->m_ID > 21 && computeDepth) {
         g_depthCameras.push_back(cameraRenderInfos[j]);
+      } else {
+        g_visibleCameras.push_back(cameraRenderInfos[j]);
       }
     }
 
