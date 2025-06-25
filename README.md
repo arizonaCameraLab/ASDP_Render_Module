@@ -364,11 +364,13 @@ described in Appendix A.  The workflow is as follows:
       acceleration of the gimbal in degrees per second and degrees per second squared, respectively.
       The "minYawDegrees" and "maxYawDegrees" fields specify the minimum and maximum yaw angles in degrees, and the
       "minPitchDegrees" and "maxPitchDegrees" fields specify the minimum and maximum pitch angles in degrees.
-      "comPort" specifies the name of the serial port to use for the gimbal if one is required,
-      and "baud" specifies the baud rate if it is required.  An optional "cameraOffset" field specifies
-      the offset from the gimbal's center of rotation to the camera ball's center of rotation in meters
-      in helicopter coordinates; if it is not specified, the offset is assumed to be zero (the offset
-      is added to each camera's position before calibration and subtracted afterwards).
+      "comPort" specifies the name of the serial port to use for the gimbal if one is required (for Linux,
+      this may be /dev/ttyUSB0 and for Windows it may be COM6) and "baud" specifies the baud rate if it is required.
+      On Linux, the user should be added to the dialout group to allow access to the serial port (and then
+      log out and back in; optionally, the programs can be run as root).  An optional
+      "cameraOffset" field specifies the offset from the gimbal's center of rotation to the camera ball's
+      center of rotation in meters in helicopter coordinates; if it is not specified, the offset is assumed
+      to be zero (the offset is added to each camera's position before calibration and subtracted afterwards).
     - Copy the calibration files to a new calibration directory on the data drive that will hold our calibration
       artifacts.
     - Run **Target_Calibration_Make_Scan** and give it the camera, target, and gimbal
