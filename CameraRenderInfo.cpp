@@ -15,7 +15,7 @@
 
 using namespace asdp::render;
 
-void CameraRenderInfo::ComputePlanarCameraMeshInfo(size_t nx, size_t ny, GLfloat depth)
+void CameraRenderInfo::ComputePlanarCameraMeshInfo(size_t nx, size_t ny, float depth)
 {
   // Lock the mutex to protect the mesh data.
   std::lock_guard<std::mutex> lock(m_meshMutex);

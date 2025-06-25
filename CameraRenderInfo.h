@@ -21,13 +21,12 @@
 #ifdef WIN32
 #include <windows.h>
 #endif
-#include <GL/gl.h>
+#include <glm/vec2.hpp>
+#include <glm/vec3.hpp>
 #include <ASDP_Core_API.h>
 #include <ImageQueue.h>
 #include <Distortion.h>
 #include <Vignette.h>
-#include <PoseAdjuster.h>
-#include <RenderTimingInfo.h>
 
 namespace asdp {
   namespace render {
@@ -128,7 +127,7 @@ namespace asdp {
 
       /// @brief Depth scale to use for this view, -1 disables and > 0 sets color based on scaled depth.
       /// @details This is used for debugging purposes to show the depth of the scene in the camera view.
-      std::atomic<GLfloat> m_depthScale = -1.0;
+      std::atomic<float> m_depthScale = -1.0;
 
       /// @brief Compute the values needed to create the vertices for the render mesh for a camera.
       /// @details This function computes the vertices for a quadrilateral that will be used to display
@@ -139,7 +138,7 @@ namespace asdp {
       /// @param ny The number of vertices in the Y direction.
       /// @param depth The distance from the camera to the quadrilateral displaying the image.
       /// @return Information about the mesh that was constructed.
-      void ComputePlanarCameraMeshInfo(size_t nx = 100, size_t ny = 100, GLfloat depth = 900);
+      void ComputePlanarCameraMeshInfo(size_t nx = 100, size_t ny = 100, float depth = 900);
 
     protected:
       mutable std::mutex m_colorMutex; ///< Mutex to control access to information that must be read as a single unit.
