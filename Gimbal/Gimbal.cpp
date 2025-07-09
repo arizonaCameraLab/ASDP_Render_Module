@@ -839,11 +839,11 @@ void Gimbal_iOptron::MoveAbsolute(double yawDegrees, double pitchDegrees)
 }
 
 Gimbal_iOptron_CEM40::Gimbal_iOptron_CEM40(std::string comPortName)
-  : Gimbal_iOptron(comPortName, "0400")
+  : Gimbal_iOptron(comPortName, "0040")
 {
 }
 
 Gimbal_iOptron_CEM70::Gimbal_iOptron_CEM70(std::string comPortName)
-  : Gimbal_iOptron(comPortName, "0700")
+  : Gimbal_iOptron(comPortName, "0070")
 {
 }
