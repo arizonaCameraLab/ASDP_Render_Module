@@ -57,6 +57,7 @@ int main(int argc, char** argv)
   for (int i = 1; i < argc; ++i) {
     if (std::string("--help") == argv[i]) {
       usage(argv[0]);
+      return 0;
     } else if (argv[i][0] == '-') {
       usage(argv[0]);
       return 1;
