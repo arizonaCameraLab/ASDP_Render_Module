@@ -355,8 +355,9 @@ described in Appendix A.  The workflow is as follows:
     - Generate a **targetConfig.json** target location JSON file for the one or two targets to be used in calibration.
       This holds an array of target objects named **targets**, each of whose entries
       have an **id** field that is a unique integer and a **positionMeters** field that is an array of three
-      floats.  The position is the center of the target in meters in helicopter coordinates.  Its distance from
-      the camera center must be very accurate; its lateral position will be optimized during the procedure.
+      floats.  The position is the center of the target in meters in helicopter coordinates around the center
+      of rotation of the **gimbal**.  Its distance from the gimbal rotation center must be very accurate;
+      its lateral position will be optimized during the procedure.
     - Generate a **gimbal.json** file to describe the gimbal configuration (see util/gimbal.json for an
       example). Its "name" field selects which physical gimbal to use: "Zaber_X_G_RST" or "iOptron_CEM40",
       and its "pitchFirst" field specifies whether the gimbal is rotated first around the X or Z axis
