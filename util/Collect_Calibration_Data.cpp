@@ -8,6 +8,7 @@
 #include <vector>
 #include <filesystem>
 #include <stdio.h>
+#include <string.h>
 #include <CameraRenderInfo.h>
 #include <Calibration_Helpers.h>
 #include <ASDP_StreamPacketSortedQueue.h>
