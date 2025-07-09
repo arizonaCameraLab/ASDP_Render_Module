@@ -393,12 +393,17 @@ described in Appendix A.  The workflow is as follows:
               the appropriate JSON and CSV file, then give it the target_lateral_N directory and another
               name in the same directory called **target_lateral_N_images**. Do this for each target.
         - If taking measurements:
+            - **Warning:** *ensure that the power and data cables can reach all orientations of the
+              ball as it scans without binding.*  Do this for each target.
+            - **Note:** The USB device (perhaps /dev/ttyUSB0) sometimes drops out in the middle of
+              a run, causing the program to fail. Unplugging the USB cable, power-cycling the mount,
+              and then plugging the USB cable into a different port has helped. Only the four ports
+              on the top back of the server are available under Linux.
             - Run the **Collect_Calibration_Data** program from the **ASDP_Render_Module** repository to
               capture the frames for each target, providing it the name of the serial device, the IP
               address of the NIC to talk with the camera on, and target_N_poses.csv file name and a
               subdirectory of the configuration directory named **target_lateral_N_images** (where N is
-              the target number). **Warning:** *ensure that the power and data cables can reach all orientations of the
-              ball as it scans without binding.*  Do this for each target.
+              the target number).
     - Run the **Target_Calibration_Estimate_Lateral** program and give it the camera, target and
       gimbal configuration files, the threshold value for the target center, and the root directory
       where the simulation or measurement data was stored (where the target_lateral_N_images directories
