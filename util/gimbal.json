@@ -1,7 +1,7 @@
 {
   "name": "iOptron_CEM40",
   "pitchFirst": true,
-  "comPort": "COM6",
+  "comPort": "/dev/ttyUSB0",
   "baud": 115200,
   "speed": 4.5,
   "acceleration": 100.0,
@@ -9,5 +9,5 @@
   "maxPitchDegrees": 90.0,
   "minYawDegrees": -175.0,
   "maxYawDegrees": 175.0,
-  "cameraOffset": [ 0.0, 0.067, 0.346 ]
+  "cameraOffset": [ 0.0, 0.067, 0.343 ]
 }
