@@ -397,19 +397,27 @@ described in Appendix A.  The workflow is as follows:
               capture the frames for each target, providing it the name of the serial device, the IP
               address of the NIC to talk with the camera on, and target_N_poses.csv file name and a
               subdirectory of the configuration directory named **target_lateral_N_images** (where N is
-              the target number).  Do this for each target.
+              the target number). **Warning:** *ensure that the power and data cables can reach all orientations of the
+              ball as it scans without binding.*  Do this for each target.
     - Run the **Target_Calibration_Estimate_Lateral** program and give it the camera, target and
       gimbal configuration files, the threshold value for the target center, and the root directory
       where the simulation or measurement data was stored (where the target_lateral_N_images directories
       and the target_*_poses.csv files are).  This will produce a **targets_lateral_opt.json**
       file in the root directory with the estimated lateral positions of the targets updated based on the
-      image data.
+      image data. **Record the output of this program for use in debugging, and immediately use it to
+      ensure that the points found on the light source are indeed the center of the source and not reflections
+      or another light in the environment. Find the pixel location of the center using an image display
+      program and ensure that its location matches the optimized target location (it is important to check
+      an image from each camera to ensure that the threshold is reliably skipping other locations because
+      if this gets off then the entire calibration procedure will fail). Turn off or cover any
+      other spurious sources that are capturing the target estimation.
     - Run the **Camera_Calibration_Make_Scan** program and give it the camera, optimized target, and
       gimbal configuration files.  It will produce a **poses.csv** file for all cameras.
     - Copy the poses.csv file into the calibration directory.
     - Capture or simulate the frames for the cameras and save them, using the same approach described above
       for the target calibration but reading from poses.csv rather than target_N_poses.csv and saving the
-      images into a directory called **camera_images** rather than target_lateral_N_images.
+      images into a directory called **camera_images** rather than target_lateral_N_images.  **Warning:** *ensure
+      that the power and data cables can reach all orientations of the ball as it scans without binding.*
     - Run the **Camera_Calibration_Estimate_Distortion_Extrinsics** program and give it the camera,
       target and gimbal configuration files, the poses file, the root directory
       where the simulation or measurement data was stored (camera_images directory), the threshold in
