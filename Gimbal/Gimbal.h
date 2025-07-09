@@ -76,22 +76,44 @@ protected:
   std::shared_ptr<GimbalZaber_X_G_RST_Impl> m_impl;
 };
 
-class Gimbal_iOptron_CEM40 : public Gimbal
+/// @brief Base class for various iOptron-based gimbals. The CEM40 and CEM70 are supported.
+class Gimbal_iOptron : public Gimbal
 {
 public:
-  /// @brief Constructor for the Gimbal_iOptron_CEM40 class.
-  /// @param comPortName The name of the serial port to use for communication.
-  /// @throws std::runtime_error if the gimbal cannot be opened or initialized.
-  Gimbal_iOptron_CEM40(std::string comPortName);
 
-  /// @brief Destructor for the GimbalZaber_X_G_RST class.
-  ~Gimbal_iOptron_CEM40();
+  /// @brief Destructor.
+  ~Gimbal_iOptron();
 
   bool Status() override;
   void Home() override;
   void MoveAbsolute(double yawDegrees, double pitchDegrees) override;
 
 protected:
-  class Gimbal_iOptron_CEM40_Impl;
-  std::shared_ptr<Gimbal_iOptron_CEM40_Impl> m_impl;
+  /// @brief Constructor for the Gimbal_iOptron class.
+  /// @param comPortName The name of the serial port to use for communication.
+  /// @param mountInfoReponse The expected response from the MountInfo command, specific
+  /// to each type of device.
+  /// @throws std::runtime_error if the gimbal cannot be opened or initialized.
+  Gimbal_iOptron(std::string comPortName, std::string mountInfoResponse);
+
+  class Gimbal_iOptron_Impl;
+  std::shared_ptr<Gimbal_iOptron_Impl> m_impl;
+};
+
+class Gimbal_iOptron_CEM40 : public Gimbal_iOptron
+{
+public:
+  /// @brief Constructor for the Gimbal_iOptron_CEM40 class.
+  /// @param comPortName The name of the serial port to use for communication.
+  /// @throws std::runtime_error if the gimbal cannot be opened or initialized.
+  Gimbal_iOptron_CEM40(std::string comPortName);
+};
+
+class Gimbal_iOptron_CEM70 : public Gimbal_iOptron
+{
+public:
+  /// @brief Constructor for the Gimbal_iOptron_CEM70 class.
+  /// @param comPortName The name of the serial port to use for communication.
+  /// @throws std::runtime_error if the gimbal cannot be opened or initialized.
+  Gimbal_iOptron_CEM70(std::string comPortName);
 };

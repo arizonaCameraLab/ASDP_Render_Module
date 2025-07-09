@@ -359,8 +359,8 @@ described in Appendix A.  The workflow is as follows:
       of rotation of the **gimbal**.  Its distance from the gimbal rotation center must be very accurate;
       its lateral position will be optimized during the procedure.
     - Generate a **gimbal.json** file to describe the gimbal configuration (see util/gimbal.json for an
-      example). Its "name" field selects which physical gimbal to use: "Zaber_X_G_RST" or "iOptron_CEM40",
-      and its "pitchFirst" field specifies whether the gimbal is rotated first around the X or Z axis
+      example). Its "name" field selects which physical gimbal to use ("Zaber_X_G_RST", "iOptron_CEM40", or
+      "iOptron_CEM70") and its "pitchFirst" field specifies whether the gimbal is rotated first around the X or Z axis
       first (X first if true). Its "speed" and "acceleration" fields specify the maximum speed and
       acceleration of the gimbal in degrees per second and degrees per second squared, respectively.
       The "minYawDegrees" and "maxYawDegrees" fields specify the minimum and maximum yaw angles in degrees, and the

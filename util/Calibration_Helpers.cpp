@@ -208,6 +208,9 @@ std::shared_ptr<Gimbal> asdp::render::calibration::ConstructGimbal(
   else if (gimbalInfo.name == "iOptron_CEM40") {
     gimbal = std::make_shared<Gimbal_iOptron_CEM40>(gimbalInfo.comPort);
   }
+  else if (gimbalInfo.name == "iOptron_CEM70") {
+    gimbal = std::make_shared<Gimbal_iOptron_CEM70>(gimbalInfo.comPort);
+  }
   else if (gimbalInfo.name == "Fake") {
     gimbal = std::make_shared<GimbalFake>();
   }

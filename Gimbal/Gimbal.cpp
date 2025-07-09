@@ -484,7 +484,7 @@ void GimbalZaber_X_G_RST::MoveAbsolute(double yawDegrees, double pitchDegrees)
   }
 }
 
-class Gimbal_iOptron_CEM40::Gimbal_iOptron_CEM40_Impl
+class Gimbal_iOptron::Gimbal_iOptron_Impl
 {
 public:
   int commPort = -1;    ///< The serial port index we're using.
@@ -519,7 +519,7 @@ public:
   std::string resetTime();
 };
 
-bool Gimbal_iOptron_CEM40::Gimbal_iOptron_CEM40_Impl::sendCommand(std::string cmd)
+bool Gimbal_iOptron::Gimbal_iOptron_Impl::sendCommand(std::string cmd)
 {
   if (commPort == -1) {
     return false;
@@ -530,7 +530,7 @@ bool Gimbal_iOptron_CEM40::Gimbal_iOptron_CEM40_Impl::sendCommand(std::string cm
   return result == cmd.length();
 }
 
-std::string Gimbal_iOptron_CEM40::Gimbal_iOptron_CEM40_Impl::getResponse(struct timeval* timeout, size_t numChars)
+std::string Gimbal_iOptron::Gimbal_iOptron_Impl::getResponse(struct timeval* timeout, size_t numChars)
 {
   std::string response;
   if (commPort == -1) {
@@ -551,7 +551,7 @@ std::string Gimbal_iOptron_CEM40::Gimbal_iOptron_CEM40_Impl::getResponse(struct 
   return response;
 }
 
-bool Gimbal_iOptron_CEM40::Gimbal_iOptron_CEM40_Impl::sendCommandCheckReponseAndFail(
+bool Gimbal_iOptron::Gimbal_iOptron_Impl::sendCommandCheckReponseAndFail(
   std::string cmd, std::string response)
 {
   if (commPort == -1) {
@@ -572,7 +572,7 @@ bool Gimbal_iOptron_CEM40::Gimbal_iOptron_CEM40_Impl::sendCommandCheckReponseAnd
   return true;
 }
 
-std::string Gimbal_iOptron_CEM40::Gimbal_iOptron_CEM40_Impl::waitForSlewStop(std::chrono::milliseconds timeout)
+std::string Gimbal_iOptron::Gimbal_iOptron_Impl::waitForSlewStop(std::chrono::milliseconds timeout)
 {
   if (commPort == -1) {
     return "commPort not initialized";
@@ -606,7 +606,7 @@ std::string Gimbal_iOptron_CEM40::Gimbal_iOptron_CEM40_Impl::waitForSlewStop(std
   return "Timed out waiting for gimbal to stop slewing.";
 }
 
-std::string Gimbal_iOptron_CEM40::Gimbal_iOptron_CEM40_Impl::resetTime()
+std::string Gimbal_iOptron::Gimbal_iOptron_Impl::resetTime()
 {
   // When the time is set to zero, we get an RA of 41:54.5, so we need to set the
   // time to 24 hours minus that, converted to milliseconds.
@@ -627,8 +627,8 @@ std::string Gimbal_iOptron_CEM40::Gimbal_iOptron_CEM40_Impl::resetTime()
   return "";
 }
 
-Gimbal_iOptron_CEM40::Gimbal_iOptron_CEM40(std::string comPortName)
-  : m_impl(new Gimbal_iOptron_CEM40_Impl())
+Gimbal_iOptron::Gimbal_iOptron(std::string comPortName, std::string mountInfoResponse)
+  : m_impl(new Gimbal_iOptron_Impl())
 {
   // Retry opening the COM port a couple of times in case it is busy.
   bool success = false;
@@ -646,7 +646,7 @@ Gimbal_iOptron_CEM40::Gimbal_iOptron_CEM40(std::string comPortName)
 
     // Send a command to get the mount number.  Wait for a response and verify that
     // it matches what we expect for a CEM40.
-    if (!m_impl->sendCommandCheckReponseAndFail(":MountInfo#", "0040")) {
+    if (!m_impl->sendCommandCheckReponseAndFail(":MountInfo#", mountInfoResponse)) {
       std::this_thread::sleep_for(std::chrono::milliseconds(100));
       continue;
     }
@@ -709,14 +709,14 @@ Gimbal_iOptron_CEM40::Gimbal_iOptron_CEM40(std::string comPortName)
   }
 }
 
-Gimbal_iOptron_CEM40::~Gimbal_iOptron_CEM40()
+Gimbal_iOptron::~Gimbal_iOptron()
 {
   if (m_impl && m_impl->commPort != -1) {
     vrpn_close_commport(m_impl->commPort);
   }
 }
 
-bool Gimbal_iOptron_CEM40::Status()
+bool Gimbal_iOptron::Status()
 {
   if (!m_impl || m_impl->commPort == -1) {
     return false;
@@ -724,7 +724,7 @@ bool Gimbal_iOptron_CEM40::Status()
   return true;
 }
 
-void Gimbal_iOptron_CEM40::Home()
+void Gimbal_iOptron::Home()
 {
   if (!m_impl || m_impl->commPort == -1) {
     throw std::runtime_error("No connection");
@@ -747,7 +747,7 @@ void Gimbal_iOptron_CEM40::Home()
   }
 }
 
-void Gimbal_iOptron_CEM40::MoveAbsolute(double yawDegrees, double pitchDegrees)
+void Gimbal_iOptron::MoveAbsolute(double yawDegrees, double pitchDegrees)
 {
   if (!m_impl || m_impl->commPort == -1) {
     throw std::runtime_error("No connection");
@@ -836,4 +836,14 @@ void Gimbal_iOptron_CEM40::MoveAbsolute(double yawDegrees, double pitchDegrees)
   if (!m_impl->sendCommandCheckReponseAndFail(":ST0#", "1")) {
     throw std::runtime_error("Unable to send stop-tracking command");
   }
+}
+
+Gimbal_iOptron_CEM40::Gimbal_iOptron_CEM40(std::string comPortName)
+  : Gimbal_iOptron(comPortName, "0400")
+{
+}
+
+Gimbal_iOptron_CEM70::Gimbal_iOptron_CEM70(std::string comPortName)
+  : Gimbal_iOptron(comPortName, "0700")
+{
 }
