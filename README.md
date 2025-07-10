@@ -399,6 +399,8 @@ described in Appendix A.  The workflow is as follows:
               a run, causing the program to fail. Unplugging the USB cable, power-cycling the mount,
               and then plugging the USB cable into a different port has helped. Only the four ports
               on the top back of the server are available under Linux.
+            - **Note:** For visible-light cameras, add `--shift 16` to the command line
+              to shift the brightness of the camera to match the target brightness.
             - Run the **Collect_Calibration_Data** program from the **ASDP_Render_Module** repository to
               capture the frames for each target, providing it the name of the serial device, the IP
               address of the NIC to talk with the camera on, and target_N_poses.csv file name and a

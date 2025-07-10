@@ -27,6 +27,7 @@ static void usage(const char* progName)
   std::cerr << "       Options:" << std::endl;
   std::cerr << "         --home: Move to home position." << std::endl;
   std::cerr << "         --gimbalConfig <string>: The gimbal configuration file name (default gimbal.json)." << std::endl;
+  std::cerr << "         --shift <bit_count>: Left shift the images by the specified number of bits (default 0)." << std::endl;
   std::cerr << "         --help: Print this information and quit." << std::endl;
 }
 
@@ -96,6 +97,7 @@ int main(int argc, char** argv)
   std::string posesFile;
   std::string outDir;
   bool home = false;
+  int shift = 0;
 
   size_t realParams = 0;
   for (int i = 1; i < argc; ++i) {
@@ -108,6 +110,17 @@ int main(int argc, char** argv)
         return 1;
       }
       gimbalConfigFile = argv[i];
+    }
+    else if (std::string("--shift") == argv[i]) {
+      if (++i >= argc) {
+        std::cerr << "Error: Missing shift value." << std::endl;
+        return 1;
+      }
+      shift = std::atoi(argv[i]);
+      if (shift < 0 || shift > 15) {
+        std::cerr << "Error: Shift value must be between 0 and 15." << std::endl;
+        return 1;
+      }
     }
     else if (std::string("--help") == argv[i]) {
       usage(argv[0]);
@@ -539,6 +552,15 @@ int main(int argc, char** argv)
       for (int f = 0; f < imageBuffers.size(); f++) {
         std::string fileName = outDir + "/" + std::to_string(pose.frameIndex) + "_" +
           std::to_string(pose.cameraID) + "_" + std::to_string(f+1) + ".pgm";
+
+        if (shift > 0) {
+          // Shift the image data left by the specified number of bits.
+#pragma omp parallel for
+          for (int i = 0; i < imageBuffers[f].size(); ++i) {
+            imageBuffers[f][i] <<= shift;
+          }
+        }
+
         FILE* of = fopen(fileName.c_str(), "wb");
         if (of == NULL) {
           std::cerr << "Error opening image file " << fileName << std::endl;

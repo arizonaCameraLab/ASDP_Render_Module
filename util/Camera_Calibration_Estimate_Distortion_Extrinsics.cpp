@@ -43,7 +43,6 @@ void usage(std::string name)
   std::cerr << "    --help                      Print this information and quit." << std::endl;
   std::cerr << "    --writeMaps <filename.csv>  Write the expected to as-seen mappings to the specified CSV file." << std::endl;
   std::cerr << "    --readMaps <filename.csv>   Read the expected to as-seen mappings from the specified CSV file, don't compute." << std::endl;
-  std::cerr << "  Writes camConfig_opt.json." << std::endl;
 };
 
 int main(int argc, char** argv)
