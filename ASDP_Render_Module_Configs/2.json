@@ -2,8 +2,8 @@
   "cameras": [
     {
       "color": {
-        "gain": 97.07477175621011,
-        "offset": -11068.0
+        "gain": 64.06,
+        "offset": 0.0
       },
       "cropPixels": {
         "maxX": 1279,
@@ -3781,8 +3781,8 @@
     },
     {
       "color": {
-        "gain": 93.09431315106438,
-        "offset": -13324.0
+        "gain": 64.06,
+        "offset": 0.0
       },
       "cropPixels": {
         "maxX": 1279,
@@ -8590,8 +8590,8 @@
     },
     {
       "color": {
-        "gain": 94.80517207106936,
-        "offset": -16421.0
+        "gain": 64.06,
+        "offset": 0.0
       },
       "cropPixels": {
         "maxX": 1279,
@@ -13109,8 +13109,8 @@
     },
     {
       "color": {
-        "gain": 98.03747924241918,
-        "offset": -13598.0
+        "gain": 64.06,
+        "offset": 0.0
       },
       "cropPixels": {
         "maxX": 1279,
@@ -17918,8 +17918,8 @@
     },
     {
       "color": {
-        "gain": 99.40790225294,
-        "offset": -13045.0
+        "gain": 64.06,
+        "offset": 0.0
       },
       "cropPixels": {
         "maxX": 1279,
@@ -22557,8 +22557,8 @@
     },
     {
       "color": {
-        "gain": 97.62830929983988,
-        "offset": -7307.0
+        "gain": 64.06,
+        "offset": 0.0
       },
       "cropPixels": {
         "maxX": 1279,
@@ -27376,8 +27376,8 @@
     },
     {
       "color": {
-        "gain": 101.58203868290963,
-        "offset": -9086.0
+        "gain": 64.06,
+        "offset": 0.0
       },
       "cropPixels": {
         "maxX": 1279,
@@ -30885,8 +30885,8 @@
     },
     {
       "color": {
-        "gain": 102.28406935542868,
-        "offset": -8179.0
+        "gain": 64.06,
+        "offset": 0.0
       },
       "cropPixels": {
         "maxX": 1279,
@@ -35124,8 +35124,8 @@
     },
     {
       "color": {
-        "gain": 94.91942212903633,
-        "offset": -14015.0
+        "gain": 64.06,
+        "offset": 0.0
       },
       "cropPixels": {
         "maxX": 1279,
@@ -40123,8 +40123,8 @@
     },
     {
       "color": {
-        "gain": 95.45034753630988,
-        "offset": -12615.0
+        "gain": 64.06,
+        "offset": 0.0
       },
       "cropPixels": {
         "maxX": 1279,
@@ -45082,8 +45082,8 @@
     },
     {
       "color": {
-        "gain": 94.37195326502508,
-        "offset": -9055.0
+        "gain": 64.06,
+        "offset": 0.0
       },
       "cropPixels": {
         "maxX": 1279,
@@ -50271,8 +50271,8 @@
     },
     {
       "color": {
-        "gain": 101.32082182614187,
-        "offset": -16300.0
+        "gain": 64.06,
+        "offset": 0.0
       },
       "cropPixels": {
         "maxX": 1279,
@@ -55630,8 +55630,8 @@
     },
     {
       "color": {
-        "gain": 97.81724192507741,
-        "offset": -9761.0
+        "gain": 64.06,
+        "offset": 0.0
       },
       "cropPixels": {
         "maxX": 1279,
@@ -60829,8 +60829,8 @@
     },
     {
       "color": {
-        "gain": 98.64185388189951,
-        "offset": -12649.0
+        "gain": 64.06,
+        "offset": 0.0
       },
       "cropPixels": {
         "maxX": 1279,
@@ -65098,8 +65098,8 @@
     },
     {
       "color": {
-        "gain": 93.29313541711198,
-        "offset": -15086.0
+        "gain": 64.06,
+        "offset": 0.0
       },
       "cropPixels": {
         "maxX": 1279,
@@ -68967,8 +68967,8 @@
     },
     {
       "color": {
-        "gain": 102.3326603595253,
-        "offset": -11170.0
+        "gain": 64.06,
+        "offset": 0.0
       },
       "cropPixels": {
         "maxX": 1279,
@@ -73536,8 +73536,8 @@
     },
     {
       "color": {
-        "gain": 95.79804130210198,
-        "offset": -9275.0
+        "gain": 64.06,
+        "offset": 0.0
       },
       "cropPixels": {
         "maxX": 1279,
@@ -78455,8 +78455,8 @@
     },
     {
       "color": {
-        "gain": 95.50559350829634,
-        "offset": -15053.0
+        "gain": 64.06,
+        "offset": 0.0
       },
       "cropPixels": {
         "maxX": 1279,
@@ -83224,8 +83224,8 @@
     },
     {
       "color": {
-        "gain": 96.36454301405314,
-        "offset": -14891.0
+        "gain": 64.06,
+        "offset": 0.0
       },
       "cropPixels": {
         "maxX": 1279,
@@ -87783,8 +87783,8 @@
     },
     {
       "color": {
-        "gain": 94.49736271768101,
-        "offset": -10857.0
+        "gain": 64.06,
+        "offset": 0.0
       },
       "cropPixels": {
         "maxX": 1279,
@@ -92532,8 +92532,8 @@
     },
     {
       "color": {
-        "gain": 93.16588496222957,
-        "offset": -11024.0
+        "gain": 64.06,
+        "offset": 0.0
       },
       "cropPixels": {
         "maxX": 1279,
