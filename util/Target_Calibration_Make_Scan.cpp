@@ -36,7 +36,6 @@ void usage(std::string name)
   std::cerr << "  gimbalConfig.json             Gimbal configuration file." << std::endl;
   std::cerr << "  Options:" << std::endl;
   std::cerr << "    --frames <int>              Number of frames per location (default 10)." << std::endl;
-  std::cerr << "    --step <float>              Step size in degrees (default 1.0)." << std::endl;
   std::cerr << "    --help                      Print this information and quit." << std::endl;
   std::cerr << "  Writes target_N_poses.csv files, where N goes from 1 through the number of targets." << std::endl;
 };
@@ -45,7 +44,6 @@ int main(int argc, char** argv)
 {
   std::string camConfigFile, targetConfigFile, gimbalConfigFile;
   int frames = 10;
-  double step = 1.0;
   size_t realParams = 0;          ///< The number of non-flag parameters we've seen.
 
   // Parse the command line arguments, with the first non-flag argument being the
@@ -59,12 +57,6 @@ int main(int argc, char** argv)
         return 1;
       }
       frames = std::stoi(argv[i]);
-    } else if (std::string("--step") == argv[i]) {
-      if (++i >= argc) {
-        usage(argv[0]);
-        return 1;
-      }
-      step = std::stod(argv[i]);
     } else if (argv[i][0] == '-') {
       usage(argv[0]);
       return 1;
@@ -102,44 +94,6 @@ int main(int argc, char** argv)
     }
     std::cout << "Read camera configuration from " << camConfigFile << std::endl;
 
-    // Read the target information for each target.
-    std::vector<TargetInfo> targetInfos;
-    try {
-      targetInfos = asdp::render::calibration::GetTargetInfos(targetConfigFile);
-    } catch (const std::exception& e) {
-      std::cerr << "Error: Unable to read target configuration file: " << e.what() << std::endl;
-      return 11;
-    }
-    std::cout << "Read target configuration from " << targetConfigFile << std::endl;
-
-    // Read the gimbal information.
-    GimbalInfo gimbalInfo;
-    try {
-      gimbalInfo = asdp::render::calibration::GetGimbalInfo(gimbalConfigFile);
-    }
-    catch (const std::exception& e) {
-      std::cerr << "Error: Unable to read gimbal configuration file: " << e.what() << std::endl;
-      return 12;
-    }
-
-    // Add the offset to the camera positions.
-    std::cout << "Adding cameraOffset: " << gimbalInfo.cameraOffset[0] << "," << gimbalInfo.cameraOffset[1] << "," << gimbalInfo.cameraOffset[2] << std::endl;
-    for (auto& camera : cameraRenderInfos) {
-      camera.m_positionMeters[0] += gimbalInfo.cameraOffset[0];
-      camera.m_positionMeters[1] += gimbalInfo.cameraOffset[1];
-      camera.m_positionMeters[2] += gimbalInfo.cameraOffset[2];
-    }
-
-    // Find the largest field of view (either horizontal or vertical) in any of the
-    // cameras.
-    double maxFov = 0;
-    for (const auto& camera : cameraRenderInfos) {
-      maxFov = std::max(maxFov, camera.m_fovDegrees[0]);
-      maxFov = std::max(maxFov, camera.m_fovDegrees[1]);
-    }
-    std::cout << std::endl;
-    std::cout << "Maximum field of view: " << maxFov << " degrees" << std::endl;
-
     // Find the maximum and minimum angle away from the +Y axis that any
     // camera points.  Do this by transforming the +Y axis by the camera orientation
     // and then finding the angle between the resulting angle in the XZ plane of
@@ -174,19 +128,33 @@ int main(int argc, char** argv)
     std::cout << "Minimum horizontal angle from +Y axis: " << minHAngle << " degrees" << std::endl;
     std::cout << "Maximum horizontal angle from +Y axis: " << maxHAngle << " degrees" << std::endl;
 
-    minHAngle -= maxFov / 2;
-    maxHAngle += maxFov / 2;
-    std::cout << "Adjusted horizontal minimum angle: " << minHAngle << " degrees" << std::endl;
-    std::cout << "Adjusted horizontal maximum angle: " << maxHAngle << " degrees" << std::endl;
+    // Read the target information for each target.
+    std::vector<TargetInfo> targetInfos;
+    try {
+      targetInfos = asdp::render::calibration::GetTargetInfos(targetConfigFile);
+    } catch (const std::exception& e) {
+      std::cerr << "Error: Unable to read target configuration file: " << e.what() << std::endl;
+      return 11;
+    }
+    std::cout << "Read target configuration from " << targetConfigFile << std::endl;
 
-    std::cout << std::endl;
-    std::cout << "Minimum vertical angle from XY plane: " << minVAngle << " degrees" << std::endl;
-    std::cout << "Maximum vertical angle from XY plane: " << maxVAngle << " degrees" << std::endl;
+    // Read the gimbal information.
+    GimbalInfo gimbalInfo;
+    try {
+      gimbalInfo = asdp::render::calibration::GetGimbalInfo(gimbalConfigFile);
+    }
+    catch (const std::exception& e) {
+      std::cerr << "Error: Unable to read gimbal configuration file: " << e.what() << std::endl;
+      return 12;
+    }
 
-    minVAngle -= maxFov / 2;
-    maxVAngle += maxFov / 2;
-    std::cout << "Adjusted vertical minimum angle: " << minVAngle << " degrees" << std::endl;
-    std::cout << "Adjusted vertical maximum angle: " << maxVAngle << " degrees" << std::endl;
+    // Add the offset to the camera positions.
+    std::cout << "Adding cameraOffset: " << gimbalInfo.cameraOffset[0] << "," << gimbalInfo.cameraOffset[1] << "," << gimbalInfo.cameraOffset[2] << std::endl;
+    for (auto& camera : cameraRenderInfos) {
+      camera.m_positionMeters[0] += gimbalInfo.cameraOffset[0];
+      camera.m_positionMeters[1] += gimbalInfo.cameraOffset[1];
+      camera.m_positionMeters[2] += gimbalInfo.cameraOffset[2];
+    }
 
     // For each target, generate a series of poses and write them to a file.
     for (size_t i = 0; i < targetInfos.size(); i++) {
@@ -214,79 +182,10 @@ int main(int argc, char** argv)
       // The specified transforms are applied in the order rotation around Z followed by
       // rotation around X.
 
-      // Generate two types of poses.  The first goes horizontally across the target
-      // covering the full range that might possibly be covered by any camera.  The second
-      // goes vertically across the target, covering the full range that might possibly be
-      // covered by any camera.  They step with the specified interval in degrees.
-      // These poses are used to determine the set of cameras that are the closest match across
-      // some part of this sweep -- we then use the centers of those cameras to generate the
-      // list of gimbal angle + camera to use.
-      int frameIndex = 0;
-      std::set<uint16_t> camerasUsed;
-      for (double a = targetHAngle + minHAngle; a <= targetHAngle + maxHAngle; a += step) {
-
-        // Determine the ID of the camera whose +Y axis has the largest dot product with the specified
-        // transform.  This is the one we'll ask for images from.  Note that we must rotate by
-        // the inverse gimbal transform to line it up with the camera's vector when the stage is
-        // rotated (it will rotate the camera vector to the origin).
-        glm::dquat rotationZ = glm::angleAxis(glm::radians(a), glm::dvec3(0.0, 0.0, 1.0));
-        glm::dquat rotationX = glm::angleAxis(glm::radians(targetHAngle), glm::dvec3(1.0, 0.0, 0.0));
-        glm::dquat rotationTotal = rotationZ * rotationX;
-        glm::dvec3 targetY = glm::inverse(rotationTotal) * glm::dvec3(0, 1, 0);
-
-        size_t whichCamera = 0;
-        double bestDot = -2;
-        for (size_t c = 0; c < cameraRenderInfos.size(); c++) {
-          auto const& camera = cameraRenderInfos[c];
-          glm::dquat cameraRotationX = glm::angleAxis(glm::radians(camera.m_orientationDegrees[0]), glm::dvec3(1.0, 0.0, 0.0));
-          glm::dquat cameraRotationY = glm::angleAxis(glm::radians(camera.m_orientationDegrees[1]), glm::dvec3(0.0, 1.0, 0.0));
-          glm::dquat cameraRotationZ = glm::angleAxis(glm::radians(camera.m_orientationDegrees[2]), glm::dvec3(0.0, 0.0, 1.0));
-          glm::dquat cameraRotationTotal = cameraRotationX * cameraRotationY * cameraRotationZ;
-          glm::dvec3 cameraY = cameraRotationTotal * glm::dvec3(0, 1, 0);
-
-          double dot = glm::dot(targetY, cameraY);
-          if (dot > bestDot) {
-            bestDot = dot;
-            whichCamera = c;
-          }
-        }
-        camerasUsed.insert(cameraRenderInfos[whichCamera].m_ID);
-      }
-      for (double a = targetVAngle + minVAngle; a < targetVAngle + maxVAngle; a += step) {
-        // Determine the ID of the camera whose +Y axis has the largest dot product with the specified
-        // transform after we rotate the whole camera so that its principal ray points in the
-        // direction of the target in the XY plane (so we go straight up and down the middle).
-        // This is the one we'll ask for images from.  Note that we must rotate by
-        // the inverse gimbal transform to line it up with the camera's vector when the stage is
-        // rotated (it will rotate the camera vector to the origin).
-        //glm::dquat rotationZ = glm::angleAxis(glm::radians(targetHAngle), glm::dvec3(0.0, 0.0, 1.0));
-        glm::dquat rotationZ = glm::angleAxis(glm::radians(0.0), glm::dvec3(0.0, 0.0, 1.0));
-        glm::dquat rotationX = glm::angleAxis(glm::radians(a), glm::dvec3(1.0, 0.0, 0.0));
-        glm::dquat rotationTotal = rotationZ * rotationX;
-        glm::dvec3 targetY = glm::inverse(rotationTotal) * glm::dvec3(0, 1, 0);
-
-        size_t whichCamera = 0;
-        double bestDot = -2;
-        for (size_t c = 0; c < cameraRenderInfos.size(); c++) {
-          auto const& camera = cameraRenderInfos[c];
-          glm::dquat cameraRotationX = glm::angleAxis(glm::radians(camera.m_orientationDegrees[0]), glm::dvec3(1.0, 0.0, 0.0));
-          glm::dquat cameraRotationY = glm::angleAxis(glm::radians(camera.m_orientationDegrees[1]), glm::dvec3(0.0, 1.0, 0.0));
-          glm::dquat cameraRotationZ = glm::angleAxis(glm::radians(camera.m_orientationDegrees[2]), glm::dvec3(0.0, 0.0, 1.0));
-          glm::dquat cameraRotationTotal = cameraRotationX * cameraRotationY * cameraRotationZ;
-          glm::dvec3 cameraY = cameraRotationTotal * glm::dvec3(0, 1, 0);
-
-          double dot = glm::dot(targetY, cameraY);
-          if (dot > bestDot) {
-            bestDot = dot;
-            whichCamera = c;
-          }
-        }
-        camerasUsed.insert(cameraRenderInfos[whichCamera].m_ID);
-      }
-
       // For each camera that was the closest in part of one of the sweeps, take an image using that
       // camera with the gimbal rotated to point its center at the target.
-      for (auto const &cri : cameraRenderInfos) if (camerasUsed.count(cri.m_ID)) {
+      int frameIndex = 0;
+      for (auto const &cri : cameraRenderInfos) {
 
         double zRotationDegrees, xRotationDegrees;
         PointPixelAtTargetNoDistortion(cri,
