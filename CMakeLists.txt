@@ -4,7 +4,11 @@ project(ASDP_Render_Module LANGUAGES CUDA CXX C)
 # We require C++17 for the use of std::filesystem.
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-list(APPEND CMAKE_PREFIX_PATH F:/Packages/GLEW/glew-2.2.0 C:/Qt/5.15.2/msvc2019_64/lib/cmake/Qt5)
+list(APPEND CMAKE_PREFIX_PATH
+  F:/Packages/GLEW/glew-2.2.
+  "C:/Program Files/opencv/build/x64/vc16/lib"
+  C:/Qt/5.15.2/msvc2019_64/lib/cmake/Qt5
+)
 
 #-----------------------------------------------------------------------------
 if(WIN32)
@@ -86,6 +90,7 @@ find_package(OpenGL REQUIRED COMPONENTS OpenGL)
 find_package(GLEW REQUIRED)
 find_package(Doxygen)
 find_package(OpenMP)
+find_package(OpenCV COMPONENTS core imgproc)
 if(OPENMP_FOUND)
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")

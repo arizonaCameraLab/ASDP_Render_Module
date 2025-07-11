@@ -34,6 +34,13 @@ If you want to build the Storage Manager application, it also requires Qt5:
 - qtdeclarative5-dev
 - libqt5svg5-dev
 
+If you want to use the Phase-2 multi-depth camera calibration, it also requires OpenCV.
+This can be installed on Windows from
+`https://sourceforge.net/projects/opencvlibrary/files/4.12.0/opencv-4.12.0-windows.exe/download`
+(install into C:\Program Files\opencv for the CMakeLists.txt to find it by default, change the
+CMAKE_PREFIX_PATH to include it vc16/lib directory if it is placed elsewhere) and on Linux
+with `sudo apt install libopencv-dev`.
+
 To upgrade a server-only Mint distribution (with added nVidia drivers) on a Render Server to a
 desktop environment that uses the light-weight XFCE desktop but does not include the printer daemon,
 use the following commands:
@@ -414,12 +421,12 @@ described in Appendix A.  The workflow is as follows:
       file in the root directory with the estimated lateral positions of the targets updated based on the
       image data. **Record the output of this program for use in debugging, and immediately use it to
       ensure that the points found on the light source are indeed the center of the source and not reflections
-      or another light in the environment. Find the pixel location of the center using an image display
+      or another light in the environment.** Find the pixel location of the center using an image display
       program and ensure that its location matches the optimized target location (it is important to check
       an image from each camera to ensure that the threshold is reliably skipping other locations because
       if this gets off then the entire calibration procedure will fail). Turn off or cover any
       other spurious sources that are capturing the target estimation.
-    - Run the **Camera_Calibration_Make_Scan** program and give it the camera, optimized target, and
+    - Run the **Camera_Calibration_Make_Scan** program and give it the camera, **optimized** target, and
       gimbal configuration files.  It will produce a **poses.csv** file for all cameras.
     - Copy the poses.csv file into the calibration directory.
     - Capture or simulate the frames for the cameras and save them, using the same approach described above
