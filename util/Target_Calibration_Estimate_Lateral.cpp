@@ -17,6 +17,7 @@
 #include <filesystem>
 #include <vector>
 #include <set>
+#include <map>
 #include <cmath>
 #include <CameraRenderInfo.h>
 #include <ASDP_ImageSource.h>
@@ -172,8 +173,10 @@ int main(int argc, char** argv)
       // Then find the intersection of the ray from the camera through the image-space
       // target location with the plane through the 3D target.  Replace the 3D target location with
       // the average of these intersection locations.
+      std::map<uint16_t, CameraRenderInfo*> criForPose;
+      std::map<CameraRenderInfo*, std::array<double, 2>> cameraPixelLocations;
       std::vector<glm::dvec3> targetLocations;
-      for (auto const &pose : target.poses) {
+      for (auto const& pose : target.poses) {
 
         // Read the set of images associated with this pose and average them into a double-precision
         // floating-point array in a double_image object, which will be usable by the spot-tracker
@@ -196,7 +199,8 @@ int main(int argc, char** argv)
               avg->write_pixel(x, y, (*data)[y * width + x]);
             }
           }
-        } catch (const std::exception& e) {
+        }
+        catch (const std::exception& e) {
           std::cerr << "Error: Unable to read PGM file" << filename << ": " << e.what() << std::endl;
           return 30;
         }
@@ -225,7 +229,7 @@ int main(int argc, char** argv)
             return 30;
           }
         }
-        double scale = 1/static_cast<double>(pose.numFrames);
+        double scale = 1 / static_cast<double>(pose.numFrames);
         for (int y = 0; y < height; ++y) {
           for (int x = 0; x < width; ++x) {
             double value;
@@ -245,7 +249,7 @@ int main(int argc, char** argv)
           for (int x = 0; x < width; ++x) {
             maxVal = std::max(maxVal, avg->read_pixel_nocheck(x, y));
             if (avg->read_pixel_nocheck(x, y) >= targetBrightnessThreshold) {
-              double squaredDistance = (width/2 - x) * (width/2 - x) + (height/2 - y) * (height/2 - y);
+              double squaredDistance = (width / 2 - x) * (width / 2 - x) + (height / 2 - y) * (height / 2 - y);
               if (squaredDistance < minSquaredDistance) {
                 minSquaredDistance = squaredDistance;
                 centerX = x;
@@ -283,13 +287,25 @@ int main(int argc, char** argv)
           std::cerr << "Error: Camera " << pose.cameraID << " resolution does not match image resolution." << std::endl;
           return 33;
         }
+        criForPose[pose.cameraID] = cri;
+
+        // Record the pixel location associated with this camera render info.
+        cameraPixelLocations[cri] = { x, y };
+      } // End of loop over poses.
+
+      // Loop through all of the entries in cameraPixelLocations and compute the intersection
+      // of the ray with the plane.
+      for (auto const& pose : target.poses) {
+
+        // Find the CameraRenderInfo associated with this pose.
+        CameraRenderInfo* cri = criForPose[pose.cameraID];
 
         // Find the intersection of the ray from the camera starting location through the image-space
         // target location with the plane through the 3D target.  First find the ray start, which is the
         // camera position. Then find the ray direction, which is the ray in camera space rotated by the
         // camera rotation.
         glm::dvec3 rayStartInWorld, rayDirectionInWorld;
-        WorldSpaceRayNoDistortion(*cri, x, y, gimbalInfo.pitchFirst,
+        WorldSpaceRayNoDistortion(*cri, cameraPixelLocations[cri][0], cameraPixelLocations[cri][1], gimbalInfo.pitchFirst,
           pose.zRotationDegrees, pose.xRotationDegrees,
           rayStartInWorld, rayDirectionInWorld, true);
 
@@ -298,7 +314,7 @@ int main(int argc, char** argv)
         double dotProduct = glm::dot(targetNormal, rayDirectionInWorld);
         if (dotProduct == 0) {
           std::cerr << "Error: Ray is parallel to the plane for target " << target.id << std::endl;
-          return 34;
+          return 35;
         }
         double distance = glm::dot(pointInPlane - rayStartInWorld, targetNormal) / dotProduct;
         glm::dvec3 intersection = rayStartInWorld + distance * rayDirectionInWorld;
@@ -320,8 +336,12 @@ int main(int argc, char** argv)
         target.position[2] = point.z;
       } else {
         std::cerr << "Error: No target locations found for target " << target.id << std::endl;
-        return 35;
+        return 36;
       }
+
+      // Given the new target location, compute the adjustement needed to each camera to cause its ray to point
+      // at the new target location.
+      /// @todo
 
     } // End of loop over targets.
 
