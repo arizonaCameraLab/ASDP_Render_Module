@@ -119,6 +119,22 @@ void PointPixelAtTargetNoDistortion(const asdp::render::CameraRenderInfo& cri, d
   double precisionDegrees = 0.01,
   bool verbose = false);
 
+/// @brief Reorient the camera to point a pixel at a target location, ignoring distortion.
+/// @details This handles the fact that the center of a pixel is half a pixel in from the edge.
+/// The camera will be rotated around its existing center of projection such that ray through the
+/// specified pixel will point in the direction of the ray through the target pixel.
+/// @param cri The camera render information to use to determine the ray in camera space, which will
+/// also be ajusted to point the pixel at the target.
+/// @param xPixels The X pixel coordinate, need not be centered on a pixel.
+/// @param yPixels The Y pixel coordinate, need not be centered on a pixel.
+/// @param xPixelTarget The X pixel coordinate of the target, need not be centered on a pixel.
+/// @param yPixelTarget The Y pixel coordinate of the target, need not be centered on a pixel.
+/// @param verbose If true, print debugging information.
+void ReorientCameraLocallyToPointPixelAtTargetNoDistortion(
+  asdp::render::CameraRenderInfo& cri, double xPixels, double yPixels,
+  double xPixelTarget, double yPixelTarget,
+  bool verbose = false);
+
 /// @brief See whether the specified target is within the view frustum of the camera at the
 /// specified gimbal angles, not counting distortion.
 /// @details This handles the fact that the center of a pixel is half a pixel in from the edge.

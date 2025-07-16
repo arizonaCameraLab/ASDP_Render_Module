@@ -44,7 +44,7 @@ void usage(std::string name)
   std::cerr << "  baseDirectory                 Base directory for the data files (where target_1_poses.csv, target_lateral_1_images, etc. are found)." << std::endl;
   std::cerr << "  Options:" << std::endl;
   std::cerr << "    --help                      Print this information and quit." << std::endl;
-  std::cerr << "  Writes targets_lateral_opt.json." << std::endl;
+  std::cerr << "  Writes targets_lateral_opt.json and cameras_opt.json." << std::endl;
 };
 
 int main(int argc, char** argv)
@@ -321,7 +321,6 @@ int main(int argc, char** argv)
 
         std::cout << "  Intersection = " << intersection.x << " " << intersection.y << " " << intersection.z << std::endl;
         targetLocations.push_back(intersection);
-
       } // End of loop over poses.
 
       // Replace the 3D target location with the average of the intersection locations.
@@ -341,7 +340,29 @@ int main(int argc, char** argv)
 
       // Given the new target location, compute the adjustement needed to each camera to cause its ray to point
       // at the new target location.
-      /// @todo
+      for (auto const& pose : target.poses) {
+        // Find the CameraRenderInfo associated with this pose.
+        CameraRenderInfo* cri = criForPose[pose.cameraID];
+
+        // Find the projected pixel location in the image for the target position.
+        double xPixels, yPixels;
+        if (!TargetProjectedLocationNoDistortion(*cri, gimbalInfo.pitchFirst,
+            pose.zRotationDegrees, pose.xRotationDegrees,
+          glm::dvec3({ target.position[0], target.position[1], target.position[2] }),
+            xPixels, yPixels)) {
+          // The target does not hit the image plane, so skip this pose.
+          std::cout << "Warning: Target " << target.id << " does not hit the image plane for camera "
+            << pose.cameraID << " at pose " << pose.frameIndex << std::endl;
+          continue;
+        }
+
+        // Find the center of the image in pixels.
+        double xCenter = cri->m_resolutionPixels[0] / 2.0 - 0.5;
+        double yCenter = cri->m_resolutionPixels[1] / 2.0 - 0.5;
+
+        // Find the transform to rotate the center of the camera image to point at the target location.
+        ReorientCameraLocallyToPointPixelAtTargetNoDistortion(*cri, xCenter, yCenter, xPixels, yPixels);
+      } // End of loop over poses.
 
     } // End of loop over targets.
 
@@ -361,6 +382,37 @@ int main(int argc, char** argv)
     }
     outFile << targetConfig.dump(2) << std::endl;
     outFile.close();
+
+    // Parse the JSON configuration file for the camera configuration directly, then replace
+    // the orientation for each camera with the optimized values from the entry that has the same ID as the camera.
+    json cameraConfig;
+    try {
+      std::ifstream configFile(camConfigFile);
+      cameraConfig = json::parse(configFile);
+    } catch (const std::exception& e) {
+      std::cerr << "Error: Unable to read camera configuration file: " << camConfigFile
+        << ": " << e.what() << std::endl;
+      return 200;
+    }
+    for (auto& camera : cameraConfig["cameras"]) {
+      uint16_t id = camera["id"];
+      for (auto& cri : cameraRenderInfos) {
+        if (cri.m_ID == id) {
+          camera["orientationDegrees"] = cri.m_orientationDegrees;
+        }
+      }
+    }
+
+    // Write the optimized camera configuration to the specified JSON file in the root directory.
+    filename = baseDirectory + "/cameras_opt.json";
+    std::cout << "Writing optimized camera configuration to " << filename << std::endl;
+    std::ofstream outFile2(filename);
+    if (!outFile2) {
+      std::cerr << "Error: Unable to open output file " << filename << std::endl;
+      return 51;
+    }
+    outFile2 << cameraConfig.dump(2) << std::endl;
+    outFile2.close();
 
   } // End of block to ensure that all objects are destructed before we exit.
 

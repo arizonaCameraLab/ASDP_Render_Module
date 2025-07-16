@@ -220,20 +220,12 @@ std::shared_ptr<Gimbal> asdp::render::calibration::ConstructGimbal(
   return gimbal;
 }
 
-void asdp::render::calibration::WorldSpaceRayNoDistortion(const CameraRenderInfo& cri,
-  double xPixels, double yPixels, bool rotateXFirst,
-  double zRotationDegrees, double xRotationDegrees,
-  glm::dvec3& outRayStartInWorld, glm::dvec3& outRayDirectionInWorld,
-  bool verbose)
+/// @brief Compute the direction of the ray through the pixel in the local camera's helicopter space.
+static glm::dvec3 NormalizedLocalRayDirection(CameraRenderInfo const& cri,
+  double xPixels, double yPixels)
 {
   int width = cri.m_resolutionPixels[0];
   int height = cri.m_resolutionPixels[1];
-
-  glm::dvec3 rayStart;
-  rayStart.x = cri.m_positionMeters[0];
-  rayStart.y = cri.m_positionMeters[1];
-  rayStart.z = cri.m_positionMeters[2];
-
   double normalizedX = xPixels / (width - 1);
   double normalizedY = yPixels / (height - 1);
   double halfWidth = tan(glm::radians(cri.m_fovDegrees[0] / 2.0));
@@ -246,8 +238,22 @@ void asdp::render::calibration::WorldSpaceRayNoDistortion(const CameraRenderInfo
   double yM = yScaled * (height - 1.0) / height;
   double zM = -1.0;
 
-  // Convert from +X, +Y camera space pointing along -Z to helicopter space with +Z up and +Y forward.
-  glm::dvec3 rayDirection = glm::normalize(glm::dvec3(xM, -zM, yM));
+  return glm::normalize(glm::dvec3(xM, -zM, yM)); // Convert from +X, +Y camera space pointing along -Z to right-handed
+}
+
+void asdp::render::calibration::WorldSpaceRayNoDistortion(const CameraRenderInfo& cri,
+  double xPixels, double yPixels, bool rotateXFirst,
+  double zRotationDegrees, double xRotationDegrees,
+  glm::dvec3& outRayStartInWorld, glm::dvec3& outRayDirectionInWorld,
+  bool verbose)
+{
+  glm::dvec3 rayStart;
+  rayStart.x = cri.m_positionMeters[0];
+  rayStart.y = cri.m_positionMeters[1];
+  rayStart.z = cri.m_positionMeters[2];
+
+  // Find the ray direction in the local camera's helicopter space.
+  glm::dvec3 rayDirection = NormalizedLocalRayDirection(cri, xPixels, yPixels);
   if (verbose) {
     std::cout << "  Camera-space ray direction = " << rayDirection.x << " " << rayDirection.y << " " << rayDirection.z << std::endl;
   }
@@ -437,6 +443,71 @@ void asdp::render::calibration::PointPixelAtTargetNoDistortion(const CameraRende
 
     outZRotationDegrees = zDelta;
     outXRotationDegrees = bestXRotation;
+  }
+}
+
+void asdp::render::calibration::ReorientCameraLocallyToPointPixelAtTargetNoDistortion(
+  CameraRenderInfo& cri, double xPixels, double yPixels,
+  double xPixelTarget, double yPixelTarget,
+  bool verbose)
+{
+  // Find the local-space ray that passes through the specified pixel location. This is in local camera helicopter space.
+  glm::dvec3 rayDirection = NormalizedLocalRayDirection(cri, xPixels, yPixels);
+  if (verbose) {
+    std::cout << "  Camera-space ray direction = " << rayDirection.x << " " << rayDirection.y << " " << rayDirection.z << std::endl;
+  }
+
+  // Find the local-space ray that passes through the target pixel location.
+  glm::dvec3 rayDirectionTarget = NormalizedLocalRayDirection(cri, xPixelTarget, yPixelTarget);
+  if (verbose) {
+    std::cout << "  Target camera-space ray direction = " << rayDirectionTarget.x << " " << rayDirectionTarget.y << " " << rayDirectionTarget.z << std::endl;
+  }
+
+  // Determine the differential camera-space rotation required to point rayDirection at rayDirectionTarget.
+  // We do this by computing the angle between the two rays and then rotating the camera
+  // around the axis that is perpendicular to both rays by that angle.
+  glm::dvec3 axis = glm::normalize(glm::cross(rayDirection, rayDirectionTarget));
+  double angle = acos(glm::dot(rayDirection, rayDirectionTarget));
+  if (verbose) {
+    std::cout << "  Reorienting camera to point pixel at target: "
+              << "angle = " << glm::degrees(angle) << " degrees, "
+              << "axis = (" << axis.x << ", " << axis.y << ", " << axis.z << ")"
+              << std::endl;
+  }
+
+  // Create a quaternion representing the rotation.
+  glm::dquat dRotation = glm::angleAxis(angle, axis);
+
+  // The orientationDegrees field of the cri is in degrees and in Euler angles rotating first around X, then Y, then Z.
+  glm::dquat currentOrientation = glm::angleAxis(glm::radians(cri.m_orientationDegrees[0]), glm::dvec3(1.0, 0.0, 0.0)) *
+                                  glm::angleAxis(glm::radians(cri.m_orientationDegrees[1]), glm::dvec3(0.0, 1.0, 0.0)) *
+                                  glm::angleAxis(glm::radians(cri.m_orientationDegrees[2]), glm::dvec3(0.0, 0.0, 1.0));
+
+  // Find the world-space rotation (in the space of the curentOrientation) that corresponds to the differential rotation.
+  glm::dquat dRotationWorld = (currentOrientation) * dRotation * glm::inverse(currentOrientation);
+  if (verbose) {
+    std::cout << "  Differential rotation in world space: "
+              << "angle = " << glm::degrees(glm::angle(dRotationWorld)) << " degrees, "
+              << "axis = (" << glm::axis(dRotationWorld).x << ", "
+              << glm::axis(dRotationWorld).y << ", "
+              << glm::axis(dRotationWorld).z << ")"
+              << std::endl;
+  }
+
+  // Apply the rotation to the camera's current orientation (both are in world space).
+  glm::dquat newOrientation = currentOrientation * dRotationWorld;
+
+  // Convert the quaternion back to Euler angles in degrees.
+  glm::dvec3 eulerAngles = glm::eulerAngles(newOrientation);
+  cri.m_orientationDegrees[0] = glm::degrees(eulerAngles.x);
+  cri.m_orientationDegrees[1] = glm::degrees(eulerAngles.y);
+  cri.m_orientationDegrees[2] = glm::degrees(eulerAngles.z);
+  if (verbose) {
+    std::cout << "  New camera orientation: "
+              << cri.m_orientationDegrees[0] << " degrees X, "
+              << cri.m_orientationDegrees[1] << " degrees Y, "
+              << cri.m_orientationDegrees[2] << " degrees Z"
+              << std::endl;
   }
 }
 
@@ -989,6 +1060,54 @@ std::string asdp::render::calibration::Test()
         if (fabs(locPlane[1] - -tan(glm::radians(45 / 2.0))) > 0.01) {
           return "Test failed: PlaneIntersectionForPixelNoDistortion() bottom center edge Y: " + std::to_string(locPlane[1]);
         }
+      }
+    }
+  }
+
+  // Test ReorientCameraLocallyToPointPixelAtTargetNoDistortion()
+  {
+    std::vector< glm::dvec3 > targets = {
+      { -1, 1,     0 },   // Center of the image.
+      { -1, 1.1,   0 },   // Rotate a bit right
+      { -1, 0.9,   0 },   // Rotate a bit left
+      { -1, 1,   0.1 },   // Rotate a bit up
+      { -1, 1,  -0.1 },   // Rotate a bit down
+      { -1, 1.1, 0.1 }    // Test rotating both axes at once
+    };
+
+    for (auto const& target: targets) {
+      // Make a camera that is off center and rotated to ensure that we're testing a general case.
+      CameraRenderInfo cri(1, { 0, 1, 0 }, { 0, 0, 90 }, { 1024, 1024 }, { 60, 60 },
+        distNull, vigNull, nullptr, 1.0);
+
+      // Find the pixel that the target projects to.
+      double xPixels, yPixels;
+      if (!TargetProjectedLocationNoDistortion(cri, false, 0, 0, target, xPixels, yPixels)) {
+        return "Test failed: TargetProjectedLocationNoDistortion() for target " + std::to_string(target[0]) + ", "
+          + std::to_string(target[1]) + ", " + std::to_string(target[2]);
+      }
+
+      // Aim the center pixel at the target pixel and make sure that the orientation points it
+      // correctly.
+      std::array<double, 2> center = { 511.5, 511.5 };
+      ReorientCameraLocallyToPointPixelAtTargetNoDistortion(cri, center[0], center[1],
+        xPixels, yPixels, true);
+
+      // See if the new projected target location matches the center pixel.
+      if (!TargetProjectedLocationNoDistortion(cri, false, 0, 0, target, xPixels, yPixels)) {
+        return "Test failed: TargetProjectedLocationNoDistortion() after reorienting camera for target "
+          + std::to_string(target[0]) + ", " + std::to_string(target[1]) + ", " + std::to_string(target[2]);
+      }
+
+      if (fabs(xPixels - center[0]) > 0.01) {
+        return "Test failed: TargetProjectedLocationNoDistortion() after reorienting camera for target "
+          + std::to_string(target[0]) + ", " + std::to_string(target[1]) + ", " + std::to_string(target[2])
+          + " X pixel: " + std::to_string(xPixels) + ", expected: " + std::to_string(center[0]);
+      }
+      if (fabs(yPixels - center[1]) > 0.01) {
+        return "Test failed: TargetProjectedLocationNoDistortion() after reorienting camera for target "
+          + std::to_string(target[0]) + ", " + std::to_string(target[1]) + ", " + std::to_string(target[2])
+          + " Y pixel: " + std::to_string(yPixels) + ", expected: " + std::to_string(center[1]);
       }
     }
   }
