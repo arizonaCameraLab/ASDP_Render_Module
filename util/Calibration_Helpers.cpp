@@ -483,7 +483,8 @@ void asdp::render::calibration::ReorientCameraLocallyToPointPixelAtTargetNoDisto
                                   glm::angleAxis(glm::radians(cri.m_orientationDegrees[1]), glm::dvec3(0.0, 1.0, 0.0)) *
                                   glm::angleAxis(glm::radians(cri.m_orientationDegrees[2]), glm::dvec3(0.0, 0.0, 1.0));
 
-  // Find the world-space rotation (in the space of the curentOrientation) that corresponds to the differential rotation.
+  // Find the world-space rotation (in the space of the curentOrientation) that corresponds to the differential local
+  // rotation.
   glm::dquat dRotationWorld = (currentOrientation) * dRotation * glm::inverse(currentOrientation);
   if (verbose) {
     std::cout << "  Differential rotation in world space: "
@@ -497,11 +498,12 @@ void asdp::render::calibration::ReorientCameraLocallyToPointPixelAtTargetNoDisto
   // Apply the rotation to the camera's current orientation (both are in world space).
   glm::dquat newOrientation = currentOrientation * dRotationWorld;
 
-  // Convert the quaternion back to Euler angles in degrees.
+  // Convert the quaternion back to Euler angles in degrees in x, y, z order.
   glm::dvec3 eulerAngles = glm::eulerAngles(newOrientation);
-  cri.m_orientationDegrees[0] = glm::degrees(eulerAngles.x);
-  cri.m_orientationDegrees[1] = glm::degrees(eulerAngles.y);
-  cri.m_orientationDegrees[2] = glm::degrees(eulerAngles.z);
+
+  cri.m_orientationDegrees = { glm::degrees(eulerAngles.x),
+                               glm::degrees(eulerAngles.y),
+                               glm::degrees(eulerAngles.z) };
   if (verbose) {
     std::cout << "  New camera orientation: "
               << cri.m_orientationDegrees[0] << " degrees X, "
@@ -624,6 +626,23 @@ std::string asdp::render::calibration::Test()
   std::shared_ptr<Distortion> distNull = std::make_shared<DistortionNone>();
   std::shared_ptr<Vignette> vigNull = std::make_shared<VignetteNone>();
   glm::dvec3 rayStart, rayDirection;
+
+  // Test our quaternion to euler behavior
+  {
+    // GLM order of operations is right to left, so we put the X rotation last.
+    glm::dquat q = glm::angleAxis(glm::radians(60.0), glm::dvec3(0.0, 0.0, 1.0)) *
+                   glm::angleAxis(glm::radians(45.0), glm::dvec3(0.0, 1.0, 0.0)) *
+                   glm::angleAxis(glm::radians(30.0), glm::dvec3(1.0, 0.0, 0.0));
+
+    glm::dvec3 euler = glm::eulerAngles(q);
+    // GLM returns radians, so we convert to degrees.
+    euler = glm::degrees(euler);
+
+    if (std::abs(euler[0] - 30) > 1e-6 || std::abs(euler[1] - 45) > 1e-6 || std::abs(euler[2] - 60) > 1e-6) {
+      return "Test failed: glm::eulerAngles() did not return expected values: returned "
+        + std::to_string(euler.x) + ", " + std::to_string(euler[1]) + ", " + std::to_string(euler[2]);
+    }
+  }
 
   // Test WorldSpaceRayNoDistortion()
   {
@@ -1069,6 +1088,7 @@ std::string asdp::render::calibration::Test()
     std::vector< glm::dvec3 > targets = {
       { -1, 1,     0 },   // Center of the image.
       { -1, 1.1,   0 },   // Rotate a bit right
+      { -1, 1.3,   0 },   // Rotate more right
       { -1, 0.9,   0 },   // Rotate a bit left
       { -1, 1,   0.1 },   // Rotate a bit up
       { -1, 1,  -0.1 },   // Rotate a bit down
@@ -1076,7 +1096,8 @@ std::string asdp::render::calibration::Test()
     };
 
     for (auto const& target: targets) {
-      // Make a camera that is off center and rotated to ensure that we're testing a general case.
+      // Make a camera that has nonzero position and rotation to ensure that we're testing a general case.
+      std::array<double, 2> center = { 511.5, 511.5 };
       CameraRenderInfo cri(1, { 0, 1, 0 }, { 0, 0, 90 }, { 1024, 1024 }, { 60, 60 },
         distNull, vigNull, nullptr, 1.0);
 
@@ -1089,7 +1110,6 @@ std::string asdp::render::calibration::Test()
 
       // Aim the center pixel at the target pixel and make sure that the orientation points it
       // correctly.
-      std::array<double, 2> center = { 511.5, 511.5 };
       ReorientCameraLocallyToPointPixelAtTargetNoDistortion(cri, center[0], center[1],
         xPixels, yPixels, true);
 
