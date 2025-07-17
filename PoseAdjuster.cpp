@@ -120,7 +120,6 @@ void PoseAdjuster::AddPose(double latitude, double longitude, double altitude,
     glm::dquat rotationZ = glm::angleAxis(glm::radians(rotVel[2]) * newPose.dt, glm::dvec3(0, 0, 1));
 
     // Order matters for quaternion multiplication. Do X, then Y, then Z.
-    /// @todo Shouldn't this have the X on the right and Z on the left based on GLM order of operations?
     newPose.angularVelocity = rotationX * rotationY * rotationZ;
   }
   newPose.time = time;

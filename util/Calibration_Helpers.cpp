@@ -22,6 +22,85 @@ using namespace asdp::render;
 using namespace asdp::render::calibration;
 using json = nlohmann::json;
 
+/// @brief Computes Euler angles in degrees from a quaternion in the specified (ijk) axis order: X = 1, Y = 2, Z = 3
+/// @details https://pmc.ncbi.nlm.nih.gov/articles/PMC9648712/#pone.0276302.ref008
+inline std::array<double, 3> QuaternionToEulerXYZIJK(int i, int j, int k, const glm::dquat& qIn)
+{
+  std::array<double, 4> q = { qIn.w, qIn.x, qIn.y, qIn.z };
+
+  bool not_proper = false;
+  if (i == k) {
+    not_proper = false;
+    k = 6 - i - j;
+  } else {
+    not_proper = true;
+  }
+
+  int sign_eps = (i - j) * (j - k) * (k - i) / 2;
+
+  double a, b, c, d;
+  if (not_proper) {
+    a = q[0] - q[j];
+    b = q[i] + q[k] * sign_eps;
+    c = q[j] + q[0];
+    d = q[k] * sign_eps - q[i];
+  } else {
+    a = q[0];
+    b = q[i];
+    c = q[j];
+    d = q[k] * sign_eps;
+  }
+
+  double theta1, theta2, theta3, thetaPlus, thetaMinus;
+  theta2 = acos(2 * ((a*a + b*b)/(a*a + b*b + c*c + d*d)) - 1);
+  thetaPlus = atan2(b, a);
+  thetaMinus = atan2(d, c);
+
+  if (theta2 <= 0) {
+    theta1 = 0;
+    theta3 = 2 * thetaPlus - theta1;
+  } else if (theta2 >= glm::pi<double>()) {
+    theta1 = 0;
+    theta3 = 2 * thetaMinus + theta1;
+  } else {
+    theta1 = thetaPlus - thetaMinus;
+    theta3 = thetaPlus + thetaMinus;
+  }
+
+  if (not_proper) {
+    theta3 *= sign_eps;
+    theta2 -= glm::half_pi<double>();
+  }
+
+  while (theta1 <= -glm::pi<double>()) {
+    theta1 += 2 * glm::pi<double>();
+  }
+  while (theta1 > glm::pi<double>()) {
+    theta1 -= 2 * glm::pi<double>();
+  }
+
+  while (theta3 <= -glm::pi<double>()) {
+    theta3 += 2 * glm::pi<double>();
+  }
+  while (theta3 > glm::pi<double>()) {
+    theta3 -= 2 * glm::pi<double>();
+  }
+
+  return { glm::degrees(theta1), glm::degrees(theta2), glm::degrees(theta3) };
+}
+
+/// @brief Does the machinations required to get the Euler angles in the order we want.
+inline glm::dvec3 QuaternionToEulerXYZDegrees(const glm::dquat& qIn)
+{
+  // This asks for the results in the order (Z, Y, X) which matches the internal specification for
+  // GLM's documentation but does not match the convention we are using -- we must be using extrinsic
+  // transformations and GLM intrinsic or vice-versa. 
+  std::array<double, 3> euler = QuaternionToEulerXYZIJK(3, 2, 1, qIn);
+  // We now swap the order to match the convention we are using, which is (X, Y, Z).
+  // The combination of this swap and the reverse order above produces the order we want.
+  return { euler[2], euler[1], euler[0] };
+}
+
 std::vector<CameraRenderInfo> asdp::render::calibration::GetCameraRenderInfos(
   const std::string& configFileName)
 {
@@ -478,12 +557,12 @@ void asdp::render::calibration::ReorientCameraLocallyToPointPixelAtTargetNoDisto
   // Create a quaternion representing the rotation.
   glm::dquat dRotation = glm::angleAxis(angle, axis);
 
-  // The orientationDegrees field of the cri is in degrees and in Euler angles rotating first around X, then Y, then Z.
+  // The orientationDegrees field of the cri is in degrees and in Euler angles rotating first around X (on the left), then Y, then Z.
   glm::dquat currentOrientation = glm::angleAxis(glm::radians(cri.m_orientationDegrees[0]), glm::dvec3(1.0, 0.0, 0.0)) *
                                   glm::angleAxis(glm::radians(cri.m_orientationDegrees[1]), glm::dvec3(0.0, 1.0, 0.0)) *
                                   glm::angleAxis(glm::radians(cri.m_orientationDegrees[2]), glm::dvec3(0.0, 0.0, 1.0));
 
-  // Find the world-space rotation (in the space of the curentOrientation) that corresponds to the differential local
+  // Find the world-space rotation (in the space of currentOrientation) that corresponds to the differential local
   // rotation.
   glm::dquat dRotationWorld = (currentOrientation) * dRotation * glm::inverse(currentOrientation);
   if (verbose) {
@@ -495,15 +574,22 @@ void asdp::render::calibration::ReorientCameraLocallyToPointPixelAtTargetNoDisto
               << std::endl;
   }
 
+  if (verbose) {
+    std::cout << "  Original camera orientation: "
+      << cri.m_orientationDegrees[0] << " degrees X, "
+      << cri.m_orientationDegrees[1] << " degrees Y, "
+      << cri.m_orientationDegrees[2] << " degrees Z"
+      << std::endl;
+  }
+
   // Apply the rotation to the camera's current orientation (both are in world space).
-  glm::dquat newOrientation = currentOrientation * dRotationWorld;
+  glm::dquat newOrientation = dRotationWorld * currentOrientation;
 
   // Convert the quaternion back to Euler angles in degrees in x, y, z order.
-  glm::dvec3 eulerAngles = glm::eulerAngles(newOrientation);
-
-  cri.m_orientationDegrees = { glm::degrees(eulerAngles.x),
-                               glm::degrees(eulerAngles.y),
-                               glm::degrees(eulerAngles.z) };
+  glm::dvec3 eulerAngles = QuaternionToEulerXYZDegrees(newOrientation);
+  cri.m_orientationDegrees = { (eulerAngles.x),
+                               (eulerAngles.y),
+                               (eulerAngles.z) };
   if (verbose) {
     std::cout << "  New camera orientation: "
               << cri.m_orientationDegrees[0] << " degrees X, "
@@ -547,7 +633,7 @@ bool asdp::render::calibration::TargetProjectedLocationNoDistortion(
     targetPointInCamera.z -= cri.m_positionMeters[2];
   }
   {
-    // Rotate the target point by the inverse of the camera rotation.
+    // Rotate the target point by the inverse of the camera rotation (negative and backwards order).
     glm::dquat rotationX = glm::angleAxis(glm::radians(-cri.m_orientationDegrees[0]), glm::dvec3(1.0, 0.0, 0.0));
     glm::dquat rotationY = glm::angleAxis(glm::radians(-cri.m_orientationDegrees[1]), glm::dvec3(0.0, 1.0, 0.0));
     glm::dquat rotationZ = glm::angleAxis(glm::radians(-cri.m_orientationDegrees[2]), glm::dvec3(0.0, 0.0, 1.0));
@@ -627,20 +713,55 @@ std::string asdp::render::calibration::Test()
   std::shared_ptr<Vignette> vigNull = std::make_shared<VignetteNone>();
   glm::dvec3 rayStart, rayDirection;
 
-  // Test our quaternion to euler behavior
+  // Test our quaternion and euler behavior
   {
-    // GLM order of operations is right to left, so we put the X rotation last.
-    glm::dquat q = glm::angleAxis(glm::radians(60.0), glm::dvec3(0.0, 0.0, 1.0)) *
-                   glm::angleAxis(glm::radians(45.0), glm::dvec3(0.0, 1.0, 0.0)) *
-                   glm::angleAxis(glm::radians(30.0), glm::dvec3(1.0, 0.0, 0.0));
+    // Verify that nested rotations happen in the expected order.
+    {
+      // The rotations are apparently done left to right in GLM.
+      glm::dquat q = glm::angleAxis(glm::radians(90.0), glm::dvec3(1.0, 0.0, 0.0)) *
+                     glm::angleAxis(glm::radians(90.0), glm::dvec3(0.0, 1.0, 0.0)) *
+                     glm::angleAxis(glm::radians(90.0), glm::dvec3(0.0, 0.0, 1.0));
 
-    glm::dvec3 euler = glm::eulerAngles(q);
-    // GLM returns radians, so we convert to degrees.
-    euler = glm::degrees(euler);
+      // This should have been a 90 degree rotation around X, then Y, then Z.
+      // The result should point the X axis at +Z and the Y axis at -Y.
+      glm::dvec3 xAxis(1.0, 0.0, 0.0);
+      glm::dvec3 yAxis(0.0, 1.0, 0.0);
 
-    if (std::abs(euler[0] - 30) > 1e-6 || std::abs(euler[1] - 45) > 1e-6 || std::abs(euler[2] - 60) > 1e-6) {
-      return "Test failed: glm::eulerAngles() did not return expected values: returned "
-        + std::to_string(euler.x) + ", " + std::to_string(euler[1]) + ", " + std::to_string(euler[2]);
+      glm::dvec3 xAxisRotated = q * xAxis;
+      glm::dvec3 yAxisRotated = q * yAxis;
+
+      if (std::abs(xAxisRotated.x - 0.0) > 1e-6 || std::abs(xAxisRotated.y - 0.0) > 1e-6 ||
+          std::abs(xAxisRotated.z - 1.0) > 1e-6) {
+        return "Test failed: glm::angleAxis() did not rotate X axis to Y axis: returned "
+          + std::to_string(xAxisRotated.x) + ", " + std::to_string(xAxisRotated.y)
+          + ", " + std::to_string(xAxisRotated.z);
+      }
+
+      if (std::abs(yAxisRotated.x - 0.0) > 1e-6 || std::abs(yAxisRotated.y - -1.0) > 1e-6 ||
+          std::abs(yAxisRotated.z - 0.0) > 1e-6) {
+        return "Test failed: glm::angleAxis() did not rotate Y axis to -Y axis: returned "
+          + std::to_string(yAxisRotated.x) + ", " + std::to_string(yAxisRotated.y)
+          + ", " + std::to_string(yAxisRotated.z);
+      }
+    }
+
+    // Try various rotations and verify that the Euler angles are consistently recovered correctly.
+    for (double rx = -80; rx <= 80; rx += 5) {
+      for (double ry = -80; ry <= 80; ry += 5) {
+        for (double rz = -80; rz <= 80; rz += 5) {
+          glm::dquat q = glm::angleAxis(glm::radians(rx), glm::dvec3(1.0, 0.0, 0.0)) *
+                         glm::angleAxis(glm::radians(ry), glm::dvec3(0.0, 1.0, 0.0)) *
+                         glm::angleAxis(glm::radians(rz), glm::dvec3(0.0, 0.0, 1.0));
+          glm::dvec3 euler = QuaternionToEulerXYZDegrees(q);
+          if (std::abs(euler[0] - rx) > 1e-6 || std::abs(euler[1] - ry) > 1e-6 ||
+              std::abs(euler[2] - rz) > 1e-6) {
+            return "Test failed: QuaternionToEulerXYZDegrees() did not return expected values: returned "
+              + std::to_string(euler[0]) + ", " + std::to_string(euler[1])
+              + ", " + std::to_string(euler[2]) + " for input "
+              + std::to_string(rx) + ", " + std::to_string(ry) + ", " + std::to_string(rz);
+          }
+        }
+      }
     }
   }
 
@@ -1111,7 +1232,7 @@ std::string asdp::render::calibration::Test()
       // Aim the center pixel at the target pixel and make sure that the orientation points it
       // correctly.
       ReorientCameraLocallyToPointPixelAtTargetNoDistortion(cri, center[0], center[1],
-        xPixels, yPixels, true);
+        xPixels, yPixels, false);
 
       // See if the new projected target location matches the center pixel.
       if (!TargetProjectedLocationNoDistortion(cri, false, 0, 0, target, xPixels, yPixels)) {
