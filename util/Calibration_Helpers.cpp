@@ -545,7 +545,15 @@ void asdp::render::calibration::ReorientCameraLocallyToPointPixelAtTargetNoDisto
   // Determine the differential camera-space rotation required to point rayDirection at rayDirectionTarget.
   // We do this by computing the angle between the two rays and then rotating the camera
   // around the axis that is perpendicular to both rays by that angle.
-  glm::dvec3 axis = glm::normalize(glm::cross(rayDirection, rayDirectionTarget));
+  glm::dvec3 axisDenorm = glm::cross(rayDirection, rayDirectionTarget);
+  glm::dvec3 axis;
+  if (glm::length(axisDenorm) < 1e-6) {
+    // Arbitrary axis, no rotation needed.
+    axis = glm::dvec3(0.0, 0.0, 1.0);
+  } else {
+    // Normalize the axis to get a unit vector.
+    axis = glm::normalize(axisDenorm);
+  }
   double angle = acos(glm::dot(rayDirection, rayDirectionTarget));
   if (verbose) {
     std::cout << "  Reorienting camera to point pixel at target: "

@@ -32,7 +32,7 @@ using namespace asdp::render;
 using namespace asdp::render::calibration;
 using json = nlohmann::json;
 
-static std::string VERSION = "2.1.0";
+static std::string VERSION = "2.2.0";
 
 void usage(std::string name)
 {
@@ -338,8 +338,8 @@ int main(int argc, char** argv)
         return 36;
       }
 
-      // Given the new target location, compute the adjustement needed to each camera to cause its ray to point
-      // at the new target location.
+      // Given the new target location, compute the adjustment needed to each camera to cause its actually-seen
+      // target pixel to point at the expected target location.
       for (auto const& pose : target.poses) {
         // Find the CameraRenderInfo associated with this pose.
         CameraRenderInfo* cri = criForPose[pose.cameraID];
@@ -355,12 +355,10 @@ int main(int argc, char** argv)
           continue;
         }
 
-        // Find the center of the image in pixels.
-        double xCenter = cri->m_resolutionPixels[0] / 2.0 - 0.5;
-        double yCenter = cri->m_resolutionPixels[1] / 2.0 - 0.5;
-
-        // Find the transform to rotate the center of the camera image to point at the target location.
-        ReorientCameraLocallyToPointPixelAtTargetNoDistortion(*cri, xCenter, yCenter, xPixels, yPixels);
+        // Find the transform to rotate the as-seen target location to point at the expected target location.
+        // This removes the unexpected difference between the expected target location and the actual target location.
+        ReorientCameraLocallyToPointPixelAtTargetNoDistortion(*cri, cameraPixelLocations[cri][0], cameraPixelLocations[cri][1],
+          xPixels, yPixels);
       } // End of loop over poses.
 
     } // End of loop over targets.
