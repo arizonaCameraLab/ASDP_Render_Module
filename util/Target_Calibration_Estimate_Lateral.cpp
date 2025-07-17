@@ -348,8 +348,7 @@ int main(int argc, char** argv)
         double xPixels, yPixels;
         if (!TargetProjectedLocationNoDistortion(*cri, gimbalInfo.pitchFirst,
             pose.zRotationDegrees, pose.xRotationDegrees,
-          glm::dvec3({ target.position[0], target.position[1], target.position[2] }),
-            xPixels, yPixels)) {
+            glm::dvec3({ target.position[0], target.position[1], target.position[2] }), xPixels, yPixels)) {
           // The target does not hit the image plane, so skip this pose.
           std::cout << "Warning: Target " << target.id << " does not hit the image plane for camera "
             << pose.cameraID << " at pose " << pose.frameIndex << std::endl;
