@@ -5,7 +5,7 @@ project(ASDP_Render_Module LANGUAGES CUDA CXX C)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 list(APPEND CMAKE_PREFIX_PATH
-  F:/Packages/GLEW/glew-2.2.
+  F:/Packages/GLEW/glew-2.2.0
   "C:/Program Files/opencv/build/x64/vc16/lib"
   C:/Qt/5.15.2/msvc2019_64/lib/cmake/Qt5
 )
@@ -90,13 +90,13 @@ find_package(OpenGL REQUIRED COMPONENTS OpenGL)
 find_package(GLEW REQUIRED)
 find_package(Doxygen)
 find_package(OpenMP)
-find_package(OpenCV COMPONENTS core imgproc)
 if(OPENMP_FOUND)
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${OpenMP_EXE_LINKER_FLAGS}")
 endif()
 find_package(OpenXR)
+find_package(OpenCV COMPONENTS core imgproc)
 
 #-----------------------------------------------------------------------------
 # Define build options.
@@ -310,6 +310,10 @@ if(BUILD_UTILITIES)
       Calibration_Helpers
       Gimbal
     )
+    if(OPENCV_FOUND)
+      target_compile_definitions(${APP} PRIVATE USE_OPENCV)
+      target_link_libraries(${APP} PRIVATE opencv_core opencv_imgproc)
+    endif()
     install(TARGETS ${APP} EXPORT ${PROJECT_NAME}
       RUNTIME DESTINATION bin
     )
