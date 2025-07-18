@@ -162,6 +162,7 @@ int main(int argc, char** argv)
     }
 
     // For each target, produce an improved lateral position estimate.
+    bool firstTarget = true;
     for (TargetInfo& target : targetInfos) {
 
       // Find the plane through the target location and its normal vector (pointing at the origin).
@@ -175,7 +176,6 @@ int main(int argc, char** argv)
       // the average of these intersection locations.
       std::map<uint16_t, CameraRenderInfo*> criForPose;
       std::map<CameraRenderInfo*, std::array<double, 2>> cameraPixelLocations;
-      std::vector<glm::dvec3> targetLocations;
       for (auto const& pose : target.poses) {
 
         // Read the set of images associated with this pose and average them into a double-precision
@@ -295,6 +295,7 @@ int main(int argc, char** argv)
 
       // Loop through all of the entries in cameraPixelLocations and compute the intersection
       // of the ray with the plane.
+      std::vector<glm::dvec3> targetLocations;
       for (auto const& pose : target.poses) {
 
         // Find the CameraRenderInfo associated with this pose.
@@ -339,8 +340,10 @@ int main(int argc, char** argv)
       }
 
       // Given the new target location, compute the adjustment needed to each camera to cause its actually-seen
-      // target pixel to point at the expected target location.
-      for (auto const& pose : target.poses) {
+      // target pixel to point at the expected target location.  Only do this for the first target.
+      /// @todo Consider moving part of the way to the final location and doing this for all targets and
+      // iterating multiple times.
+      if (firstTarget) for (auto const& pose : target.poses) {
         // Find the CameraRenderInfo associated with this pose.
         CameraRenderInfo* cri = criForPose[pose.cameraID];
 
@@ -360,6 +363,8 @@ int main(int argc, char** argv)
         ReorientCameraLocallyToPointPixelAtTargetNoDistortion(*cri, cameraPixelLocations[cri][0], cameraPixelLocations[cri][1],
           xPixels, yPixels);
       } // End of loop over poses.
+
+      firstTarget = false;
 
     } // End of loop over targets.
 
