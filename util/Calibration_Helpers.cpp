@@ -554,7 +554,7 @@ void asdp::render::calibration::ReorientCameraLocallyToPointPixelAtTargetNoDisto
     // Normalize the axis to get a unit vector.
     axis = glm::normalize(axisDenorm);
   }
-  double angle = acos(glm::dot(rayDirection, rayDirectionTarget));
+  double angle = acos(std::min(1.0,glm::dot(rayDirection, rayDirectionTarget)));
   if (verbose) {
     std::cout << "  Reorienting camera to point pixel at target: "
               << "angle = " << glm::degrees(angle) << " degrees, "
