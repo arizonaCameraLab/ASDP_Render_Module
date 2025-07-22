@@ -1021,7 +1021,6 @@ bool CompositeCameras::SetupRendering()
   // the mesh if it has not already been filled in.
   for (auto &cameraRenderInfo : m_cameraRenderInfos) {
     if (cameraRenderInfo->m_mesh.nx == 0) {
-      std::cout << "XXX Computing mesh with depth " << m_defaultStaticDepth << " for camera ID " << cameraRenderInfo->m_ID << std::endl;
       cameraRenderInfo->ComputePlanarCameraMeshInfo(100, 100, m_defaultStaticDepth);
     }
     CreateBufferInfo(*cameraRenderInfo, cameraRenderInfo->m_mesh);
