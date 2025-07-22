@@ -51,7 +51,7 @@ using namespace asdp;
 using namespace asdp::render;
 using json = nlohmann::json;
 
-static std::string VERSION = "3.8.0";
+static std::string VERSION = "3.9.0";
 
 /// @brief The path to the configuration file. Defined in the CMakeLists file.
 std::filesystem::path g_dirPath = CONFIG_FILE_PATH;
@@ -406,6 +406,7 @@ static void usage(std::string name)
   std::cerr << "  --noDepth                           Do not compute depth even when stereo cameras are available." << std::endl;
   std::cerr << "  --maxDepth <float>                  Maximum depth to test for in meters (default 200)." << std::endl;
   std::cerr << "  --depthThreshold <float>            Depth threshold in squared pixel value differences (default 10.0)." << std::endl;
+  std::cerr << "  --staticDepth <double>              The static depth to use for cameras without depth information (default 900.0)." << std::endl;
   std::cerr << "  --cameraFPS <frames per second>     The frames per second to run the camera at (default is maximum rate)." << std::endl;
   std::cerr << "  --enableCP                          Enable the cylindrical projection." << std::endl; // Added by Sang Yoon
   std::cerr << "  --enableOD                          Enable the display interface of overview plus detail view." << std::endl; // Added by Sang Yoon
@@ -447,6 +448,7 @@ int main(int argc, char** argv)
   bool computeDepth = true;       ///< Compute depth when stereo cameras are available.
   float maxDepth = 200.0f;        ///< Maximum depth to test for in meters.
   float depthThreshold = 10.0f;   ///< Depth threshold in squared pixel value differences.
+  double staticDepth = 900.0;     ///< The static depth to use for cameras without depth information.
   size_t realParams = 0;          ///< The number of non-flag parameters we've seen.
   //======================================
   // Added by Sang Yoon to add a command line argument to enable the display interface of overview plus detail view.
@@ -603,6 +605,12 @@ int main(int argc, char** argv)
         return 2;
       }
       depthThreshold = std::stof(argv[i]);
+    } else if (std::string("--staticDepth") == argv[i]) {
+      if (++i >= argc) {
+        usage(argv[0]);
+        return 2;
+      }
+      staticDepth = std::stod(argv[i]);
     } else if (std::string("--cameraFPS") == argv[i]) {
       if (++i >= argc) {
         usage(argv[0]);
@@ -1062,7 +1070,7 @@ int main(int argc, char** argv)
         g_visibleCameras, toneMapTexture, poseAdjuster, Time(1/cameraFPS),
         renderOffsetMicroseconds,
         Time(0, 1000000 / displayInfos[i].fps), (i == 0) ? (&g_timingInfo) : nullptr,
-        rangeEstimator);
+        rangeEstimator, staticDepth);
 
       //======================================
       // Added by Sang Yoon to just pass the status of enabling the cylindrical projection (true or false) from DisplayInfos[i] to composite.

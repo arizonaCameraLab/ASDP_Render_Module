@@ -243,7 +243,8 @@ namespace asdp {
         uint32_t renderOffsetMicroseconds = 0,
         Time renderFrameInterval = Time(),
         RenderTimingInfo *renderTimingInfo = nullptr,
-        std::shared_ptr<asdp::render::RangeEstimator> rangeEstimator = nullptr);
+        std::shared_ptr<asdp::render::RangeEstimator> rangeEstimator = nullptr,
+        double defaultStaticDepth = 900.0);
 
       /// @brief Update the vertex buffer object for a camera based on its current depth information.
       /// @details This function updates the vertex buffer object for a camera based on the current depth
@@ -267,6 +268,7 @@ namespace asdp {
       Time m_renderFrameInterval;           ///< The interval between render frames to use for replay mode.
       RenderTimingInfo *m_renderTimingInfo; ///< A pointer to the render timing information to fill in.
       std::shared_ptr<asdp::render::RangeEstimator> m_rangeEstimator;  ///< The range estimator to use for tone-map range determination.
+      double m_defaultStaticDepth;          ///< The default static depth to use for cameras without depth information.
 
       Time m_cameraFrameInterval;           ///< The interval between camera frames to use for distortion correction.
 

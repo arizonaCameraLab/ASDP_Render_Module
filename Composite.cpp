@@ -873,7 +873,8 @@ R"(#version 330 core
 CompositeCameras::CompositeCameras(std::vector< std::shared_ptr<CameraRenderInfo> >& cameraRenderInfo, GLuint toneMaptexture,
   std::shared_ptr<PoseAdjuster> poseAdjuster, Time cameraFrameInterval,
   uint32_t renderOffsetMicroseconds, Time renderFrameInterval, RenderTimingInfo *renderTimingInfo,
-  std::shared_ptr<asdp::render::RangeEstimator> rangeEstimator)
+  std::shared_ptr<asdp::render::RangeEstimator> rangeEstimator,
+  double defaultStaticDepth)
   : Composite()
   , m_cameraRenderInfos(cameraRenderInfo)
   , m_toneMapTexture(toneMaptexture)
@@ -883,6 +884,7 @@ CompositeCameras::CompositeCameras(std::vector< std::shared_ptr<CameraRenderInfo
   , m_renderFrameInterval(renderFrameInterval)
   , m_renderTimingInfo(renderTimingInfo)
   , m_rangeEstimator(rangeEstimator)
+  , m_defaultStaticDepth(defaultStaticDepth)
   , m_programId(0)
   , m_viewProjectionUniformId(0)
   , m_poseAdjustUniformId(0)
@@ -1019,7 +1021,8 @@ bool CompositeCameras::SetupRendering()
   // the mesh if it has not already been filled in.
   for (auto &cameraRenderInfo : m_cameraRenderInfos) {
     if (cameraRenderInfo->m_mesh.nx == 0) {
-      cameraRenderInfo->ComputePlanarCameraMeshInfo();
+      std::cout << "XXX Computing mesh with depth " << m_defaultStaticDepth << " for camera ID " << cameraRenderInfo->m_ID << std::endl;
+      cameraRenderInfo->ComputePlanarCameraMeshInfo(100, 100, m_defaultStaticDepth);
     }
     CreateBufferInfo(*cameraRenderInfo, cameraRenderInfo->m_mesh);
   }
