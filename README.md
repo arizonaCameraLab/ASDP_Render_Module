@@ -426,7 +426,9 @@ described in Appendix A.  The workflow is as follows:
       program and ensure that its location matches the optimized target location (it is important to check
       an image from each camera to ensure that the threshold is reliably skipping other locations because
       if this gets off then the entire calibration procedure will fail). Turn off or cover any
-      other spurious sources that are capturing the target estimation.
+      other spurious sources that are capturing the target estimation.  **Note:** It may be necessary to
+      loop back to the *Target_Calibration_Make_Scan* step, using the optimized file as the new input file,
+      to produce a better estimate of the target lateral positions using new scan data.
     - Run the **Camera_Calibration_Make_Scan** program and give it **cameras_opt.json**, **targets_lateral_opt.json**, and
       the gimbal configuration files.  It will produce a **poses.csv** file for all cameras.
     - Copy the poses.csv file into the calibration directory.
