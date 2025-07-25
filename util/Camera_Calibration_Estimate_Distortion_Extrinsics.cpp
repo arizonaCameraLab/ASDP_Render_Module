@@ -27,7 +27,7 @@ using namespace asdp::render;
 using namespace asdp::render::calibration;
 using json = nlohmann::json;
 
-static std::string VERSION = "0.10.0";
+static std::string VERSION = "1.0.0";
 
 void usage(std::string name)
 {
@@ -366,11 +366,15 @@ int main(int argc, char** argv)
           continue;
         }
         
-        // Optimize a symmetric spot tracker starting at the specified location with radius 10 pixels.
+        // Optimize a bright-centered cone tracker starting at the specified location to robustly lock onto the bright spot and
+        // then optimize a symmetric spot tracker with radius 10 pixels starting there for more precision.
+        cone_spot_tracker_interp coneTracker(10);
+        double x, y;
+        coneTracker.optimize_xy(*avg, 0, x, y, centerX, centerY);
+
         symmetric_spot_tracker_interp symmetrictracker(10);
         symmetrictracker.set_pixel_accuracy(0.01);
-        double x, y;
-        symmetrictracker.optimize_xy(*avg, 0, x, y, centerX, centerY);
+        symmetrictracker.optimize_xy(*avg, 0, x, y, x, y);
 
         // Add a mapping entry from the expected location to the actual location in the image
         // and tell what we did.  Make a critical section to avoid thread contention during this time.
