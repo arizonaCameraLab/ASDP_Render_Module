@@ -31,6 +31,7 @@ static void usage(const char* progName)
   std::cerr << "         --home: Move to home position." << std::endl;
   std::cerr << "         --gimbalConfig <string>: The gimbal configuration file name (default gimbal.json)." << std::endl;
   std::cerr << "         --shift <bit_count>: Left shift the images by the specified number of bits (default 0)." << std::endl;
+  std::cerr << "         --autoRange: Automatically adjust each image to cover entire intensity range (supercedes --shift)." << std::endl;
   std::cerr << "         --help: Print this information and quit." << std::endl;
 }
 
@@ -98,7 +99,7 @@ struct FileInfo {
   std::shared_ptr< std::vector<uint8_t> > imageBuffer; ///< The image data, stored in an unsigned 8-bit buffer vector.
 };
 
-static void SaveImagesThread(std::atomic_bool& done, asdp::SpinFreeQueue<FileInfo>& q)
+static void SaveImagesThread(std::atomic_bool& done, asdp::SpinFreeQueue<FileInfo>& q, bool autoRange)
 {
   while (!done) {
 
@@ -108,7 +109,34 @@ static void SaveImagesThread(std::atomic_bool& done, asdp::SpinFreeQueue<FileInf
       continue; // No image to save, check again.
     }
 
-    if (fileInfo.shift > 0) {
+    if (autoRange) {
+      // Automatically adjust the image data to cover the entire intensity range.
+      // Find the minimum and maximum pixel values in the image.
+      uint16_t minPixel = 65535;
+      uint16_t maxPixel = 0;
+      for (int i = 0; i < fileInfo.imageBuffer->size(); i += sizeof(uint16_t)) {
+        uint16_t* pixel = reinterpret_cast<uint16_t*>(&(*fileInfo.imageBuffer)[i]);
+        if (*pixel < minPixel) {
+          minPixel = *pixel;
+        }
+        if (*pixel > maxPixel) {
+          maxPixel = *pixel;
+        }
+      }
+      // If the range is zero, just set all pixels to 0.
+      if (maxPixel <= minPixel) {
+        std::fill(fileInfo.imageBuffer->begin(), fileInfo.imageBuffer->end(), 0);
+      } else {
+        // Scale the pixel values to cover the full range.
+        double scale = 65535.0 / (maxPixel - minPixel);
+#pragma omp parallel for
+        for (int i = 0; i < fileInfo.imageBuffer->size(); i += sizeof(uint16_t)) {
+          uint16_t* pixel = reinterpret_cast<uint16_t*>(&(*fileInfo.imageBuffer)[i]);
+          *pixel = static_cast<uint16_t>((*pixel - minPixel) * scale);
+        }
+      }
+
+    } else if (fileInfo.shift > 0) {
       // Shift the image data left by the specified number of bits.
 #pragma omp parallel for
       for (int i = 0; i < fileInfo.imageBuffer->size(); i += sizeof(uint16_t)) {
@@ -138,6 +166,7 @@ int main(int argc, char** argv)
   std::string outDir;
   bool home = false;
   int shift = 0;
+  bool autoRange = false;
 
   size_t realParams = 0;
   for (int i = 1; i < argc; ++i) {
@@ -161,6 +190,9 @@ int main(int argc, char** argv)
         std::cerr << "Error: Shift value must be between 0 and 15." << std::endl;
         return 1;
       }
+    }
+    else if (std::string("--autoRange") == argv[i]) {
+      autoRange = true;
     }
     else if (std::string("--help") == argv[i]) {
       usage(argv[0]);
@@ -385,7 +417,7 @@ int main(int argc, char** argv)
     // Make a spin-free queue for saving images and start a thread to save images.
     asdp::SpinFreeQueue<FileInfo> imageQueue;
     std::atomic_bool done(false);
-    std::thread saveImagesThread(SaveImagesThread, std::ref(done), std::ref(imageQueue));
+    std::thread saveImagesThread(SaveImagesThread, std::ref(done), std::ref(imageQueue), autoRange);
 
     //=============================================================================================
     // For each new frame index, move the pose to the specified location. For each pose, take the
