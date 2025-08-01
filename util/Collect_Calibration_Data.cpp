@@ -112,7 +112,7 @@ static void SaveImagesThread(std::atomic_bool& done, asdp::SpinFreeQueue<FileInf
       // Shift the image data left by the specified number of bits.
 #pragma omp parallel for
       for (int i = 0; i < fileInfo.imageBuffer->size(); i += sizeof(uint16_t)) {
-        uint16_t* pixel = reinterpret_cast<uint16_t*>(fileInfo.imageBuffer.get());
+        uint16_t* pixel = reinterpret_cast<uint16_t*>(&(*fileInfo.imageBuffer)[i]);
         (*pixel) <<= fileInfo.shift;
       }
     }
