@@ -6,12 +6,15 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include <atomic>
+#include <thread>
 #include <filesystem>
 #include <stdio.h>
 #include <string.h>
 #include <CameraRenderInfo.h>
 #include <Calibration_Helpers.h>
 #include <ASDP_StreamPacketSortedQueue.h>
+#include <ASDP_SpinFreeQueue.hpp>
 #include <Gimbal.h>
 #include <ASDP_Core_API.h>
 
@@ -88,6 +91,43 @@ static void fixEndian(uint8_t* data, size_t size) {
   }
 }
 
+struct FileInfo {
+  std::string fileName; ///< The name of the file.
+  int width, height;    ///< The dimensions of the image.
+  int shift;          ///< The number of bits to shift the image data left.
+  std::shared_ptr< std::vector<uint8_t> > imageBuffer; ///< The image data, stored in an unsigned 8-bit buffer vector.
+};
+
+static void SaveImagesThread(std::atomic_bool& done, std::shared_ptr< asdp::SpinFreeQueue<FileInfo> > q)
+{
+  while (!done) {
+
+    // See if we have an image to save, timing out so we can check the done flag.
+    FileInfo fileInfo;
+    if (!q->dequeue(fileInfo, std::chrono::milliseconds(100))) {
+      continue; // No image to save, check again.
+    }
+
+    if (fileInfo.shift > 0) {
+      // Shift the image data left by the specified number of bits.
+#pragma omp parallel for
+      for (int i = 0; i < fileInfo.imageBuffer->size(); i += sizeof(uint16_t)) {
+        uint16_t* pixel = reinterpret_cast<uint16_t*>(fileInfo.imageBuffer.get());
+        (*pixel) <<= fileInfo.shift;
+      }
+    }
+
+    FILE* of = fopen(fileInfo.fileName.c_str(), "wb");
+    if (of == NULL) {
+      std::cerr << "Error opening image file " << fileInfo.fileName << std::endl;
+    } else {
+      fprintf(of, "P5\n%d %d\n%d\n", fileInfo.width, fileInfo.height, 65535);
+      fixEndian(fileInfo.imageBuffer->data(), fileInfo.imageBuffer->size());
+      fwrite(fileInfo.imageBuffer->data(), sizeof(uint8_t), fileInfo.imageBuffer->size(), of);
+      fclose(of);
+    }
+  }
+}
 
 int main(int argc, char** argv)
 {
@@ -342,6 +382,12 @@ int main(int argc, char** argv)
     }
 
     //=============================================================================================
+    // Make a spin-free queue for saving images and start a thread to save images.
+    asdp::SpinFreeQueue<FileInfo> imageQueue;
+    std::atomic_bool done(false);
+    std::thread saveImagesThread(SaveImagesThread, std::ref(done), std::make_shared<asdp::SpinFreeQueue<FileInfo>>(imageQueue));
+
+    //=============================================================================================
     // For each new frame index, move the pose to the specified location. For each pose, take the
     // specified number of images using the specified camera and write them to the output directory.
 
@@ -371,9 +417,9 @@ int main(int argc, char** argv)
       // Capture the specified number of frames.
 
       // Create buffers to hold the data.
-      std::vector < std::vector<uint8_t> > imageBuffers;
+      std::vector < std::shared_ptr< std::vector<uint8_t> > > imageBuffers;
       for (size_t i = 0; i < pose.numFrames; ++i) {
-        imageBuffers.push_back(std::vector<uint8_t>(frameSize));
+        imageBuffers.push_back(std::make_shared<std::vector<uint8_t>>(frameSize));
       }
 
       // Construct a UDP receiver for a stream from the camera.
@@ -511,7 +557,7 @@ int main(int argc, char** argv)
               // full lines at once when this is the case.  Otherwise, we'd need to copy the data line by line and
               // adjust for the full-image stride when doing offsets.
               size_t size = (right - left + 1) * (bottom - top + 1) * sizeof(uint16_t);
-              memcpy(imageBuffers[receivedFrames].data() + (top * stride + left) * sizeof(uint16_t), rawData, size);
+              memcpy(imageBuffers[receivedFrames]->data() + (top * stride + left) * sizeof(uint16_t), rawData, size);
 
               bool isFrameEnd;
               status = frameData.GetEndFrameFlag(isFrameEnd);
@@ -553,30 +599,24 @@ int main(int argc, char** argv)
         std::string fileName = outDir + "/" + std::to_string(pose.frameIndex) + "_" +
           std::to_string(pose.cameraID) + "_" + std::to_string(f+1) + ".pgm";
 
-        if (shift > 0) {
-          // Shift the image data left by the specified number of bits.
-#pragma omp parallel for
-          for (int i = 0; i < imageBuffers[f].size(); ++i) {
-            imageBuffers[f][i] <<= shift;
-          }
-        }
+        FileInfo fileInfo;
+        fileInfo.fileName = fileName;
+        fileInfo.width = width;
+        fileInfo.height = height;
+        fileInfo.shift = shift;
+        fileInfo.imageBuffer = imageBuffers[f];
+        imageQueue.enqueue(fileInfo);
 
-        FILE* of = fopen(fileName.c_str(), "wb");
-        if (of == NULL) {
-          std::cerr << "Error opening image file " << fileName << std::endl;
-          return 400;
-        }
-        fprintf(of, "P5\n%d %d\n%d\n", 1280, 1024, 65535);
-        fixEndian(imageBuffers[f].data(), imageBuffers[f].size());
-        fwrite(imageBuffers[f].data(), sizeof(uint8_t), imageBuffers[f].size(), of);
-        fclose(of);
-      }
-      std::cout << "Wrote " << imageBuffers.size() << " images for frame " << pose.frameIndex
+      std::cout << "Writing " << imageBuffers.size() << " images for frame " << pose.frameIndex
         << " camera " << pose.cameraID << " (frame index " << lastFrameIndex << " of "
         << poseInfos.back().frameIndex << ")" << std::endl;
     }
   }
 
-  // Done
+  // Done, wait for the save images thread to finish.
+  done = true;
+  if (saveImagesThread.joinable()) {
+    saveImagesThread.join();
+  }
   return 0;
 }
