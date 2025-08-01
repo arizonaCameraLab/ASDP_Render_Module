@@ -2,10 +2,12 @@
 set(SOURCES
     main.cpp
     mainwindow.cpp
+    HistogramWidget.cpp
 )
 
 set(HEADERS
     mainwindow.h
+    HistogramWidget.h
 )
 
 set(UI_FILES

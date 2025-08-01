@@ -568,8 +568,26 @@ void MainWindow::UseIRCamera(bool isIR)
 {
   m_useIRCamera = isIR;
   if (m_streamingCameraID != 0) {
-    std::cout << "Launching camera, IR =" << isIR << std::endl;
+    std::cout << "Launching camera, IR =" << (isIR ? "Yes" : "No") << std::endl;
     ViewCamera(QString::number(m_streamingCameraID));
+  }
+}
+
+void MainWindow::ShowHistogram(bool show)
+{
+  m_showHistogram = show;
+  std::cout << "Showing histogram: " << (show ? "Yes" : "No") << std::endl;
+  if (m_showHistogram) {
+    m_histogramWidget = std::make_shared<HistogramWidget>();
+    m_histogramWidget->setHistogram(m_histogramData);
+    m_histogramWidget->setWindowTitle("Histogram: See min and max value in text window");
+    m_histogramWidget->show();
+  } else {
+    // Get rid of the histogram widget if it exists.
+    if (m_histogramWidget) {
+      m_histogramWidget->close();
+      m_histogramWidget.reset();
+    }
   }
 }
 

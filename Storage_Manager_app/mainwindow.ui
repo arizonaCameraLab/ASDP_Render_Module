@@ -239,6 +239,25 @@
               </widget>
              </item>
              <item>
+              <widget class="QFrame" name="frame_6">
+               <property name="frameShape">
+                <enum>QFrame::StyledPanel</enum>
+               </property>
+               <property name="frameShadow">
+                <enum>QFrame::Raised</enum>
+               </property>
+               <layout class="QHBoxLayout" name="horizontalLayout_8">
+                <item>
+                 <widget class="QCheckBox" name="checkBox">
+                  <property name="text">
+                   <string>Show histogram</string>
+                  </property>
+                 </widget>
+                </item>
+               </layout>
+              </widget>
+             </item>
+             <item>
               <spacer name="verticalSpacer">
                <property name="orientation">
                 <enum>Qt::Vertical</enum>
@@ -545,6 +564,22 @@
     </hint>
    </hints>
   </connection>
+  <connection>
+   <sender>checkBox</sender>
+   <signal>toggled(bool)</signal>
+   <receiver>MainWindow</receiver>
+   <slot>ShowHistogram(bool)</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>186</x>
+     <y>495</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>6</x>
+     <y>619</y>
+    </hint>
+   </hints>
+  </connection>
  </connections>
  <slots>
   <signal>ShowServers(bool)</signal>
@@ -562,5 +597,6 @@
   <slot>NoRecordAtStartup()</slot>
   <slot>UseIRCamera(bool)</slot>
   <slot>SkipIntervalChanged()</slot>
+  <slot>ShowHistogram(bool)</slot>
  </slots>
 </ui>

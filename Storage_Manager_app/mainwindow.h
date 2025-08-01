@@ -9,6 +9,7 @@
 #include <thread>
 #include <QMainWindow>
 #include <QTimer>
+#include "HistogramWidget.h"
 #include <ASDP_Core_API.h>
 #include <Display.h>
 #include <ToneMap.h>
@@ -67,6 +68,9 @@ public slots:
     /// @brief Use an IR camera (as opposed to a visible light camera).
     void UseIRCamera(bool isIR);
 
+    /// @brief Show or hide a histogram of camera images.
+    void ShowHistogram(bool show);
+
 signals:
     /// @brief Signal to show or hide list of servers.
     void ShowServers(bool show);
@@ -119,6 +123,11 @@ private:
   StreamEndpoint m_endpoint;
   uint32_t m_streamingCameraID = 0;
   bool m_useIRCamera = true;
+  bool m_showHistogram = false;
+
+  // Histogram widget for displaying camera image brightness distributions.
+  std::shared_ptr<HistogramWidget> m_histogramWidget;
+  std::vector<int> m_histogramData;
 };
 
 #endif // MAINWINDOW_H
