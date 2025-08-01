@@ -408,7 +408,8 @@ described in Appendix A.  The workflow is as follows:
               on the top back of the server are available under Linux.
             - **Note:** For visible-light cameras, add `--shift 16` to the command line
               to left-justify its bits in the 16-bit value, making it easier to view the images
-              for debugging.
+              for debugging. For infrared cameras, use the `--autoRange` option to automatically
+              stretch the contrast for each image to the full range of pixel values.
             - Run the **Collect_Calibration_Data** program from the **ASDP_Render_Module** repository to
               capture the frames for each target, providing it the name of the serial device, the IP
               address of the NIC to talk with the camera on, and target_N_poses.csv file name and a
