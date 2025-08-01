@@ -98,13 +98,13 @@ struct FileInfo {
   std::shared_ptr< std::vector<uint8_t> > imageBuffer; ///< The image data, stored in an unsigned 8-bit buffer vector.
 };
 
-static void SaveImagesThread(std::atomic_bool& done, std::shared_ptr< asdp::SpinFreeQueue<FileInfo> > q)
+static void SaveImagesThread(std::atomic_bool& done, asdp::SpinFreeQueue<FileInfo>& q)
 {
   while (!done) {
 
     // See if we have an image to save, timing out so we can check the done flag.
     FileInfo fileInfo;
-    if (!q->dequeue(fileInfo, std::chrono::milliseconds(100))) {
+    if (!q.dequeue(fileInfo, std::chrono::milliseconds(100))) {
       continue; // No image to save, check again.
     }
 
@@ -385,7 +385,7 @@ int main(int argc, char** argv)
     // Make a spin-free queue for saving images and start a thread to save images.
     asdp::SpinFreeQueue<FileInfo> imageQueue;
     std::atomic_bool done(false);
-    std::thread saveImagesThread(SaveImagesThread, std::ref(done), std::make_shared<asdp::SpinFreeQueue<FileInfo>>(imageQueue));
+    std::thread saveImagesThread(SaveImagesThread, std::ref(done), std::ref(imageQueue));
 
     //=============================================================================================
     // For each new frame index, move the pose to the specified location. For each pose, take the
@@ -597,7 +597,7 @@ int main(int argc, char** argv)
       // Write the frames to the output directory.
       for (int f = 0; f < imageBuffers.size(); f++) {
         std::string fileName = outDir + "/" + std::to_string(pose.frameIndex) + "_" +
-          std::to_string(pose.cameraID) + "_" + std::to_string(f+1) + ".pgm";
+          std::to_string(pose.cameraID) + "_" + std::to_string(f + 1) + ".pgm";
 
         FileInfo fileInfo;
         fileInfo.fileName = fileName;
@@ -606,17 +606,19 @@ int main(int argc, char** argv)
         fileInfo.shift = shift;
         fileInfo.imageBuffer = imageBuffers[f];
         imageQueue.enqueue(fileInfo);
+      }
 
       std::cout << "Writing " << imageBuffers.size() << " images for frame " << pose.frameIndex
         << " camera " << pose.cameraID << " (frame index " << lastFrameIndex << " of "
         << poseInfos.back().frameIndex << ")" << std::endl;
     }
+
+    // Done, wait for the save images thread to finish.
+    done = true;
+    if (saveImagesThread.joinable()) {
+      saveImagesThread.join();
+    }
   }
 
-  // Done, wait for the save images thread to finish.
-  done = true;
-  if (saveImagesThread.joinable()) {
-    saveImagesThread.join();
-  }
   return 0;
 }
