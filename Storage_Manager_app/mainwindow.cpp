@@ -29,7 +29,7 @@
 #include <CPUDataToTextureHandler.h>
 
 // Define the version number
-const QString VERSION_NUMBER = "1.6.1";
+const QString VERSION_NUMBER = "1.6.2";
 
 static std::vector<std::string> getIPAddresses()
 {
@@ -151,7 +151,7 @@ void MainWindow::SelectNIC(const QString& nicName)
     // Wait for two seconds to allow servers to send Discovery messages and then check the status of
     // the Discover thread and find the servers.
     std::this_thread::sleep_for(std::chrono::seconds(2));
-    std::vector<std::string> servers;
+    std::map<uint32_t, std::string> servers;
     Status threadStatus;
     Status status = m_client->GetDiscoveryThreadStatus(threadStatus);
     if (status != OKAY) {
@@ -168,9 +168,9 @@ void MainWindow::SelectNIC(const QString& nicName)
       return;
     }
     std::cout << "Servers found: " << servers.size() << std::endl;
-    for (const std::string& server : servers) {
-      ui->comboBoxCore->addItem(QString::fromStdString(server));
-      std::cout << "  " << server << std::endl;
+    for (const auto& server : servers) {
+      ui->comboBoxCore->addItem(QString::fromStdString(server.second) + " (serial #" + QString::number(server.first) + ")");
+      std::cout << "  " << server.second << " (serial #" << server.first << ")" << std::endl;
     }
 
     // Emit the signal to show the list of servers
@@ -241,9 +241,11 @@ void MainWindow::ResetStreaming()
 
 void MainWindow::SelectServer(const QString& coreURL)
 {
-  m_coreURL = coreURL;
+  // Strip of a space any anything after the space.
+  int spaceIndex = coreURL.indexOf(' ');
+  m_coreURL = (spaceIndex >= 0) ? coreURL.left(spaceIndex) : coreURL;
   ResetServer();
-  if (coreURL.isEmpty()) {
+  if (m_coreURL.isEmpty()) {
     Status status = m_client->DisconnectFromServer();
     if (status != OKAY) {
       std::cerr << "Failed to disconnect from server: " << ErrorMessage(status) << std::endl;
@@ -254,9 +256,9 @@ void MainWindow::SelectServer(const QString& coreURL)
   std::cout << "Selected Core: " << coreURL.toStdString() << std::endl;
 
   // Connect to the server.
-  std::cout << "Connecting to " << coreURL.toStdString() << std::endl;
+  std::cout << "Connecting to " << m_coreURL.toStdString() << std::endl;
   uint16_t major, minor, patch;
-  Status status = m_client->ConnectToServer(coreURL.toStdString(), major, minor, patch);
+  Status status = m_client->ConnectToServer(m_coreURL.toStdString(), major, minor, patch);
   if (status != OKAY) {
     std::cerr << "Failed to connect to server: " << ErrorMessage(status) << std::endl;
     return;
