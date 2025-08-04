@@ -51,7 +51,7 @@ using namespace asdp;
 using namespace asdp::render;
 using json = nlohmann::json;
 
-static std::string VERSION = "3.9.0";
+static std::string VERSION = "3.10.0";
 
 /// @brief The path to the configuration file. Defined in the CMakeLists file.
 std::filesystem::path g_dirPath = CONFIG_FILE_PATH;
@@ -389,6 +389,8 @@ static void usage(std::string name)
   std::cerr << "  <ip_address>                        The IP address to listen for servers on." << std::endl;
   std::cerr << "  Options:" << std::endl;
   std::cerr << "  --help                              Print this help message." << std::endl;
+  std::cerr << "  --version                           Print the version number and quit." << std::endl;
+  std::cerr << "  --serial <serial number>            The serial number of the server to connect to (default -1 means any)." << std::endl;
   std::cerr << "  --maxCameras <int>                  The maximum number of cameras to render (default 0 means all)." << std::endl;
   std::cerr << "  --frameStride <frame stride>        Read one out of every this many frames. Set to 1 for every frame." << std::endl;
   std::cerr << "  --toneMap <tone map>                The tone map to use.  Options are: linear blackbody bluesky 10bit" << std::endl;
@@ -422,6 +424,7 @@ static void usage(std::string name)
 
 int main(int argc, char** argv)
 {
+  int serialNumber = -1;        ///< The serial number of the server to connect to, -1 means any.
   int maxCameras = 0;           ///< The maximum number of cameras to render, 0 means all.
   uint32_t frameStride = 1;     ///< Read one out of every this many frames. Set to 1 for every frame.
   std::vector<DisplayInfo> displayInfos = { DisplayInfo() }; ///< Information for each display that is to be created.
@@ -641,7 +644,18 @@ int main(int argc, char** argv)
         return 2;
       }
       maxCameras = std::stoi(argv[i]);
-    } else if (argv[i][0] == '-') {
+    }
+    else if (std::string("--serial") == argv[i]) {
+      if (++i >= argc) {
+        usage(argv[0]);
+        return 2;
+      }
+      serialNumber = std::stoi(argv[i]);
+    } else if (std::string("--version") == argv[i]) {
+      std::cout << "ASDP Render Module version " << VERSION + "-" + BUILD_TYPE << std::endl;
+      return 0;
+    }
+    else if (argv[i][0] == '-') {
       usage(argv[0]);
       return 1;
     } else switch (realParams++) {
@@ -681,7 +695,7 @@ int main(int argc, char** argv)
 
     // Wait for up to two seconds to allow servers to send Discovery messages.
     std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now();
-    std::vector<std::string> servers;
+    std::map<uint32_t, std::string> servers;
     Status threadStatus;
     Status status;
     do {
@@ -707,26 +721,42 @@ int main(int argc, char** argv)
       return 7;
     }
     std::cout << "Servers found: " << servers.size() << std::endl;
-    for (const std::string& server : servers) {
-      std::cout << "  " << server << std::endl;
+    for (const auto& server : servers) {
+      std::cout << "  " << server.second << " (serial #" << server.first << ")" << std::endl;
+    }
+
+    // If we have been asked for a specific serial number, remove all others.
+    if (serialNumber >= 0) {
+      std::map<uint32_t, std::string> filteredServers;
+      for (const auto& server : servers) {
+        uint32_t serverSerialNumber = server.first;
+        if (serverSerialNumber == static_cast<uint32_t>(serialNumber)) {
+          filteredServers[server.first] = server.second;
+        }
+      }
+      servers = filteredServers;
+      if (servers.empty()) {
+        std::cerr << "No servers found with serial number " << serialNumber << std::endl;
+        return 7;
+      }
     }
 
     // Connect to the first server found.
-    std::cout << "Connecting to " << servers[0] << std::endl;
+    std::cout << "Connecting to " << servers.begin()->second << std::endl;
     uint16_t major, minor, patch;
-    status = client->ConnectToServer(servers[0], major, minor, patch);
+    status = client->ConnectToServer(servers.begin()->second, major, minor, patch);
     if (status != OKAY) {
       std::cerr << "Failed to connect to server: " << ErrorMessage(status) << std::endl;
       return 8;
     }
-    uint32_t serialNumber;
-    status = client->GetServerSerialNumber(serialNumber);
+    uint32_t sn;
+    status = client->GetServerSerialNumber(sn);
     if (status != OKAY) {
       std::cerr << "Failed to get server serial number: " << ErrorMessage(status) << std::endl;
       return 9;
     }
     std::cout << "  Connected to server version " << major << "." << minor << "." << patch
-      << " with serial number " << serialNumber << std::endl;
+      << " with serial number " << sn << std::endl;
 
     // Get the main stream receiver
     std::shared_ptr<Receiver> receiver;
@@ -782,7 +812,7 @@ int main(int argc, char** argv)
 
     // Read the configuration file associated with the serial number for the server. Verify that
     // it has a matching serial number and number of cameras.
-    std::filesystem::path configPath = g_dirPath / (std::to_string(serialNumber) + ".json");
+    std::filesystem::path configPath = g_dirPath / (std::to_string(sn) + ".json");
     std::vector<CameraRenderInfo> rawCameraRenderInfos;
     try {
       rawCameraRenderInfos = asdp::render::calibration::GetCameraRenderInfos(configPath.string());
