@@ -98,6 +98,10 @@ endif()
 find_package(OpenXR)
 find_package(OpenCV COMPONENTS core imgproc)
 
+# Needed to enable compiling on Ubuntu 22.04
+find_package(CUDAToolkit REQUIRED)
+include_directories(${CUDAToolkit_INCLUDE_DIRS})
+
 #-----------------------------------------------------------------------------
 # Define build options.
 
