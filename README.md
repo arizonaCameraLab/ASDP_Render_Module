@@ -411,8 +411,8 @@ described in Appendix A.  The workflow is as follows:
               for debugging. For infrared cameras, use the `--autoRange` option to automatically
               stretch the contrast for each image to the full range of pixel values.
             - Run the **Collect_Calibration_Data** program from the **ASDP_Render_Module** repository to
-              capture the frames for each target, providing it the name of the serial device, the IP
-              address of the NIC to talk with the camera on, and target_N_poses.csv file name and a
+              capture the frames for each target, providing it the IP address of the NIC to talk with
+              the camera on, the camera serial number, and target_N_poses.csv file name and a
               subdirectory of the configuration directory named **target_lateral_N_images** (where N is
               the target number).
     - Run the **Target_Calibration_Estimate_Lateral** program and give it the camera, target and
