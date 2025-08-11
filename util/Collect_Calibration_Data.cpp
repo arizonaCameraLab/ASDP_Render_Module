@@ -101,7 +101,7 @@ struct FileInfo {
 
 static void SaveImagesThread(std::atomic_bool& done, asdp::SpinFreeQueue<FileInfo>& q, bool autoRange)
 {
-  while (!done) {
+  while (!done || (q.size() > 0)) {
 
     // See if we have an image to save, timing out so we can check the done flag.
     FileInfo fileInfo;
