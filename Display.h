@@ -30,15 +30,31 @@ namespace asdp {
     struct EventHandlers {
       /// Request that the play/pause state be changed to match nowPlaying.
       /// (See SetNowPlaying() comments for details of pause/replay implementation.)
+      /// @param nowPlaying True to play/resume, false to pause.
       void (*ChangePlayPause)(bool nowPlaying, void *userData) = nullptr;
 
       /// Compute the depth maps for the cameras given the next frame time (center pixel time).
       /// (Only used with CompositeCameras when we have a DepthEstimator.)
+      /// @param nextFrameTime The time of the next frame to be rendered (center pixel time).
       void (*ComputeDepth)(Time nextFrameTime, void *userData) = nullptr;
 
       /// Set the depth scale for the cameras to be rendered so that they show depth.
       /// (Only used with CompositeCameras when we have a DepthEstimator.)
+      /// @param renderDepth True to render depth, false to render normal imagery.
       void (*SetToRenderDepth)(bool renderDepth, void *userData) = nullptr;
+
+      /// Increment the camera whose values are controlled by offset-adjustment events.
+      void (*IncrementActiveCamera)(void* userData) = nullptr;
+
+      /// Decrement the camera whose values are controlled by offset-adjustment events.
+      void (*DecrementActiveCamera)(void* userData) = nullptr;
+
+      /// Adjust the color offset calibration values for the active camera.
+      /// @param offsetDelta The amount to adjust the offset by, positive or negative.
+      void (*AdjustActiveCameraOffset)(int offsetDelta, void* userData) = nullptr;
+
+      /// Save the current camera configuration settings to a file.
+      void (*SaveCameraConfig)(const std::string& fileName, void* userData) = nullptr;
     };
 
     /// @brief Display base class that defines the interface that all Displays use.

@@ -244,6 +244,15 @@ public:
   bool m_dPressed = false;
   bool m_displayingDepth = false;
 
+  /// Whether or not the '[' key was pressed during the last loop, used to ajust active camera index.
+  bool m_leftBracketPressed = false;
+
+  /// Whether or not the ']' key was pressed during the last loop, used to ajust active camera index.
+  bool m_rightBracketPressed = false;
+
+  // Whether or not the 's' key was pressed during the last loop, used to save camera configuration.
+  bool m_sPressed = false;
+
   /// Index of the joystick to use, or -1 if no joystick is to be used.
   int m_glfwJoystickIndex = -1;
 
@@ -732,6 +741,46 @@ void DisplayWindow::HandleKeyboard()
     }
   }
   m_impl->m_dPressed = dPressed;
+
+  // Adjust the active camera index when the '[' or ']' keys are pressed.
+  bool leftBracketPressed = (glfwGetKey(Display::m_impl->m_window, GLFW_KEY_LEFT_BRACKET) == GLFW_PRESS);
+  if (leftBracketPressed && !m_impl->m_leftBracketPressed) {
+    if (m_eventHandlers && m_eventHandlers->DecrementActiveCamera) {
+      m_eventHandlers->DecrementActiveCamera(m_userData);
+    }
+  }
+  m_impl->m_leftBracketPressed = leftBracketPressed;
+  bool rightBracketPressed = (glfwGetKey(Display::m_impl->m_window, GLFW_KEY_RIGHT_BRACKET) == GLFW_PRESS);
+  if (rightBracketPressed && !m_impl->m_rightBracketPressed) {
+    if (m_eventHandlers && m_eventHandlers->IncrementActiveCamera) {
+      m_eventHandlers->IncrementActiveCamera(m_userData);
+    }
+  }
+  m_impl->m_rightBracketPressed = rightBracketPressed;
+
+  // Adjust the camera offset for the active camera while the '-' (decrement) or '=' (increment) keys are pressed.
+  bool minusPressed = (glfwGetKey(Display::m_impl->m_window, GLFW_KEY_MINUS) == GLFW_PRESS);
+  bool equalPressed = (glfwGetKey(Display::m_impl->m_window, GLFW_KEY_EQUAL) == GLFW_PRESS);
+  int increment = 0;
+  if (minusPressed) {
+    increment = -1;
+  } else if (equalPressed) {
+    increment = 1;
+  }
+  if (increment != 0) {
+    if (m_eventHandlers && m_eventHandlers->AdjustActiveCameraOffset) {
+      m_eventHandlers->AdjustActiveCameraOffset(increment, m_userData);
+    }
+  }
+
+  // If the 's' key is pressed, send an event asking to save the current configuration file.
+  bool sPressed = (glfwGetKey(Display::m_impl->m_window, GLFW_KEY_S) == GLFW_PRESS);
+  if (sPressed && !m_impl->m_sPressed) {
+    if (m_eventHandlers && m_eventHandlers->SaveCameraConfig) {
+      m_eventHandlers->SaveCameraConfig("adjusted_camera_config.json", m_userData);
+    }
+  }
+  m_impl->m_sPressed = sPressed;
 }
 
 void DisplayWindow::HandleMouse()

@@ -51,31 +51,143 @@ using namespace asdp;
 using namespace asdp::render;
 using json = nlohmann::json;
 
-static std::string VERSION = "3.10.0";
+static std::string VERSION = "3.11.0";
 
 /// @brief The path to the configuration file. Defined in the CMakeLists file.
 std::filesystem::path g_dirPath = CONFIG_FILE_PATH;
 
+/// @brief Structure storing information needed by the callback handlers, a pointer is passeed in userData.
+typedef struct {
+  std::string cameraConfigFileName; ///< The name of the configuration file that was read and parsed.
+} CallbackHandlerData;
+static CallbackHandlerData g_callbackHandlerData;
+
 /// @brief Global variable set by callback handlers to tell when we're playing and pausing.
-std::atomic<bool> g_paused(false);
+static std::atomic<bool> g_paused(false);
 
 /// @brief Global variable to hold the timing information for the program.
-asdp::render::RenderTimingInfo g_timingInfo;
+static asdp::render::RenderTimingInfo g_timingInfo;
 
 /// @brief Global variable to hold the depth estimator.
-std::shared_ptr<DepthEstimator> g_depthEstimator;
+static std::shared_ptr<DepthEstimator> g_depthEstimator;
 
 /// @brief Global variables to hold the visible and depth cameras.
-std::vector< std::shared_ptr<asdp::render::CameraRenderInfo> > g_visibleCameras, g_depthCameras;
+static std::vector< std::shared_ptr<asdp::render::CameraRenderInfo> > g_visibleCameras, g_depthCameras;
+
+/// @brief Global variable to hold the index of the active camera.
+static std::atomic<size_t> g_activeCameraIndex(0);
 
 /// @brief Global variable to hold the composite cameras.
-std::shared_ptr<CompositeCameras> g_composite;
+static std::shared_ptr<CompositeCameras> g_composite;
+
+/// @brief Callback handler to increment the active camera index.
+static void IncrementActiveCamera(void* /* unused */)
+{
+  g_activeCameraIndex++;
+  if (g_activeCameraIndex >= g_visibleCameras.size()) {
+    g_activeCameraIndex = 0;
+  }
+  std::cout << "Incremented active camera index to " << g_activeCameraIndex.load();
+  if (g_activeCameraIndex < g_visibleCameras.size()) {
+    std::cout << " (ID = " << g_visibleCameras[g_activeCameraIndex]->m_ID << ")";
+  }
+  std::cout << std::endl;
+}
+
+/// @brief Callback handler to decrement the active camera index.
+static void DecrementActiveCamera(void* /* unused */)
+{
+  if (g_activeCameraIndex == 0) {
+    g_activeCameraIndex = g_visibleCameras.size() - 1;
+  } else {
+    g_activeCameraIndex--;
+  }
+  std::cout << "Decremented active camera index to " << g_activeCameraIndex.load();
+  if (g_activeCameraIndex < g_visibleCameras.size()) {
+    std::cout << " (ID = " << g_visibleCameras[g_activeCameraIndex]->m_ID << ")";
+  }
+  std::cout << std::endl;
+}
 
 /// @brief Callback handler to toggle play and pause.
 static void ChangePlayPause(bool nowPlaying, void* /* unused */)
 {
   g_paused = !nowPlaying;
   std::cout << "Toggled play/pause to: " << (g_paused ? "paused" : "playing") << std::endl;
+}
+
+/// @brief Adjust the active camera's color offset calibration values.
+/// @param offsetDelta The amount to adjust the offset by, positive or negative.
+static void AdjustActiveCameraOffset(int offsetDelta, void* /* unused */)
+{
+  if (g_activeCameraIndex >= g_visibleCameras.size()) {
+    std::cerr << "Error: Active camera index out of range." << std::endl;
+    return;
+  }
+  std::shared_ptr<asdp::render::CameraRenderInfo> cri = g_visibleCameras[g_activeCameraIndex];
+  if (cri == nullptr) {
+    std::cerr << "Error: Active camera is null." << std::endl;
+    return;
+  }
+  
+  // Adjust the color offset and gain.
+  float currentOffset, currentGain;
+  cri->GetColorOffsetGain(currentOffset, currentGain);
+  cri->SetColorOffsetGain(currentOffset + offsetDelta, currentGain);
+  std::cout << "Adjusted camera ID " << cri->m_ID << " color offset to : " << currentOffset + offsetDelta << std::endl;
+}
+
+/// @brief Callback handler to save the camera configuration to a file.
+static void SaveCameraConfig(const std::string& filename, void* userdata)
+{
+  if (g_visibleCameras.empty()) {
+    std::cerr << "Error: No cameras to save configuration for." << std::endl;
+    return;
+  }
+  if (!userdata) {
+    std::cerr << "Error: No user data provided for callback handler." << std::endl;
+    return;
+  }
+  CallbackHandlerData* data = static_cast<CallbackHandlerData*>(userdata);
+
+  // Parse the original JSON configuration file for the camera configuration directly, then replace
+  // the color offsets and gains for each camera with those currenttly stored because they may have been
+  // adjusted by the user.
+  json cameraConfig;
+  try {
+    std::ifstream configFile(data->cameraConfigFileName);
+    cameraConfig = json::parse(configFile);
+  } catch (const std::exception& e) {
+    std::cerr << "Error: Unable to read camera configuration file: " << data->cameraConfigFileName
+      << ": " << e.what() << std::endl;
+    std::cerr << "  (Cannot save configuration file)" << std::endl;
+    return;
+  }
+  // Iterate through the cameras and update their color offsets and gains.
+  for (auto& camera : cameraConfig["cameras"]) {
+    uint16_t id = camera["id"];
+    for (auto& cri : g_visibleCameras) {
+      if (cri->m_ID == id) {
+        float offset, gain;
+        cri->GetColorOffsetGain(offset, gain);
+        camera["color"]["offset"] = offset;
+        camera["color"]["gain"] = gain;
+
+        break;  // Found the camera, no need to continue.
+      }
+    }
+  }
+
+  // Write the updated configuration to the specified file
+  try {
+    std::ofstream outFile(filename);
+    outFile << cameraConfig.dump(2);  // Pretty print with 2 spaces.
+    outFile.close();
+    std::cout << "Saved camera configuration to: " << filename << std::endl;
+  } catch (const std::exception& e) {
+    std::cerr << "Error: Unable to write camera configuration file: " << filename
+      << ": " << e.what() << std::endl;
+  }
 }
 
 /// @brief Callback handler to compute depth information for the cameras.
@@ -1034,6 +1146,11 @@ int main(int argc, char** argv)
       handlers->ComputeDepth = ComputeDepth;
     }
     handlers->SetToRenderDepth = ChangeDepthRendering;
+    handlers->IncrementActiveCamera = IncrementActiveCamera;
+    handlers->DecrementActiveCamera = DecrementActiveCamera;
+    handlers->AdjustActiveCameraOffset = AdjustActiveCameraOffset;
+    handlers->SaveCameraConfig = SaveCameraConfig;
+    g_callbackHandlerData.cameraConfigFileName = configPath.string();
 
     // Construct one or more Display objects to render the cameras.  They all share objects with the texture Display.
     std::vector<std::shared_ptr<Display>> displays;
@@ -1118,7 +1235,7 @@ int main(int argc, char** argv)
       // Only time the first listed display, to avoid race conditions
       if (displayInfos[i].useOpenXR) {
         displays.push_back(std::make_shared<DisplayOpenXR>(g_composite, displayTexture.get(),
-          client, triggerID, triggerAheadMicroseconds, depthAheadMicroseconds, 2500, 1, handlers, nullptr,
+          client, triggerID, triggerAheadMicroseconds, depthAheadMicroseconds, 2500, 1, handlers, &g_callbackHandlerData,
           (i == 0) ? (&g_timingInfo) : nullptr, replayStreamID != 0));
       } else if (!displayInfos[i].XSightNIC.empty()) {
         displays.push_back(std::make_shared<DisplayXSight>(displayInfos[i].XSightNIC, g_composite, displayTexture.get(),
@@ -1134,7 +1251,7 @@ int main(int argc, char** argv)
           g_composite, client, triggerID, triggerAheadMicroseconds, depthAheadMicroseconds, displayInfos[i].fps, 2500,
           displayInfos[i].width, displayInfos[i].height,
           displayInfos[i].hFOV, displayInfos[i].joystick, displayTexture.get(),
-          displayInfos[i].fullScreen, displayInfos[i].fullScreenDisplay, false, handlers, nullptr,
+          displayInfos[i].fullScreen, displayInfos[i].fullScreenDisplay, false, handlers, &g_callbackHandlerData,
           (i == 0) ? (&g_timingInfo) : nullptr, replayStreamID != 0));
       }
       if (displays.back()->GetStatus() != "") {
