@@ -428,7 +428,9 @@ described in Appendix A.  The workflow is as follows:
     - Run the **Target_Calibration_Estimate_Lateral** program and give it the camera, target and
       gimbal configuration files, the threshold value for the target center, and the root directory
       where the simulation or measurement data was stored (where the target_lateral_N_images directories
-      and the target_*_poses.csv files are).  This will produce a **targets_lateral_opt.json**
+      and the target_*_poses.csv files are). (If using a cool IR target, use the `--invert` command-line
+      option to invert the images before testing and use a threshold that is 65535 - threshold.)
+      This will produce a **targets_lateral_opt.json**
       file in the root directory with the estimated lateral positions of the targets updated based on the
       image data. It will also produce a **cameras_opt.json** file with the optimized camera orientations.
       **Record the output of this program for use in debugging, and immediately use it to
@@ -451,5 +453,7 @@ described in Appendix A.  The workflow is as follows:
       **targets_lateral_opt.json** and gimbal configuration files, the poses file, the root directory
       where the simulation or measurement data was stored (camera_images directory), the threshold in
       pixel counts above which the target brightness will be found, and an output
-      file name. This will produce a JSON configuraion file with the estimated extrinsics and
+      file name. (If using a cool IR target, use the `--invert` command-line
+      option to invert the images before testing and use a threshold that is 65535 - threshold.)
+      This will produce a JSON configuraion file with the estimated extrinsics and
       distortion parameters updated based on the image data.

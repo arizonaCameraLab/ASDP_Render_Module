@@ -27,7 +27,7 @@ using namespace asdp::render;
 using namespace asdp::render::calibration;
 using json = nlohmann::json;
 
-static std::string VERSION = "1.0.0";
+static std::string VERSION = "1.1.0";
 
 void usage(std::string name)
 {
@@ -43,6 +43,7 @@ void usage(std::string name)
   std::cerr << "    --help                      Print this information and quit." << std::endl;
   std::cerr << "    --writeMaps <filename.csv>  Write the expected to as-seen mappings to the specified CSV file." << std::endl;
   std::cerr << "    --readMaps <filename.csv>   Read the expected to as-seen mappings from the specified CSV file, don't compute." << std::endl;
+  std::cerr << "    --invert                    Invert each image (useful for dark targets)." << std::endl;
 };
 
 int main(int argc, char** argv)
@@ -50,6 +51,7 @@ int main(int argc, char** argv)
   std::string camConfigFile, targetConfigFile, gimbalConfigFile, posesFile, imageDirectory, outputFile;
   std::string writeMapsFile, readMapsFile;
   int targetBrightnessThreshold = 35767;
+  bool invert = false; ///< Whether to invert the images (useful for dark targets).
   size_t realParams = 0;          ///< The number of non-flag parameters we've seen.
 
   // Parse the command line arguments, with the first non-flag argument being the
@@ -69,6 +71,8 @@ int main(int argc, char** argv)
         return 1;
       }
       readMapsFile = argv[++i];
+    } else if (std::string("--invert") == argv[i]) {
+      invert = true;
     } else if (argv[i][0] == '-') {
       usage(argv[0]);
       return 1;
@@ -254,11 +258,17 @@ int main(int argc, char** argv)
         int width, height;
         std::shared_ptr<double_image> avg;
         try {
-          asdp::ImageSource::Image firstPPM(filename);
-          width = firstPPM.getWidth();
-          height = firstPPM.getHeight();
+          asdp::ImageSource::Image firstPGM(filename);
+          width = firstPGM.getWidth();
+          height = firstPGM.getHeight();
+          if (invert) {
+            for (size_t i = 0; i < width * height; i++) {
+              uint16_t pixelValue = firstPGM.getData()->at(i);
+              firstPGM.getData()->at(i) = 65535 - pixelValue; // Invert the pixel value.
+            }
+          }
           avg = std::make_shared<double_image>(0, width - 1, 0, height - 1);
-          std::shared_ptr< std::vector<uint16_t> > data = firstPPM.getData();
+          std::shared_ptr< std::vector<uint16_t> > data = firstPGM.getData();
           for (int y = 0; y < height; ++y) {
             for (int x = 0; x < width; ++x) {
               avg->write_pixel(x, y, (*data)[y * width + x]);
@@ -273,12 +283,18 @@ int main(int argc, char** argv)
           filename = imageDirectory + "/" + std::to_string(pose.frameIndex)
             + "_" + std::to_string(pose.cameraID) + "_" + std::to_string(index) + ".pgm";
           try {
-            asdp::ImageSource::Image ppm(filename);
-            if (ppm.getWidth() != width || ppm.getHeight() != height) {
+            asdp::ImageSource::Image pgm(filename);
+            if (pgm.getWidth() != width || pgm.getHeight() != height) {
               std::cerr << "Error: Image " << filename << " has different dimensions from the first image." << std::endl;
               exit(21);
             }
-            std::shared_ptr< std::vector<uint16_t> > data = ppm.getData();
+            if (invert) {
+              for (size_t i = 0; i < width * height; i++) {
+                uint16_t pixelValue = pgm.getData()->at(i);
+                pgm.getData()->at(i) = 65535 - pixelValue; // Invert the pixel value.
+              }
+            }
+            std::shared_ptr< std::vector<uint16_t> > data = pgm.getData();
             for (int y = 0; y < height; ++y) {
               for (int x = 0; x < width; ++x) {
                 double value;
