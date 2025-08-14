@@ -32,6 +32,7 @@ static void usage(const char* progName)
   std::cerr << "         --gimbalConfig <string>: The gimbal configuration file name (default gimbal.json)." << std::endl;
   std::cerr << "         --shift <bit_count>: Left shift the images by the specified number of bits (default 0)." << std::endl;
   std::cerr << "         --autoRange: Automatically adjust each image to cover entire intensity range (supercedes --shift)." << std::endl;
+  std::cerr << "         --removeSpikes <diff>: Remove spikes in the image that differ from their neighbors by more than <diff> (default 0, meaning no removal)." << std::endl;
   std::cerr << "         --help: Print this information and quit." << std::endl;
 }
 
@@ -99,7 +100,7 @@ struct FileInfo {
   std::shared_ptr< std::vector<uint8_t> > imageBuffer; ///< The image data, stored in an unsigned 8-bit buffer vector.
 };
 
-static void SaveImagesThread(std::atomic_bool& done, asdp::SpinFreeQueue<FileInfo>& q, bool autoRange)
+static void SaveImagesThread(std::atomic_bool& done, asdp::SpinFreeQueue<FileInfo>& q, bool autoRange, int spikeDiff)
 {
   while (!done || (q.size() > 0)) {
 
@@ -107,6 +108,65 @@ static void SaveImagesThread(std::atomic_bool& done, asdp::SpinFreeQueue<FileInf
     FileInfo fileInfo;
     if (!q.dequeue(fileInfo, std::chrono::milliseconds(100))) {
       continue; // No image to save, check again.
+    }
+
+    if (spikeDiff > 0) {
+      // Remove spikes in the image that differ from their closest-valued neighbor by more than spikeDiff.
+#pragma omp parallel for
+      for (int i = 0; i < fileInfo.imageBuffer->size(); i += sizeof(uint16_t)) {
+        uint16_t* pixel = reinterpret_cast<uint16_t*>(&(*fileInfo.imageBuffer)[i]);
+        int minDiffMag = 65536;
+        int sum = 0;
+        int count = 0;
+
+        // If we have a left pixel, check its difference magnitude.
+        if (i % fileInfo.width > 0) {
+          uint16_t* leftPixel = reinterpret_cast<uint16_t*>(&(*fileInfo.imageBuffer)[i - sizeof(uint16_t)]);
+          minDiffMag = std::min(minDiffMag, std::abs(static_cast<int>(*pixel) - static_cast<int>(*leftPixel)));
+          sum += *leftPixel;
+          count++;
+        }
+
+        // If we have a right pixel, check its difference magnitude.
+        if (i % fileInfo.width != fileInfo.width - 1) {
+          uint16_t* rightPixel = reinterpret_cast<uint16_t*>(&(*fileInfo.imageBuffer)[i + sizeof(uint16_t)]);
+          minDiffMag = std::min(minDiffMag, std::abs(static_cast<int>(*pixel) - static_cast<int>(*rightPixel)));
+          sum += *rightPixel;
+          count++;
+        }
+
+        // If we have a top pixel, check its difference magnitude.
+        if (i >= fileInfo.width * sizeof(uint16_t)) {
+          uint16_t* topPixel = reinterpret_cast<uint16_t*>(&(*fileInfo.imageBuffer)[i - fileInfo.width * sizeof(uint16_t)]);
+          minDiffMag = std::min(minDiffMag, std::abs(static_cast<int>(*pixel) - static_cast<int>(*topPixel)));
+          sum += *topPixel;
+          count++;
+        }
+
+        // If we have a bottom pixel, check its difference magnitude.
+        if (i + fileInfo.width * sizeof(uint16_t) < fileInfo.imageBuffer->size()) {
+          uint16_t* bottomPixel = reinterpret_cast<uint16_t*>(&(*fileInfo.imageBuffer)[i + fileInfo.width * sizeof(uint16_t)]);
+          minDiffMag = std::min(minDiffMag, std::abs(static_cast<int>(*pixel) - static_cast<int>(*bottomPixel)));
+          sum += *bottomPixel;
+          count++;
+        }
+
+        // If the minimum difference magnitude is greater than the specified spike difference,
+        // replace the pixel with the average of its neighbors.
+        if (minDiffMag > spikeDiff && count > 0) {
+          // Replace the pixel with the average of its neighbors.
+          *pixel = static_cast<uint16_t>(sum / count);
+        }
+      }
+    }
+
+    if (fileInfo.shift > 0) {
+      // Shift the image data left by the specified number of bits.
+#pragma omp parallel for
+      for (int i = 0; i < fileInfo.imageBuffer->size(); i += sizeof(uint16_t)) {
+        uint16_t* pixel = reinterpret_cast<uint16_t*>(&(*fileInfo.imageBuffer)[i]);
+        (*pixel) <<= fileInfo.shift;
+      }
     }
 
     if (autoRange) {
@@ -135,14 +195,6 @@ static void SaveImagesThread(std::atomic_bool& done, asdp::SpinFreeQueue<FileInf
           *pixel = static_cast<uint16_t>((*pixel - minPixel) * scale);
         }
       }
-
-    } else if (fileInfo.shift > 0) {
-      // Shift the image data left by the specified number of bits.
-#pragma omp parallel for
-      for (int i = 0; i < fileInfo.imageBuffer->size(); i += sizeof(uint16_t)) {
-        uint16_t* pixel = reinterpret_cast<uint16_t*>(&(*fileInfo.imageBuffer)[i]);
-        (*pixel) <<= fileInfo.shift;
-      }
     }
 
     FILE* of = fopen(fileInfo.fileName.c_str(), "wb");
@@ -167,6 +219,7 @@ int main(int argc, char** argv)
   bool home = false;
   int shift = 0;
   bool autoRange = false;
+  int spikeDiff = 0;
 
   size_t realParams = 0;
   for (int i = 1; i < argc; ++i) {
@@ -193,6 +246,17 @@ int main(int argc, char** argv)
     }
     else if (std::string("--autoRange") == argv[i]) {
       autoRange = true;
+    }
+    else if (std::string("--removeSpikes") == argv[i]) {
+      if (++i >= argc) {
+        std::cerr << "Error: Missing spike difference value." << std::endl;
+        return 1;
+      }
+      spikeDiff = std::atoi(argv[i]);
+      if (spikeDiff < 0 || spikeDiff > 65535) {
+        std::cerr << "Error: Spike difference value must be between 0 and 65535." << std::endl;
+        return 1;
+      }
     }
     else if (std::string("--help") == argv[i]) {
       usage(argv[0]);
@@ -417,7 +481,7 @@ int main(int argc, char** argv)
     // Make a spin-free queue for saving images and start a thread to save images.
     asdp::SpinFreeQueue<FileInfo> imageQueue;
     std::atomic_bool done(false);
-    std::thread saveImagesThread(SaveImagesThread, std::ref(done), std::ref(imageQueue), autoRange);
+    std::thread saveImagesThread(SaveImagesThread, std::ref(done), std::ref(imageQueue), autoRange, spikeDiff);
 
     //=============================================================================================
     // For each new frame index, move the pose to the specified location. For each pose, take the

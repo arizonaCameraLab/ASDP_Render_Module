@@ -417,7 +417,9 @@ described in Appendix A.  The workflow is as follows:
             - **Note:** For visible-light cameras, add `--shift 16` to the command line
               to left-justify its bits in the 16-bit value, making it easier to view the images
               for debugging. For infrared cameras, use the `--autoRange` option to automatically
-              stretch the contrast for each image to the full range of pixel values.
+              stretch the contrast for each image to the full range of pixel values and use the
+              `--removeSpikes 200` to remove single stuck pixels whose values are more than 200
+              counts away from all of their neighbors.
             - Run the **Collect_Calibration_Data** program from the **ASDP_Render_Module** repository to
               capture the frames for each target, providing it the IP address of the NIC to talk with
               the camera on, the camera serial number, and target_N_poses.csv file name and a
