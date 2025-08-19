@@ -28,7 +28,8 @@ static void usage(const char* progName)
   std::cerr << "       POSES.csv: Poses to take images at." << std::endl;
   std::cerr << "       OUTDIR: The output directory for the calibration data (probably named cameras_images)." << std::endl;
   std::cerr << "       Options:" << std::endl;
-  std::cerr << "         --home: Move to home position." << std::endl;
+  std::cerr << "         --home: Search for and calibrate the gimbal home position before running." << std::endl;
+  std::cerr << "         --listenPort <integer>: Listen on the specified port for discovery packets rather than the default." << std::endl;
   std::cerr << "         --gimbalConfig <string>: The gimbal configuration file name (default gimbal.json)." << std::endl;
   std::cerr << "         --shift <bit_count>: Left shift the images by the specified number of bits (default 0)." << std::endl;
   std::cerr << "         --autoRange: Automatically adjust each image to cover entire intensity range (supercedes --shift)." << std::endl;
@@ -213,6 +214,7 @@ int main(int argc, char** argv)
 {
   std::string gimbalConfigFile = "gimbal.json";
   std::string nic;
+  int listenPort = 10102; // Default to the standard client listen port.
   unsigned int serial = 0;
   std::string posesFile;
   std::string outDir;
@@ -225,6 +227,17 @@ int main(int argc, char** argv)
   for (int i = 1; i < argc; ++i) {
     if (std::string("--home") == argv[i]) {
       home = true;
+    }
+    else if (std::string("--listenPort") == argv[i]) {
+      if (++i >= argc) {
+        std::cerr << "Error: Missing port number after --listenPort." << std::endl;
+        return 1;
+      }
+      listenPort = std::atoi(argv[i]);
+      if (listenPort <= 0 || listenPort > 65535) {
+        std::cerr << "Error: Invalid port number. Must be between 1 and 65535." << std::endl;
+        return 1;
+      }
     }
     else if (std::string("--gimbalConfig") == argv[i]) {
       if (++i >= argc) {
@@ -342,7 +355,7 @@ int main(int argc, char** argv)
     //=============================================================================================
     // Connect to the specified camera on the specified NIC and configure it.
 
-    std::shared_ptr<CoreClient> client = std::make_shared<CoreClient>(nic);
+    std::shared_ptr<CoreClient> client = std::make_shared<CoreClient>(nic, listenPort);
     if (client->GetConstructorStatus() != OKAY) {
       std::cerr << "Failed to open client: " << ErrorMessage(client->GetConstructorStatus()) << std::endl;
       return 20;
