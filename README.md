@@ -442,6 +442,7 @@ described in Appendix A.  The workflow is as follows:
       other spurious sources that are capturing the target estimation.  **Note:** It may be necessary to
       loop back to the *Target_Calibration_Make_Scan* step, using the optimized file as the new input file,
       to produce a better estimate of the target lateral positions using new scan data.
+- **Estimate single-depth distortion:**
     - Run the **Camera_Calibration_Make_Scan** program and give it **cameras_opt.json**, **targets_lateral_opt.json**, and
       the gimbal configuration files.  It will produce a **poses.csv** file for all cameras.
     - Copy the poses.csv file into the calibration directory.
@@ -457,3 +458,10 @@ described in Appendix A.  The workflow is as follows:
       option to invert the images before testing and use a threshold that is 65535 - threshold.)
       This will produce a JSON configuraion file with the estimated extrinsics and
       distortion parameters updated based on the image data.
+- **Use distortion:**
+    - Copy the optimized camera configuration file to the Render Module's configuration directory
+      as #.json (where # is the camera serial number).
+    - Run the Render Module with the optimized camera configuration file and ensure that the images
+      look correct. **Note:** Remember to use the `--staticDepth` command-line option to set the
+      static depth for the camera to the distance specified in the target configuration file because
+      the stitching will only work properly at that depth.
