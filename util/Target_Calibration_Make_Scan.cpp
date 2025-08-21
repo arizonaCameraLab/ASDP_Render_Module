@@ -26,7 +26,7 @@ using namespace asdp;
 using namespace asdp::render;
 using namespace asdp::render::calibration;
 
-static std::string VERSION = "5.0.0";
+static std::string VERSION = "5.0.1";
 
 void usage(std::string name)
 {
@@ -51,6 +51,7 @@ int main(int argc, char** argv)
   for (int i = 1; i < argc; ++i) {
     if (std::string("--help") == argv[i]) {
       usage(argv[0]);
+      return 0;
     } else if (std::string("--frames") == argv[i]) {
       if (++i >= argc) {
         usage(argv[0]);
