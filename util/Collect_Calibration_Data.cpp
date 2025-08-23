@@ -34,6 +34,7 @@ static void usage(const char* progName)
   std::cerr << "         --shift <bit_count>: Left shift the images by the specified number of bits (default 0)." << std::endl;
   std::cerr << "         --autoRange: Automatically adjust each image to cover entire intensity range (supercedes --shift)." << std::endl;
   std::cerr << "         --removeSpikes <diff>: Remove spikes in the image that differ from their neighbors by more than <diff> (default 0, meaning no removal)." << std::endl;
+  std::cerr << "         --median: Apply a 3x3 median filter to the image to reduce noise (default false)." << std::endl;
   std::cerr << "         --readFrom INDIR: Read images from the specified input directory rather than from the camera (for separating reading and adjusting)." << std::endl;
   std::cerr << "         --help: Print this information and quit." << std::endl;
 }
@@ -102,7 +103,7 @@ struct FileInfo {
   std::shared_ptr< std::vector<uint8_t> > imageBuffer; ///< The image data, stored in an unsigned 8-bit buffer vector.
 };
 
-static void SaveImagesThread(std::atomic_bool& done, asdp::SpinFreeQueue<FileInfo>& q, bool autoRange, int spikeDiff)
+static void SaveImagesThread(std::atomic_bool& done, asdp::SpinFreeQueue<FileInfo>& q, bool autoRange, int spikeDiff, bool median)
 {
   while (!done || (q.size() > 0)) {
 
@@ -160,6 +161,34 @@ static void SaveImagesThread(std::atomic_bool& done, asdp::SpinFreeQueue<FileInf
           *pixel = static_cast<uint16_t>(sum / count);
         }
       }
+    }
+
+    if (median) {
+      // Apply a 3x3 median filter to the image.
+      std::shared_ptr< std::vector<uint8_t> > filteredBuffer = std::make_shared< std::vector<uint8_t> >(fileInfo.imageBuffer->size());
+#pragma omp parallel for
+      for (int y = 0; y < fileInfo.height; y++) {
+        for (int x = 0; x < fileInfo.width; x++) {
+          std::vector<uint16_t> neighbors;
+          // Collect the 3x3 neighborhood.
+          for (int dy = -1; dy <= 1; dy++) {
+            for (int dx = -1; dx <= 1; dx++) {
+              int nx = x + dx;
+              int ny = y + dy;
+              if (nx >= 0 && nx < fileInfo.width && ny >= 0 && ny < fileInfo.height) {
+                uint16_t* neighborPixel = reinterpret_cast<uint16_t*>(&(*fileInfo.imageBuffer)[(ny * fileInfo.width + nx) * sizeof(uint16_t)]);
+                neighbors.push_back(*neighborPixel);
+              }
+            }
+          }
+          // Sort the neighbors and take the median.
+          std::sort(neighbors.begin(), neighbors.end());
+          uint16_t medianValue = neighbors[neighbors.size() / 2];
+          uint16_t* pixel = reinterpret_cast<uint16_t*>(&(*filteredBuffer)[(y * fileInfo.width + x) * sizeof(uint16_t)]);
+          *pixel = medianValue;
+        }
+      }
+      fileInfo.imageBuffer = filteredBuffer;
     }
 
     if (fileInfo.shift > 0) {
@@ -224,6 +253,7 @@ int main(int argc, char** argv)
   int shift = 0;
   bool autoRange = false;
   int spikeDiff = 0;
+  bool median = false;
 
   size_t realParams = 0;
   for (int i = 1; i < argc; ++i) {
@@ -283,6 +313,9 @@ int main(int argc, char** argv)
         std::cerr << "Error: Spike difference value must be between 0 and 65535." << std::endl;
         return 1;
       }
+    }
+    else if (std::string("--median") == argv[i]) {
+      median = true;
     }
     else if (std::string("--help") == argv[i]) {
       usage(argv[0]);
@@ -546,7 +579,7 @@ int main(int argc, char** argv)
     // Make a spin-free queue for saving images and start a thread to save images.
     asdp::SpinFreeQueue<FileInfo> imageQueue;
     std::atomic_bool done(false);
-    std::thread saveImagesThread(SaveImagesThread, std::ref(done), std::ref(imageQueue), autoRange, spikeDiff);
+    std::thread saveImagesThread(SaveImagesThread, std::ref(done), std::ref(imageQueue), autoRange, spikeDiff, median);
 
     //=============================================================================================
     // For each new frame index, move the pose to the specified location. For each pose, take the
