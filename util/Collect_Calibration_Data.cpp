@@ -824,7 +824,11 @@ int main(int argc, char** argv)
       } // End of reading from directory.
 
       //===================================================================================
-      // Write the frames to the output directory.
+      // Write the frames to the output directory.  First make sure we've written all previous images
+      // so that we don't back up and run out of memory.
+      while (imageQueue.size() > 0) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+      }
       for (int f = 0; f < imageBuffers.size(); f++) {
         std::string fileName = outDir + "/" + std::to_string(pose.frameIndex) + "_" +
           std::to_string(pose.cameraID) + "_" + std::to_string(f + 1) + ".pgm";
