@@ -299,6 +299,7 @@ if(BUILD_UTILITIES)
     Camera_Calibration_Make_Scan
     Collect_Calibration_Data
     Camera_Calibration_Estimate_Distortion_Extrinsics
+    Camera_Calibration_Gain_And_Offsets
   )
   foreach (BASE ${CPP_UTILS})
     set (APP ${BASE})
