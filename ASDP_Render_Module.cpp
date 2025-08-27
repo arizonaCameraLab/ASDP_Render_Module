@@ -1311,7 +1311,7 @@ int main(int argc, char** argv)
     }
 
     // Launch the data receiving threads, hooking them together using the queues and passing the texture OpenGL
-    // context to it.  Round-robin the data queues among the cameras.
+    // context to it.  Round-robin the data queues among the receive-data threads.
     std::vector<std::thread> receiveDataThreads;
     for (size_t i = 0; i < cameras.size(); i++) {
       receiveDataThreads.push_back(std::thread(ReceiveDataThread, std::ref(*UDPReceivers[i]), 9000,
