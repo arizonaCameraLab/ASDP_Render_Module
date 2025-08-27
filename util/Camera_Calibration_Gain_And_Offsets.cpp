@@ -27,7 +27,7 @@ using namespace asdp::render;
 using namespace asdp::render::calibration;
 using json = nlohmann::json;
 
-static std::string VERSION = "1.0.0";
+static std::string VERSION = "1.1.0";
 
 void usage(std::string name)
 {
@@ -55,9 +55,6 @@ int main(int argc, char** argv)
     if (std::string("--help") == argv[i]) {
       usage(argv[0]);
       return 0;
-    } else if (argv[i][0] == '-') {
-      usage(argv[0]);
-      return 1;
     } else switch (realParams++) {
     case 0:
       camConfigFile = argv[i];
@@ -245,6 +242,7 @@ int main(int argc, char** argv)
       double viewOffset = (0 - lowTemp) / gain + minPixel;
 
       // Find the pixel value that corresponds to the specified minimum temperature that will be visible to the ball.
+      // This is the hardware offset that needs to be applied in the camera system to ensure that the specified
       // This is the hardware offset that needs to be applied in the camera system to ensure that the specified
       // minimum temperature is visible to the ball.
       double hardwareOffset = (minTemp - lowTemp) / gain + minPixel;
