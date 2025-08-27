@@ -51,7 +51,7 @@ using namespace asdp;
 using namespace asdp::render;
 using json = nlohmann::json;
 
-static std::string VERSION = "3.11.0";
+static std::string VERSION = "3.12.0";
 
 /// @brief The path to the configuration file. Defined in the CMakeLists file.
 std::filesystem::path g_dirPath = CONFIG_FILE_PATH;
@@ -861,12 +861,7 @@ int main(int argc, char** argv)
       std::cerr << "Failed to connect to server: " << ErrorMessage(status) << std::endl;
       return 8;
     }
-    uint32_t sn;
-    status = client->GetServerSerialNumber(sn);
-    if (status != OKAY) {
-      std::cerr << "Failed to get server serial number: " << ErrorMessage(status) << std::endl;
-      return 9;
-    }
+    uint32_t sn = servers.begin()->first;
     std::cout << "  Connected to server version " << major << "." << minor << "." << patch
       << " with serial number " << sn << std::endl;
 

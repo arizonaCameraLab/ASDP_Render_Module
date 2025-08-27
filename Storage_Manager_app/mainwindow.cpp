@@ -29,7 +29,7 @@
 #include <CPUDataToTextureHandler.h>
 
 // Define the version number
-const QString VERSION_NUMBER = "1.6.2";
+const QString VERSION_NUMBER = "1.7.0";
 
 static std::vector<std::string> getIPAddresses()
 {
@@ -138,7 +138,7 @@ void MainWindow::SelectNIC(const QString& nicName)
   // Implement the logic for selecting the NIC here
   std::cout << "Selected NIC: " << nicName.toStdString() << std::endl;
 
-  if (!nicName.isEmpty()) {
+  {
     // Find the list of servers on the selected NIC and add them to the
     // pull-down list.
     m_client = std::make_shared<CoreClient>(nicName.toStdString());
@@ -264,14 +264,22 @@ void MainWindow::SelectServer(const QString& coreURL)
     return;
   }
   std::cout << "  Connected to server version " << major << "." << minor << "." << patch << std::endl;
-  uint32_t serialNumber;
-  status = m_client->GetServerSerialNumber(serialNumber);
-  if (status != OKAY) {
-    std::cerr << "Failed to get server serial number: " << ErrorMessage(status) << std::endl;
-    return;
+
+  // If the string contains "(serial #", then extract the serial number and tell which serial number we are connected to.
+  QString serialValue;
+  int start = coreURL.indexOf("(serial #");
+  if (start != -1) {
+    start += QString("(serial #").length();
+    int end = coreURL.indexOf(')', start);
+    if (end != -1) {
+      serialValue = coreURL.mid(start, end - start).trimmed();
+    }
   }
-  std::cout << "  Connected to server with serial number " << serialNumber << std::endl;
-  SetSerialNumber(std::to_string(serialNumber).c_str());
+  if (!serialValue.isEmpty()) {
+    uint32_t serialNumber = serialValue.toInt();
+    std::cout << "  Connected to server with serial number " << serialNumber << std::endl;
+    SetSerialNumber(std::to_string(serialNumber).c_str());
+  }
 
   // Get the main stream receiver
   status = m_client->GetMainStreamReceiver(m_receiver);
@@ -602,8 +610,20 @@ void MainWindow::ViewCamera(const QString& cameraID)
   uint16_t width = m_cameras[index].width;
   uint16_t height = m_cameras[index].height;
 
+  // Get the IP address of the NIC we are using to talk with the server from looking at the TCP receiver.
+  SenderReceiverTCP* tcpReceiver = dynamic_cast<SenderReceiverTCP*>(m_receiver.get());
+  if (!tcpReceiver) {
+    std::cerr << "No TCP receiver to get NIC address from." << std::endl;
+    return;
+  }
+  uint32_t ip;
+  if (OKAY != tcpReceiver->GetIP(ip)) {
+    std::cerr << "Failed to get IP address from TCP receiver." << std::endl;
+    return;
+  }
+
   // Create a UDP receiver for the camera.
-  m_receiverCam = std::make_shared<ReceiverUDP>(m_coreURL.toStdString());
+  m_receiverCam = std::make_shared<ReceiverUDP>(StreamEndpoint(ip,0));
   if (m_receiverCam->GetConstructorStatus() != OKAY) {
     std::cerr << "Error constructing ReceiverUDP: " << ErrorMessage(m_receiverCam->GetConstructorStatus()) << std::endl;
     m_receiverCam.reset();
@@ -722,7 +742,7 @@ void MainWindow::ViewCamera(const QString& cameraID)
   if (m_client && m_receiverCam) {
     uint16_t port;
     m_receiverCam->GetPort(port);
-    m_endpoint = StreamEndpoint(m_hostname, port);
+    m_endpoint = StreamEndpoint(ip, port);
     m_streamingCameraID = cameraID.toUInt();
     SubregionDescription region;
     region.cameraID = m_streamingCameraID;

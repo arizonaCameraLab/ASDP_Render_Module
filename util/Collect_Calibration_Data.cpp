@@ -419,12 +419,13 @@ int main(int argc, char** argv)
       client = std::make_shared<CoreClient>(nic, listenPort);
       if (client->GetConstructorStatus() != OKAY) {
         std::cerr << "Failed to open client: " << ErrorMessage(client->GetConstructorStatus()) << std::endl;
+        std::cerr << "Failed to open client: " << ErrorMessage(client->GetConstructorStatus()) << std::endl;
         return 20;
       }
 
       // Wait for up to two seconds to allow servers to send Discovery messages.
       std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now();
-      std::vector<std::string> servers;
+      std::map<uint32_t, std::string> servers;
       Status threadStatus;
       Status status;
       do {
@@ -450,29 +451,24 @@ int main(int argc, char** argv)
         return 24;
       }
 
-      // Connect to each server until we find one that matches the serial number we're looking for.
-      uint32_t serialNumber = 0;
-      for (const std::string& server : servers) {
+      // Find the server with the specified serial number and connect to it.
+      auto server = servers.find(serial);
+      if (server == servers.end()) {
+        std::cout << "Servers found: " << servers.size() << std::endl;
+        for (const auto& s : servers) {
+          std::cout << "  " << s.second << " (serial #" << s.first << ")" << std::endl;
+        }
+        std::cerr << "Error: Unable to find server with serial number " << serial << std::endl;
+        return 25;
+      } else {
         uint16_t major, minor, patch;
-        status = client->ConnectToServer(server, major, minor, patch);
+        status = client->ConnectToServer(server->second, major, minor, patch);
         if (status != OKAY) {
           std::cerr << "Failed to connect to server: " << ErrorMessage(status) << std::endl;
           return 25;
         }
-        status = client->GetServerSerialNumber(serialNumber);
-        if (status != OKAY) {
-          std::cerr << "Failed to get server serial number: " << ErrorMessage(status) << std::endl;
-          return 26;
-        }
-        if (serialNumber == serial) {
-          break; // Found the right server.
-        }
       }
-      if (serialNumber != serial) {
-        std::cerr << "Error: Unable to find server with serial number " << serial << std::endl;
-        return 27;
-      }
-      std::cout << "Connected to server " << serialNumber << " on " << nic << std::endl;
+      std::cout << "Connected to server " << serial << " on " << nic << std::endl;
 
       // Get the main stream receiver
       status = client->GetMainStreamReceiver(receiver);
