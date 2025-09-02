@@ -29,7 +29,7 @@
 #include <CPUDataToTextureHandler.h>
 
 // Define the version number
-const QString VERSION_NUMBER = "1.7.0";
+const QString VERSION_NUMBER = "1.8.0";
 
 static std::vector<std::string> getIPAddresses()
 {
@@ -617,8 +617,13 @@ void MainWindow::ViewCamera(const QString& cameraID)
     return;
   }
   uint32_t ip;
-  if (OKAY != tcpReceiver->GetIP(ip)) {
+  if (OKAY != m_client->GetMyIP(ip)) {
     std::cerr << "Failed to get IP address from TCP receiver." << std::endl;
+    return;
+  }
+  ip = GetLocalIPForRemote(ip);
+  if (ip == 0) {
+    std::cerr << "Failed to get local IP address for remote IP." << std::endl;
     return;
   }
 
