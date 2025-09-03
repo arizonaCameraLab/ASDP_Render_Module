@@ -51,7 +51,7 @@ using namespace asdp;
 using namespace asdp::render;
 using json = nlohmann::json;
 
-static std::string VERSION = "3.12.0";
+static std::string VERSION = "3.13.0";
 
 /// @brief The path to the configuration file. Defined in the CMakeLists file.
 std::filesystem::path g_dirPath = CONFIG_FILE_PATH;
@@ -825,9 +825,23 @@ int main(int argc, char** argv)
         std::cerr << "Failed to get identified servers: " << ErrorMessage(status) << std::endl;
         return 6;
       }
+      // If we have been asked for a specific serial number, remove all others.
+      if (serialNumber >= 0) {
+        std::map<uint32_t, std::string> filteredServers;
+        for (const auto& server : servers) {
+          uint32_t serverSerialNumber = server.first;
+          if (serverSerialNumber == static_cast<uint32_t>(serialNumber)) {
+            filteredServers[server.first] = server.second;
+          }
+        }
+        servers = filteredServers;
+      }
+
       if (!servers.empty()) { break; }
+
       std::this_thread::sleep_for(std::chrono::milliseconds(100));
     } while (std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count() <= 2.0);
+
     if (servers.empty()) {
       std::cerr << "No servers found; be sure to run the server first." << std::endl;
       return 7;
@@ -835,22 +849,6 @@ int main(int argc, char** argv)
     std::cout << "Servers found: " << servers.size() << std::endl;
     for (const auto& server : servers) {
       std::cout << "  " << server.second << " (serial #" << server.first << ")" << std::endl;
-    }
-
-    // If we have been asked for a specific serial number, remove all others.
-    if (serialNumber >= 0) {
-      std::map<uint32_t, std::string> filteredServers;
-      for (const auto& server : servers) {
-        uint32_t serverSerialNumber = server.first;
-        if (serverSerialNumber == static_cast<uint32_t>(serialNumber)) {
-          filteredServers[server.first] = server.second;
-        }
-      }
-      servers = filteredServers;
-      if (servers.empty()) {
-        std::cerr << "No servers found with serial number " << serialNumber << std::endl;
-        return 7;
-      }
     }
 
     // Connect to the first server found.
