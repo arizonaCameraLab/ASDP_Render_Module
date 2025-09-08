@@ -356,6 +356,8 @@ The expected initial image matches that of one window in the Display_Test (shown
 
 ## Calibration
 
+### Geometric Calibration
+
 Camera calibration is described in **TR-011v3_Geometric_Calibration.docx**, with the steps here
 described in Appendix A.  The workflow is as follows:
 - **Estimate target lateral location:**
@@ -465,3 +467,97 @@ described in Appendix A.  The workflow is as follows:
       look correct. **Note:** Remember to use the `--staticDepth` command-line option to set the
       static depth for the camera to the distance specified in the target configuration file because
       the stitching will only work properly at that depth.
+
+### Intensity calibration
+
+Intensity calibration enables the images from multiple cameras to be displayed in a common color space,
+such that the edges between cameras are not visible.  This is done by adjusting the offset and gain of each camera
+either on a per-camera basis or on a per-pixel basis.
+
+- **Per-camera calibration:**
+    - **Manual:** The offset and gain for each camera can be adjusted manually using the keyboard
+      commands in the Render Module.  The '-' key decreases the offset of the active camera by 1 count,
+      and the '=' key increases it by 1 count.  The active camera is changed with the ']' and '[' keys.
+      The 's' key saves the adjusted configuration to *adjusted_camera_config.json* in the current directory
+      so that it can be copied into the Render Module's configuration directory as #.json for later re-use.
+    - **Automatic:**
+        - The **Collect_Calibration_Data** program can be used with a single-target configuration file
+          like those used for geometric calibration to collect images from all cameras.  Both a high-temperature
+          blackbody target and a low-temperature blackbody target should be used that are the coolest and hottest
+          objects in the scene.  They must both be in the field of view of the camera when it is pointed at the
+          small hot target that was used for geometric calibration.
+        - The **Camera_Calibration_Gain_And_Offsets** program can be used to automatically
+          estimate the offset and gain for each camera.  It takes as input the camera configuration file,
+          the poses CSV file, the root directory where the simulation or measurement images are stored,
+          the temperature of the cool blackbody radiator, the temperature of the hot blackbody radiator,
+          the minimum temperature that will be visible in the scenes to be viewed, and an output JSON
+          configuration file name.  It will produce a JSON configuration file with the estimated offset and
+          gain for each camera updated based on the image data that converts the values from each camera
+          into degrees.  This file can be copied into the Render Module's configuration directory as #.json.
+- **Per-pixel calibration:** This approach uses two large blackbody radiators of different temperatures, placed
+  such that they fill the entire field of view of each camera.  The temperatures of the radiators should come
+  close to spanning the expected range of temperatures in the scenes to be viewed (larger temperature ranges
+  may expose non-linearities in the camera response).
+    - Generate a **targetConfig.json** target location JSON file for the two targets to be used in calibration
+      as described above for geometric calibration. The targets should be placed such that
+      they fill the entire field of view of each camera when it is pointed at them. The first target (id 1)
+      must be the colder target and the second (id 2) the hot target. **Note:** Be careful
+      that the camera ball does not hit the targets as it scans.
+    - Use the same **gimbal.json** and camera calibration files as for geometric calibration.
+    - Run `Target_Calibration_Make_Scan --frames 18` and give it the camera, target, and gimbal
+      configuration files.  This will produce a CSV file for each target with the gimbal poses and
+      the number of frames for each FrameIndex value.  This will write **target_1_poses.csv** and
+      **target_2_poses.csv**.
+    - Allow the infrared cameras to thermally stabilize (this may take 30 minutes or more) and then run
+      the on-camera non-uniformity correction (NUC) procedure with the shutters closed.  This will be the
+      baseline against which the two-point calibration will be done.
+    - Run the **Collect_Calibration_Data** program twice to
+      capture the frames for both targets, each time providing it the IP address of the NIC to talk with
+      the camera on, the camera serial number, and target_N_poses.csv file name and a
+      subdirectory of the configuration directory named **target_lateral_N_images** (where N is
+      the target number).
+        - **Warning:** *ensure that the cameras do not collide with the targets during motion.*
+    - Make a **NUC.json** configuration file that specifies the NUC parameters to use.  An example is
+      shown below.  The **coldBBRTemperature** and **hotBBRTemperature** fields specify the temperatures
+      of the two blackbody radiators in degrees Celsius.  The **minVisibleTemperature** and
+      **maxVisibleTemperature** fields specify the minimum and maximum temperatures that will be visible,
+      values outside this range will be clipped.  The **cameras** field holds an array of objects, one
+      per camera, each of which has an **id** field that is the camera ID and **coreTemperature** and
+      **sensorTemperature** fields that specify the temperature of the camera core when the NUC is run,
+      which can be obtained using command-line scripts on the ball itself.  @todo Make a program to
+      read these values from the camera and generate the config file rather than requiring them to be
+      specified by editing the file.
+
+    - Run the **Camera_Calibration_Per_Pixel_Gain_And_Offsets** program and give it
+      the camera, target, gimbal, and NUC configuration files, the root directory
+      (where the target_lateral_N_images directories and the target_*_poses.csv files are),
+      and an output directory.  This will produce in the output directory a JSON configuration
+      file named NUC.json and raw floating-point files with the estimated per-pixel offset and
+      gain for each pixel for each camera based on the image data. It will also produce a
+      **cameras_opt.json** file in the output directory that has the camera gain and offset data
+      set to 1 and 0 for each camera because the total transformation is applied in the per-pixel tables.
+    - To use the per-pixel calibration, add the following arguments when running **ASDP_Render_Module**:
+      `--NUCInfo <output directory> <temp type>` where `<output directory>` is the output directory specified
+      above and `<temp type>` is either `core` or `sensor` (for the first IR ball, one of the sensor temperatures
+      is flakey, so core should be used).  This will load the per-pixel calibration data and use it to adjust
+      the pixel values when they are being sent to the GPU.
+
+Example NUC.json file:
+```
+{
+  "coldBBRTemperature" : 15,
+  "hotBBRTemperature" : 69,
+  "minVisibleTemperature" : -60,
+  "maxVisibleTemperature" : 90,
+  "cameras" : [
+    { "id" : 1,
+      "coreTemperature" : 29,
+      "sensorTemperature" : 34
+    },
+    { "id" : 2,
+      "coreTemperature" : 30,
+      "sensorTemperature" : 35
+    }
+  ]
+}
+```

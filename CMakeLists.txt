@@ -300,6 +300,7 @@ if(BUILD_UTILITIES)
     Collect_Calibration_Data
     Camera_Calibration_Estimate_Distortion_Extrinsics
     Camera_Calibration_Gain_And_Offsets
+    Camera_Calibration_Per_Pixel_Gain_And_Offsets
   )
   foreach (BASE ${CPP_UTILS})
     set (APP ${BASE})

@@ -236,10 +236,10 @@ int main(int argc, char** argv)
       double pixelRange = maxPixel - minPixel;
       double gain = (pixelRange != 0) ? (tempRange / pixelRange) : 1.0;
 
-      // Find the pixel value that corresponds to the temperature zero based on the gain and the minimum temperature.
+      // Find the pixel value relative to temperature zero based on the gain and the minimum temperature.
       // This is the offset that needs to be applied in the camera system.  This offset is the negative of this.
-      double zeroValue = (0 - lowTemp) / gain + minPixel;
-      double viewOffset = -zeroValue;
+      double zeroRelativeValue = (0 - lowTemp) / gain + minPixel;
+      double viewOffset = -zeroRelativeValue;
 
       // Find the pixel value that corresponds to the specified minimum temperature that will be visible to the ball.
       // This is the hardware offset that needs to be applied in the camera system to ensure that the specified
