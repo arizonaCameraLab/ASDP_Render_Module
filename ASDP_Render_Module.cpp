@@ -51,7 +51,7 @@ using namespace asdp;
 using namespace asdp::render;
 using json = nlohmann::json;
 
-static std::string VERSION = "3.13.0";
+static std::string VERSION = "3.14.0";
 
 /// @brief The path to the configuration file. Defined in the CMakeLists file.
 std::filesystem::path g_dirPath = CONFIG_FILE_PATH;
@@ -495,6 +495,115 @@ static std::chrono::steady_clock::time_point LargestTimeLessThan(std::chrono::st
   return largest;
 }
 
+/// @brief Read a table of floats from a binary file.
+/// @param filename The name of the file to read from.
+/// @param numFloats The number of floats to read from the file.
+/// @return A vector of floats read from the file, or an empty vector if there was an error.
+std::vector<float> ReadFloatTableFromFile(const std::string& filename, size_t numFloats)
+{
+  std::vector<float> ret;
+  std::ifstream file(filename, std::ios::binary);
+  if (!file) {
+    std::cerr << "Unable to open file: "<< filename << std::endl;
+    return ret;
+  }
+  // Find the file size and compare it to the expected number of floats.
+  file.seekg(0, std::ios::end);
+  std::streamsize fileSize = file.tellg();
+  if (fileSize != static_cast<std::streamsize>(numFloats * sizeof(float))) {
+    std::cerr << "File size does not match expected number of floats: " << filename << std::endl;
+    return ret;
+  }
+  // Read the floats from the file.
+  file.seekg(0, std::ios::beg);
+  ret.resize(numFloats);
+  file.read(reinterpret_cast<char*>(ret.data()), numFloats * sizeof(float));
+  if (!file) {
+    ret.resize(0);
+    std::cerr << "Error reading floats from file: " << filename << std::endl;
+    return ret;
+  }
+  return ret;
+}
+
+/// @brief Structure to hold the NUC tables for a camera.
+struct NucTables {
+  float coreTemperature;            ///< The core temperature for the camera.
+  float sensorTemperature;          ///< The sensor temperature for the camera.
+  int imageWidth;                   ///< The width of the image for the camera.
+  int imageHeight;                  ///< The height of the image for the camera.
+  std::vector<float> offsetTable;   ///< The offset table for the camera.
+  std::vector<float> gainTable;     ///< The gain table for the camera.
+};
+
+/// @brief Structure to hold the NUC information for all cameras.
+struct NUCInfo {
+  std::string temperatureType;  ///< The type of temperature to use for the NUC tables (sensor or core).
+  float coldBBRTemperature;     ///< The cold blackbody reference temperature for the NUC tables.
+  float hotBBRTemperature;      ///< The hot blackbody reference temperature for the NUC tables.
+  float minVisibleTemperature;  ///< The minimum visible temperature for the NUC tables.
+  float maxVisibleTemperature;  ///< The maximum visible temperature for the NUC tables.
+
+  /// @brief A map from camera ID to its NUC tables.
+  std::map<uint32_t, NucTables> CameraNUCTables;
+};
+
+// Read the NUC information given a directory to read it from.  This includes the information in the
+// NUC.json file and the temperature tables (offset and gain) for each camera in the NUC.json file.
+// Make a map from camera ID to the tables for each camera.
+
+std::shared_ptr<NUCInfo> ReadNUCInfoFromDirectory(const std::string& nucInfoDirectory)
+{
+  std::shared_ptr<NUCInfo> nucInfo = std::make_shared<NUCInfo>();
+  try {
+    nlohmann::json nucJson;
+    std::string nucJsonFileName = nucInfoDirectory + "/NUC.json";
+    std::cout << "Reading NUC information from: " << nucJsonFileName << std::endl;
+    std::ifstream nucJsonFile(nucJsonFileName);
+    if (!nucJsonFile.is_open()) {
+      std::cerr << "Failed to open NUC JSON file: " << nucJsonFileName << std::endl;
+      return nullptr;
+    }
+    nucJsonFile >> nucJson;
+    nucJsonFile.close();
+    nucInfo->coldBBRTemperature = nucJson["coldBBRTemperature"];
+    nucInfo->hotBBRTemperature = nucJson["hotBBRTemperature"];
+    nucInfo->minVisibleTemperature = nucJson["minVisibleTemperature"];
+    nucInfo->maxVisibleTemperature = nucJson["maxVisibleTemperature"];
+    for (const auto& cameraEntry : nucJson["cameras"]) {
+      uint32_t cameraID = cameraEntry["id"];
+      std::string offsetTableFileName = nucInfoDirectory + "/" + cameraEntry["offsetFile"].get<std::string>();
+      std::string gainTableFileName = nucInfoDirectory + "/" + cameraEntry["gainFile"].get<std::string>();
+      std::cout << "  Reading NUC tables for camera ID " << cameraID << " from files: "
+        << offsetTableFileName << " and " << gainTableFileName << std::endl;
+      NucTables tables;
+      int width = cameraEntry["imageWidth"];
+      int height = cameraEntry["imageHeight"];
+      tables.imageWidth = width;
+      tables.imageHeight = height;
+      tables.coreTemperature = cameraEntry["coreTemperature"];
+      tables.sensorTemperature = cameraEntry["sensorTemperature"];
+      tables.offsetTable = ReadFloatTableFromFile(offsetTableFileName, width * height);
+      if (tables.offsetTable.size() == 0) {
+        std::cerr << "Failed to read offset table from file: " << offsetTableFileName << std::endl;
+        return nullptr;
+      }
+      tables.gainTable = ReadFloatTableFromFile(gainTableFileName, width * height);
+      if (tables.gainTable.size() == 0) {
+        std::cerr << "Failed to read gain table from file: " << gainTableFileName << std::endl;
+        return nullptr;
+      }
+      nucInfo->CameraNUCTables[cameraID] = tables;
+    }
+  } catch (const std::exception& e) {
+    std::cerr << "Error reading NUC information from directory: " << nucInfoDirectory
+      << ": " << e.what() << std::endl;
+    return nullptr;
+  }
+
+  return nucInfo;
+}
+
 static void usage(std::string name)
 {
   std::cerr << "Usage: " << name << " [options] <ip_address>" << std::endl;
@@ -506,6 +615,7 @@ static void usage(std::string name)
   std::cerr << "  --maxCameras <int>                  The maximum number of cameras to render (default 0 means all)." << std::endl;
   std::cerr << "  --frameStride <frame stride>        Read one out of every this many frames. Set to 1 for every frame." << std::endl;
   std::cerr << "  --toneMap <tone map>                The tone map to use.  Options are: linear blackbody bluesky 10bit" << std::endl;
+  std::cerr << "  --NUCInfo <directory> <tempType>    Add the directory containing the NUC information and the temperature type to use (sensor or core)." << std::endl;
   std::cerr << "  --addDisplay                        Add another display with defaults that can be overridden" << std::endl;
   std::cerr << "  --replay <stream id>                ID of the stream to replay (1+)." << std::endl;
   std::cerr << "  --loopReplay                        Loop the replay (default not)." << std::endl;
@@ -564,11 +674,13 @@ int main(int argc, char** argv)
   float maxDepth = 200.0f;        ///< Maximum depth to test for in meters.
   float depthThreshold = 10.0f;   ///< Depth threshold in squared pixel value differences.
   double staticDepth = 900.0;     ///< The static depth to use for cameras without depth information.
-  size_t realParams = 0;          ///< The number of non-flag parameters we've seen.
+  std::vector<NUCInfo> nucInfos;  ///< All instances of NUC information for all cameras.
   //======================================
   // Added by Sang Yoon to add a command line argument to enable the display interface of overview plus detail view.
   bool enableOD = false;          ///< The flag to enable/disable the display interface of overview plus detail view.
   //======================================
+
+  size_t realParams = 0;          ///< The number of non-flag parameters we've seen.
 
   // Parse the command line arguments, with the first non-flag argument being the
   // name of the IP address to listen on.
@@ -660,6 +772,22 @@ int main(int argc, char** argv)
         std::cerr << "Unknown tone map: " << argv[i] << std::endl;
         return 2;
       }
+    } else if (std::string("--NUCInfo") == argv[i]) {
+      if (++i >= argc) {
+        usage(argv[0]);
+        return 2;
+      }
+      std::shared_ptr<NUCInfo> nucInfo = ReadNUCInfoFromDirectory(argv[i]);
+      if (++i >= argc) {
+        usage(argv[0]);
+        return 2;
+      }
+      if (nucInfo == nullptr) {
+        std::cerr << "Failed to read NUC information from directory: " << argv[i-1] << std::endl;
+        return 2;
+      }
+      nucInfo->temperatureType = argv[i];
+      nucInfos.push_back(*nucInfo);
     } else if (std::string("--addDisplay") == argv[i]) {
       displayInfos.push_back(DisplayInfo());
     } else if (std::string("--replay") == argv[i]) {
@@ -1254,20 +1382,47 @@ int main(int argc, char** argv)
       }
     }
 
+    // Verify that the width and height of the cameras match the width and height of the NUC information,
+    // if any NUC information was provided.
+    for (const auto& nucInfo : nucInfos) {
+      for (const auto& nucCam : nucInfo.CameraNUCTables) {
+        uint32_t cameraID = nucCam.first;
+        int nucWidth = nucCam.second.imageWidth;
+        int nucHeight = nucCam.second.imageHeight;
+        int cameraIndex = cameraID - 1;
+        if (cameraIndex < 0 || cameraIndex >= static_cast<int>(cameras.size())) {
+          std::cerr << "Error: NUC information for camera ID " << cameraID << " does not match any camera in the configuration file." << std::endl;
+          return 100;
+        }
+        if ( (nucWidth != cameras[cameraIndex].width) || (nucHeight != cameras[cameraIndex].height) ) {
+          std::cerr << "Error: NUC information for camera ID " << cameraID << " has dimensions (" <<
+            nucWidth << ", " << nucHeight << ") that do not match the camera dimensions (" <<
+            cameras[cameraIndex].width << ", " << cameras[cameraIndex].height << ")." << std::endl;
+          return 101;
+        }
+      }
+    }
+
     // Construct shared pointers to the data structures that we'll need to do rendering, with
     // custom destructors that will clean up when the shared_ptr is destroyed.
     std::atomic<bool> done(false);
     std::vector< std::shared_ptr<CUDABufferPool> > cpuPinnedImageBuffers;
     std::vector< std::shared_ptr<CUDABufferPool> > gpuImageBuffers;
+    std::vector< std::shared_ptr<CUDABufferPool> > gpuNUCBuffers;
     std::vector< std::shared_ptr<cudaStream_t> > streams;
     std::vector< std::shared_ptr<ReceiverUDP> > UDPReceivers;
     for (size_t i = 0; i < cameras.size(); i++) {
       try {
-        // Preload pinned memory buffers for the CPU.
+        // Preallocate pinned memory buffers for the CPU.
         cpuPinnedImageBuffers.push_back(std::make_shared<CUDABufferPool>(cameras[i].width* cameras[i].height * sizeof(uint16_t), 5, true));
 
-        // Preload pinned memory buffers for the GPU.
+        // Preallocate memory buffers for the GPU.
         gpuImageBuffers.push_back(std::make_shared<CUDABufferPool>(cameras[i].width* cameras[i].height * sizeof(uint16_t), 5, false));
+
+        // Make a pool of GPU memory buffers for per-pixel NUC to use if it is running.
+        // Pre-allocate some if we are doing per-pixel NUC, otherwise leave the vector empty.
+        size_t nucBufferCount = cameras.size() * 2 * nucInfos.size();
+        gpuNUCBuffers.push_back(std::make_shared<CUDABufferPool>(cameras[i].width* cameras[i].height * sizeof(float), nucBufferCount, false));
       } catch (std::exception &e) {
         std::cerr << "Error creating buffer pools: " << e.what() << std::endl;
         return 26;
@@ -1288,6 +1443,58 @@ int main(int argc, char** argv)
       }
       UDPReceivers.push_back(receiverUDP);
     }
+
+    // Make the queues to pass the NUC data tables to the receive-data threads, one for each camera -- they
+    // will be nullptr if there is no NUC information for that camera.
+    std::vector< std::shared_ptr< SpinFreeQueue< NUCDataPair > > > nucTableQueues;
+    for (size_t i = 0; i < cameras.size(); i++) {
+      std::shared_ptr< SpinFreeQueue< NUCDataPair > > nucTableQueue = std::make_shared< SpinFreeQueue< NUCDataPair > >();
+      nucTableQueues.push_back(nucTableQueue);
+    }
+
+    // Go ahead and allocate and fill buffers for the NUC data tables for each camera that has NUC information,
+    // so that the receive-data threads can use them right away when they start receiving data from the cameras.
+    /// @todo In the future, we will use temperature information to interpolate between tables.  For now we, just
+    /// use the first NUCInfo.
+    if (nucInfos.size() > 0) {
+      const NUCInfo& nucInfo = nucInfos[0];
+      for (const auto& it : nucInfo.CameraNUCTables) {
+        int cameraID = it.first;
+        int cameraIndex = cameraID - 1;
+        const NucTables& nucTable = it.second;
+        if (cameraIndex < 0 || cameraIndex >= static_cast<int>(cameras.size())) {
+          std::cerr << "Error: NUC information for camera ID " << cameraID << " does not match any camera in the configuration file." << std::endl;
+          return 102;
+        }
+        NUCDataPair nucDataPair;
+        nucDataPair.gainBuffer = gpuNUCBuffers[cameraIndex]->GetBuffer(true, 0);
+        nucDataPair.offsetBuffer = gpuNUCBuffers[cameraIndex]->GetBuffer(true, 0);
+        if (nucDataPair.gainBuffer == nullptr || nucDataPair.offsetBuffer == nullptr) {
+          std::cerr << "Error: Failed to get NUC buffers for camera ID " << cameraID << std::endl;
+          return 103;
+        }
+
+        // Use a CUDA copy to transfer the NUC tables to the GPU.
+        size_t numPixels = cameras[cameraIndex].width * cameras[cameraIndex].height;
+        cudaError_t cerr;
+        cerr = cudaMemcpy(nucDataPair.gainBuffer.get(), nucTable.gainTable.data(),
+          numPixels * sizeof(float), cudaMemcpyHostToDevice);
+        if (cerr != cudaSuccess) {
+          std::cerr << "Error: Failed to copy gain table to GPU for camera ID " << cameraID << ": " << cudaGetErrorString(cerr) << std::endl;
+          return 104;
+        }
+        cerr = cudaMemcpy(nucDataPair.offsetBuffer.get(), nucTable.offsetTable.data(),
+          numPixels * sizeof(float), cudaMemcpyHostToDevice);
+        if (cerr != cudaSuccess) {
+          std::cerr << "Error: Failed to copy offset table to GPU for camera ID " << cameraID << ": " << cudaGetErrorString(cerr) << std::endl;
+          return 105;
+        }
+
+        // Queue the buffers for use by the receive-data thread for this camera.
+        nucTableQueues[cameraIndex]->enqueue(nucDataPair);
+      }
+    }
+
 
     // Make the queues to pass data between the receiver and texture threads, one for each texture thread.
     // The cameras will be spread among the threads in a round-robin fashion.
@@ -1310,7 +1517,8 @@ int main(int argc, char** argv)
       receiveDataThreads.push_back(std::thread(ReceiveDataThread, std::ref(*UDPReceivers[i]), 9000,
         std::ref(done), cpuPinnedImageBuffers[i], gpuImageBuffers[i], streams[i], cameraRenderInfos[i]->m_imageQueue,
         dataQueues[i % NUM_TEXTURE_THREADS],
-        &g_timingInfo.cameras[i].frameBeginTimes, &g_timingInfo.cameras[i].frameEndTimes));
+        &g_timingInfo.cameras[i].frameBeginTimes, &g_timingInfo.cameras[i].frameEndTimes,
+        nucTableQueues[i]));
     }
 
     // Ask for streaming pose and temperature data.

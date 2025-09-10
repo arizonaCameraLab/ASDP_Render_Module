@@ -741,7 +741,7 @@ void MainWindow::ViewCamera(const QString& cameraID)
     dataQueue, size_t(height), m_displayTexture, std::ref(m_emptyTimingInfo));
   m_receiveThread = std::make_shared<std::thread>(std::thread(ReceiveDataThread, std::ref(*m_receiverCam), 9000,
     std::ref(m_doneStreaming), m_cpuPinnedImageBuffer, m_gpuImageBuffer, m_stream, m_visibleCameras.back()->m_imageQueue,
-    dataQueue, nullptr, nullptr));
+    dataQueue, nullptr, nullptr, nullptr));
 
   // Request the camera to start sending data, showing every 10th frame.
   if (m_client && m_receiverCam) {

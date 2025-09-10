@@ -28,6 +28,31 @@ __global__ void WriteSurfaceKernel(cudaSurfaceObject_t surface, uint16_t* buffer
   }
 }
 
+/// @brief CUDA kernel to write a uint16 image to a surface (OpenGL texture) after applying gain and offset.
+/// @details The number of blocks in Y is just enough to cover the amount of data that we have
+/// to send, with perhaps an overage because we're not writing an even number of blocks of lines.
+/// @param surface The surface to write to.
+/// @param buffer The buffer containing the uint16 data.  This is a pointer to the beginning of the whole-frame data.
+/// @param offy The y offset to apply to the coordinate (added to the y coordinate in pixels).
+/// @param nx The total width of the image.
+/// @param ny The total height of the image.
+/// @param gains Pointer to an array of gains to apply to each pixel.
+/// @param offsets Pointer to an array of offsets to apply to each pixel.
+__global__ void WriteSurfaceOffsetScaleKernel(cudaSurfaceObject_t surface, uint16_t* buffer,
+  uint16_t offy, uint16_t nx, uint16_t ny, float *gains, float *offsets)
+{
+  uint16_t x = blockIdx.x * blockDim.x + threadIdx.x;
+  uint16_t y = offy + blockIdx.y * blockDim.y + threadIdx.y;
+  if (x < nx && y < ny) {
+    float valueAdjusted = fma((float)buffer[x + y * nx], gains[x + y * nx], offsets[x + y * nx]);
+    // Round and clamp to the range of uint16_t
+    uint16_t valueClamped = static_cast<uint16_t>(fminf(fmaxf(valueAdjusted+0.5, 0.0f), 65535.0f));
+    // Write the data to the surface. The x coordinate is in bytes, so we need to multiply by the
+    // size of the data type.
+    surf2Dwrite(valueClamped, surface, x * sizeof(valueClamped), y);
+  }
+}
+
 CPUDataToTextureHandler::CPUDataToTextureHandler(
   std::shared_ptr< std::map<GLuint, cudaGraphicsResource*> > texturesToCUDAMap,
   std::shared_ptr<DataToSendToGPU> dataPtr,
@@ -156,9 +181,19 @@ std::string CPUDataToTextureHandler::SendToGPU()
   // Run it on the same stream so that it will wait for the copy to complete before running.
   dim3 dimBlock(128, 8); ///< Using a kernel that is wide but not tall because our batch sizes may be small
   dim3 dimGrid((m_width + dimBlock.x - 1) / dimBlock.x, (linesToSend + dimBlock.y - 1) / dimBlock.y);
-  WriteSurfaceKernel << <dimGrid, dimBlock, 0, *(m_dataPtr->streamPtr) >> > (
-    m_surfObj, reinterpret_cast<uint16_t*>(m_dataPtr->gpuImageBufferPtr.get()),
-    offsetY, m_width, m_height);
+  // If we have gain and offset, use the kernel that applies them.
+  if (m_dataPtr->gpuNUCGainPtr && m_dataPtr->gpuNUCOffsetPtr) {
+    WriteSurfaceOffsetScaleKernel << <dimGrid, dimBlock, 0, *(m_dataPtr->streamPtr) >> > (
+      m_surfObj, reinterpret_cast<uint16_t*>(m_dataPtr->gpuImageBufferPtr.get()),
+      offsetY, m_width, m_height,
+      reinterpret_cast<float*>(m_dataPtr->gpuNUCGainPtr.get()),
+      reinterpret_cast<float*>(m_dataPtr->gpuNUCOffsetPtr.get()));
+    return "";
+  } else {
+    WriteSurfaceKernel << <dimGrid, dimBlock, 0, *(m_dataPtr->streamPtr) >> > (
+      m_surfObj, reinterpret_cast<uint16_t*>(m_dataPtr->gpuImageBufferPtr.get()),
+      offsetY, m_width, m_height);
+  }
 
   // Record the fact that we've written up through this line.
   m_lastLineSent = m_largestLineReceived;
@@ -406,7 +441,8 @@ void asdp::render::ReceiveDataThread(ReceiverUDP& receiveSocket, size_t maxBytes
   std::shared_ptr<asdp::render::ImageQueue> imageQueue,
   std::shared_ptr< SpinFreeQueue< std::shared_ptr<DataToSendToGPU> > > outQueue,
   std::vector<std::chrono::steady_clock::time_point>* frameBeginTimes,
-  std::vector<std::chrono::steady_clock::time_point>* frameEndTimes)
+  std::vector<std::chrono::steady_clock::time_point>* frameEndTimes,
+  std::shared_ptr < SpinFreeQueue < NUCDataPair > > NUCTablesQueue)
 {
   // Generate a buffer pool to use to get pre-allocated buffers for reading the data from
   // the network.  Initially fill it with 100 buffers to give us enough to handle buffering a fraction
@@ -427,8 +463,13 @@ void asdp::render::ReceiveDataThread(ReceiverUDP& receiveSocket, size_t maxBytes
 
   // Loop through and receive packets until we've been told to quit.
   DataToSendToGPU data;
+  NUCDataPair nucDataPtr;
   bool waitingForFrameBegin = true;
   while (!done) {
+
+    // See if we have updated NUC tables to use.  Ignore failure to get them.
+    // they will initially be null pointers until we get the first tables.
+    NUCTablesQueue->dequeue(nucDataPtr, std::chrono::milliseconds(0));
 
     // Get the next packet into a preallocated buffer, timing out quickly to ensure that we check
     // the done flag.
@@ -598,6 +639,8 @@ void asdp::render::ReceiveDataThread(ReceiverUDP& receiveSocket, size_t maxBytes
       data.gpuImageBufferPtr = gpuImageBufferPtr;
       data.imageQueuePtr = imageQueue;
       data.streamPtr = streamPtr;
+      data.gpuNUCGainPtr = nucDataPtr.gainBuffer;
+      data.gpuNUCOffsetPtr = nucDataPtr.offsetBuffer;
       outQueue->enqueue(std::make_shared<DataToSendToGPU>(data));
     } // End of processing ready packets.
   } // End of while we are not done.

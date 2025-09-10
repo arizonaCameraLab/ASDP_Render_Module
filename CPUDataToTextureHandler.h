@@ -59,6 +59,8 @@ struct DataToSendToGPU {
   std::shared_ptr<unsigned char> gpuImageBufferPtr;///< The buffer on the GPU that holds the image data
   std::shared_ptr<asdp::render::ImageQueue> imageQueuePtr;///< The image queue holding the textures to store into
   std::shared_ptr<cudaStream_t> streamPtr;         ///< Stream to use to for copy and kernel calls
+  std::shared_ptr<uint8_t> gpuNUCGainPtr;          ///< The buffer on the GPU that holds the per-pixel NUC gain data, if any
+  std::shared_ptr<uint8_t> gpuNUCOffsetPtr;        ///< The buffer on the GPU that holds the per-pixel NUC offset data, if any
 };
 
 /// @brief Class to handle processing of the data from the cameras and sending it to texture.
@@ -141,6 +143,13 @@ void CopyDataToTextures(uint16_t width, uint16_t height,
   size_t batchSize, std::shared_ptr<Display> sharedContext,
   std::vector<RenderTimingInfo::camera>& cameraTimings);
 
+/// @brief Class that holds shared pointers to both the gain and offset NUC data for a camera,
+/// so that they can be kept consistent on the same queue.
+struct NUCDataPair {
+  std::shared_ptr<uint8_t> gainBuffer;   ///< The buffer for the gain data
+  std::shared_ptr<uint8_t> offsetBuffer; ///< The buffer for the offset data
+};
+
 /// @brief Thread for each camera that receives the data from the network and sends it to the GPU.
 /// @param receiveSocket The socket to receive the data on.
 /// @param maxBytesPerPacket The maximum number of bytes in a packet.
@@ -154,13 +163,16 @@ void CopyDataToTextures(uint16_t width, uint16_t height,
 /// does not record them.
 /// @param frameEndTimes Store the times for the end frame message receipts. nullptr
 /// does not record them.
+/// @param NUCTablesQueue A queue for the client to send new pairs of NUC gain and offset tables
+/// to the receiver thread, nullptr if not used.
 void ReceiveDataThread(ReceiverUDP& receiveSocket, size_t maxBytesPerPacket, std::atomic<bool>& done,
   std::shared_ptr<CUDABufferPool> cpuImageBuffers, std::shared_ptr<CUDABufferPool> gpuImageBuffers,
   std::shared_ptr<cudaStream_t> streamPtr,
   std::shared_ptr<asdp::render::ImageQueue> imageQueue,
   std::shared_ptr< SpinFreeQueue< std::shared_ptr<DataToSendToGPU> > > outQueue,
   std::vector<std::chrono::steady_clock::time_point>* frameBeginTimes,
-  std::vector<std::chrono::steady_clock::time_point>* frameEndTimes);
+  std::vector<std::chrono::steady_clock::time_point>* frameEndTimes,
+  std::shared_ptr < SpinFreeQueue < NUCDataPair > > NUCTablesQueue);
 
   } // namespace render
 } // namespace asdp
