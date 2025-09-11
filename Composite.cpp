@@ -1293,7 +1293,14 @@ void CompositeCameras::RenderView(asdp::Time scanOutTime, const float* viewProje
     if (gain != 0) {
       scale *= gain;
     }
-    scales.push_back(scale);
+    // Ignore cameras that don't report
+    if ((gain != 0) && (exposure != 0)) {
+      scales.push_back(scale);
+    }
+  }
+  if (scales.size() == 0) {
+    // If we have no cameras reporting, just set the scale to 1.
+    scales.push_back(1);
   }
   // Select the median of the scales to use as the global gain.  Then blend it with the
   // stored one to smooth out changes.
