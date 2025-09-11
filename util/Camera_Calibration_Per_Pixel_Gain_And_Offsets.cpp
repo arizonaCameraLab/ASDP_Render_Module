@@ -362,6 +362,8 @@ int main(int argc, char** argv)
 
       // Create the gain and offset images for this camera.
       std::shared_ptr<float_image> gainImage, offsetImage;
+      gainImage = std::make_shared<float_image>(0, width - 1, 0, height - 1);
+      offsetImage = std::make_shared<float_image>(0, width - 1, 0, height - 1);
 
       // Get the lower-temperature and higher-temperature target images.
       std::shared_ptr<float_image> lowImage = lateralAvgImages[0][id];
@@ -376,8 +378,8 @@ int main(int argc, char** argv)
       // Compute the gain and offset images using the averaged images for each target along with the
       // temperatures specified in the NUC configuration file.
 #pragma omp parallel for
-      for (int y = 0; y < width; y++) {
-        for (int x = 0; x < height; x++) {
+      for (int y = 0; y < height; y++) {
+        for (int x = 0; x < width; x++) {
           double lowValue = lowImage->read_pixel_bilerp_nocheck(x, y);
           double highValue = highImage->read_pixel_bilerp_nocheck(x, y);
 
