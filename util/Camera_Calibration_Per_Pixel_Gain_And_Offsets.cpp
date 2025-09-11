@@ -154,7 +154,6 @@ int main(int argc, char** argv)
   }
 
   std::string camConfigFile, targetConfigFile, gimbalConfigFile, NUCConfigFile, baseDirectory, outDirectory;
-  int targetBrightnessThreshold = 35767;
   size_t realParams = 0;          ///< The number of non-flag parameters we've seen.
 
   // Parse the command line arguments, with the first non-flag argument being the
@@ -183,12 +182,9 @@ int main(int argc, char** argv)
       NUCConfigFile = argv[i];
       break;
     case 4:
-      targetBrightnessThreshold = std::stoi(argv[i]);
-      break;
-    case 5:
       baseDirectory = argv[i];
       break;
-    case 6:
+    case 5:
       outDirectory = argv[i];
       break;
     default:
@@ -196,7 +192,7 @@ int main(int argc, char** argv)
       return 2;
     }
   }
-  if (realParams != 7) {
+  if (realParams != 6) {
     usage(argv[0]);
     return 2;
   }
@@ -349,7 +345,7 @@ int main(int argc, char** argv)
       } // End of loop over poses.
 
       // Save the average images for this target.
-      lateralAvgImages[target.id] = avgImagePerCamera;
+      lateralAvgImages[target.id - 1] = avgImagePerCamera;
 
     } // End of loop over targets.
 
