@@ -380,8 +380,8 @@ int main(int argc, char** argv)
 #pragma omp parallel for
       for (int y = 0; y < height; y++) {
         for (int x = 0; x < width; x++) {
-          double lowValue = lowImage->read_pixel_bilerp_nocheck(x, y);
-          double highValue = highImage->read_pixel_bilerp_nocheck(x, y);
+          double lowValue = lowImage->read_pixel_nocheck(x, y);
+          double highValue = highImage->read_pixel_nocheck(x, y);
 
           double gain, offset;
           computeGainAndOffset(lowTemp, highTemp, minVisibleTemp, maxVisibleTemp,
