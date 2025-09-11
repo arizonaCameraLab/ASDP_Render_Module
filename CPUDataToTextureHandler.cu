@@ -469,7 +469,11 @@ void asdp::render::ReceiveDataThread(ReceiverUDP& receiveSocket, size_t maxBytes
 
     // See if we have updated NUC tables to use.  Ignore failure to get them.
     // they will initially be null pointers until we get the first tables.
-    NUCTablesQueue->dequeue(nucDataPtr, std::chrono::milliseconds(0));
+    // If we try a zero-time dequeue, it slows down to much (presumably due to the mutex),
+    // so we first check for the presence of an entry to grab.
+    if (NUCTablesQueue->size()) {
+      NUCTablesQueue->dequeue(nucDataPtr, std::chrono::milliseconds(0));
+    }
 
     // Get the next packet into a preallocated buffer, timing out quickly to ensure that we check
     // the done flag.
