@@ -28,7 +28,7 @@ __global__ void WriteSurfaceKernel(cudaSurfaceObject_t surface, uint16_t* buffer
   }
 }
 
-/// @brief CUDA kernel to write a uint16 image to a surface (OpenGL texture) after applying gain and offset.
+/// @brief CUDA kernel to write a uint16 image to a surface (OpenGL texture) after applying per-pixel gain and offset.
 /// @details The number of blocks in Y is just enough to cover the amount of data that we have
 /// to send, with perhaps an overage because we're not writing an even number of blocks of lines.
 /// @param surface The surface to write to.

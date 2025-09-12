@@ -69,7 +69,7 @@ namespace asdp {
         std::unique_ptr<MeanStdImpl> m_impl; ///< Pointer to the implementation class.
       };
 
-      /// @brief Class that computes the mean and standard deviation of pixel values for an set of images.
+      /// @brief Class that computes the mean and standard deviation of pixel values for a set of images.
       class MeanStdGroup {
       public:
 
