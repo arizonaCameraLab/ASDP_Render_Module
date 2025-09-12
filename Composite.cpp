@@ -1310,6 +1310,23 @@ void CompositeCameras::RenderView(asdp::Time scanOutTime, const float* viewProje
     m_globalExposureGain = 0.9 * m_globalExposureGain + 0.1 * globalExposureGain;
   }
 
+  // When we are using the range estimator, we need to adjust the gain and offset to fit into the
+  // specified range. When these are both 0, we should not do this adjustment.
+  double minVal = 0, maxVal = 0;
+  if (m_rangeEstimator) {
+    // Get the min and max intensity values and determine the gain and offset to apply to map
+    // the specified minVal and maxVal to 0 and 1.
+    // The current offset is added to the value and then the gain is applied.
+    // The current gain is scaled by the inverse of the fraction of the range that is used to map that
+    // fraction to the range 0-1.
+    // The current offset must offset by the new offset divided by the original gain (because it will
+    // be multiplied by it along the way).
+    std::string ret = m_rangeEstimator->GetCurrentRange(minVal, maxVal);
+    if (!ret.empty()) {
+      std::cerr << "CompositeCameras::RenderView(): Failed to get range estimate: " << ret << std::endl;
+    }
+  }
+
   // Draw each camera, using the appropriate texture.
   for (size_t c = 0; c < m_cameraRenderInfos.size(); c++) {
 
@@ -1378,26 +1395,20 @@ void CompositeCameras::RenderView(asdp::Time scanOutTime, const float* viewProje
     if (m_globalExposureGain > 0) {
       gain *= m_globalExposureGain;
     }
-    if (m_rangeEstimator) {
-      // Get the min and max intensity values and determine the gain and offset to apply to map
-      // the specified minVal and maxVal to 0 and 1.
-      // The current offset is added to the value and then the gain is applied.
-      // The current gain is scaled by the inverse of the fraction of the range that is used to map that
-      // fraction to the range 0-1.
-      // The current offset must offset by the new offset divided by the original gain (because it will
-      // be multiplied by it along the way).
-      double minVal, maxVal;
-      std::string ret = m_rangeEstimator->GetCurrentRange(minVal, maxVal);
-      if (ret.empty()) {
-        // Only adjust if we have no error.
-        if (maxVal > minVal) {
-          offset = offset - minVal/gain;
-          gain /= (maxVal - minVal);
-        }
-      } else {
-        std::cerr << "CompositeCameras::RenderView(): Failed to get range estimate: " << ret << std::endl;
-      }
+
+    // Use the min and max intensity values to determine the gain and offset to apply to map
+    // the specified minVal and maxVal to 0 and 1.
+    // The current offset is added to the value and then the gain is applied.
+    // The current gain is scaled by the inverse of the fraction of the range that is used to map that
+    // fraction to the range 0-1.
+    // The current offset must offset by the new offset divided by the original gain (because it will
+    // be multiplied by it along the way).
+    // Only adjust if the values are proper (they are both set to 0 when we're not using an estimator).
+    if (maxVal > minVal) {
+      offset = offset - minVal/gain;
+      gain /= (maxVal - minVal);
     }
+
     glUniform1f(m_offsetUniformID, offset);
     glUniform1f(m_gainUniformID, gain);
     glUniform1f(m_depthScaleUniformID, m_cameraRenderInfos[c]->m_depthScale);
