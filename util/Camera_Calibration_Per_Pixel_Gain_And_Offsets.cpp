@@ -410,9 +410,27 @@ int main(int argc, char** argv)
           double value = 0.0f;
           gainImage&& gainImage->read_pixel(x, y, value);
           float floatValue = static_cast<float>(value);
-          gainFile.write(reinterpret_cast<const char*>(&value), sizeof(float));
+          gainFile.write(reinterpret_cast<const char*>(&floatValue), sizeof(floatValue));
         }
       }
+      gainFile.close();
+
+      std::string offsetFullFilename = outDirectory + offsetFilename;
+      std::cout << "  Writing offset image for camera " << id << " to " << offsetFullFilename << std::endl;
+      std::ofstream offsetFile(offsetFullFilename, std::ios::binary);
+      if (!offsetFile) {
+        std::cerr << "Error: Unable to open output file " << offsetFullFilename << std::endl;
+        return 41;
+      }
+      for (int y = 0; y < height; ++y) {
+        for (int x = 0; x < width; ++x) {
+          double value = 0.0f;
+          offsetImage&& offsetImage->read_pixel(x, y, value);
+          float floatValue = static_cast<float>(value);
+          offsetFile.write(reinterpret_cast<const char*>(&floatValue), sizeof(floatValue));
+        }
+      }
+      offsetFile.close();
 
       // Adjust the NUC data to add entries for the gain and offset raw images and the image resolutions.
       for (auto& camera : NUCConfig["cameras"]) {
