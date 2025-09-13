@@ -1242,6 +1242,79 @@ static double TimeDiffMagnitude(asdp::Time t1, asdp::Time t2) {
 
 void CompositeCameras::SetupRenderFrame(asdp::Time scanOutTime)
 {
+  // Figure out how many frames we must grab to cover the requested render-ahead time.
+  // Grab an additional one to handle slight frame shifts.
+  size_t framesToGrab = 1 + static_cast<size_t>(m_renderOffsetMicroseconds /
+    (m_cameraFrameInterval.seconds * 1e6 + m_cameraFrameInterval.microseconds));
+
+  // To ensure that the set of images from all cameras are synchronized, we pull the first
+  // two images from each queue and then select a set of consistent ones.
+  std::vector< std::list< std::shared_ptr<ImageData> > > images;
+  for (auto const& cameraRenderInfo : m_cameraRenderInfos) {
+    images.push_back(cameraRenderInfo->m_imageQueue->LockNewestImages(framesToGrab));
+    if (images.back().size() != framesToGrab) {
+      std::cerr << "Composite::SetupRenderFrame(): Could not get all needed images, skipping frame" << std::endl;
+      return;
+    }
+  }
+
+  // Select the desired time, which is the one that will have consistent images across all cameras
+  // for this frame, and consistent gaps between frames from frame to frame during replay (for live,
+  // the synchronization of the camera triggers with the render time assures temporal consistency).
+  asdp::Time desiredTime;
+  if (m_renderOffsetMicroseconds == 0) {
+    // Live: select by finding the time of the oldest image among the first (newest) image from
+    // all cameras and then selecting from each pair the one whose time is closest to the
+    // selected time.
+    desiredTime = images[0].front()->imageCenterTime;
+    for (size_t i = 1; i < images.size(); i++) {
+      if (images[i].front()->imageCenterTime < desiredTime) {
+        desiredTime = images[i].front()->imageCenterTime;
+      }
+    }
+  }
+  else {
+    // Stored: Select by adding the frame interval to the last desired time and then verifying that
+    // it is close enough to the requested offset from the scan-out time (within a frame time),
+    // replacing it if not.
+    desiredTime = m_lastFrameTime + m_renderFrameInterval;
+    Time offset = asdp::Time(m_renderOffsetMicroseconds / 1000000, m_renderOffsetMicroseconds % 1000000);
+    Time requestedTime = scanOutTime - offset;
+    if (scanOutTime < offset) {
+      requestedTime = Time(0, 0);
+    }
+    double diff = TimeDiffMagnitude(desiredTime, requestedTime);
+    if (diff > m_renderFrameInterval.seconds * m_renderFrameInterval.microseconds * 1e-6) {
+      desiredTime = requestedTime;
+    }
+  }
+
+  // Find the image from each list that is closest to the desired time.  Push it into the m_images
+  // array and return the other images+/ to the queue.
+  for (size_t i = 0; i < images.size(); i++) {
+    auto& imList = images[i];
+    auto best = imList.begin();
+    double bestDiff = TimeDiffMagnitude((*best)->imageCenterTime, desiredTime);
+    for (auto it = imList.begin(); it != imList.end(); ++it) {
+      double diff = TimeDiffMagnitude((*it)->imageCenterTime, desiredTime);
+      if (diff < bestDiff) {
+        best = it;
+        bestDiff = diff;
+      }
+    }
+
+    for (auto it = imList.begin(); it != imList.end(); ++it) {
+      if (it == best) {
+        // Use this image
+        m_images.push_back(*it);
+      }
+      else {
+        // Unlock the images that are not selected.
+        m_cameraRenderInfos[i]->m_imageQueue->UnlockImage(*it);
+      }
+    }
+  }
+
   //======================================
   // Handle per-camera mean-based flicker compensation
 
@@ -1311,77 +1384,6 @@ void CompositeCameras::SetupRenderFrame(asdp::Time scanOutTime)
   // Set up to run main rendering program
   glUseProgram(m_programId);
   glDisable(GL_CULL_FACE);
-
-  // Figure out how many frames we must grab to cover the requested render-ahead time.
-  // Grab an additional one to handle slight frame shifts.
-  size_t framesToGrab = 1 + static_cast<size_t>(m_renderOffsetMicroseconds /
-    (m_cameraFrameInterval.seconds * 1e6 + m_cameraFrameInterval.microseconds));
-
-  // To ensure that the set of images from all cameras are synchronized, we pull the first
-  // two images from each queue and then select a set of consistent ones.
-  std::vector< std::list< std::shared_ptr<ImageData> > > images;
-  for (auto const& cameraRenderInfo : m_cameraRenderInfos) {
-    images.push_back(cameraRenderInfo->m_imageQueue->LockNewestImages(framesToGrab));
-    if (images.back().size() != framesToGrab) {
-      std::cerr << "Composite::SetupRenderFrame(): Could not get all needed images, skipping frame" << std::endl;
-      return;
-    }
-  }
-
-  // Select the desired time, which is the one that will have consistent images across all cameras
-  // for this frame, and consistent gaps between frames from frame to frame during replay (for live,
-  // the synchronization of the camera triggers with the render time assures temporal consistency).
-  asdp::Time desiredTime;
-  if (m_renderOffsetMicroseconds == 0) {
-    // Live: select by finding the time of the oldest image among the first (newest) image from
-    // all cameras and then selecting from each pair the one whose time is closest to the
-    // selected time.
-    desiredTime = images[0].front()->imageCenterTime;
-    for (size_t i = 1; i < images.size(); i++) {
-      if (images[i].front()->imageCenterTime < desiredTime) {
-        desiredTime = images[i].front()->imageCenterTime;
-      }
-    }
-  } else {
-    // Stored: Select by adding the frame interval to the last desired time and then verifying that
-    // it is close enough to the requested offset from the scan-out time (within a frame time),
-    // replacing it if not.
-    desiredTime = m_lastFrameTime + m_renderFrameInterval;
-    Time offset = asdp::Time(m_renderOffsetMicroseconds / 1000000, m_renderOffsetMicroseconds % 1000000);
-    Time requestedTime = scanOutTime - offset;
-    if (scanOutTime < offset) {
-      requestedTime = Time(0, 0);
-    }
-    double diff = TimeDiffMagnitude(desiredTime, requestedTime);
-    if (diff > m_renderFrameInterval.seconds * m_renderFrameInterval.microseconds * 1e-6) {
-      desiredTime = requestedTime;
-    }
-  }
-
-  // Find the image from each list that is closest to the desired time.  Push it into the m_images
-  // array and return the other images+/ to the queue.
-  for (size_t i = 0; i < images.size(); i++) {
-    auto& imList = images[i];
-    auto best = imList.begin();
-    double bestDiff = TimeDiffMagnitude((*best)->imageCenterTime, desiredTime);
-    for (auto it = imList.begin(); it != imList.end(); ++it) {
-      double diff = TimeDiffMagnitude((*it)->imageCenterTime, desiredTime);
-      if (diff < bestDiff) {
-        best = it;
-        bestDiff = diff;
-      }
-    }
-
-    for (auto it = imList.begin(); it != imList.end(); ++it) {
-      if (it == best) {
-        // Use this image
-        m_images.push_back(*it);
-      } else {
-        // Unlock the images that are not selected.
-        m_cameraRenderInfos[i]->m_imageQueue->UnlockImage(*it);
-      }
-    }
-  }
 
   // If we have a RenderTimingInfo object, fill in the times for each camera.
   if (m_renderTimingInfo != nullptr) {
