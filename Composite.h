@@ -238,13 +238,17 @@ namespace asdp {
       /// @param renderFrameInterval The interval between rendered frames to use for replay mode.
       /// @param renderTimingInfo A pointer to the render timing information to fill in.
       /// @param rangeEstimator A shared pointer to the range estimator to use for tone-map range determination.
+      /// @param flickerCompensationFactor A factor to use to reduce flicker in the image. This is used to
+      /// deal with cameras that have a periodic offset to their brightness.  A value of 0.0 disables this
+      /// filter and a value of 0.9 applied a large amount of filtering.
       CompositeCameras(std::vector< std::shared_ptr<CameraRenderInfo> >& cameraRenderInfo, GLuint toneMapTexture,
         std::shared_ptr<PoseAdjuster> poseAdjuster, Time cameraFrameInterval,
         uint32_t renderOffsetMicroseconds = 0,
         Time renderFrameInterval = Time(),
         RenderTimingInfo *renderTimingInfo = nullptr,
         std::shared_ptr<asdp::render::RangeEstimator> rangeEstimator = nullptr,
-        double defaultStaticDepth = 900.0);
+        double defaultStaticDepth = 900.0,
+        double flickerCompensationFactor = 0.0);
 
       /// @brief Update the vertex buffer object for a camera based on its current depth information.
       /// @details This function updates the vertex buffer object for a camera based on the current depth
@@ -359,6 +363,17 @@ namespace asdp {
       GLfloat m_toneMapTextureSrc[3] = { 0.0f, 1.0f, 1.0f }; // The color used for the rectangle (red, green, and blue)
       void DrawHeadOrientation(float view_farf, int screen_width) override;
       //======================================
+
+      //======================================
+      // Section dealing with flicker compensation.
+      double m_flickerCompensationFactor; ///< A factor to use to reduce flicker in the image.
+      GLuint m_sumReturnBuffer;           ///< Buffer to return the sum of pixel values.
+      GLuint m_sumProgramId;              ///< The OpenGL program ID for summing pixel values.
+      GLuint m_texWidthId;                ///< The Uniform ID of the texture width.
+      GLuint m_texHeightId;               ///< The Uniform ID of the texture height.
+      std::vector<float> m_filteredMeans; ///< The filtered means for each camera.
+      std::vector<float> m_unfilteredMeans; ///< The unfiltered means for each camera.
+
     };
 
     /// @brief Composite class that renders a vector of raw color values into a line of a display.

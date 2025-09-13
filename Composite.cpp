@@ -870,11 +870,60 @@ R"(#version 330 core
       }
    })";
 
+static const GLchar* camerasComputeSumShader =
+R"( #version 430 core
+    #extension GL_EXT_shader_atomic_float : enable
+    layout(local_size_x = 16, local_size_y = 16) in;
+
+    // Input texture
+    layout(binding = 0) uniform sampler2D inputTex;
+
+    // Output buffer for the final mean
+    layout(std430, binding = 1) buffer Output {
+        float mean;
+    };
+
+    // Shared memory for reduction within a workgroup
+    shared float tileSum[256]; // 16x16
+
+    uniform int texWidth;
+    uniform int texHeight;
+
+    void main() {
+        uint lx = gl_LocalInvocationID.x;
+        uint ly = gl_LocalInvocationID.y;
+        uint gx = gl_GlobalInvocationID.x;
+        uint gy = gl_GlobalInvocationID.y;
+        uint lid = ly * 16 + lx;
+
+        float value = 0.0;
+        if (gx < texWidth && gy < texHeight) {
+            value = texelFetch(inputTex, ivec2(gx, gy), 0).r;
+        }
+        tileSum[lid] = value;
+        memoryBarrierShared();
+        barrier();
+
+        // Parallel reduction in shared memory
+        for (uint stride = 128; stride > 0; stride >>= 1) {
+            if (lid < stride) {
+                tileSum[lid] += tileSum[lid + stride];
+            }
+            memoryBarrierShared();
+            barrier();
+        }
+
+        // The first thread in the workgroup writes its partial sum to the output buffer
+        if (lid == 0) {
+            atomicAdd(mean, tileSum[0]);
+        }
+    })";
+
 CompositeCameras::CompositeCameras(std::vector< std::shared_ptr<CameraRenderInfo> >& cameraRenderInfo, GLuint toneMaptexture,
   std::shared_ptr<PoseAdjuster> poseAdjuster, Time cameraFrameInterval,
   uint32_t renderOffsetMicroseconds, Time renderFrameInterval, RenderTimingInfo *renderTimingInfo,
   std::shared_ptr<asdp::render::RangeEstimator> rangeEstimator,
-  double defaultStaticDepth)
+  double defaultStaticDepth, double flickerCompensationFactor)
   : Composite()
   , m_cameraRenderInfos(cameraRenderInfo)
   , m_toneMapTexture(toneMaptexture)
@@ -897,6 +946,7 @@ CompositeCameras::CompositeCameras(std::vector< std::shared_ptr<CameraRenderInfo
   , m_globalExposureGain(cameraFrameInterval.seconds + cameraFrameInterval.microseconds * 1e-6)
   , m_imageTextureId(0)
   , m_toneMapTextureId(0)
+  , m_flickerCompensationFactor(flickerCompensationFactor)
 
   //======================================
   // Added by Sang Yoon to pass the parameters for cylindrical projection to GPU
@@ -1025,6 +1075,51 @@ bool CompositeCameras::SetupRendering()
     }
     CreateBufferInfo(*cameraRenderInfo, cameraRenderInfo->m_mesh);
   }
+
+  //======================================
+  // Handle objects needed by flicker compensation
+  /// @todo Make this only happen if flicker compensation is enabled.
+  //if (m_flickerCompensationFactor) {
+  if (true) {
+    float zero = 0.0f;
+    glGenBuffers(1, &m_sumReturnBuffer);
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, m_sumReturnBuffer);
+    glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(float), &zero, GL_DYNAMIC_COPY);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, m_sumReturnBuffer);
+
+    GLuint sumShaderId = glCreateShader(GL_COMPUTE_SHADER);
+
+    try {
+      // sum shader
+      glShaderSource(sumShaderId, 1, &camerasComputeSumShader, NULL);
+      glCompileShader(sumShaderId);
+      checkShaderError(sumShaderId, "Sum shader compilation failed.");
+
+      // linking shader program
+      m_sumProgramId = glCreateProgram();
+      glAttachShader(m_sumProgramId, sumShaderId);
+      glLinkProgram(m_sumProgramId);
+      checkProgramError(m_programId, "Shader program link failed.");
+
+      // once linked into a program, we no longer need the shaders.
+      glDeleteShader(sumShaderId);
+    } catch (std::runtime_error& e) {
+      std::cerr << "CompositeCameras::SetupRendering(): " << e.what() << std::endl;
+      return false;
+    }
+    
+    // Look up the IDs for the parameters we will want to change.
+    glUseProgram(m_sumProgramId);
+    m_texWidthId = glGetUniformLocation(m_sumProgramId, "texWidth");
+    m_texHeightId = glGetUniformLocation(m_sumProgramId, "texHeight");
+    if (m_texWidthId == -1 || m_texHeightId == -1) {
+      std::cerr << "CompositeCameras::SetupRendering(): Failed to get sum uniform IDs" << std::endl;
+      std::cerr << "  texWidth: " << m_texWidthId << std::endl;
+      std::cerr << "  texHeight: " << m_texHeightId << std::endl;
+      return false;
+    }
+  }
+
   return true;
 }
 
@@ -1035,6 +1130,11 @@ CompositeCameras::~CompositeCameras()
     glDeleteBuffers(1, &m_cameraBufferInfos[i].indexBufferObject);
   }
   glDeleteProgram(m_programId);
+
+  if (m_flickerCompensationFactor) {
+    glDeleteProgram(m_sumProgramId);
+    glDeleteBuffers(1, &m_sumReturnBuffer);
+  }
 }
 
 // NOTE: This must be called for each camera to produce the required buffers before rendering uses them.
@@ -1140,6 +1240,26 @@ static double TimeDiffMagnitude(asdp::Time t1, asdp::Time t2) {
 
 void CompositeCameras::SetupRenderFrame(asdp::Time scanOutTime)
 {
+  //======================================
+  // Handle per-camera mean-based flicker compensation
+
+  if (m_flickerCompensationFactor) {
+    // Compute the mean intensity of each camera's most recent image using a compute shader.
+    /// @todo
+
+    // Set the filtered means based on the unfiltered means and the compensation factor.
+    if (m_filteredMeans.size() == 0) {
+      m_filteredMeans = m_unfilteredMeans;
+    } else {
+      for (size_t i = 0; i < m_cameraRenderInfos.size(); i++) {
+        m_filteredMeans[i] = m_filteredMeans[i] * m_flickerCompensationFactor +
+          m_unfilteredMeans[i] * (1.0 - m_flickerCompensationFactor);
+      }
+    }
+  }
+
+  //======================================
+  // Set up to run main rendering program
   glUseProgram(m_programId);
   glDisable(GL_CULL_FACE);
 
@@ -1394,6 +1514,12 @@ void CompositeCameras::RenderView(asdp::Time scanOutTime, const float* viewProje
     // Then rescale by the global exposure gain to bring all cameras into a consistent range.
     if (m_globalExposureGain > 0) {
       gain *= m_globalExposureGain;
+    }
+
+    // Adjust the offsets based on the difference between the filtered and unfiltered means.
+    // It is already in the appropriate scale because the means were computed on the stored images.
+    if (m_flickerCompensationFactor) {
+      offset += (m_filteredMeans[c] - m_unfilteredMeans[c]);
     }
 
     // Use the min and max intensity values to determine the gain and offset to apply to map
