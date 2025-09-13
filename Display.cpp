@@ -773,6 +773,21 @@ void DisplayWindow::HandleKeyboard()
     }
   }
 
+  // Adjust the camera gain for the active camera while the ',' (decrement) or '.' (increment) keys are pressed.
+  bool periodPressed = (glfwGetKey(Display::m_impl->m_window, GLFW_KEY_PERIOD) == GLFW_PRESS);
+  bool commaPressed = (glfwGetKey(Display::m_impl->m_window, GLFW_KEY_COMMA) == GLFW_PRESS);
+  float incrementGain = 1;
+  if (periodPressed) {
+    incrementGain *= 1.001f;
+  } else if (commaPressed) {
+    incrementGain /= 1.001f;
+  }
+  if (incrementGain != 1) {
+    if (m_eventHandlers && m_eventHandlers->AdjustActiveCameraGain) {
+      m_eventHandlers->AdjustActiveCameraGain(incrementGain, m_userData);
+    }
+  }
+
   // If the 's' key is pressed, send an event asking to save the current configuration file.
   bool sPressed = (glfwGetKey(Display::m_impl->m_window, GLFW_KEY_S) == GLFW_PRESS);
   if (sPressed && !m_impl->m_sPressed) {

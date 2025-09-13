@@ -51,7 +51,7 @@ using namespace asdp;
 using namespace asdp::render;
 using json = nlohmann::json;
 
-static std::string VERSION = "3.15.0";
+static std::string VERSION = "3.16.0";
 
 /// @brief The path to the configuration file. Defined in the CMakeLists file.
 std::filesystem::path g_dirPath = CONFIG_FILE_PATH;
@@ -116,8 +116,8 @@ static void ChangePlayPause(bool nowPlaying, void* /* unused */)
   std::cout << "Toggled play/pause to: " << (g_paused ? "paused" : "playing") << std::endl;
 }
 
-/// @brief Adjust the active camera's color offset calibration values.
-/// @param offsetDelta The amount to adjust the offset by, positive or negative.
+/// @brief Adjust the active camera's color offset calibration value.
+/// @param offsetDelta The amount to add to the offset, positive or negative.
 static void AdjustActiveCameraOffset(int offsetDelta, void* /* unused */)
 {
   if (g_activeCameraIndex >= g_visibleCameras.size()) {
@@ -135,6 +135,27 @@ static void AdjustActiveCameraOffset(int offsetDelta, void* /* unused */)
   cri->GetColorOffsetGain(currentOffset, currentGain);
   cri->SetColorOffsetGain(currentOffset + offsetDelta, currentGain);
   std::cout << "Adjusted camera ID " << cri->m_ID << " color offset to : " << currentOffset + offsetDelta << std::endl;
+}
+
+/// @brief Adjust the active camera's color gain calibration value.
+/// @param gainDelta The amount to multiply the gain by, <1 or >1.
+static void AdjustActiveCameraGain(float gainDelta, void* /* unused */)
+{
+  if (g_activeCameraIndex >= g_visibleCameras.size()) {
+    std::cerr << "Error: Active camera index out of range." << std::endl;
+    return;
+  }
+  std::shared_ptr<asdp::render::CameraRenderInfo> cri = g_visibleCameras[g_activeCameraIndex];
+  if (cri == nullptr) {
+    std::cerr << "Error: Active camera is null." << std::endl;
+    return;
+  }
+
+  // Adjust the color offset and gain.
+  float currentOffset, currentGain;
+  cri->GetColorOffsetGain(currentOffset, currentGain);
+  cri->SetColorOffsetGain(currentOffset, currentGain * gainDelta);
+  std::cout << "Adjusted camera ID " << cri->m_ID << " color gain to : " << currentGain * gainDelta << std::endl;
 }
 
 /// @brief Callback handler to save the camera configuration to a file.
@@ -614,7 +635,7 @@ static void usage(std::string name)
   std::cerr << "  --serial <serial number>            The serial number of the server to connect to (default -1 means any)." << std::endl;
   std::cerr << "  --maxCameras <int>                  The maximum number of cameras to render (default 0 means all)." << std::endl;
   std::cerr << "  --frameStride <frame stride>        Read one out of every this many frames. Set to 1 for every frame." << std::endl;
-  std::cerr << "  --toneMap <tone map>                The tone map to use.  Options are: linear blackbody bluesky 10bit" << std::endl;
+  std::cerr << "  --toneMap <tone map>                The tone map to use.  Options are: linear blackbody bluesky 10bit balcony" << std::endl;
   std::cerr << "  --NUCInfo <directory> <tempType>    Add the directory containing the NUC information and the temperature type to use (sensor or core)." << std::endl;
   std::cerr << "  --addDisplay                        Add another display with defaults that can be overridden" << std::endl;
   std::cerr << "  --replay <stream id>                ID of the stream to replay (1+)." << std::endl;
@@ -768,6 +789,8 @@ int main(int argc, char** argv)
         displayInfos.back().toneMap = ToneMapBlackbody();
       } else if (std::string("bluesky") == argv[i]) {
         displayInfos.back().toneMap = ToneMapBlueSky();
+      } else if (std::string("balcony") == argv[i]) {
+        displayInfos.back().toneMap = ToneMap({{0.0, 0.0,0.0,0.0}, {0.5, 0.0,0.0,0.0},{1.0, 1.0,1.0,1.0}});
       } else {
         std::cerr << "Unknown tone map: " << argv[i] << std::endl;
         return 2;
@@ -1270,6 +1293,7 @@ int main(int argc, char** argv)
     handlers->IncrementActiveCamera = IncrementActiveCamera;
     handlers->DecrementActiveCamera = DecrementActiveCamera;
     handlers->AdjustActiveCameraOffset = AdjustActiveCameraOffset;
+    handlers->AdjustActiveCameraGain = AdjustActiveCameraGain;
     handlers->SaveCameraConfig = SaveCameraConfig;
     g_callbackHandlerData.cameraConfigFileName = configPath.string();
 

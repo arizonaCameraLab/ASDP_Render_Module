@@ -50,8 +50,12 @@ namespace asdp {
       void (*DecrementActiveCamera)(void* userData) = nullptr;
 
       /// Adjust the color offset calibration values for the active camera.
-      /// @param offsetDelta The amount to adjust the offset by, positive or negative.
+      /// @param offsetDelta The amount to adjust the offset by, adding it (may be positive or negative).
       void (*AdjustActiveCameraOffset)(int offsetDelta, void* userData) = nullptr;
+
+      /// Adjust the color gain calibration values for the active camera.
+      /// @param gainDelta The amount to adjust the gain by, multiplying by the value (may be < or > 1).
+      void (*AdjustActiveCameraGain)(float gainDelta, void* userData) = nullptr;
 
       /// Save the current camera configuration settings to a file.
       void (*SaveCameraConfig)(const std::string& fileName, void* userData) = nullptr;
