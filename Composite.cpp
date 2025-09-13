@@ -872,7 +872,8 @@ R"(#version 330 core
 
 static const GLchar* camerasComputeSumShader =
 R"( #version 430 core
-    #extension GL_EXT_shader_atomic_float : enable
+    #extension GL_NV_shader_atomic_float : enable
+
     layout(local_size_x = 16, local_size_y = 16) in;
 
     // Input texture
