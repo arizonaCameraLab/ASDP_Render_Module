@@ -1078,14 +1078,15 @@ bool CompositeCameras::SetupRendering()
 
   //======================================
   // Handle objects needed by flicker compensation
-  /// @todo Make this only happen if flicker compensation is enabled.
-  //if (m_flickerCompensationFactor) {
-  if (true) {
+  if (m_flickerCompensationFactor) {
     float zero = 0.0f;
-    glGenBuffers(1, &m_sumReturnBuffer);
-    glBindBuffer(GL_SHADER_STORAGE_BUFFER, m_sumReturnBuffer);
-    glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(float), &zero, GL_DYNAMIC_COPY);
-    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, m_sumReturnBuffer);
+    m_sumReturnBuffers.resize(m_cameraRenderInfos.size());
+    for (size_t i = 0; i < m_cameraRenderInfos.size(); i++) {
+      glGenBuffers(1, &m_sumReturnBuffers[i]);
+      glBindBuffer(GL_SHADER_STORAGE_BUFFER, m_sumReturnBuffers[i]);
+      glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(float), &zero, GL_DYNAMIC_COPY);
+      glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, m_sumReturnBuffers[i]);
+    }
 
     GLuint sumShaderId = glCreateShader(GL_COMPUTE_SHADER);
 
@@ -1133,7 +1134,7 @@ CompositeCameras::~CompositeCameras()
 
   if (m_flickerCompensationFactor) {
     glDeleteProgram(m_sumProgramId);
-    glDeleteBuffers(1, &m_sumReturnBuffer);
+    glDeleteBuffers(m_cameraRenderInfos.size(), m_sumReturnBuffers.data());
   }
 }
 
@@ -1245,7 +1246,54 @@ void CompositeCameras::SetupRenderFrame(asdp::Time scanOutTime)
 
   if (m_flickerCompensationFactor) {
     // Compute the mean intensity of each camera's most recent image using a compute shader.
-    /// @todo
+    // Run all of the compute shaders in parallel, one for each camera.  Then do a memory sync.
+    // Then read back the results and compute the unfiltered mean values.
+    glUseProgram(m_sumProgramId);
+    for (size_t i = 0; i < m_cameraRenderInfos.size(); i++) {
+      // Reset the return buffer to zero.
+      float zero = 0.0f;
+      glBindBuffer(GL_SHADER_STORAGE_BUFFER, m_sumReturnBuffers[i]);
+      glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, sizeof(float), &zero);
+      glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, m_sumReturnBuffers[i]);
+      // Bind the texture for this camera.
+      glActiveTexture(GL_TEXTURE0);
+      GLuint texture = 0;
+      if (m_images[i] != nullptr) {
+        texture = m_images[i]->texture;
+      }
+      glBindTexture(GL_TEXTURE_2D, texture);
+      glUniform1i(0, 0); // inputTex is at binding 0
+      // Set the texture size parameters.
+      uint16_t texWidth = m_cameraRenderInfos[i]->m_resolutionPixels[0];
+      uint16_t texHeight = m_cameraRenderInfos[i]->m_resolutionPixels[1];
+      glUniform1i(m_texWidthId, texWidth);
+      glUniform1i(m_texHeightId, texHeight);
+      // Run the compute shader.  We will use 16x16 work groups.
+      size_t groupsX = (texWidth + 15) / 16;
+      size_t groupsY = (texHeight + 15) / 16;
+      glDispatchCompute(groupsX, groupsY, 1);
+    }
+    // Force all of the compute shaders to finish and ensure that the results are in the buffers.
+    glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+    // Read back the results and compute the unfiltered means.
+    m_unfilteredMeans.resize(m_cameraRenderInfos.size());
+    for (size_t i = 0; i < m_cameraRenderInfos.size(); i++) {
+      glBindBuffer(GL_SHADER_STORAGE_BUFFER, m_sumReturnBuffers[i]);
+      float* ptr = (float*)glMapBuffer(GL_SHADER_STORAGE_BUFFER, GL_READ_ONLY);
+      if (ptr != nullptr) {
+        // Compute the mean from the sum.
+        uint32_t numPixels = m_cameraRenderInfos[i]->m_resolutionPixels[0] * m_cameraRenderInfos[i]->m_resolutionPixels[1];
+        if (numPixels > 0) {
+          m_unfilteredMeans[i] = *ptr / numPixels;
+        } else {
+          m_unfilteredMeans[i] = 0.0f;
+        }
+        glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
+      } else {
+        std::cerr << "Composite::SetupRenderFrame(): Could not map compute shader return buffer" << std::endl;
+        m_unfilteredMeans[i] = 0.0f;
+      }
+    }
 
     // Set the filtered means based on the unfiltered means and the compensation factor.
     if (m_filteredMeans.size() == 0) {

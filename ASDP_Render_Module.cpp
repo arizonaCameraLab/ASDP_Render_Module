@@ -632,6 +632,7 @@ static void usage(std::string name)
   std::cerr << "  --depthThreshold <float>            Depth threshold in squared pixel value differences (default 10.0)." << std::endl;
   std::cerr << "  --staticDepth <double>              The static depth to use for cameras without depth information (default 900.0)." << std::endl;
   std::cerr << "  --cameraFPS <frames per second>     The frames per second to run the camera at (default is maximum rate)." << std::endl;
+  std::cerr << "  --flickerFactor <float>             The flicker factor to apply between frames (default 0.0, range 0-1)." << std::endl;
   std::cerr << "  --enableCP                          Enable the cylindrical projection." << std::endl; // Added by Sang Yoon
   std::cerr << "  --enableOD                          Enable the display interface of overview plus detail view." << std::endl; // Added by Sang Yoon
   std::cerr << "  --openXR                            Use OpenXR for rendering. If set, overrides the following and sets lineBatchesPerGPUSend to 10000." << std::endl;
@@ -675,6 +676,7 @@ int main(int argc, char** argv)
   float depthThreshold = 10.0f;   ///< Depth threshold in squared pixel value differences.
   double staticDepth = 900.0;     ///< The static depth to use for cameras without depth information.
   std::vector<NUCInfo> nucInfos;  ///< All instances of NUC information for all cameras.
+  double flickerFactor = 0.0;     ///< The flicker factor to apply between frames, range 0-1.
   //======================================
   // Added by Sang Yoon to add a command line argument to enable the display interface of overview plus detail view.
   bool enableOD = false;          ///< The flag to enable/disable the display interface of overview plus detail view.
@@ -860,6 +862,17 @@ int main(int argc, char** argv)
         return 2;
       }
       cameraFPS = std::stod(argv[i]);
+    } else if (std::string("--flickerFactor") == argv[i]) {
+      if (++i >= argc) {
+        usage(argv[0]);
+        return 2;
+      }
+      flickerFactor = std::stod(argv[i]);
+      if (flickerFactor < 0.0 || flickerFactor > 1.0) {
+        std::cerr << "Flicker factor must be between 0.0 and 1.0" << std::endl;
+        usage(argv[0]);
+        return 2;
+      }
     } else if (std::string("--help") == argv[i]) {
       usage(argv[0]);
       return 0;
@@ -972,6 +985,9 @@ int main(int argc, char** argv)
 
     if (servers.empty()) {
       std::cerr << "No servers found; be sure to run the server first." << std::endl;
+      if (serialNumber >= 0) {
+        std::cerr << "  (No server with serial number " << serialNumber << " was found.)" << std::endl;
+      }
       return 7;
     }
     std::cout << "Servers found: " << servers.size() << std::endl;
@@ -1338,7 +1354,7 @@ int main(int argc, char** argv)
         g_visibleCameras, toneMapTexture, poseAdjuster, Time(1/cameraFPS),
         renderOffsetMicroseconds,
         Time(0, 1000000 / displayInfos[i].fps), (i == 0) ? (&g_timingInfo) : nullptr,
-        rangeEstimator, staticDepth);
+        rangeEstimator, staticDepth, flickerFactor);
 
       //======================================
       // Added by Sang Yoon to just pass the status of enabling the cylindrical projection (true or false) from DisplayInfos[i] to composite.

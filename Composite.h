@@ -366,13 +366,13 @@ namespace asdp {
 
       //======================================
       // Section dealing with flicker compensation.
-      double m_flickerCompensationFactor; ///< A factor to use to reduce flicker in the image.
-      GLuint m_sumReturnBuffer;           ///< Buffer to return the sum of pixel values.
-      GLuint m_sumProgramId;              ///< The OpenGL program ID for summing pixel values.
-      GLuint m_texWidthId;                ///< The Uniform ID of the texture width.
-      GLuint m_texHeightId;               ///< The Uniform ID of the texture height.
-      std::vector<float> m_filteredMeans; ///< The filtered means for each camera.
-      std::vector<float> m_unfilteredMeans; ///< The unfiltered means for each camera.
+      double m_flickerCompensationFactor;     ///< A factor to use to reduce flicker in the image.
+      std::vector<GLuint> m_sumReturnBuffers; ///< Per-camera buffer to return the sum of pixel values.
+      GLuint m_sumProgramId;                  ///< The OpenGL program ID for summing pixel values.
+      GLuint m_texWidthId;                    ///< The Uniform ID of the texture width.
+      GLuint m_texHeightId;                   ///< The Uniform ID of the texture height.
+      std::vector<float> m_filteredMeans;     ///< The filtered means for each camera.
+      std::vector<float> m_unfilteredMeans;   ///< The unfiltered means for each camera.
 
     };
 
