@@ -51,7 +51,7 @@ using namespace asdp;
 using namespace asdp::render;
 using json = nlohmann::json;
 
-static std::string VERSION = "3.16.0";
+static std::string VERSION = "3.17.0";
 
 /// @brief The path to the configuration file. Defined in the CMakeLists file.
 std::filesystem::path g_dirPath = CONFIG_FILE_PATH;
@@ -1469,10 +1469,14 @@ int main(int argc, char** argv)
     }
 
     // Make the queues to pass the NUC data tables to the receive-data threads, one for each camera -- they
-    // will be nullptr if there is no NUC information for that camera.
+    // will be nullptr if there is no NUC information for that camera.  If we don't have any NUC information at all,
+    // the vector will contain nullptr for each camera.
     std::vector< std::shared_ptr< SpinFreeQueue< NUCDataPair > > > nucTableQueues;
     for (size_t i = 0; i < cameras.size(); i++) {
-      std::shared_ptr< SpinFreeQueue< NUCDataPair > > nucTableQueue = std::make_shared< SpinFreeQueue< NUCDataPair > >();
+      std::shared_ptr< SpinFreeQueue< NUCDataPair > > nucTableQueue;
+      if (nucInfos.size()) {
+        nucTableQueue = std::make_shared< SpinFreeQueue< NUCDataPair > >();
+      }
       nucTableQueues.push_back(nucTableQueue);
     }
 
