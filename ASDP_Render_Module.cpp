@@ -51,7 +51,7 @@ using namespace asdp;
 using namespace asdp::render;
 using json = nlohmann::json;
 
-static std::string VERSION = "3.17.0";
+static std::string VERSION = "3.18.0";
 
 /// @brief The path to the configuration file. Defined in the CMakeLists file.
 std::filesystem::path g_dirPath = CONFIG_FILE_PATH;
@@ -634,6 +634,7 @@ static void usage(std::string name)
   std::cerr << "  --version                           Print the version number and quit." << std::endl;
   std::cerr << "  --serial <serial number>            The serial number of the server to connect to (default -1 means any)." << std::endl;
   std::cerr << "  --maxCameras <int>                  The maximum number of cameras to render (default 0 means all)." << std::endl;
+  std::cerr << "  --skipCamera <camera ID>            Skip rendering the specified camera ID, can be used multiple times." << std::endl;
   std::cerr << "  --frameStride <frame stride>        Read one out of every this many frames. Set to 1 for every frame." << std::endl;
   std::cerr << "  --toneMap <tone map>                The tone map to use.  Options are: linear blackbody bluesky 10bit balcony" << std::endl;
   std::cerr << "  --NUCInfo <directory> <tempType>    Add the directory containing the NUC information and the temperature type to use (sensor or core)." << std::endl;
@@ -669,6 +670,7 @@ int main(int argc, char** argv)
 {
   int serialNumber = -1;        ///< The serial number of the server to connect to, -1 means any.
   int maxCameras = 0;           ///< The maximum number of cameras to render, 0 means all.
+  std::set<int> skipCameras;    ///< The set of camera IDs to skip rendering.
   uint32_t frameStride = 1;     ///< Read one out of every this many frames. Set to 1 for every frame.
   std::vector<DisplayInfo> displayInfos = { DisplayInfo() }; ///< Information for each display that is to be created.
   std::string ip_address;       ///< The IP address to listen on.
@@ -901,12 +903,21 @@ int main(int argc, char** argv)
     else if (std::string("--enableOD") == argv[i]) {
         enableOD = true;
     //======================================
-    } else if (std::string("--maxCameras") == argv[i]) {
+    }
+    else if (std::string("--maxCameras") == argv[i]) {
       if (++i >= argc) {
         usage(argv[0]);
         return 2;
       }
       maxCameras = std::stoi(argv[i]);
+    }
+    else if (std::string("--skipCamera") == argv[i]) {
+      if (++i >= argc) {
+        std::cerr << "--skipCamera requires a camera ID" << std::endl;
+        usage(argv[0]);
+        return 2;
+      }
+      skipCameras.insert(std::stoi(argv[i]));
     }
     else if (std::string("--serial") == argv[i]) {
       if (++i >= argc) {
@@ -1083,13 +1094,40 @@ int main(int argc, char** argv)
     }
     std::cout << "Read configuration from " << configPath << std::endl;
 
+    // Remove any cameras that we are to skip from cameras, cameraInfos and NUCInfos.
+    std::vector<CameraRenderInfo> filteredCameraRenderInfos;
+    std::vector<CameraInfo> filteredCameras;
+    for (size_t i = 0; i < cameras.size(); i++) {
+      if (skipCameras.find(i+1) == skipCameras.end()) {
+        filteredCameras.push_back(cameras[i]);
+      } else {
+        std::cout << "Skipping camera ID " << i+1 << std::endl;
+      }
+      if (skipCameras.find(rawCameraRenderInfos[i].m_ID) == skipCameras.end()) {
+        filteredCameraRenderInfos.push_back(rawCameraRenderInfos[i]);
+      }
+      for (auto& nucInfo : nucInfos) {
+        // Delete the camera NUC tables if we are skipping this camera.
+        if (skipCameras.find(i+1) != skipCameras.end()) {
+          nucInfo.CameraNUCTables.erase(i+1);
+          std::cout << "  Skipping NUC tables for camera ID " << i+1 << std::endl;
+        }
+      }
+    }
+    cameras = filteredCameras;
+    std::cout << "After skipping, " << cameras.size() << " cameras remain." << std::endl;
+    if (cameras.size() == 0) {
+      std::cerr << "No cameras remain after skipping." << std::endl;
+      return 15;
+    }
+
     // If there are more cameras than the maximum, limit the number of cameras to the maximum.
     if (maxCameras > 0 && cameras.size() > maxCameras) {
       std::cout << "Limiting number of cameras to " << maxCameras << std::endl;
       cameras.resize(maxCameras);
       // Cannot use resize() here because there is not a default constructor for CameraInfo.
-      while (rawCameraRenderInfos.size() > maxCameras) {
-        rawCameraRenderInfos.pop_back();
+      while (filteredCameraRenderInfos.size() > maxCameras) {
+        filteredCameraRenderInfos.pop_back();
       }
     }
 
@@ -1123,7 +1161,7 @@ int main(int argc, char** argv)
     // queue to each.
     std::vector< std::shared_ptr<asdp::render::CameraRenderInfo> > cameraRenderInfos;
     try {
-      for (const auto& info : rawCameraRenderInfos) {
+      for (const auto& info : filteredCameraRenderInfos) {
 
         //==================================================================================================
         // Fill in three textures for this camera, all gray and at time zero.
@@ -1413,8 +1451,15 @@ int main(int argc, char** argv)
         uint32_t cameraID = nucCam.first;
         int nucWidth = nucCam.second.imageWidth;
         int nucHeight = nucCam.second.imageHeight;
-        int cameraIndex = cameraID - 1;
-        if (cameraIndex < 0 || cameraIndex >= static_cast<int>(cameras.size())) {
+        // Find the index of the camera whose CameraRenderInfo has this ID.
+        int cameraIndex = -1;
+        for (int i = 0; i < static_cast<int>(cameraRenderInfos.size()); i++) {
+          if (cameraRenderInfos[i]->m_ID == cameraID) {
+            cameraIndex = i;
+            break;
+          }
+        }
+        if (cameraIndex < 0) {
           std::cerr << "Error: NUC information for camera ID " << cameraID << " does not match any camera in the configuration file." << std::endl;
           return 100;
         }
@@ -1488,9 +1533,16 @@ int main(int argc, char** argv)
       const NUCInfo& nucInfo = nucInfos[0];
       for (const auto& it : nucInfo.CameraNUCTables) {
         int cameraID = it.first;
-        int cameraIndex = cameraID - 1;
+        // Find the index of the camera whose CameraRenderInfo has this ID.
+        int cameraIndex = -1;
+        for (int i = 0; i < static_cast<int>(cameraRenderInfos.size()); i++) {
+          if (cameraRenderInfos[i]->m_ID == cameraID) {
+            cameraIndex = i;
+            break;
+          }
+        }
         const NucTables& nucTable = it.second;
-        if (cameraIndex < 0 || cameraIndex >= static_cast<int>(cameras.size())) {
+        if (cameraIndex < 0) {
           std::cerr << "Error: NUC information for camera ID " << cameraID << " does not match any camera in the configuration file." << std::endl;
           return 102;
         }
