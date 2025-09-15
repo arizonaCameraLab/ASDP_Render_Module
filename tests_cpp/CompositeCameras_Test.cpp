@@ -175,8 +175,8 @@ int main()
     std::make_shared<asdp::render::RangeEstimatorFixed>(0.0, 1.0);
   // Create a CompositeCameras object to render once the window is open and the context is active.
   std::shared_ptr<asdp::render::PoseAdjuster> poseAdjuster = std::make_shared<asdp::render::PoseAdjuster>();
-  asdp::render::CompositeCameras composite(cameras, toneMapTexture, poseAdjuster, asdp::Time(),
-    0, asdp::Time(), nullptr, rangeEstimator);
+  asdp::render::CompositeCameras composite(cameras, toneMapTexture, poseAdjuster, asdp::Time(0,17000),
+    0, asdp::Time(0,17000), nullptr, rangeEstimator);
 
   // Loop until the user closes the window.
   std::cout << "You should see a row of three distorted dark boxes horizontally across" << std::endl;
