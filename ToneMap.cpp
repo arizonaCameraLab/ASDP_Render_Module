@@ -93,7 +93,7 @@ ToneMapBlackbody::ToneMapBlackbody(size_t numEntries)
 }
 
 ToneMapBlueSky::ToneMapBlueSky(size_t numEntries)
-  : ToneMap({ {0, 0, 0, 1}, {0.5, 0, 0, 0}, {0.667, 0.3, 0, 0}, {0.833, 0.6, 0.5, 0}, {1, 1, 1, 1} }, numEntries)
+  : ToneMap({ {0, 0, 0, 1}, {0.5, 0, 0, 0}, {0.667, 1.0, 0, 0}, {0.833, 1.0, 1.0, 0}, {1, 1, 1, 1} }, numEntries)
 {
 }
 
