@@ -459,7 +459,11 @@ described in Appendix A.  The workflow is as follows:
       file name. (If using a cool IR target, use the `--invert` command-line
       option to invert the images before testing and use a threshold that is 65535 - threshold.)
       This will produce a JSON configuraion file with the estimated extrinsics and
-      distortion parameters updated based on the image data.
+      distortion parameters updated based on the image data. When using automatic edge brightness
+      adjustment, add the `--writeMap` command-line option to write out the map from ideal to distorted
+      locations in each camera for later examination.  This file can be copied into the Render Module's
+      *ASDP_Render_Module_Configs* directory named as `#.map.csv` (where # is the camera serial number) for
+      use during rendering.
 - **Use distortion:**
     - Copy the optimized camera configuration file to the Render Module's configuration directory
       as #.json (where # is the camera serial number).
@@ -480,6 +484,10 @@ either on a per-camera basis or on a per-pixel basis.
       and the '=' key increases it by 1 count.  The active camera is changed with the ']' and '[' keys.
       The 's' key saves the adjusted configuration to *adjusted_camera_config.json* in the current directory
       so that it can be copied into the Render Module's configuration directory as #.json for later re-use.
+    - **Semi-automatic:** The 'g' key can be used to automatically match the gain and offset between all cameras
+      in the Render Module if the `#.map.csv` distortion file is available in the configuration directory for
+      camera #. This uses the overlapping regions between cameras to estimate the gain and offset of each and
+      then adjusts them to minimize the differences. The 'o' key can be used to only adjust the offsets.
     - **Automatic:**
         - The **Collect_Calibration_Data** program can be used with a single-target configuration file
           like those used for geometric calibration to collect images from all cameras.  Both a high-temperature
