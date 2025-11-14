@@ -268,12 +268,22 @@ static std::vector< std::array<uint16_t, 2> > GetRawPixelValues(
     return {};
   }
 
-  // Read back both images from texture memory to CPU memory.
+  // Read back both images from texture memory to CPU memory.  These have already been adjusted by
+  // the offset and gain on the way to being written to the texture.
   std::vector<uint16_t> imagePixels[2];
+  GLenum ret;
   for (int i = 0; i < 2; i++) {
     imagePixels[i].resize(widths[i] * heights[i]);
     glBindTexture(GL_TEXTURE_2D, imageData[i]->texture);
-    glReadPixels(0, 0, widths[i], heights[i], GL_RED, GL_UNSIGNED_SHORT, imagePixels[i].data());
+    glGetTexImage(GL_TEXTURE_2D, 0, GL_RED, GL_UNSIGNED_SHORT, imagePixels[i].data());
+    ret = glGetError();
+    if (ret != GL_NO_ERROR) {
+      std::cerr << "GetRawPixelValues(): Error: glGetTexImage() failed for image " << i
+        << " with error code " << ret << std::endl;
+      glBindTexture(GL_TEXTURE_2D, 0);
+      g_pointCorrespondenceDisplay->ReturnContext();
+      return {};
+    }
   }
   glBindTexture(GL_TEXTURE_2D, 0);
 
@@ -323,17 +333,19 @@ static float ComputeNewColorOffset(
   std::array<uint16_t, 2> widths= { cri1->m_resolutionPixels[0], cri2->m_resolutionPixels[0] };
   std::array<uint16_t, 2> heights = { cri1->m_resolutionPixels[1], cri2->m_resolutionPixels[1] };
   std::array<std::shared_ptr<ImageData>, 2> imageDatas = {imageData1, imageData2 };
-  static std::vector< std::array<uint16_t, 2> > rawPixels = GetRawPixelValues(correspondences,
+  std::vector< std::array<uint16_t, 2> > rawPixels = GetRawPixelValues(correspondences,
     widths, heights, imageDatas);
 
   // Find the average pixel value for each camera after adjusting for gain and offset.
+  // Because the offset and gain are applied on the way to the texture, we don't adjust for that
+  // in the readback.  We do need to adjust the offset by the gain that has already been set.
   float offset1, gain1, offset2, gain2;
   cri1->GetColorOffsetGain(offset1, gain1);
   cri2->GetColorOffsetGain(offset2, gain2);
   double sum1 = 0.0, sum2 = 0.0;
   for (const auto& pixelPair : rawPixels) {
-    sum1 += (pixelPair[0] + offset1) * gain1;
-    sum2 += (pixelPair[1] + offset2) * gain2;
+    sum1 += pixelPair[0];
+    sum2 += pixelPair[1];
   }
   float avg1 = sum1 / rawPixels.size();
   float avg2 = sum2 / rawPixels.size();
@@ -343,7 +355,7 @@ static float ComputeNewColorOffset(
   // second camera's offset is what is added to the raw pixel values before gain is applied, so we need to
   // subtract the needed delta divided by the gain from the current offset.
   float delta = avg2 - avg1;
-  float newOffset2 = offset2 - (delta / gain2);
+  float newOffset2 = offset2  (delta / gain2);
   std::cout << "XXX delta = " << delta << ", avg1 = " << avg1 << ", avg2 = " << avg2
     << ", oldOffset2 = " << offset2 << ", newOffset2 = " << newOffset2 << std::endl;
 
@@ -367,7 +379,6 @@ static void AutoUpdateColorOffsets(void* /* unused */)
 
   // Update the color offsets on the second of each camera pair based on the first.  Pass the appropriate
   // image pair along with the image infos.
-  std::cout << "XXX Auto-updating color offsets for " << g_cameraPairs.size() << " camera pairs..." << std::endl;
   for (const auto& cameraPair : g_cameraPairs) {
     std::vector<PointCorrespondences::PointPair> correspondences =
       g_pointCorrespondences->CorrespondencesForCameraPair(cameraPair);
