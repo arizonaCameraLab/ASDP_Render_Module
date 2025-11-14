@@ -28,6 +28,7 @@ repository tell how to install it.
 The following packages are required (apt install) to build on Linux:
 - libglfw3-dev
 - libglew-dev
+- nvidia-cuda-toolkit
 
 If you want to build the Storage Manager application, it also requires Qt5:
 - qtbase5-dev
