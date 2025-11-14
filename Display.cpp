@@ -253,6 +253,12 @@ public:
   // Whether or not the 's' key was pressed during the last loop, used to save camera configuration.
   bool m_sPressed = false;
 
+  /// Whether or not the 'g' key was pressed during the last loop, used to toggle auto-calibration.
+  bool m_gPressed = false;
+
+  /// Whether or not the 'o' key was pressed during the last loop, used to toggle overview plus detail view.
+  bool m_oPressed = false;
+
   /// Index of the joystick to use, or -1 if no joystick is to be used.
   int m_glfwJoystickIndex = -1;
 
@@ -787,6 +793,22 @@ void DisplayWindow::HandleKeyboard()
       m_eventHandlers->AdjustActiveCameraGain(incrementGain, m_userData);
     }
   }
+
+  bool gPressed = (glfwGetKey(Display::m_impl->m_window, GLFW_KEY_G) == GLFW_PRESS);
+  if (gPressed && !m_impl->m_gPressed) {
+    if (m_eventHandlers && m_eventHandlers->AutoUpdateColorOffsetsAndGains) {
+      m_eventHandlers->AutoUpdateColorOffsetsAndGains(m_userData);
+    }
+  }
+  m_impl->m_gPressed = gPressed;
+
+  bool oPressed = (glfwGetKey(Display::m_impl->m_window, GLFW_KEY_O) == GLFW_PRESS);
+  if (oPressed && !m_impl->m_oPressed) {
+    if (m_eventHandlers && m_eventHandlers->AutoUpdateColorOffsets) {
+      m_eventHandlers->AutoUpdateColorOffsets(m_userData);
+    }
+  }
+  m_impl->m_oPressed = oPressed;
 
   // If the 's' key is pressed, send an event asking to save the current configuration file.
   bool sPressed = (glfwGetKey(Display::m_impl->m_window, GLFW_KEY_S) == GLFW_PRESS);

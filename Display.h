@@ -57,6 +57,12 @@ namespace asdp {
       /// @param gainDelta The amount to adjust the gain by, multiplying by the value (may be < or > 1).
       void (*AdjustActiveCameraGain)(float gainDelta, void* userData) = nullptr;
 
+      /// Automatically update the color offsets for all cameras based on point correspondences.
+      void (*AutoUpdateColorOffsets)(void* userData) = nullptr;
+
+      /// Automatically update the color offsets and gains for all cameras based on point correspondences.
+      void (*AutoUpdateColorOffsetsAndGains)(void* userData) = nullptr;
+
       /// Save the current camera configuration settings to a file.
       void (*SaveCameraConfig)(const std::string& fileName, void* userData) = nullptr;
     };
