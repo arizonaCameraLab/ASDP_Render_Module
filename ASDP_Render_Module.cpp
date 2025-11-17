@@ -270,9 +270,9 @@ static std::vector< std::array<uint16_t, 2> > GetRawPixelValues(
 
   // Read back both images from texture memory to CPU memory.  These have already been adjusted by
   // the offset and gain on the way to being written to the texture.
-  std::vector<uint16_t> imagePixels[2];
+  std::array<std::vector<uint16_t>, imageData.size()> imagePixels;
   GLenum ret;
-  for (int i = 0; i < 2; i++) {
+  for (int i = 0; i < imagePixels.size(); i++) {
     imagePixels[i].resize(widths[i] * heights[i]);
     glBindTexture(GL_TEXTURE_2D, imageData[i]->texture);
     glGetTexImage(GL_TEXTURE_2D, 0, GL_RED, GL_UNSIGNED_SHORT, imagePixels[i].data());
@@ -295,10 +295,10 @@ static std::vector< std::array<uint16_t, 2> > GetRawPixelValues(
 
   // Construct the vector of pixel value pairs, rounding each pixel location to the nearest pixel
   // and clamping to ensure we don't read out of bounds.
-  std::vector< std::array<uint16_t, 2> > rawPixels;
+  std::vector< std::array<uint16_t, imageData.size()> > rawPixels;
   for (const auto& pair : correspondences) {
-    std::array<uint16_t, 2> pixelValues;
-    for (int i = 0; i < 2; i++) {
+    std::array<uint16_t, imageData.size()> pixelValues;
+    for (int i = 0; i < imageData.size(); i++) {
       // Compute the pixel location, rounding to nearest integer and clamping to image bounds.
       int x = static_cast<int>(std::round(pair[i][0]));
       int y = static_cast<int>(std::round(pair[i][1]));
@@ -344,8 +344,8 @@ static float ComputeNewColorOffset(
   cri2->GetColorOffsetGain(offset2, gain2);
   double sum1 = 0.0, sum2 = 0.0;
   for (const auto& pixelPair : rawPixels) {
-    sum1 += pixelPair[0];
-    sum2 += pixelPair[1];
+    sum1 += (pixelPair[0] + offset1) * gain1;
+    sum2 += (pixelPair[1] + offset2) * gain2;
   }
   float avg1 = sum1 / rawPixels.size();
   float avg2 = sum2 / rawPixels.size();
@@ -355,7 +355,7 @@ static float ComputeNewColorOffset(
   // second camera's offset is what is added to the raw pixel values before gain is applied, so we need to
   // subtract the needed delta divided by the gain from the current offset.
   float delta = avg2 - avg1;
-  float newOffset2 = offset2  (delta / gain2);
+  float newOffset2 = offset2 - (delta / gain2);
   std::cout << "XXX delta = " << delta << ", avg1 = " << avg1 << ", avg2 = " << avg2
     << ", oldOffset2 = " << offset2 << ", newOffset2 = " << newOffset2 << std::endl;
 
@@ -378,6 +378,7 @@ static void AutoUpdateColorOffsets(void* /* unused */)
   }
 
   // Update the color offsets on the second of each camera pair based on the first.  Pass the appropriate
+  // image pair along with the image infos.
   // image pair along with the image infos.
   for (const auto& cameraPair : g_cameraPairs) {
     std::vector<PointCorrespondences::PointPair> correspondences =

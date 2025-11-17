@@ -29,7 +29,7 @@ int main(int argc, char** argv)
     // Try each pair of camera IDs from 1 to 21 against each other one and print any non-empty results.
     for (uint32_t camID1 = 1; camID1 <= 21; camID1++) {
       for (uint32_t camID2 = camID1 + 1; camID2 <= 21; camID2++) {
-        std::array < uint32_t, 2> camIDPair = { camID1, camID2 };
+        std::array<uint32_t, 2> camIDPair = { camID1, camID2 };
         std::vector<asdp::render::PointCorrespondences::PointPair> correspondences =
           pointCorrs.CorrespondencesForCameraPair(camIDPair);
         if (!correspondences.empty()) {
