@@ -12,6 +12,7 @@
 #include <ASDP_Core_API.h>
 #include <Display.h>
 #include <ToneMap.h>
+#include <ImageStatistics.h>
 #include <CUDABufferPool.h>
 #include <cuda_runtime.h>
 
@@ -103,6 +104,9 @@ private:
   std::vector<uint32_t> m_streams;
   std::vector<uint32_t> m_lastStreams;
   std::string m_streamInfo;
+
+  // Image statistics.
+  std::shared_ptr<asdp::render::imageStatistics::MeanStdGroup> m_meanStdGroup;
 
   // Variables and functions for displaying video from a camera.
   std::shared_ptr<Display> m_display;

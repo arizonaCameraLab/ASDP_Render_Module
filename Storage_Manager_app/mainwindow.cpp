@@ -29,7 +29,7 @@
 #include <CPUDataToTextureHandler.h>
 
 // Define the version number
-const QString VERSION_NUMBER = "1.8.0";
+const QString VERSION_NUMBER = "1.9.0";
 
 static std::vector<std::string> getIPAddresses()
 {
@@ -706,6 +706,15 @@ void MainWindow::ViewCamera(const QString& cameraID)
   // Create a PoseAdjuster that does not adjust based on helicopter motion and disables latency compensation.
   PoseAdjusterCoordinates poseAdjusterCoordinates = INITIAL_ORIENTATION;
   std::shared_ptr<PoseAdjuster> poseAdjuster = std::make_shared<PoseAdjuster>(2000, poseAdjusterCoordinates, true);
+
+  // If we are using an IR camera, create a range estimator based on its mean and standard deviation.
+  if (m_useIRCamera) {
+    // Make a display object that shares textures with the others.
+    std::shared_ptr<Display> display = std::make_shared<DisplayTexture>(m_displayTexture.get());
+    m_meanStdGroup = std::make_shared<asdp::render::imageStatistics::MeanStdGroup>(m_visibleCameras,
+      display, m_cameras[0].minTriggerPeriod);
+    rangeEstimator = std::make_shared<RangeEstimatorStdRanges>(m_meanStdGroup, 1.5, 1.5);
+  }
 
   // Construct a composite object to render the visible cameras.
   std::shared_ptr<CompositeCameras> composite = std::make_shared<CompositeCameras>(
