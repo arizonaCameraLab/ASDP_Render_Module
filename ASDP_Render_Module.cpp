@@ -294,7 +294,7 @@ static std::vector< std::array<uint16_t, 2> > GetRawPixelValues(
   }
 
   // Construct the vector of pixel value pairs, rounding each pixel location to the nearest pixel
-  // and clamping to ensure we don't read out of bounds.
+  // location and clamping to ensure we don't read out of bounds.
   std::vector< std::array<uint16_t, imageData.size()> > rawPixels;
   for (const auto& pair : correspondences) {
     std::array<uint16_t, imageData.size()> pixelValues;
@@ -302,14 +302,14 @@ static std::vector< std::array<uint16_t, 2> > GetRawPixelValues(
       // Compute the pixel location, rounding to nearest integer and clamping to image bounds.
       int x = static_cast<int>(std::round(pair[i][0]));
       int y = static_cast<int>(std::round(pair[i][1]));
-      if (x < 0) x = 0;
-      if (x >= widths[i]) x = widths[i] - 1;
-      if (y < 0) y = 0;
-      if (y >= heights[i]) y = heights[i] - 1;
+      if (x < 0) { x = 0; }
+      if (x >= widths[i]) { x = widths[i] - 1; }
+      if (y < 0) { y = 0; }
+      if (y >= heights[i]) { y = heights[i] - 1; }
       // Read the pixel value.
       pixelValues[i] = imagePixels[i][y * widths[i] + x];
     }
-    rawPixels.push_back(pixelValues);
+    rawPixels.emplace_back(pixelValues);
   }
 
   return rawPixels;
@@ -389,13 +389,29 @@ static void AutoUpdateColorOffsets(void* /* unused */)
       continue;
     }
 
+    // Find the indices of the entries in g_visibleCameras whose camIS fields match the two cameras in the pair.
+    size_t index1 = SIZE_MAX, index2 = SIZE_MAX;
+    for (size_t i = 0; i < g_visibleCameras.size(); i++) {
+      if (g_visibleCameras[i]->m_ID == cameraPair[0]) {
+        index1 = i;
+      }
+      if (g_visibleCameras[i]->m_ID == cameraPair[1]) {
+        index2 = i;
+      }
+    }
+    if (index1 == SIZE_MAX || index2 == SIZE_MAX) {
+      std::cerr << "Warning: One or both cameras not found for camera pair: ("
+        << cameraPair[0] << ", " << cameraPair[1] << ")" << std::endl;
+      continue;
+    }
+
     // Compute the offset adjustment needed.
     float newOffset = ComputeNewColorOffset(correspondences,
-      imageSet[cameraPair[0] - 1], imageSet[cameraPair[1] - 1],
-      g_visibleCameras[cameraPair[0] - 1], g_visibleCameras[cameraPair[1] - 1]);
+      imageSet[index1], imageSet[index2],
+      g_visibleCameras[index1], g_visibleCameras[index2]);
 
     // Apply the offset adjustment to the second camera in the pair.
-    std::shared_ptr<asdp::render::CameraRenderInfo> cri = g_visibleCameras[cameraPair[1] - 1];
+    std::shared_ptr<asdp::render::CameraRenderInfo> cri = g_visibleCameras[index2];
     if (cri == nullptr) {
       std::cerr << "Error: Camera ID " << cameraPair[1] << " not found." << std::endl;
       continue;
