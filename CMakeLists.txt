@@ -149,6 +149,7 @@ set (Render_Module_HEADERS
   ImageStatistics.h
   RangeEstimator.h
   RenderTimingInfo.h
+  PointCorrespondences.h
 )
 set (Render_Module_SOURCES
   CameraRenderInfo.cpp
@@ -164,6 +165,7 @@ set (Render_Module_SOURCES
   Vignette.cpp
   ImageStatistics.cu
   RangeEstimator.cpp
+  PointCorrespondences.cpp
 )
 add_library(Render_Module STATIC ${Render_Module_SOURCES} ${Render_Module_HEADERS})
 target_include_directories(Render_Module PUBLIC
@@ -301,6 +303,7 @@ if(BUILD_UTILITIES)
     Camera_Calibration_Estimate_Distortion_Extrinsics
     Camera_Calibration_Gain_And_Offsets
     Camera_Calibration_Per_Pixel_Gain_And_Offsets
+    Print_PointCorrespondences
   )
   foreach (BASE ${CPP_UTILS})
     set (APP ${BASE})

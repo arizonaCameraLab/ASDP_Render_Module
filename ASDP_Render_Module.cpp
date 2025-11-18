@@ -43,6 +43,7 @@
 #include <ImageStatistics.h>
 #include <RangeEstimator.h>
 #include <Calibration_Helpers.h>
+#include <PointCorrespondences.h>
 #include <cuda.h>
 #include <cuda_runtime.h>
 #include <cuda_gl_interop.h>
@@ -79,6 +80,21 @@ static std::atomic<size_t> g_activeCameraIndex(0);
 
 /// @brief Global variable to hold the composite cameras.
 static std::shared_ptr<CompositeCameras> g_composite;
+
+/// @brief Global variable to hold the display used to provide a context for point correspondences.
+static std::shared_ptr<Display> g_pointCorrespondenceDisplay;
+
+/// @brief Global variable to hold the point correspondences object.
+static std::shared_ptr<PointCorrespondences> g_pointCorrespondences;
+
+/// @brief Vector of camera pairs to use for auto-updating color offsets.
+/// @todo Eventually, this should be determined from the geometry of the camera configuration.
+static std::vector< std::array<uint32_t, 2> > g_cameraPairs = {
+  {11, 14}, {14, 17}, {17, 20},     // Right along the center row
+  {11, 8},  {8, 5},   {5, 2},       // Left along the center row
+  {2, 1}, {5, 4}, {8, 7}, {11, 10}, {14, 13}, {17, 16}, {20, 19},     // Top row
+  {2, 3}, {5, 6}, {8, 9}, {11, 12}, {14, 15}, {17, 18}, {20, 21}      // Bottom row
+};
 
 /// @brief Callback handler to increment the active camera index.
 static void IncrementActiveCamera(void* /* unused */)
@@ -156,6 +172,385 @@ static void AdjustActiveCameraGain(float gainDelta, void* /* unused */)
   cri->GetColorOffsetGain(currentOffset, currentGain);
   cri->SetColorOffsetGain(currentOffset, currentGain * gainDelta);
   std::cout << "Adjusted camera ID " << cri->m_ID << " color gain to : " << currentGain * gainDelta << std::endl;
+}
+
+static double TimeDiffMagnitude(asdp::Time t1, asdp::Time t2)
+{
+  asdp::Time diff;
+  if (t1 > t2) {
+    diff = t1 - t2;
+  } else {
+    diff = t2 - t1;
+  }
+  return diff.seconds + diff.microseconds * 1.0e-6;
+}
+
+/// @brief Get a consistent set of images from all visible cameras for color offset adjustment.
+/// @return Vector of shared pointers to ImageData objects, one from each visible camera.  The
+/// caller is responsible for unlocking the images when done using them by calling
+/// UnlockConsistentImageSet() and passing it this return vector.
+/// Note: If not enough images are available, an empty vector is returned.
+
+static std::vector< std::shared_ptr<ImageData> > GetConsistentImageSet()
+{
+  std::vector< std::shared_ptr<ImageData> > imageSet;
+
+  // Pull the first two images from each queue and then select a set of consistent ones.
+  std::vector< std::list< std::shared_ptr<ImageData> > > images;
+  for (auto const& cameraRenderInfo : g_visibleCameras) {
+    images.push_back(cameraRenderInfo->m_imageQueue->LockNewestImages(2));
+    if (images.back().size() != 2) {
+      std::cerr << "GetConsistentImageSet(): Could not get all needed images, skipping frame" << std::endl;
+      return imageSet;
+    }
+  }
+
+  // Find the time of the oldest image among the first (newest) image from
+  // all cameras and then selecting from each pair the one whose time is closest to the
+  // selected time.
+  asdp::Time desiredTime = images[0].front()->imageCenterTime;
+  for (size_t i = 1; i < images.size(); i++) {
+    if (images[i].front()->imageCenterTime < desiredTime) {
+      desiredTime = images[i].front()->imageCenterTime;
+    }
+  }
+
+  // Find the image from each list that is closest to the desired time.  Push it into the m_images
+  // array and return the other images+/ to the queue.
+  for (size_t i = 0; i < images.size(); i++) {
+    auto& imList = images[i];
+    auto best = imList.begin();
+    double bestDiff = TimeDiffMagnitude((*best)->imageCenterTime, desiredTime);
+    for (auto it = imList.begin(); it != imList.end(); ++it) {
+      double diff = TimeDiffMagnitude((*it)->imageCenterTime, desiredTime);
+      if (diff < bestDiff) {
+        best = it;
+        bestDiff = diff;
+      }
+    }
+
+    for (auto it = imList.begin(); it != imList.end(); ++it) {
+      if (it == best) {
+        // Use this image
+        imageSet.push_back(*it);
+      } else {
+        // Unlock the images that are not selected.
+        g_visibleCameras[i]->m_imageQueue->UnlockImage(*it);
+      }
+    }
+  }
+
+  return imageSet;
+}
+
+/// @brief Unlock a consistent set of images previously obtained by calling GetConsistentImageSet().
+/// @param imageSet The vector of shared pointers to ImageData objects obtained from GetConsistentImageSet().
+static void UnlockConsistentImageSet(const std::vector< std::shared_ptr<ImageData> >& imageSet)
+{
+  for (size_t i = 0; i < imageSet.size(); i++) {
+    g_visibleCameras[i]->m_imageQueue->UnlockImage(imageSet[i]);
+  }
+}
+
+/// @brief Make a vector of pairs of pixel values, one from each image, read at the specified correspondence locations.
+/// @param correspondences Locations from first and second image to read.
+/// @param widths Array of 2 image widths.
+/// @param heights Array of 2 image heights.
+/// @param imageData Array of 2 images to read data from.
+static std::vector< std::array<uint16_t, 2> > GetRawPixelValues(
+  const std::vector<PointCorrespondences::PointPair>& correspondences,
+  std::array<uint16_t, 2> widths, std::array<uint16_t, 2> heights,
+  std::array< std::shared_ptr<ImageData>, 2> imageData)
+{
+  // Borrow the OpenGL context so that we can read back the pixel values.
+  if (!g_pointCorrespondenceDisplay || !g_pointCorrespondenceDisplay->BorrowContext()) {
+    std::cerr << "GetRawPixelValues(): Error: Could not borrow OpenGL context." << std::endl;
+    return {};
+  }
+
+  // Read back both images from texture memory to CPU memory.  These have already been adjusted by
+  // the offset and gain on the way to being written to the texture.
+  std::array<std::vector<uint16_t>, imageData.size()> imagePixels;
+  GLenum ret;
+  for (int i = 0; i < imagePixels.size(); i++) {
+    imagePixels[i].resize(widths[i] * heights[i]);
+    glBindTexture(GL_TEXTURE_2D, imageData[i]->texture);
+    glGetTexImage(GL_TEXTURE_2D, 0, GL_RED, GL_UNSIGNED_SHORT, imagePixels[i].data());
+    ret = glGetError();
+    if (ret != GL_NO_ERROR) {
+      std::cerr << "GetRawPixelValues(): Error: glGetTexImage() failed for image " << i
+        << " with error code " << ret << std::endl;
+      glBindTexture(GL_TEXTURE_2D, 0);
+      g_pointCorrespondenceDisplay->ReturnContext();
+      return {};
+    }
+  }
+  glBindTexture(GL_TEXTURE_2D, 0);
+
+  // Return the OpenGL context.
+  if (!g_pointCorrespondenceDisplay || !g_pointCorrespondenceDisplay->ReturnContext()) {
+    std::cerr << "GetRawPixelValues(): Error: Could not return OpenGL context." << std::endl;
+    return {};
+  }
+
+  // Construct the vector of pixel value pairs, rounding each pixel location to the nearest pixel
+  // location and clamping to ensure we don't read out of bounds.
+  std::vector< std::array<uint16_t, imageData.size()> > rawPixels;
+  for (const auto& pair : correspondences) {
+    std::array<uint16_t, imageData.size()> pixelValues;
+    for (int i = 0; i < imageData.size(); i++) {
+      // Compute the pixel location, rounding to nearest integer and clamping to image bounds.
+      int x = static_cast<int>(std::round(pair[i][0]));
+      int y = static_cast<int>(std::round(pair[i][1]));
+      if (x < 0) { x = 0; }
+      if (x >= widths[i]) { x = widths[i] - 1; }
+      if (y < 0) { y = 0; }
+      if (y >= heights[i]) { y = heights[i] - 1; }
+      // Read the pixel value.
+      pixelValues[i] = imagePixels[i][y * widths[i] + x];
+    }
+    rawPixels.emplace_back(pixelValues);
+  }
+
+  return rawPixels;
+}
+
+/// @brief Compute the color offset adjustment needed for the second camera in a pair based on the first.
+/// @param correspondences The point correspondences between the two cameras.
+/// @param imageData1 The image data for the first camera.
+/// @param imageData2 The image data for the second camera.
+/// @param cri1 The camera render info for the first camera.
+/// @param cri2 The camera render info for the second camera.
+/// @return The new color offset for the second camera that will make the adjusted average pixel values
+/// for both cameras match.
+static float ComputeNewColorOffset(
+  const std::vector<PointCorrespondences::PointPair>& correspondences,
+  std::shared_ptr<ImageData> imageData1, std::shared_ptr<ImageData> imageData2,
+  std::shared_ptr<asdp::render::CameraRenderInfo> cri1, std::shared_ptr<asdp::render::CameraRenderInfo> cri2)
+{
+  // Read the vector of raw values from both images, which we'll adjust and then use to compute
+  // the new offset.
+  std::array<uint16_t, 2> widths= { cri1->m_resolutionPixels[0], cri2->m_resolutionPixels[0] };
+  std::array<uint16_t, 2> heights = { cri1->m_resolutionPixels[1], cri2->m_resolutionPixels[1] };
+  std::array<std::shared_ptr<ImageData>, 2> imageDatas = {imageData1, imageData2 };
+  std::vector< std::array<uint16_t, 2> > rawPixels = GetRawPixelValues(correspondences,
+    widths, heights, imageDatas);
+
+  // Find the average pixel value for each camera after adjusting for gain and offset.
+  float offset1, gain1, offset2, gain2;
+  cri1->GetColorOffsetGain(offset1, gain1);
+  cri2->GetColorOffsetGain(offset2, gain2);
+  double sum1 = 0.0, sum2 = 0.0;
+  for (const auto& pixelPair : rawPixels) {
+    sum1 += (pixelPair[0] + offset1) * gain1;
+    sum2 += (pixelPair[1] + offset2) * gain2;
+  }
+  float avg1 = sum1 / rawPixels.size();
+  float avg2 = sum2 / rawPixels.size();
+
+  // Compute the new offset for the second camera to make its average match the first camera's average.
+  // We want to know how much and in which direction to shift the second camera's pixel values.  The
+  // second camera's offset is what is added to the raw pixel values before gain is applied, so we need to
+  // subtract the needed delta divided by the gain from the current offset.
+  float delta = avg2 - avg1;
+  float newOffset2 = offset2 - (delta / gain2);
+
+  return newOffset2;
+}
+
+static void AutoUpdateColorOffsets(void* /* unused */)
+{
+  if (!g_pointCorrespondences) {
+    std::cerr << "AutoUpdateColorOffsets(): Error: No point correspondences object available." << std::endl;
+    return;
+  }
+
+  // Get a consistent set of images to use for the adjustment.
+  std::vector< std::shared_ptr<ImageData> > imageSet = GetConsistentImageSet();
+  if (imageSet.size() != g_visibleCameras.size()) {
+    UnlockConsistentImageSet(imageSet);
+    std::cerr << "AutoUpdateColorOffsets(): Error: Could not get consistent image set." << std::endl;
+    return;
+  }
+
+  // Update the color offsets on the second of each camera pair based on the first.  Pass the appropriate
+  // image pair along with the image infos.
+  // image pair along with the image infos.
+  for (const auto& cameraPair : g_cameraPairs) {
+    std::vector<PointCorrespondences::PointPair> correspondences =
+      g_pointCorrespondences->CorrespondencesForCameraPair(cameraPair);
+    if (correspondences.empty()) {
+      std::cerr << "Warning: No correspondences found for camera pair: ("
+        << cameraPair[0] << ", " << cameraPair[1] << "), skipping color adjustment" << std::endl;
+      continue;
+    }
+
+    // Find the indices of the entries in g_visibleCameras whose camIS fields match the two cameras in the pair.
+    size_t index1 = SIZE_MAX, index2 = SIZE_MAX;
+    for (size_t i = 0; i < g_visibleCameras.size(); i++) {
+      if (g_visibleCameras[i]->m_ID == cameraPair[0]) {
+        index1 = i;
+      }
+      if (g_visibleCameras[i]->m_ID == cameraPair[1]) {
+        index2 = i;
+      }
+    }
+    if (index1 == SIZE_MAX || index2 == SIZE_MAX) {
+      std::cerr << "Warning: One or both cameras not found for camera pair: ("
+        << cameraPair[0] << ", " << cameraPair[1] << "), skipping color adjustment" << std::endl;
+      continue;
+    }
+
+    // Compute the offset adjustment needed.
+    float newOffset = ComputeNewColorOffset(correspondences,
+      imageSet[index1], imageSet[index2],
+      g_visibleCameras[index1], g_visibleCameras[index2]);
+
+    // Apply the offset adjustment to the second camera in the pair.
+    std::shared_ptr<asdp::render::CameraRenderInfo> cri = g_visibleCameras[index2];
+    float currentOffset, currentGain;
+    cri->GetColorOffsetGain(currentOffset, currentGain);
+    cri->SetColorOffsetGain(newOffset, currentGain);
+  }
+
+  // Done with the images, unlock them.
+  UnlockConsistentImageSet(imageSet);
+}
+
+/// @brief Compute the color offset adjustment needed for the second camera in a pair based on the first.
+/// @param correspondences The point correspondences between the two cameras.
+/// @param imageData1 The image data for the first camera.
+/// @param imageData2 The image data for the second camera.
+/// @param cri1 The camera render info for the first camera.
+/// @param cri2 The camera render info for the second camera.
+/// @return The new color offset for the second camera that will make the adjusted average pixel values
+/// for both cameras match.
+static std::array<float, 2> ComputeNewColorOffsetGain(
+  const std::vector<PointCorrespondences::PointPair>& correspondences,
+  std::shared_ptr<ImageData> imageData1, std::shared_ptr<ImageData> imageData2,
+  std::shared_ptr<asdp::render::CameraRenderInfo> cri1, std::shared_ptr<asdp::render::CameraRenderInfo> cri2)
+{
+  // Read the vector of raw values from both images, which we'll adjust and then use to compute
+  // the new offset.
+  std::array<uint16_t, 2> widths = { cri1->m_resolutionPixels[0], cri2->m_resolutionPixels[0] };
+  std::array<uint16_t, 2> heights = { cri1->m_resolutionPixels[1], cri2->m_resolutionPixels[1] };
+  std::array<std::shared_ptr<ImageData>, 2> imageDatas = { imageData1, imageData2 };
+  std::vector< std::array<uint16_t, 2> > rawPixels = GetRawPixelValues(correspondences,
+    widths, heights, imageDatas);
+
+  // Transform the points to consistent space based on the current offset and gain and place them
+  // into a vector of 2D points where the first element (x) is from the first camera and the second
+  // element (y) is from the second camera.
+  float offset1, gain1, offset2, gain2;
+  cri1->GetColorOffsetGain(offset1, gain1);
+  cri2->GetColorOffsetGain(offset2, gain2);
+  std::vector<PointCorrespondences::Point2D> adjustedPoints;
+  for (const auto& pixelPair : rawPixels) {
+    PointCorrespondences::Point2D adjustedPoint;
+    adjustedPoint[0] = (pixelPair[0] + offset1) * gain1;
+    adjustedPoint[1] = (pixelPair[1] + offset2) * gain2;
+    adjustedPoints.push_back(adjustedPoint);
+  }
+
+  // Compute the best-fit line through the points.
+  float sumX = 0.0f, sumY = 0.0f, sumXY = 0.0f, sumXX = 0.0f;
+  for (const auto& pt : adjustedPoints) {
+    sumX += pt[0];
+    sumY += pt[1];
+    sumXY += pt[0] * pt[1];
+    sumXX += pt[0] * pt[0];
+  }
+  float n = static_cast<float>(adjustedPoints.size());
+  float slope = (n * sumXY - sumX * sumY) / (n * sumXX - sumX * sumX);
+  float intercept = (sumY - slope * sumX) / n;
+
+  // Compute the factor to adjust the slope by to make it 1.0 (i.e., y = x).
+  // This is the amount by which we'll multiply the gain of the second camera to bring it into alignment.
+  // If the slope is either negative or very close to zero, just leave the gain unchanged because this is
+  // probably due to numerical instability.
+  /// @todo Consider a more robust way to determine numerical instability.
+  float gainAdjustment = 1.0f / (slope < 1e-3f ? 1.0f : slope);
+  float newGain2 = gain2 * gainAdjustment;
+
+  // Compute the new point values with the adjusted gain for the second camera to find the new offset needed.
+  for (size_t i = 0; i < adjustedPoints.size(); i++) {
+    adjustedPoints[i][1] = (rawPixels[i][1] + offset2) * newGain2;
+  }
+
+  // Find the average pixel value for each camera in the adjusted point set.
+  float sum1 = 0.0, sum2 = 0.0;
+  for (const auto& pt : adjustedPoints) {
+    sum1 += pt[0];
+    sum2 += pt[1];
+  }
+  float avg1 = sum1 / adjustedPoints.size();
+  float avg2 = sum2 / adjustedPoints.size();
+
+  // Compute the new offset for the second camera to make its average match the first camera's average.
+  // We want to know how much and in which direction to shift the second camera's pixel values.  The
+  // second camera's offset is what is added to the raw pixel values before gain is applied, so we need to
+  // subtract the needed delta divided by the gain from the current offset.
+  float delta = avg2 - avg1;
+  float newOffset2 = offset2 - (delta / newGain2);
+
+  return { newOffset2, newGain2 };
+}
+
+static void AutoUpdateColorOffsetsAndGains(void* /* unused */)
+{
+  if (!g_pointCorrespondences) {
+    std::cerr << "AutoUpdateColorOffsetsAndGains(): Error: No point correspondences object available." << std::endl;
+    return;
+  }
+
+  // Get a consistent set of images to use for the adjustment.
+  std::vector< std::shared_ptr<ImageData> > imageSet = GetConsistentImageSet();
+  if (imageSet.size() != g_visibleCameras.size()) {
+    UnlockConsistentImageSet(imageSet);
+    std::cerr << "AutoUpdateColorOffsetsAndGains(): Error: Could not get consistent image set." << std::endl;
+    return;
+  }
+
+  // Update the color offsets on the second of each camera pair based on the first.  Pass the appropriate
+  // image pair along with the image infos.
+  // image pair along with the image infos.
+  for (const auto& cameraPair : g_cameraPairs) {
+    std::vector<PointCorrespondences::PointPair> correspondences =
+      g_pointCorrespondences->CorrespondencesForCameraPair(cameraPair);
+    if (correspondences.empty()) {
+      std::cerr << "Warning: No correspondences found for camera pair: ("
+        << cameraPair[0] << ", " << cameraPair[1] << "), skipping color adjustment" << std::endl;
+      continue;
+    }
+
+    // Find the indices of the entries in g_visibleCameras whose camIS fields match the two cameras in the pair.
+    size_t index1 = SIZE_MAX, index2 = SIZE_MAX;
+    for (size_t i = 0; i < g_visibleCameras.size(); i++) {
+      if (g_visibleCameras[i]->m_ID == cameraPair[0]) {
+        index1 = i;
+      }
+      if (g_visibleCameras[i]->m_ID == cameraPair[1]) {
+        index2 = i;
+      }
+    }
+    if (index1 == SIZE_MAX || index2 == SIZE_MAX) {
+      std::cerr << "Warning: One or both cameras not found for camera pair: ("
+        << cameraPair[0] << ", " << cameraPair[1] << "), skipping color adjustment" << std::endl;
+      continue;
+    }
+
+    // Compute the offset adjustment needed.
+    std::array<float, 2> newOffsetGain = ComputeNewColorOffsetGain(correspondences,
+      imageSet[index1], imageSet[index2],
+      g_visibleCameras[index1], g_visibleCameras[index2]);
+
+    // Apply the offset adjustment to the second camera in the pair.
+    std::shared_ptr<asdp::render::CameraRenderInfo> cri = g_visibleCameras[index2];
+    cri->SetColorOffsetGain(newOffsetGain[0], newOffsetGain[1]);
+  }
+
+  // Done with the images, unlock them.
+  UnlockConsistentImageSet(imageSet);
 }
 
 /// @brief Callback handler to save the camera configuration to a file.
@@ -1077,6 +1472,15 @@ int main(int argc, char** argv)
       triggerID = cameras[0].trigger;
     }
 
+    // If there is a map CSV file associated with this camera, read it into the point correspondence.
+    {
+      std::filesystem::path mapCSVPath = g_dirPath / (std::to_string(sn) + ".map.csv");
+      if (std::filesystem::exists(mapCSVPath)) {
+        std::cout << "Reading map CSV file: " << mapCSVPath << std::endl;
+        g_pointCorrespondences = std::make_shared<PointCorrespondences>(mapCSVPath.string());
+      }
+    }
+
     // Read the configuration file associated with the serial number for the server. Verify that
     // it has a matching serial number and number of cameras.
     std::filesystem::path configPath = g_dirPath / (std::to_string(sn) + ".json");
@@ -1332,8 +1736,15 @@ int main(int argc, char** argv)
     handlers->DecrementActiveCamera = DecrementActiveCamera;
     handlers->AdjustActiveCameraOffset = AdjustActiveCameraOffset;
     handlers->AdjustActiveCameraGain = AdjustActiveCameraGain;
+    handlers->AutoUpdateColorOffsets = AutoUpdateColorOffsets;
+    handlers->AutoUpdateColorOffsetsAndGains = AutoUpdateColorOffsetsAndGains;
     handlers->SaveCameraConfig = SaveCameraConfig;
     g_callbackHandlerData.cameraConfigFileName = configPath.string();
+
+    // Construct a Display for use by the point correspondence object, if any.
+    if (g_pointCorrespondences != nullptr) {
+      g_pointCorrespondenceDisplay = std::make_shared<DisplayTexture>(displayTexture.get());
+    }
 
     // Construct one or more Display objects to render the cameras.  They all share objects with the texture Display.
     std::vector<std::shared_ptr<Display>> displays;
@@ -2015,6 +2426,7 @@ int main(int argc, char** argv)
   } // End of block that causes destruction of all objects before returning.
 
   // Clean up the global objects.
+  g_pointCorrespondenceDisplay.reset();
   g_visibleCameras.clear();
   g_depthCameras.clear();
   g_depthEstimator.reset();
