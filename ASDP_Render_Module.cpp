@@ -337,8 +337,6 @@ static float ComputeNewColorOffset(
     widths, heights, imageDatas);
 
   // Find the average pixel value for each camera after adjusting for gain and offset.
-  // Because the offset and gain are applied on the way to the texture, we don't adjust for that
-  // in the readback.  We do need to adjust the offset by the gain that has already been set.
   float offset1, gain1, offset2, gain2;
   cri1->GetColorOffsetGain(offset1, gain1);
   cri2->GetColorOffsetGain(offset2, gain2);
@@ -356,8 +354,6 @@ static float ComputeNewColorOffset(
   // subtract the needed delta divided by the gain from the current offset.
   float delta = avg2 - avg1;
   float newOffset2 = offset2 - (delta / gain2);
-  std::cout << "XXX delta = " << delta << ", avg1 = " << avg1 << ", avg2 = " << avg2
-    << ", oldOffset2 = " << offset2 << ", newOffset2 = " << newOffset2 << std::endl;
 
   return newOffset2;
 }
@@ -385,7 +381,7 @@ static void AutoUpdateColorOffsets(void* /* unused */)
       g_pointCorrespondences->CorrespondencesForCameraPair(cameraPair);
     if (correspondences.empty()) {
       std::cerr << "Warning: No correspondences found for camera pair: ("
-        << cameraPair[0] << ", " << cameraPair[1] << ")" << std::endl;
+        << cameraPair[0] << ", " << cameraPair[1] << "), skipping color adjustment" << std::endl;
       continue;
     }
 
@@ -401,7 +397,7 @@ static void AutoUpdateColorOffsets(void* /* unused */)
     }
     if (index1 == SIZE_MAX || index2 == SIZE_MAX) {
       std::cerr << "Warning: One or both cameras not found for camera pair: ("
-        << cameraPair[0] << ", " << cameraPair[1] << ")" << std::endl;
+        << cameraPair[0] << ", " << cameraPair[1] << "), skipping color adjustment" << std::endl;
       continue;
     }
 
@@ -412,13 +408,145 @@ static void AutoUpdateColorOffsets(void* /* unused */)
 
     // Apply the offset adjustment to the second camera in the pair.
     std::shared_ptr<asdp::render::CameraRenderInfo> cri = g_visibleCameras[index2];
-    if (cri == nullptr) {
-      std::cerr << "Error: Camera ID " << cameraPair[1] << " not found." << std::endl;
-      continue;
-    }
     float currentOffset, currentGain;
     cri->GetColorOffsetGain(currentOffset, currentGain);
     cri->SetColorOffsetGain(newOffset, currentGain);
+  }
+
+  // Done with the images, unlock them.
+  UnlockConsistentImageSet(imageSet);
+}
+
+/// @brief Compute the color offset adjustment needed for the second camera in a pair based on the first.
+/// @param correspondences The point correspondences between the two cameras.
+/// @param imageData1 The image data for the first camera.
+/// @param imageData2 The image data for the second camera.
+/// @param cri1 The camera render info for the first camera.
+/// @param cri2 The camera render info for the second camera.
+/// @return The new color offset for the second camera that will make the adjusted average pixel values
+/// for both cameras match.
+static std::array<float, 2> ComputeNewColorOffsetGain(
+  const std::vector<PointCorrespondences::PointPair>& correspondences,
+  std::shared_ptr<ImageData> imageData1, std::shared_ptr<ImageData> imageData2,
+  std::shared_ptr<asdp::render::CameraRenderInfo> cri1, std::shared_ptr<asdp::render::CameraRenderInfo> cri2)
+{
+  // Read the vector of raw values from both images, which we'll adjust and then use to compute
+  // the new offset.
+  std::array<uint16_t, 2> widths = { cri1->m_resolutionPixels[0], cri2->m_resolutionPixels[0] };
+  std::array<uint16_t, 2> heights = { cri1->m_resolutionPixels[1], cri2->m_resolutionPixels[1] };
+  std::array<std::shared_ptr<ImageData>, 2> imageDatas = { imageData1, imageData2 };
+  std::vector< std::array<uint16_t, 2> > rawPixels = GetRawPixelValues(correspondences,
+    widths, heights, imageDatas);
+
+  // Transform the points to consistent space based on the current offset and gain and place them
+  // into a vector of 2D points where the first element (x) is from the first camera and the second
+  // element (y) is from the second camera.
+  float offset1, gain1, offset2, gain2;
+  cri1->GetColorOffsetGain(offset1, gain1);
+  cri2->GetColorOffsetGain(offset2, gain2);
+  std::vector<PointCorrespondences::Point2D> adjustedPoints;
+  for (const auto& pixelPair : rawPixels) {
+    PointCorrespondences::Point2D adjustedPoint;
+    adjustedPoint[0] = (pixelPair[0] + offset1) * gain1;
+    adjustedPoint[1] = (pixelPair[1] + offset2) * gain2;
+    adjustedPoints.push_back(adjustedPoint);
+  }
+
+  // Compute the best-fit line through the points.
+  float sumX = 0.0f, sumY = 0.0f, sumXY = 0.0f, sumXX = 0.0f;
+  for (const auto& pt : adjustedPoints) {
+    sumX += pt[0];
+    sumY += pt[1];
+    sumXY += pt[0] * pt[1];
+    sumXX += pt[0] * pt[0];
+  }
+  float n = static_cast<float>(adjustedPoints.size());
+  float slope = (n * sumXY - sumX * sumY) / (n * sumXX - sumX * sumX);
+  float intercept = (sumY - slope * sumX) / n;
+
+  // Compute the factor to adjust the slope by to make it 1.0 (i.e., y = x).
+  // This is the amount by which we'll multiply the gain of the second camera to bring it into alignment.
+  // If the slope is either negative or very close to zero, just leave the gain unchanged because this is
+  // probably due to numerical instability.
+  /// @todo Consider a more robust way to determine numerical instability.
+  float gainAdjustment = 1.0f / (slope < 1e-3f ? 1.0f : slope);
+  float newGain2 = gain2 * gainAdjustment;
+
+  // Compute the new point values with the adjusted gain for the second camera to find the new offset needed.
+  for (size_t i = 0; i < adjustedPoints.size(); i++) {
+    adjustedPoints[i][1] = (rawPixels[i][1] + offset2) * newGain2;
+  }
+
+  // Find the average pixel value for each camera in the adjusted point set.
+  float sum1 = 0.0, sum2 = 0.0;
+  for (const auto& pt : adjustedPoints) {
+    sum1 += pt[0];
+    sum2 += pt[1];
+  }
+  float avg1 = sum1 / adjustedPoints.size();
+  float avg2 = sum2 / adjustedPoints.size();
+
+  // Compute the new offset for the second camera to make its average match the first camera's average.
+  // We want to know how much and in which direction to shift the second camera's pixel values.  The
+  // second camera's offset is what is added to the raw pixel values before gain is applied, so we need to
+  // subtract the needed delta divided by the gain from the current offset.
+  float delta = avg2 - avg1;
+  float newOffset2 = offset2 - (delta / newGain2);
+
+  return { newOffset2, newGain2 };
+}
+
+static void AutoUpdateColorOffsetsAndGains(void* /* unused */)
+{
+  if (!g_pointCorrespondences) {
+    std::cerr << "AutoUpdateColorOffsetsAndGains(): Error: No point correspondences object available." << std::endl;
+    return;
+  }
+
+  // Get a consistent set of images to use for the adjustment.
+  std::vector< std::shared_ptr<ImageData> > imageSet = GetConsistentImageSet();
+  if (imageSet.size() != g_visibleCameras.size()) {
+    UnlockConsistentImageSet(imageSet);
+    std::cerr << "AutoUpdateColorOffsetsAndGains(): Error: Could not get consistent image set." << std::endl;
+    return;
+  }
+
+  // Update the color offsets on the second of each camera pair based on the first.  Pass the appropriate
+  // image pair along with the image infos.
+  // image pair along with the image infos.
+  for (const auto& cameraPair : g_cameraPairs) {
+    std::vector<PointCorrespondences::PointPair> correspondences =
+      g_pointCorrespondences->CorrespondencesForCameraPair(cameraPair);
+    if (correspondences.empty()) {
+      std::cerr << "Warning: No correspondences found for camera pair: ("
+        << cameraPair[0] << ", " << cameraPair[1] << "), skipping color adjustment" << std::endl;
+      continue;
+    }
+
+    // Find the indices of the entries in g_visibleCameras whose camIS fields match the two cameras in the pair.
+    size_t index1 = SIZE_MAX, index2 = SIZE_MAX;
+    for (size_t i = 0; i < g_visibleCameras.size(); i++) {
+      if (g_visibleCameras[i]->m_ID == cameraPair[0]) {
+        index1 = i;
+      }
+      if (g_visibleCameras[i]->m_ID == cameraPair[1]) {
+        index2 = i;
+      }
+    }
+    if (index1 == SIZE_MAX || index2 == SIZE_MAX) {
+      std::cerr << "Warning: One or both cameras not found for camera pair: ("
+        << cameraPair[0] << ", " << cameraPair[1] << "), skipping color adjustment" << std::endl;
+      continue;
+    }
+
+    // Compute the offset adjustment needed.
+    std::array<float, 2> newOffsetGain = ComputeNewColorOffsetGain(correspondences,
+      imageSet[index1], imageSet[index2],
+      g_visibleCameras[index1], g_visibleCameras[index2]);
+
+    // Apply the offset adjustment to the second camera in the pair.
+    std::shared_ptr<asdp::render::CameraRenderInfo> cri = g_visibleCameras[index2];
+    cri->SetColorOffsetGain(newOffsetGain[0], newOffsetGain[1]);
   }
 
   // Done with the images, unlock them.
@@ -1609,7 +1737,7 @@ int main(int argc, char** argv)
     handlers->AdjustActiveCameraOffset = AdjustActiveCameraOffset;
     handlers->AdjustActiveCameraGain = AdjustActiveCameraGain;
     handlers->AutoUpdateColorOffsets = AutoUpdateColorOffsets;
-    /// @todo handlers->AutoUpdateColorOffsetsAndGains = AutoUpdateColorOffsetsAndGains;
+    handlers->AutoUpdateColorOffsetsAndGains = AutoUpdateColorOffsetsAndGains;
     handlers->SaveCameraConfig = SaveCameraConfig;
     g_callbackHandlerData.cameraConfigFileName = configPath.string();
 
