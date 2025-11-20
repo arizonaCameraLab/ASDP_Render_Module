@@ -153,6 +153,7 @@ set (Render_Module_HEADERS
   RangeEstimator.h
   RenderTimingInfo.h
   PointCorrespondences.h
+  RenderText.h
 )
 set (Render_Module_SOURCES
   CameraRenderInfo.cpp
@@ -169,6 +170,7 @@ set (Render_Module_SOURCES
   ImageStatistics.cu
   RangeEstimator.cpp
   PointCorrespondences.cpp
+  RenderText.cpp
 )
 add_library(Render_Module STATIC ${Render_Module_SOURCES} ${Render_Module_HEADERS})
 target_include_directories(Render_Module PUBLIC
@@ -388,6 +390,7 @@ if(BUILD_TESTS)
     Spot_Tracker_Test
     Calibration_Helpers_Test
     Gimbal_Test
+    RenderText_Test
   )
   foreach (BASE ${CPP_TESTS})
     set (APP ${BASE})
