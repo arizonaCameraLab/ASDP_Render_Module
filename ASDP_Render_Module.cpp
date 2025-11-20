@@ -25,6 +25,7 @@
 #include <vector>
 #include <list>
 #include <atomic>
+#include <memory>
 #include <ASDP_Core_API.h>
 #include <ASDP_SpinFreeQueue.hpp>
 #include <ASDP_BufferPool.h>
@@ -96,6 +97,15 @@ static std::vector< std::array<uint32_t, 2> > g_cameraPairs = {
   {2, 3}, {5, 6}, {8, 9}, {11, 12}, {14, 15}, {17, 18}, {20, 21}      // Bottom row
 };
 
+/// @brief Vector of Annotation objects to hold the current annotations.
+static std::vector<CompositeCameras::Annotation> g_currentAnnotations;
+
+/// @brief Vector of Annotation objects to hold camera annotations if they are shown.
+static std::vector<CompositeCameras::Annotation> g_cameraAnnotations;
+
+/// @brief Mutex to protect access to the current annotations.
+static std::mutex g_annotationMutex;
+
 /// @brief Callback handler to increment the active camera index.
 static void IncrementActiveCamera(void* /* unused */)
 {
@@ -130,6 +140,25 @@ static void ChangePlayPause(bool nowPlaying, void* /* unused */)
 {
   g_paused = !nowPlaying;
   std::cout << "Toggled play/pause to: " << (g_paused ? "paused" : "playing") << std::endl;
+}
+
+/// @brief Callback handler to toggle showing camera names.
+static void ShowCameraNames(bool showNames, void* /* unused */)
+{
+  std::lock_guard<std::mutex> lock(g_annotationMutex);
+  g_cameraAnnotations.clear();
+  if (showNames) {
+    CompositeCameras::Annotation annotation;
+    annotation.position = { 0.5, 0.5 };       // Center of the image
+    annotation.color = { 1.0f, 1.0f, 1.0f };  // White
+    annotation.opacity = 1.0f;
+    for (auto const& cameraRenderInfo : g_visibleCameras) {
+      annotation.cameraID = cameraRenderInfo->m_ID;
+      annotation.label = "Camera ID: " + std::to_string(cameraRenderInfo->m_ID);
+      g_cameraAnnotations.push_back(annotation);
+    }
+  }
+  std::cout << "Toggled camera names to: " << (showNames ? "shown" : "hidden") << std::endl;
 }
 
 /// @brief Adjust the active camera's color offset calibration value.
@@ -1020,6 +1049,18 @@ std::shared_ptr<NUCInfo> ReadNUCInfoFromDirectory(const std::string& nucInfoDire
   return nucInfo;
 }
 
+/// @brief Callback handler to process annotations requests from the CompositeCameras.
+std::vector<CompositeCameras::Annotation> AnnotationCallbackHandler()
+{
+  // Avoid concurrent access to the annotation vectors.
+  std::lock_guard<std::mutex> lock(g_annotationMutex);
+
+  // Make a vector that adds the current annotations and the camera annotations.
+  std::vector<CompositeCameras::Annotation> annotations = g_currentAnnotations;
+  annotations.insert(annotations.end(), g_cameraAnnotations.begin(), g_cameraAnnotations.end());
+  return annotations;
+}
+
 static void usage(std::string name)
 {
   std::cerr << "Usage: " << name << " [options] <ip_address>" << std::endl;
@@ -1739,6 +1780,7 @@ int main(int argc, char** argv)
     handlers->AutoUpdateColorOffsets = AutoUpdateColorOffsets;
     handlers->AutoUpdateColorOffsetsAndGains = AutoUpdateColorOffsetsAndGains;
     handlers->SaveCameraConfig = SaveCameraConfig;
+    handlers->ShowCameraNames = ShowCameraNames;
     g_callbackHandlerData.cameraConfigFileName = configPath.string();
 
     // Construct a Display for use by the point correspondence object, if any.
@@ -1811,7 +1853,7 @@ int main(int argc, char** argv)
         g_visibleCameras, toneMapTexture, poseAdjuster, Time(1/cameraFPS),
         renderOffsetMicroseconds,
         Time(0, 1000000 / displayInfos[i].fps), (i == 0) ? (&g_timingInfo) : nullptr,
-        rangeEstimator, staticDepth);
+        rangeEstimator, staticDepth, AnnotationCallbackHandler);
 
       //======================================
       // Added by Sang Yoon to just pass the status of enabling the cylindrical projection (true or false) from DisplayInfos[i] to composite.

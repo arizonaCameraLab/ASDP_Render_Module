@@ -81,6 +81,9 @@ find_package(glfw3 REQUIRED)
 #find_package(glfw3 REQUIRED)
 #endif(WIN32)
 
+# We build FreeType ourselves to ensure compatibility across platforms.
+add_subdirectory(dependencies/freetype)
+
 #-----------------------------------------------------------------------------
 # Checking for optional and required packages
 
@@ -180,7 +183,7 @@ target_include_directories(Render_Module PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/dependencies/glm"
 )
 target_link_libraries(Render_Module PUBLIC
-  ASDP_Core_API::ASDP_Core_API glfw GLEW::glew OpenGL::GL geogram
+  ASDP_Core_API::ASDP_Core_API glfw GLEW::glew OpenGL::GL geogram freetype
 )
 set_property(TARGET Render_Module PROPERTY CUDA_ARCHITECTURES 60 75 80)
 if(OPENXR_FOUND)

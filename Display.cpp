@@ -84,6 +84,7 @@ Display::Display(std::shared_ptr<Composite> composite,
   , m_eventHandlers(handlers)
   , m_userData(userData)
   , m_nowPlaying(true)
+  , m_showCameraNames(false)
   , m_client(client)
   , m_triggerID(triggerID)
   , m_offsetMicroseconds(triggerAheadMicroseconds)
@@ -258,6 +259,9 @@ public:
 
   /// Whether or not the 'o' key was pressed during the last loop, used to toggle overview plus detail view.
   bool m_oPressed = false;
+
+  /// Whether or not the 'c' key was pressed during the last loop, used to toggle camera names display.
+  bool m_cPressed = false;
 
   /// Index of the joystick to use, or -1 if no joystick is to be used.
   int m_glfwJoystickIndex = -1;
@@ -818,6 +822,16 @@ void DisplayWindow::HandleKeyboard()
     }
   }
   m_impl->m_sPressed = sPressed;
+
+  // If the 'c' key is pressed, toggle the display of camera names.
+  bool cPressed = (glfwGetKey(Display::m_impl->m_window, GLFW_KEY_C) == GLFW_PRESS);
+  if (cPressed && !m_impl->m_cPressed) {
+    m_showCameraNames = !m_showCameraNames;
+    if (m_eventHandlers && m_eventHandlers->ShowCameraNames) {
+      m_eventHandlers->ShowCameraNames(m_showCameraNames, m_userData);
+    }
+  }
+  m_impl->m_cPressed = cPressed;
 }
 
 void DisplayWindow::HandleMouse()

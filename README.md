@@ -570,3 +570,7 @@ Example NUC.json file:
   ]
 }
 ```
+
+## Credits
+
+Portions of this software are copyright (c) 2025 The FreeType Project (https://freetype.org).  All rights reserved.

@@ -221,10 +221,24 @@ namespace asdp {
     };
 
     /// @brief Composite class that renders a set of camera views.
-    /// @details This is the class that is most likely to be used in
-    /// an application.
+    /// @details This is the class that is most likely to be used in an application.
     class CompositeCameras : public Composite {
     public:
+      /// @brief Annotation structure, filled in by parsing the incoming Analysis API data.
+      typedef struct {
+        uint16_t cameraID;              ///< The ID of the camera that generated this annotation.
+        std::string label;              ///< The label for the annotation. May include multiple lines separated by '\n'.
+        std::array<float, 3> position;  ///< The 3D position of the annotation in helicopter space, in meters.
+        std::array<float, 3> color;     ///< The color of the annotation, in RGB format from 0.0 to 1.0.
+        float opacity;                  ///< The opacity of the annotation, from 0.0 to 1.0.
+        /// The bounding box for the annotation, in pixel coordinates (xMin, yMin, xMax, yMax).
+        /// This is empty if there is no bounding box for the annotation.
+        std::shared_ptr< std::array<float, 4> > bbox;
+      } Annotation;
+
+      /// @brief Description of callback handler function that returns a vector of Annotation objects.
+      typedef std::function< std::vector<Annotation>() > AnnotationCallbackFunction;
+
       /// @brief Constructor
       /// @param cameraRenderInfo The configuration of the cameras needed to generate textured geometry.
       /// @param toneMapTexture The OpenGL texture ID of the tone map to use.
@@ -238,13 +252,16 @@ namespace asdp {
       /// @param renderFrameInterval The interval between rendered frames to use for replay mode.
       /// @param renderTimingInfo A pointer to the render timing information to fill in.
       /// @param rangeEstimator A shared pointer to the range estimator to use for tone-map range determination.
+      /// @param defaultStaticDepth The default static depth to use for cameras without depth information.
+      /// @param annotationCallback A callback function to retrieve annotations for the rendered frames.
       CompositeCameras(std::vector< std::shared_ptr<CameraRenderInfo> >& cameraRenderInfo, GLuint toneMapTexture,
         std::shared_ptr<PoseAdjuster> poseAdjuster, Time cameraFrameInterval,
         uint32_t renderOffsetMicroseconds = 0,
         Time renderFrameInterval = Time(),
         RenderTimingInfo *renderTimingInfo = nullptr,
         std::shared_ptr<asdp::render::RangeEstimator> rangeEstimator = nullptr,
-        double defaultStaticDepth = 900.0);
+        double defaultStaticDepth = 900.0,
+        AnnotationCallbackFunction annotationCallback = nullptr);
 
       /// @brief Update the vertex buffer object for a camera based on its current depth information.
       /// @details This function updates the vertex buffer object for a camera based on the current depth
@@ -269,6 +286,7 @@ namespace asdp {
       RenderTimingInfo *m_renderTimingInfo; ///< A pointer to the render timing information to fill in.
       std::shared_ptr<asdp::render::RangeEstimator> m_rangeEstimator;  ///< The range estimator to use for tone-map range determination.
       double m_defaultStaticDepth;          ///< The default static depth to use for cameras without depth information.
+      AnnotationCallbackFunction m_annotationCallback; ///< A callback function to retrieve annotations for the rendered frames.
 
       Time m_cameraFrameInterval;           ///< The interval between camera frames to use for distortion correction.
 
@@ -362,8 +380,7 @@ namespace asdp {
     };
 
     /// @brief Composite class that renders a vector of raw color values into a line of a display.
-    /// @details This is the class that is most likely to be used in
-    /// an application.
+    /// @details This is used by the DisplayXSight class to pack the tracking information into a frame.
     class CompositeLineRawData : public Composite {
     public:
       /// @brief Constructor
@@ -450,8 +467,7 @@ namespace asdp {
     };
 
     /// @brief Composite class that packs each pair of horizontal pixels into a single pixel for XSight display.
-    /// @details This is the class that is most likely to be used in
-    /// an application.
+    /// @details This is used by the DisplayXSight class to reformat a standard OpenGL texture into a frame buffer.
     class CompositePackXSightFrame : public Composite {
     public:
       /// @brief Constructor

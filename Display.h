@@ -65,6 +65,9 @@ namespace asdp {
 
       /// Save the current camera configuration settings to a file.
       void (*SaveCameraConfig)(const std::string& fileName, void* userData) = nullptr;
+
+      /// Turn on or off annotations showing the camera names.
+      void (*ShowCameraNames)(bool showNames, void* userData) = nullptr;
     };
 
     /// @brief Display base class that defines the interface that all Displays use.
@@ -137,6 +140,9 @@ protected:
 
       /// @brief Flag to indicate whether the display is currently playing.
       bool m_nowPlaying;
+
+      /// @brief Flag to indicate whether we are rendering camera names.
+      bool m_showCameraNames;
 
       std::shared_ptr<CoreClient> m_client; ///< CoreClient to use, filled in by the constructor.
       uint8_t m_triggerID; ///< Trigger ID to use, filled in by the constructor.

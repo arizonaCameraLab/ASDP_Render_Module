@@ -15,6 +15,7 @@
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtx/quaternion.hpp>
 #include <glm/gtc/type_ptr.hpp>
+#include <freetype/freetype.h>
 #include "Composite.h"
 
 using namespace asdp::render;
@@ -874,7 +875,8 @@ CompositeCameras::CompositeCameras(std::vector< std::shared_ptr<CameraRenderInfo
   std::shared_ptr<PoseAdjuster> poseAdjuster, Time cameraFrameInterval,
   uint32_t renderOffsetMicroseconds, Time renderFrameInterval, RenderTimingInfo *renderTimingInfo,
   std::shared_ptr<asdp::render::RangeEstimator> rangeEstimator,
-  double defaultStaticDepth)
+  double defaultStaticDepth,
+  AnnotationCallbackFunction annotationCallback)
   : Composite()
   , m_cameraRenderInfos(cameraRenderInfo)
   , m_toneMapTexture(toneMaptexture)
@@ -885,6 +887,7 @@ CompositeCameras::CompositeCameras(std::vector< std::shared_ptr<CameraRenderInfo
   , m_renderTimingInfo(renderTimingInfo)
   , m_rangeEstimator(rangeEstimator)
   , m_defaultStaticDepth(defaultStaticDepth)
+  , m_annotationCallback(annotationCallback)
   , m_programId(0)
   , m_viewProjectionUniformId(0)
   , m_poseAdjustUniformId(0)
