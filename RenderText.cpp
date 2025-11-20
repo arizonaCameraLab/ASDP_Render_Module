@@ -299,14 +299,38 @@ std::string RenderText::Impl::Draw(const char* text, float x, float y, float red
   // text will be drawn above.  Flip it upside down so that its vertices will show up as
   // front facing when it is re-flipped in the addFontQuad() method.
   glBindTexture(GL_TEXTURE_2D, 0);
-  FT_Load_Char(m_face, '0', FT_LOAD_RENDER);
+
+  // Compute actual width (in NDC units) for the entire string by summing glyph advances,
+  // and compute the maximum bitmap height across glyphs for a better background box.
+  float totalWidth = 0.0f;
+  int maxRows = 0;
+  for (const char* p = text; *p; ++p) {
+    if (FT_Load_Char(m_face, *p, FT_LOAD_RENDER))
+      continue;
+    totalWidth += (g->advance.x / 64.0f) * sx; // advance is 26.6 fixed point
+    if (g->bitmap.rows > maxRows) maxRows = g->bitmap.rows;
+  }
+
+  // If no glyphs were loaded (unlikely), fall back to using '0' width times number of characters.
+  if (maxRows == 0) {
+    if (FT_Load_Char(m_face, '0', FT_LOAD_RENDER) == 0) {
+      maxRows = g->bitmap.rows;
+      totalWidth = (std::strlen(text) + 1) * (g->bitmap.width * sx);
+    }
+    else {
+      // absolute fallback
+      maxRows = FONT_SIZE;
+      totalWidth = (std::strlen(text) + 1) * (FONT_SIZE * sx * 0.5f);
+    }
+  }
+
   float w = g->bitmap.width * sx;
   // Oversize the height a bit to ensure we cover tall characters.
-  float yMargin = 0.2 * g->bitmap.rows * sy;
-  float h = g->bitmap.rows * sy + 2 * yMargin;
+  float yMargin = 0.2 * maxRows * sy;
+  float h = maxRows * sy + 2 * yMargin;
   size_t chars = (strlen(text) + 1);
   vertexBufferData.clear();
-  addFontQuad(vertexBufferData, x, x + chars * w, y - yMargin + h, y - yMargin, 0.6f, 0, 0, 0, 0.5f);
+  addFontQuad(vertexBufferData, x, x + totalWidth, y - yMargin + h, y - yMargin, 0.6f, 0, 0, 0, 0.5f);
   glBindBuffer(GL_ARRAY_BUFFER, m_fontVertexBuffer);
   glBufferData(GL_ARRAY_BUFFER,
     sizeof(vertexBufferData[0]) * vertexBufferData.size(),
