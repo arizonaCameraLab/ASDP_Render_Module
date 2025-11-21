@@ -229,8 +229,7 @@ namespace asdp {
         uint16_t cameraID;              ///< The ID of the camera that generated this annotation.
         std::string label;              ///< The label for the annotation. May include multiple lines separated by '\n'.
         std::array<float, 3> position;  ///< The 3D position of the annotation in helicopter space, in meters.
-        std::array<float, 3> color;     ///< The color of the annotation, in RGB format from 0.0 to 1.0.
-        float opacity;                  ///< The opacity of the annotation, from 0.0 to 1.0.
+        std::array<float, 4> color;     ///< The color of the annotation, in RGBA format from 0.0 to 1.0.
         /// The bounding box for the annotation, in pixel coordinates (xMin, yMin, xMax, yMax).
         /// This is empty if there is no bounding box for the annotation.
         std::shared_ptr< std::array<float, 4> > bbox;

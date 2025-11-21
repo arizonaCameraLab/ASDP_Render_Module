@@ -93,10 +93,11 @@ public:
   /// @param red The red color component (0 to 1).
   /// @param green The green color component (0 to 1).
   /// @param blue The blue color component (0 to 1).
+  /// @param alpha The alpha (transparency) component (0 to 1).
   /// @return Empty string on success, error message on failure.
-  std::string Draw(const std::string text, float xLoc, float yLoc, float red, float green, float blue);
+  std::string Draw(const std::string text, float xLoc, float yLoc, float red, float green, float blue, float alpha);
 
-  /// @brief Don't let the text get too large on very high-res displays.
+  /// @brief Don't let the text get too small on very high-res displays.
   float text_width() const { return 0.96f / (std::min)(m_WINDOW_WIDTH, 1920); }
   float text_height() const { return (text_width() * m_WINDOW_WIDTH) / m_WINDOW_HEIGHT; }
 
@@ -277,7 +278,8 @@ static void addFontQuad(std::vector<FontVertex>& vertexBufferData,
   vertexBufferData.emplace_back(v);
 }
 
-std::string RenderText::Impl::Draw(const std::string text, float xLoc, float yLoc, float red, float green, float blue)
+std::string RenderText::Impl::Draw(const std::string text, float xLoc, float yLoc,
+  float red, float green, float blue, float alpha)
 {
   float sx = text_width();
   float sy = text_height();
@@ -293,7 +295,6 @@ std::string RenderText::Impl::Draw(const std::string text, float xLoc, float yLo
 
   // Enable blending using alpha.
   glEnable(GL_BLEND);
-  glBlendFunc(GL_SRC_COLOR, GL_ONE_MINUS_SRC_ALPHA);
 
   // Blend in a black rectangle that partially covers the region behind it, and which the
   // text will be drawn above.  Flip it upside down so that its vertices will show up as
@@ -347,7 +348,8 @@ std::string RenderText::Impl::Draw(const std::string text, float xLoc, float yLo
     float h = maxRows * sy + 2 * yMargin;
     size_t chars = (text.size() + 1);
     vertexBufferData.clear();
-    addFontQuad(vertexBufferData, x, x + totalWidth, y - yMargin + h, y - yMargin, 0.6f, 0, 0, 0, 0.5f);
+    glBlendFunc(GL_SRC_COLOR, GL_ONE_MINUS_SRC_ALPHA);
+    addFontQuad(vertexBufferData, x, x + totalWidth, y - yMargin + h, y - yMargin, 0.5f, 0, 0, 0, 0.5f * alpha);
     glBindBuffer(GL_ARRAY_BUFFER, m_fontVertexBuffer);
     glBufferData(GL_ARRAY_BUFFER,
       sizeof(vertexBufferData[0]) * vertexBufferData.size(),
@@ -423,8 +425,9 @@ std::string RenderText::Impl::Draw(const std::string text, float xLoc, float yLo
       float h = g->bitmap.rows * sy;
 
       // Blend in the text, fully opaque (inverse alpha).
+      glBlendFunc(GL_SRC_COLOR, GL_ONE_MINUS_SRC_COLOR);
       vertexBufferData.clear();
-      addFontQuad(vertexBufferData, x2, x2 + w, y2, y2 - h, 0.7f, red, green, blue, 0);
+      addFontQuad(vertexBufferData, x2, x2 + w, y2, y2 - h, 0.7f, red*alpha, green*alpha, blue*alpha, 1 - alpha);
       glBindBuffer(GL_ARRAY_BUFFER, m_fontVertexBuffer);
       glBufferData(GL_ARRAY_BUFFER,
         sizeof(vertexBufferData[0]) * vertexBufferData.size(),
@@ -486,7 +489,7 @@ void RenderText::SetWindowSize(int windowWidth, int windowHeight)
   m_impl->SetWindowSize(windowWidth, windowHeight);
 }
 
-std::string RenderText::Draw(std::string text, float x, float y, float r, float g, float b)
+std::string RenderText::Draw(std::string text, float x, float y, float r, float g, float b, float alpha)
 {
-  return m_impl->Draw(text.c_str(), x, y, r, g, b);
+  return m_impl->Draw(text.c_str(), x, y, r, g, b, alpha);
 }

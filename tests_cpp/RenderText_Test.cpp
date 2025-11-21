@@ -40,19 +40,32 @@ int main()
     std::cout << "There should be a second line indented under it." << std::endl;
     std::cout << "The upper-left corner of the text should be at the center of the image." << std::endl;
     std::cout << "There should be a gray rectangle behind the text so that it is visible." << std::endl;
+    std::cout << "There should be a second instance of the word 'Translucent' above it, half transparent." << std::endl;
     std::cout << "Close the window to exit." << std::endl;
     while (!glfwWindowShouldClose(window)) {
 
       // Render here
       glClearColor(1.0f, 1.0f, 0.0f, 1.0f);
       glClear(GL_COLOR_BUFFER_BIT);
+
       renderText.Draw("Hello, World\n  Second line indented", 0.0f, 0.0f, 1.0f, 1.0f, 1.0f);
+      renderText.Draw("Translucent", 0.0f, 0.5f, 1.0f, 1.0f, 1.0f, 0.5f);
 
       // Swap front and back buffers
       glfwSwapBuffers(window);
 
       // Poll for and process events
       glfwPollEvents();
+
+      // Handle window resize, including adjusting the viewport and updating RenderText.
+      int newWidth, newHeight;
+      glfwGetFramebufferSize(window, &newWidth, &newHeight);
+      if (newWidth != width || newHeight != height) {
+        width = newWidth;
+        height = newHeight;
+        renderText.SetWindowSize(width, height);
+        glViewport(0, 0, width, height);
+      }
     }
   } catch (const std::exception& e) {
     std::cerr << "Failed to run the tests: " << e.what() << std::endl;

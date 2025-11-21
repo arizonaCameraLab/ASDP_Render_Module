@@ -38,7 +38,8 @@ namespace asdp {
       /// @param r The red color component (0 to 1).
       /// @param g The green color component (0 to 1).
       /// @param b The blue color component (0 to 1).
-      std::string Draw(std::string text, float x, float y, float r, float g, float b);
+      /// @param alpha The alpha (transparency) component (0 to 1).
+      std::string Draw(std::string text, float x, float y, float r, float g, float b, float alpha = 1);
 
     private:
       /// @brief Implementation class that hides details and #include files
