@@ -296,10 +296,29 @@ std::string RenderText::Impl::Draw(const std::string text, float xLoc, float yLo
   // Enable blending using alpha.
   glEnable(GL_BLEND);
 
-  // Blend in a black rectangle that partially covers the region behind it, and which the
-  // text will be drawn above.  Flip it upside down so that its vertices will show up as
-  // front facing when it is re-flipped in the addFontQuad() method.
-  glBindTexture(GL_TEXTURE_2D, 0);
+  // Configure our vertex array buffer object.
+  glBindBuffer(GL_ARRAY_BUFFER, m_fontVertexBuffer);
+  GLenum err = glGetError();
+  if (err != GL_NO_ERROR) {
+    return "RenderText::Draw(): Error after binding vertex buffer: " + std::to_string(err);
+  }
+  {
+    size_t const stride = sizeof(vertexBufferData[0]);
+    // VBO
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride,
+      (GLvoid*)(offsetof(FontVertex, pos)));
+
+    // color
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, stride,
+      (GLvoid*)(offsetof(FontVertex, col)));
+
+    // texture
+    glEnableVertexAttribArray(2);
+    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, stride,
+      (GLvoid*)(offsetof(FontVertex, tex)));
+  }
 
   // Break the text into lines if there are newline characters, producing a
   // vector of strings.
@@ -342,6 +361,11 @@ std::string RenderText::Impl::Draw(const std::string text, float xLoc, float yLo
       }
     }
 
+    // Blend in a black rectangle that partially covers the region behind it, and which the
+    // text will be drawn above.  Flip it upside down so that its vertices will show up as
+    // front facing when it is re-flipped in the addFontQuad() method.
+    glBindTexture(GL_TEXTURE_2D, 0);
+
     float w = g->bitmap.width * sx;
     // Oversize the height a bit to ensure we cover tall characters.
     float yMargin = 0.2 * maxRows * sy;
@@ -350,39 +374,14 @@ std::string RenderText::Impl::Draw(const std::string text, float xLoc, float yLo
     vertexBufferData.clear();
     glBlendFunc(GL_SRC_COLOR, GL_ONE_MINUS_SRC_ALPHA);
     addFontQuad(vertexBufferData, x, x + totalWidth, y - yMargin + h, y - yMargin, 0.5f, 0, 0, 0, 0.5f * alpha);
-    glBindBuffer(GL_ARRAY_BUFFER, m_fontVertexBuffer);
     glBufferData(GL_ARRAY_BUFFER,
       sizeof(vertexBufferData[0]) * vertexBufferData.size(),
       &vertexBufferData[0], GL_STATIC_DRAW);
-
-    // Configure the vertex-buffer objects.
-    {
-      size_t const stride = sizeof(vertexBufferData[0]);
-      // VBO
-      glEnableVertexAttribArray(0);
-      glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride,
-        (GLvoid*)(offsetof(FontVertex, pos)));
-
-      // color
-      glEnableVertexAttribArray(1);
-      glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, stride,
-        (GLvoid*)(offsetof(FontVertex, col)));
-
-      // texture
-      glEnableVertexAttribArray(2);
-      glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, stride,
-        (GLvoid*)(offsetof(FontVertex, tex)));
-    }
 
     // Draw the quad.
     {
       GLsizei numElements = static_cast<GLsizei>(vertexBufferData.size());
       glDrawArrays(GL_TRIANGLES, 0, numElements);
-    }
-    glBindBuffer(GL_ARRAY_BUFFER, 0);
-    GLenum err = glGetError();
-    if (err != GL_NO_ERROR) {
-      return "RenderText::Draw(): Error after mask: " + std::to_string(err);
     }
 
     // Bind the font as the active texture.
@@ -390,6 +389,17 @@ std::string RenderText::Impl::Draw(const std::string text, float xLoc, float yLo
     err = glGetError();
     if (err != GL_NO_ERROR) {
       return "RenderText::Draw(): Error binding texture: " + std::to_string(err);
+    }
+
+    // Set the fixed parameters we need to render the text properly.
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    err = glGetError();
+    if (err != GL_NO_ERROR) {
+      return "RenderText::Draw(): Error setting fixed texture params: " + std::to_string(err);
     }
 
     // Blend the characters in, so we see them written above the background.
@@ -401,12 +411,7 @@ std::string RenderText::Impl::Draw(const std::string text, float xLoc, float yLo
         continue;
       }
 
-      // Set the parameters we need to render the text properly.
-      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-      glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+      // Set the variable parameters we need to render the text properly.
       glPixelStorei(GL_UNPACK_ROW_LENGTH, g->bitmap.width);
       err = glGetError();
       if (err != GL_NO_ERROR) {
@@ -424,11 +429,10 @@ std::string RenderText::Impl::Draw(const std::string text, float xLoc, float yLo
       float w = g->bitmap.width * sx;
       float h = g->bitmap.rows * sy;
 
-      // Blend in the text, fully opaque (inverse alpha).
+      // Blend in the text
       glBlendFunc(GL_SRC_COLOR, GL_ONE_MINUS_SRC_COLOR);
       vertexBufferData.clear();
       addFontQuad(vertexBufferData, x2, x2 + w, y2, y2 - h, 0.7f, red*alpha, green*alpha, blue*alpha, 1 - alpha);
-      glBindBuffer(GL_ARRAY_BUFFER, m_fontVertexBuffer);
       glBufferData(GL_ARRAY_BUFFER,
         sizeof(vertexBufferData[0]) * vertexBufferData.size(),
         &vertexBufferData[0], GL_STATIC_DRAW);
@@ -437,39 +441,19 @@ std::string RenderText::Impl::Draw(const std::string text, float xLoc, float yLo
         return "RenderText::Draw(): Error buffering data: " + std::to_string(err);
       }
 
-      // Configure the vertex-buffer objects.
-      {
-        size_t const stride = sizeof(vertexBufferData[0]);
-        // VBO
-        glEnableVertexAttribArray(0);
-        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride,
-          (GLvoid*)(offsetof(FontVertex, pos)));
-
-        // color
-        glEnableVertexAttribArray(1);
-        glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, stride,
-          (GLvoid*)(offsetof(FontVertex, col)));
-
-        // texture
-        glEnableVertexAttribArray(2);
-        glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, stride,
-          (GLvoid*)(offsetof(FontVertex, tex)));
-      }
-
       // Draw the quad.
       {
         GLsizei numElements = static_cast<GLsizei>(vertexBufferData.size());
         glDrawArrays(GL_TRIANGLES, 0, numElements);
       }
-      glBindBuffer(GL_ARRAY_BUFFER, 0);
 
       x += (g->advance.x / 64) * sx;
       y += (g->advance.y / 64) * sy;
-    }
-
-  }
+    } // End of charcter
+  } // End of line
 
   // Set things back to the defaults
+  glBindBuffer(GL_ARRAY_BUFFER, 0);
   glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
   glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
 
