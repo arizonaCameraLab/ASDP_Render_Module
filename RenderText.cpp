@@ -166,7 +166,7 @@ RenderText::Impl::Impl(int windowWidth, int windowHeight)
   // Construct the shader program for rendering text.  It will use texture unit 0 and be a
   // simple texture-mapped shader that uses vertex colors.
   if (glCreateShader == nullptr) {
-    throw std::runtime_error("Fovea_shader::Fovea_shader(): "
+    throw std::runtime_error("RenderText::RenderText(): "
       "Attempted to construct before glewInit() has been called.");
   }
 

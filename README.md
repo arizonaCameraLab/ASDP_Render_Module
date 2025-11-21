@@ -359,6 +359,11 @@ The expected initial image matches that of one window in the Display_Test (shown
 
 ![Test of the RenderText class](RenderText_Test.png "Test of the RenderText class")
 
+**RenderHaloedLines_Test:** This displays a window with a yellow background that has a translucent thin red line
+and a thicker green line, both with haloes around them. The expected image is shown below.
+
+![Test of the RenderHaloedLines class](RenderHaloedLines_Test.png "Test of the RenderHaloedLines class")
+
 ## Calibration
 
 ### Geometric Calibration

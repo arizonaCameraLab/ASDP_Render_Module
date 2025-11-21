@@ -154,6 +154,7 @@ set (Render_Module_HEADERS
   RenderTimingInfo.h
   PointCorrespondences.h
   RenderText.h
+  RenderHaloedLines.h
 )
 set (Render_Module_SOURCES
   CameraRenderInfo.cpp
@@ -171,6 +172,7 @@ set (Render_Module_SOURCES
   RangeEstimator.cpp
   PointCorrespondences.cpp
   RenderText.cpp
+  RenderHaloedLines.cpp
 )
 add_library(Render_Module STATIC ${Render_Module_SOURCES} ${Render_Module_HEADERS})
 target_include_directories(Render_Module PUBLIC
@@ -391,6 +393,7 @@ if(BUILD_TESTS)
     Calibration_Helpers_Test
     Gimbal_Test
     RenderText_Test
+    RenderHaloedLines_Test
   )
   foreach (BASE ${CPP_TESTS})
     set (APP ${BASE})
