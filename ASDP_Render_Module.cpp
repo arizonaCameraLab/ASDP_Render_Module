@@ -150,11 +150,10 @@ static void ShowCameraNames(bool showNames, void* /* unused */)
   if (showNames) {
     CompositeCameras::Annotation annotation;
     annotation.position = { 0.5, 0.5 };       // Center of the image
-    annotation.color = { 1.0f, 1.0f, 1.0f };  // White
-    annotation.opacity = 1.0f;
+    annotation.color = { 1.0f, 1.0f, 0.0f, 1.0f };  // Yellow and fully opaque
     for (auto const& cameraRenderInfo : g_visibleCameras) {
       annotation.cameraID = cameraRenderInfo->m_ID;
-      annotation.label = "Camera ID: " + std::to_string(cameraRenderInfo->m_ID);
+      annotation.label = "CamID: " + std::to_string(cameraRenderInfo->m_ID);
       g_cameraAnnotations.push_back(annotation);
     }
   }

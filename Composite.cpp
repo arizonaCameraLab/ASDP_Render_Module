@@ -15,7 +15,6 @@
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtx/quaternion.hpp>
 #include <glm/gtc/type_ptr.hpp>
-#include <freetype/freetype.h>
 #include "Composite.h"
 
 using namespace asdp::render;
@@ -159,7 +158,7 @@ void Composite::Render(asdp::Time scanOutTime, std::vector<ViewRenderInfo> views
     // Original:
     //RenderView(scanOutTime, glm::value_ptr(VP));
     // Revised:
-    RenderView(scanOutTime, glm::value_ptr(VP), glm::value_ptr(ViewTranslate), view.leftHalfFOV, view.rightHalfFOV, view.bottomHalfFOV, view.topHalfFOV, view.nearClip, view.farClip);
+    RenderView(scanOutTime, glm::value_ptr(VP), glm::value_ptr(ViewTranslate), view);
     //======================================
 
     //======================================
@@ -697,8 +696,7 @@ void CompositeCube::SetupRenderFrame(asdp::Time scanOutTime)
 // Revised by Sang Yoon to support the cylindrical projection
 // The arguments used for the cylindrical projection are added: modelViewMatrix, hFOVf, vFOVf, nearf, and farf.
 void CompositeCube::RenderView(asdp::Time scanOutTime, const float* viewProjection,
-  const float* modelViewMatrix, const float lh_hFOVf, const float rh_hFOVf,
-  const float bh_vFOVf, const float th_vFOVf, const float nearf, const float farf)
+  const float* modelViewMatrix, const ViewRenderInfo& vri)
 {
     if (!m_CP_enabled) // If the flag for cylindrical projection is not enabled, use the perspective projection
         // (following the original execution flow of RenderView()).
@@ -710,12 +708,12 @@ void CompositeCube::RenderView(asdp::Time scanOutTime, const float* viewProjecti
     else // If the flag for cylindrical projection is enabled, use the cylindrical projection.
     {
         glUniform1i(m_useCPUniformId, 1);
-        glUniform1f(m_lh_hfovUniformId, lh_hFOVf * M_PI / 180.0);
-        glUniform1f(m_rh_hfovUniformId, rh_hFOVf * M_PI / 180.0);
-        glUniform1f(m_bh_vfovUniformId, bh_vFOVf * M_PI / 180.0);
-        glUniform1f(m_th_vfovUniformId, th_vFOVf * M_PI / 180.0);
-        glUniform1f(m_nearUniformId, nearf);
-        glUniform1f(m_farUniformId, farf);
+        glUniform1f(m_lh_hfovUniformId, vri.leftHalfFOV * M_PI / 180.0);
+        glUniform1f(m_rh_hfovUniformId, vri.rightHalfFOV * M_PI / 180.0);
+        glUniform1f(m_bh_vfovUniformId, vri.bottomHalfFOV * M_PI / 180.0);
+        glUniform1f(m_th_vfovUniformId, vri.topHalfFOV * M_PI / 180.0);
+        glUniform1f(m_nearUniformId, vri.nearClip);
+        glUniform1f(m_farUniformId, vri.farClip);
         glUniformMatrix4fv(m_modelViewUniformId, 1, GL_FALSE, modelViewMatrix);
     }
     m_roomCube->draw();
@@ -937,6 +935,15 @@ bool CompositeCameras::SetupRendering()
   // platforms, this can cause a spurious error 1280.
   glGetError();
 
+  // Construct a RenderText object for drawing text annotations.
+  try {
+    // Set the width and height to something small; we will resize it later.
+    m_renderText = std::shared_ptr<asdp::render::RenderText>(new asdp::render::RenderText(10,10));
+  } catch (std::runtime_error& e) {
+    std::cerr << "CompositeCameras::SetupRendering(): Failed to create RenderText object: " << e.what() << std::endl;
+  }
+
+  // Construct the shader programs.
   GLuint vertexShaderId = glCreateShader(GL_VERTEX_SHADER);
   GLuint fragmentShaderId = glCreateShader(GL_FRAGMENT_SHADER);
 
@@ -1238,9 +1245,15 @@ void CompositeCameras::SetupRenderFrame(asdp::Time scanOutTime)
 // Revised by Sang Yoon to support the cylindrical projection
 // Original: void CompositeCameras::RenderView(asdp::Time scanOutTime, const float* viewProjection)
 // Revised:
-void CompositeCameras::RenderView(asdp::Time scanOutTime, const float* viewProjection, const float* modelViewMatrix, const float lh_hFOVf, const float rh_hFOVf, const float bh_vFOVf, const float th_vFOVf, const float nearf, const float farf)
+void CompositeCameras::RenderView(asdp::Time scanOutTime, const float* viewProjection, const float* modelViewMatrix,
+  const ViewRenderInfo& vri)
 //======================================
 {
+  // Set the RenderText object size to match the current viewport size.
+  if (m_renderText) {
+    m_renderText->SetWindowSize(vri.width, vri.height);
+  }
+
   // Find the frame time in floating point seconds.
   float frameTime = m_cameraFrameInterval.seconds + m_cameraFrameInterval.microseconds * 1.0e-6;
 
@@ -1265,17 +1278,16 @@ void CompositeCameras::RenderView(asdp::Time scanOutTime, const float* viewProje
 
   //======================================
   // Added by Sang Yoon to support the cylindrical projection
-  if (!m_CP_enabled)
+  if (!m_CP_enabled) {
     glUniform1i(m_useCPUniformId, 0);
-  else
-  {
+  } else {
     glUniform1i(m_useCPUniformId, 1);
-    glUniform1f(m_lh_hfovUniformId, lh_hFOVf * M_PI/180.0);
-    glUniform1f(m_rh_hfovUniformId, rh_hFOVf * M_PI/180.0);
-    glUniform1f(m_bh_vfovUniformId, bh_vFOVf * M_PI/180.0);
-    glUniform1f(m_th_vfovUniformId, th_vFOVf * M_PI/180.0);
-    glUniform1f(m_nearUniformId, nearf);
-    glUniform1f(m_farUniformId, farf);
+    glUniform1f(m_lh_hfovUniformId, vri.leftHalfFOV * M_PI/180.0);
+    glUniform1f(m_rh_hfovUniformId, vri.rightHalfFOV * M_PI/180.0);
+    glUniform1f(m_bh_vfovUniformId, vri.bottomHalfFOV * M_PI/180.0);
+    glUniform1f(m_th_vfovUniformId, vri.topHalfFOV * M_PI/180.0);
+    glUniform1f(m_nearUniformId, vri.nearClip);
+    glUniform1f(m_farUniformId, vri.farClip);
     glUniformMatrix4fv(m_modelViewUniformId, 1, GL_FALSE, modelViewMatrix);
   }
   //======================================
@@ -1434,6 +1446,66 @@ void CompositeCameras::RenderView(asdp::Time scanOutTime, const float* viewProje
   // Unbind the tone map texture from its texture unit
   glActiveTexture(GL_TEXTURE1);
   glBindTexture(GL_TEXTURE_1D, 0);
+
+  // If we have a callback for rendering annotations, call it now and then render its objects.
+  if (m_annotationCallback) {
+    // We always want to draw annotations on top of everything else.
+    glDisable(GL_DEPTH_TEST);
+
+    float leftHalfHOVRad = glm::radians(vri.leftHalfFOV);
+    float rightHalfHOVRad = glm::radians(vri.rightHalfFOV);
+    float topHalfVOVRad = glm::radians(vri.topHalfFOV);
+    float bottomHalfVOVRad = glm::radians(vri.bottomHalfFOV);
+
+    std::vector<Annotation> annotations = m_annotationCallback();
+    for (const auto& annotation : annotations) {
+      // Render each annotation at position of the center of its camera.  First look up the
+      // camera render info with the corresponding ID and then get its position.
+      std::shared_ptr<CameraRenderInfo> cameraInfo = nullptr;
+      for (const auto& cri : m_cameraRenderInfos) {
+        if (cri->m_ID == annotation.cameraID) {
+          cameraInfo = cri;
+          break;
+        }
+      }
+      if (cameraInfo == nullptr) {
+        std::cout << "CompositeCameras::RenderView(): Could not find camera ID "
+          << annotation.cameraID << " for annotation, skipping." << std::endl;
+        continue;
+      }
+      std::array<double, 3> cameraPos = cameraInfo->m_positionMeters;
+
+      // Project the camera position to screen coordinates.
+      // First convert the viewProjection and modelViewMatrix to glm matrices.
+      glm::vec4 screenPos;
+      if (m_CP_enabled) {
+        // Based on the vertex shader code for cylindrical projection
+        glm::mat4 MV = glm::make_mat4(modelViewMatrix);
+        glm::vec4 p = MV * glm::vec4(cameraPos[0], cameraPos[1], cameraPos[2], 1.0);
+        float length_xz = sqrt(p.x * p.x + p.z * p.z);
+        float theta_x = atan2(p.x, -p.z);
+        float theta_y = atan2(p.y, length_xz);
+        /// @todo
+        screenPos = {(theta_x - leftHalfHOVRad) / (rightHalfHOVRad - leftHalfHOVRad) * 2.0f - 1,
+                     (theta_y - bottomHalfVOVRad) / (topHalfVOVRad - bottomHalfVOVRad) * 2.0f - 1,
+                     (length_xz - vri.nearClip) / (vri.farClip - vri.nearClip) * 2.0f - 1,
+                     1.0f };
+      } else {
+        glm::mat4 VP = glm::make_mat4(viewProjection);
+        screenPos = VP * glm::vec4(cameraPos[0], cameraPos[1], cameraPos[2], 1.0);
+        screenPos /= screenPos.w;
+
+        // If this is behind the camera, skip it (remember that we're looking down the -Z axis).
+        if (screenPos.z >= 0) {
+          continue;
+        }
+      }
+
+      m_renderText->Draw(annotation.label,
+        screenPos[0], screenPos[1],
+        annotation.color[0], annotation.color[1], annotation.color[2], annotation.color[3]);
+    }
+  }
 }
 
 void CompositeCameras::TearDownRenderFrame()
@@ -1904,7 +1976,8 @@ void CompositeLineRawData::SetupRenderFrame(asdp::Time /* scanOutTime */)
 
 //======================================
 // Revised by Sang Yoon to match the function declaration of the Composite class revised for the cylinderical projection
-void CompositeLineRawData::RenderView(asdp::Time /* scanOutTime */, const float* /* viewProjection */, const float* /* modelViewMatrix */, const float /* lh_hFOVf */, const float /* rh_hFOVf */, const float /* bh_vFOVf */, const float /* th_vFOVf */, const float /* nearf */, const float /* farf */)
+void CompositeLineRawData::RenderView(asdp::Time /* scanOutTime */, const float* /* viewProjection */,
+  const float* /* modelViewMatrix */, const ViewRenderInfo& /* vri */)
 //======================================
 {
   // Turn off depth testing, we always want to draw the line.
@@ -2161,8 +2234,7 @@ void CompositePackXSightFrame::SetupRenderFrame(asdp::Time /* scanOutTime */)
 }
 
 void CompositePackXSightFrame::RenderView(asdp::Time /* scanOutTime */, const float* /* viewProjection */,
-  const float* /* modelViewMatrix */, const float /* lh_hFOVf */, const float /* rh_hFOVf */,
-  const float /* bh_vFOVf */, const float /* th_vFOVf */, const float /* nearf */, const float /* farf */)
+  const float* /* modelViewMatrix */, const ViewRenderInfo& /* vri */)
 {
   // Turn off depth testing, we always want to draw the quad.
   glDisable(GL_DEPTH_TEST);

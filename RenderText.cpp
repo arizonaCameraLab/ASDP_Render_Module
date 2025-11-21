@@ -113,7 +113,7 @@ public:
   };
 #endif
 
-  const int FONT_SIZE = 48;
+  const int FONT_SIZE = 32;
   GLuint m_font_tex = 0;
   int m_WINDOW_WIDTH = 1920;
   int m_WINDOW_HEIGHT = 1080;

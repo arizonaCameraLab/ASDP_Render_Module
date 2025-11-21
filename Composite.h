@@ -32,6 +32,7 @@
 #include <RenderTimingInfo.h>
 #include <CameraRenderInfo.h>
 #include <RangeEstimator.h>
+#include <RenderText.h>
 
 namespace asdp {
   namespace render {
@@ -133,7 +134,8 @@ namespace asdp {
       // modelViewMatrix, lh_hFOVf, rh_hFOVf, bh_vFOVf, th_vFOVf, nearf, and farf.
       // Original: virtual void RenderView(asdp::Time scanOutTime, const float* viewProjection) = 0;
       // Revised:
-      virtual void RenderView(asdp::Time scanOutTime, const float* viewProjection, const float* modelViewMatrix, const float lh_hFOVf, const float rh_hFOVf, const float bh_vFOVf, const float th_vFOVf, const float nearf, const float farf) = 0;
+      virtual void RenderView(asdp::Time scanOutTime, const float* viewProjection, const float* modelViewMatrix,
+        const ViewRenderInfo& vri) = 0;
       //======================================
 
       /// @brief Set up state needed for rendering, perhaps including the shader program and geometry/textures.
@@ -208,7 +210,8 @@ namespace asdp {
       // modelViewMatrix, lh_hFOVf, rh_hFOVf, bh_vFOVf, th_vFOVf, nearf, and farf.
       // Original: void void RenderView(asdp::Time scanOutTime, const float* viewProjection) override;
       // Revised:
-      void RenderView(asdp::Time scanOutTime, const float* viewProjection, const float* modelViewMatrix, const float lh_hFOVf, const float rh_hFOVf, const float bh_vFOVf, const float th_vFOVf, const float nearf, const float farf) override;
+      void RenderView(asdp::Time scanOutTime, const float* viewProjection, const float* modelViewMatrix,
+        const ViewRenderInfo& vri) override;
       //======================================
 
       void SetupRenderFrame(asdp::Time scanOutTime) override;
@@ -283,9 +286,12 @@ namespace asdp {
       Time m_lastFrameTime;                 ///< The average time of the last frames used.
       Time m_renderFrameInterval;           ///< The interval between render frames to use for replay mode.
       RenderTimingInfo *m_renderTimingInfo; ///< A pointer to the render timing information to fill in.
+
       std::shared_ptr<asdp::render::RangeEstimator> m_rangeEstimator;  ///< The range estimator to use for tone-map range determination.
       double m_defaultStaticDepth;          ///< The default static depth to use for cameras without depth information.
+
       AnnotationCallbackFunction m_annotationCallback; ///< A callback function to retrieve annotations for the rendered frames.
+      std::shared_ptr<RenderText> m_renderText;  ///< The RenderText object to use for rendering annotations.
 
       Time m_cameraFrameInterval;           ///< The interval between camera frames to use for distortion correction.
 
@@ -361,7 +367,8 @@ namespace asdp {
       // The arguments used for the cylindrical projection are added: modelViewMatrix, lh_hFOVf, rh_hFOVf, bh_vFOVf, th_vFOVf, nearf, and farf.
       // Original: void RenderView(asdp::Time scanOutTime, const float* viewProjection) override;
       // Revised:
-      void RenderView(asdp::Time scanOutTime, const float* viewProjection, const float* modelViewMatrix, const float lh_hFOVf, const float rh_hFOVf, const float bh_vFOVf, const float th_vFOVf, const float nearf, const float farf) override;
+      void RenderView(asdp::Time scanOutTime, const float* viewProjection, const float* modelViewMatrix,
+        const ViewRenderInfo& vri) override;
       //======================================
 
       void SetupRenderFrame(asdp::Time scanOutTime) override;
@@ -452,8 +459,7 @@ namespace asdp {
       // Original: void RenderView(asdp::Time scanOutTime, const float* viewProjection) override;
       // Revised:
       void RenderView(asdp::Time scanOutTime, const float* viewProjection, const float* modelViewMatrix,
-        const float lh_hFOVf, const float rh_hFOVf, const float bh_vFOVf, const float th_vFOVf,
-        const float nearf, const float farf) override;
+        const ViewRenderInfo& vri) override;
       //======================================
 
       void SetupRenderFrame(asdp::Time scanOutTime) override;
@@ -507,8 +513,7 @@ namespace asdp {
       // Original: void RenderView(asdp::Time scanOutTime, const float* viewProjection) override;
       // Revised:
       void RenderView(asdp::Time scanOutTime, const float* viewProjection, const float* modelViewMatrix,
-        const float lh_hFOVf, const float rh_hFOVf, const float bh_vFOVf, const float th_vFOVf,
-        const float nearf, const float farf) override;
+        const ViewRenderInfo& vri) override;
       //======================================
 
       void SetupRenderFrame(asdp::Time scanOutTime) override;
