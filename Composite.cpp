@@ -1241,11 +1241,51 @@ void CompositeCameras::SetupRenderFrame(asdp::Time scanOutTime)
     static_cast<int>((averageSeconds - static_cast<int>(averageSeconds)) * 1e6));
 }
 
-static std::array<float, 3> ScreenSpaceFromImageLocation(CameraRenderInfo const& cri, std::array<float, 2> xyFracs,
+/// @brief Convert a world-space position to screen-space XY coordinates in the range [-1..1].
+/// @param viewProjection The view-projection matrix.
+/// @param modelViewMatrix The model-view matrix.
+/// @param worldPos The world-space position to convert.
+/// @param leftHalfHOVRad The left half horizontal FOV in radians.
+/// @param rightHalfHOVRad The right half horizontal FOV in radians.
+/// @param bottomHalfVOVRad The bottom half vertical FOV in radians.
+/// @param topHalfVOVRad The top half vertical FOV in radians.
+/// @param vri The view render info.
+/// @param outScreenXY The output screen-space XY coordinates in the range [-1..1].
+/// @return True if the position is in front of the camera, false if it is behind.
+static bool ScreenSpaceFromWorldSpace(const float* viewProjection, const float* modelViewMatrix, glm::vec3 worldPos,
+  float leftHalfHOVRad, float rightHalfHOVRad, float bottomHalfVOVRad, float topHalfVOVRad,
+  const ViewRenderInfo& vri,
+  std::array<float, 2>& outScreenXY,
   bool cylindrical)
 {
-  // Convert from fractional image coordinates in the range 0-1 to world-space coordinates.
+  // Convert from world-space coordinates to screen-space XY coordinates in the range [-1..1].
+  glm::vec4 screenPos;
+  if (cylindrical) {
+    // Based on the vertex shader code for cylindrical projection
+    glm::mat4 MV = glm::make_mat4(modelViewMatrix);
+    glm::vec4 p = MV * glm::vec4(worldPos.x, worldPos.y, worldPos.z, 1.0f);
+    float length_xz = sqrt(p.x * p.x + p.z * p.z);
+    float theta_x = atan2(p.x, -p.z);
+    float theta_y = atan2(p.y, length_xz);
+    screenPos = { (theta_x - leftHalfHOVRad) / (rightHalfHOVRad - leftHalfHOVRad) * 2.0f - 1.0f,
+                 (theta_y - bottomHalfVOVRad) / (topHalfVOVRad - bottomHalfVOVRad) * 2.0f - 1.0f,
+                 (length_xz - vri.nearClip) / (vri.farClip - vri.nearClip) * 2.0f - 1.0f,
+                 1.0f };
+  }
+  else {
+    glm::mat4 VP = glm::make_mat4(viewProjection);
+    screenPos = VP * glm::vec4(worldPos.x, worldPos.y, worldPos.z, 1.0);
+    screenPos /= screenPos.w;
 
+    // If this is behind the camera, skip it (remember that we're looking down the -Z axis).
+    if (screenPos.z >= 0) {
+      return false;
+    }
+  }
+
+  outScreenXY[0] = screenPos.x;
+  outScreenXY[1] = screenPos.y;
+  return true;
 }
 
 //======================================
@@ -1482,29 +1522,16 @@ void CompositeCameras::RenderView(asdp::Time scanOutTime, const float* viewProje
       }
       glm::vec3 cameraPos = cameraInfo->WorldSpaceFromUV(annotation.uv[0], annotation.uv[1]);
 
-      // Project the camera position to screen coordinates.
-      // First convert the viewProjection and modelViewMatrix to glm matrices.
-      glm::vec4 screenPos;
-      if (m_CP_enabled) {
-        // Based on the vertex shader code for cylindrical projection
-        glm::mat4 MV = glm::make_mat4(modelViewMatrix);
-        glm::vec4 p = MV * glm::vec4(cameraPos[0], cameraPos[1], cameraPos[2], 1.0f);
-        float length_xz = sqrt(p.x * p.x + p.z * p.z);
-        float theta_x = atan2(p.x, -p.z);
-        float theta_y = atan2(p.y, length_xz);
-        screenPos = {(theta_x - leftHalfHOVRad) / (rightHalfHOVRad - leftHalfHOVRad) * 2.0f - 1.0f,
-                     (theta_y - bottomHalfVOVRad) / (topHalfVOVRad - bottomHalfVOVRad) * 2.0f - 1.0f,
-                     (length_xz - vri.nearClip) / (vri.farClip - vri.nearClip) * 2.0f - 1.0f,
-                     1.0f };
-      } else {
-        glm::mat4 VP = glm::make_mat4(viewProjection);
-        screenPos = VP * glm::vec4(cameraPos[0], cameraPos[1], cameraPos[2], 1.0);
-        screenPos /= screenPos.w;
-
-        // If this is behind the camera, skip it (remember that we're looking down the -Z axis).
-        if (screenPos.z >= 0) {
-          continue;
-        }
+      // Project the world-space position to screen coordinates.
+      std::array<float, 2> screenPos;
+      if (!ScreenSpaceFromWorldSpace(viewProjection, modelViewMatrix, cameraPos,
+          leftHalfHOVRad,  rightHalfHOVRad,
+          bottomHalfVOVRad, topHalfVOVRad,
+          vri,
+          screenPos,
+          m_CP_enabled)) {
+        // Behind the camera, skip it.
+        continue;
       }
 
       m_renderText->Draw(annotation.label,
