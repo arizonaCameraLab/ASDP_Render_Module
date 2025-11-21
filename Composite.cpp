@@ -935,12 +935,13 @@ bool CompositeCameras::SetupRendering()
   // platforms, this can cause a spurious error 1280.
   glGetError();
 
-  // Construct a RenderText object for drawing text annotations.
+  // Construct a RenderText and RenderHaloedLines object for drawing text annotations.
   try {
     // Set the width and height to something small; we will resize it later.
     m_renderText = std::shared_ptr<asdp::render::RenderText>(new asdp::render::RenderText(10,10));
+    m_renderHaloedLines = std::shared_ptr<asdp::render::RenderHaloedLines>(new asdp::render::RenderHaloedLines());
   } catch (std::runtime_error& e) {
-    std::cerr << "CompositeCameras::SetupRendering(): Failed to create RenderText object: " << e.what() << std::endl;
+    std::cerr << "CompositeCameras::SetupRendering(): Failed to create RenderText and RenderHaloedLines objects: " << e.what() << std::endl;
   }
 
   // Construct the shader programs.
@@ -1040,6 +1041,8 @@ bool CompositeCameras::SetupRendering()
 
 CompositeCameras::~CompositeCameras()
 {
+  m_renderHaloedLines.reset();
+  m_renderText.reset();
   for (size_t i = 0; i < m_cameraBufferInfos.size(); i++) {
     glDeleteBuffers(1, &m_cameraBufferInfos[i].vertexBufferObject);
     glDeleteBuffers(1, &m_cameraBufferInfos[i].indexBufferObject);
@@ -1534,8 +1537,50 @@ void CompositeCameras::RenderView(asdp::Time scanOutTime, const float* viewProje
         continue;
       }
 
+      float textX = screenPos[0];
+      float textY = screenPos[1];
+      if (annotation.bbox) {
+        /// @todo
+      } else {
+        // There is no bounding box associated with the annotation, so we'll render a haloed line
+        // from around 1/1000th of the camera image size away from the position going down to the
+        // right for about 10 pixels distance. We determine the screen-space projected distance between
+        // the center and a point offset by 1/1000th of the image in both X and Y to determine
+        // the scale to apply.  We set the text drawing point to be just down and to the right
+        // of the end of the line.
+        std::array<float, 2> screenPosOffset;
+        if (!ScreenSpaceFromWorldSpace(viewProjection, modelViewMatrix,
+            cameraInfo->WorldSpaceFromUV(annotation.uv[0] + 0.001f, annotation.uv[1] + 0.001f),
+            leftHalfHOVRad,  rightHalfHOVRad,
+            bottomHalfVOVRad, topHalfVOVRad,
+            vri,
+            screenPosOffset,
+            m_CP_enabled)) {
+          // Behind the camera, skip it.
+          continue;
+        }
+        float dx = screenPosOffset[0] - screenPos[0];
+        float dy = screenPosOffset[1] - screenPos[1];
+        float length = sqrt(dx * dx + dy * dy);
+        float lineLength = length * 10.0f;
+
+        textX = screenPos[0] + 2*length + lineLength;
+        textY = screenPos[1] + 2*length + lineLength;
+
+        std::vector< std::array< std::array<float, 2>, 2> > line = {
+          { { { screenPos[0], screenPos[1] },
+              { screenPos[0] + length + lineLength,
+                screenPos[1] + length + lineLength } } }
+        };
+        std::array<float, 3> lineColor = { annotation.color[0], annotation.color[1], annotation.color[2] };
+        float alpha = annotation.color[3];
+        std::array<float, 3> bgColor = { 0.0f, 0.0f, 0.0f };
+        m_renderHaloedLines->Draw(line,
+          2, 4, lineColor, bgColor, alpha);
+      }
+
       m_renderText->Draw(annotation.label,
-        screenPos[0], screenPos[1],
+        textX, textY,
         annotation.color[0], annotation.color[1], annotation.color[2], annotation.color[3]);
     }
   }

@@ -33,6 +33,7 @@
 #include <CameraRenderInfo.h>
 #include <RangeEstimator.h>
 #include <RenderText.h>
+#include <RenderHaloedLines.h>
 
 namespace asdp {
   namespace render {
@@ -292,6 +293,7 @@ namespace asdp {
 
       AnnotationCallbackFunction m_annotationCallback; ///< A callback function to retrieve annotations for the rendered frames.
       std::shared_ptr<RenderText> m_renderText;  ///< The RenderText object to use for rendering annotations.
+      std::shared_ptr<RenderHaloedLines> m_renderHaloedLines; ///< The RenderHaloedLines object to use for rendering annotation boxes.
 
       Time m_cameraFrameInterval;           ///< The interval between camera frames to use for distortion correction.
 
