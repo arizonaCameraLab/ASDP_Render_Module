@@ -355,6 +355,10 @@ a NIC IP address) will open an XSight head-mounted display instead.
 control cube rotation, as does pressing and dragging with the left mouse button, as does the first plugged-in joystick.
 The expected initial image matches that of one window in the Display_Test (shown above).
 
+**RenderText_Test:** This displays a window with a yellow background and white text. The expected image is shown below.
+
+![Test of the RenderText class](RenderText_Test.png "Test of the RenderText class")
+
 ## Calibration
 
 ### Geometric Calibration

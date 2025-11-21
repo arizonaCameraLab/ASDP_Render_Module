@@ -1241,6 +1241,13 @@ void CompositeCameras::SetupRenderFrame(asdp::Time scanOutTime)
     static_cast<int>((averageSeconds - static_cast<int>(averageSeconds)) * 1e6));
 }
 
+static std::array<float, 3> ScreenSpaceFromImageLocation(CameraRenderInfo const& cri, std::array<float, 2> xyFracs,
+  bool cylindrical)
+{
+  // Convert from fractional image coordinates in the range 0-1 to world-space coordinates.
+
+}
+
 //======================================
 // Revised by Sang Yoon to support the cylindrical projection
 // Original: void CompositeCameras::RenderView(asdp::Time scanOutTime, const float* viewProjection)
@@ -1473,7 +1480,7 @@ void CompositeCameras::RenderView(asdp::Time scanOutTime, const float* viewProje
           << annotation.cameraID << " for annotation, skipping." << std::endl;
         continue;
       }
-      std::array<double, 3> cameraPos = cameraInfo->m_positionMeters;
+      glm::vec3 cameraPos = cameraInfo->WorldSpaceFromUV(annotation.uv[0], annotation.uv[1]);
 
       // Project the camera position to screen coordinates.
       // First convert the viewProjection and modelViewMatrix to glm matrices.
@@ -1481,14 +1488,13 @@ void CompositeCameras::RenderView(asdp::Time scanOutTime, const float* viewProje
       if (m_CP_enabled) {
         // Based on the vertex shader code for cylindrical projection
         glm::mat4 MV = glm::make_mat4(modelViewMatrix);
-        glm::vec4 p = MV * glm::vec4(cameraPos[0], cameraPos[1], cameraPos[2], 1.0);
+        glm::vec4 p = MV * glm::vec4(cameraPos[0], cameraPos[1], cameraPos[2], 1.0f);
         float length_xz = sqrt(p.x * p.x + p.z * p.z);
         float theta_x = atan2(p.x, -p.z);
         float theta_y = atan2(p.y, length_xz);
-        /// @todo
-        screenPos = {(theta_x - leftHalfHOVRad) / (rightHalfHOVRad - leftHalfHOVRad) * 2.0f - 1,
-                     (theta_y - bottomHalfVOVRad) / (topHalfVOVRad - bottomHalfVOVRad) * 2.0f - 1,
-                     (length_xz - vri.nearClip) / (vri.farClip - vri.nearClip) * 2.0f - 1,
+        screenPos = {(theta_x - leftHalfHOVRad) / (rightHalfHOVRad - leftHalfHOVRad) * 2.0f - 1.0f,
+                     (theta_y - bottomHalfVOVRad) / (topHalfVOVRad - bottomHalfVOVRad) * 2.0f - 1.0f,
+                     (length_xz - vri.nearClip) / (vri.farClip - vri.nearClip) * 2.0f - 1.0f,
                      1.0f };
       } else {
         glm::mat4 VP = glm::make_mat4(viewProjection);

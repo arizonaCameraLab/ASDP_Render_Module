@@ -111,3 +111,57 @@ void CameraRenderInfo::ComputePlanarCameraMeshInfo(size_t nx, size_t ny, float d
   m_mesh.ny = ny;
   m_mesh.vertexInfo = vertices;
 }
+
+glm::vec3 CameraRenderInfo::WorldSpaceFromUV(float u, float v, float depth) const
+{
+  double xHalfSpan = tan(glm::radians(m_fovDegrees[0]) * 0.5) * depth;
+  double yHalfSpan = tan(glm::radians(m_fovDegrees[1]) * 0.5) * depth;
+
+  // Rotate the point in the helicopter view space by the specified orientation change
+  // to point in the direction that the camera is looking.
+  glm::mat4 rotationX = glm::rotate(glm::mat4(1.0f),
+    glm::radians(static_cast<GLfloat>(m_orientationDegrees[0])),
+    glm::vec3(1.0f, 0.0f, 0.0f));
+  glm::mat4 rotationY = glm::rotate(rotationX,
+    glm::radians(static_cast<GLfloat>(m_orientationDegrees[1])),
+    glm::vec3(0.0f, 1.0f, 0.0f));
+  glm::mat4 rotation = glm::rotate(rotationY,
+    glm::radians(static_cast<GLfloat>(m_orientationDegrees[2])),
+    glm::vec3(0.0f, 0.0f, 1.0f));
+
+  // Compute the normalized X, Y, coordinates in the range -1 to 1.
+  double xn = -1.0f + 2.0f * u;
+  double yn = -1.0f + 2.0f * v;
+
+  // Compute the scaled X, Y coordinates for the four corners of the quad that place them
+  // for a correctly-sized quad given the camera info to get them to scaled space.
+  // The Z coordinate is along the negative Z axis at the specified depth.
+  double xs = xn * xHalfSpan;
+  double ys = yn * yHalfSpan;
+  double zs = -depth;
+
+  // Perform distortion correction on the X, Y coordinates to get to canonical view
+  // space, which has a camera looking down -Z.  This provides us the location in the
+  // canonical view space.  If we don't have a distortion model, we just use the X, Y, Z
+  // coordinates as is.
+  std::array<double, 3> distPoint = std::array<double, 3>{ xs, ys, zs };
+  if (m_distortion != nullptr) {
+    distPoint = m_distortion->MapPoint(distPoint);
+  }
+  double& xc = distPoint[0];
+  double& yc = distPoint[1];
+  double& zc = distPoint[2];
+
+  // Rotate the X, Y, Z coordinates to match the camera center of projection
+  // and viewing direction of this camera in the coordinate system of the camera cluster.
+  // This will be the local helicopter coordinate system that maps +X helicopter from +X,
+  // +Y helicopter from -Z, and +Z helicopter from +Y.
+  double xh = xc;
+  double yh = -zc;
+  double zh = yc;
+
+  // Rotate the points in the helicopter view space by the specified orientation change
+  // to point them in the direction that the camera is looking.
+  glm::vec3 point(xh, yh, zh);
+  return glm::vec3(rotation * glm::vec4(point, 1.0f));
+}

@@ -140,6 +140,16 @@ namespace asdp {
       /// @return Information about the mesh that was constructed.
       void ComputePlanarCameraMeshInfo(size_t nx = 100, size_t ny = 100, float depth = 900);
 
+      /// @brief Convert normalized UV coordinates and depth to world space coordinates.
+      /// @details This function converts normalized UV coordinates (0 to 1) and a depth
+      /// value (in meters) to world space coordinates. It is not the efficient way to construct
+      /// a mesh, call ComputePlanarCameraMeshInfo for that purpose.
+      /// @param u The normalized horizontal coordinate (0 to 1).
+      /// @param v The normalized vertical coordinate (0 to 1).
+      /// @param depth The depth value (in meters).
+      /// @return The world space coordinates corresponding to the UV coordinates and depth.
+      glm::vec3 WorldSpaceFromUV(float u, float v, float depth = 9000) const;
+
     protected:
       mutable std::mutex m_colorMutex; ///< Mutex to control access to information that must be read as a single unit.
       float m_colorOffset = 0;         ///< Color = (original + offset) * gain.
