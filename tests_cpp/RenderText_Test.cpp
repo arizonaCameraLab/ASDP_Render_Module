@@ -37,6 +37,7 @@ int main()
 
     // Loop until the user closes the window.
     std::cout << "You should see the phrase 'Hello, World' written in white in a yellow image." << std::endl;
+    std::cout << "There should be a second line indented under it." << std::endl;
     std::cout << "The upper-left corner of the text should be at the center of the image." << std::endl;
     std::cout << "There should be a gray rectangle behind the text so that it is visible." << std::endl;
     std::cout << "Close the window to exit." << std::endl;
@@ -45,7 +46,7 @@ int main()
       // Render here
       glClearColor(1.0f, 1.0f, 0.0f, 1.0f);
       glClear(GL_COLOR_BUFFER_BIT);
-      renderText.Draw("Hello, World", 0.0f, 0.0f, 1.0f, 1.0f, 1.0f);
+      renderText.Draw("Hello, World\n  Second line indented", 0.0f, 0.0f, 1.0f, 1.0f, 1.0f);
 
       // Swap front and back buffers
       glfwSwapBuffers(window);
