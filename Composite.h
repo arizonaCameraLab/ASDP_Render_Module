@@ -234,9 +234,9 @@ namespace asdp {
         std::string label;              ///< The label for the annotation. May include multiple lines separated by '\n'.
         std::array<float, 2> uv;        ///< The 2D position of the annotation in normalized [0-1] coordinates.
         std::array<float, 4> color;     ///< The color of the annotation, in RGBA format from 0.0 to 1.0.
-        /// The bounding box for the annotation, in pixel coordinates (xMin, yMin, xMax, yMax).
-        /// This is empty if there is no bounding box for the annotation.
-        std::shared_ptr< std::array<float, 4> > bbox;
+        /// The bounding box size of the annotation, in normalized [0-1] coordinates.
+        /// This is empty if there is no bounding box for the annotation.  The numbers are the half-sizes in X and Y.
+        std::shared_ptr< std::array<float, 2> > bbox;
       } Annotation;
 
       /// @brief Description of callback handler function that returns a vector of Annotation objects.

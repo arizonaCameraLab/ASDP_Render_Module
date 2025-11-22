@@ -394,6 +394,7 @@ if(BUILD_TESTS)
     Gimbal_Test
     RenderText_Test
     RenderHaloedLines_Test
+    Annotation_Test
   )
   foreach (BASE ${CPP_TESTS})
     set (APP ${BASE})

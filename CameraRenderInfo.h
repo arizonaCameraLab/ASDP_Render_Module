@@ -148,7 +148,7 @@ namespace asdp {
       /// @param v The normalized vertical coordinate (0 to 1).
       /// @param depth The depth value (in meters).
       /// @return The world space coordinates corresponding to the UV coordinates and depth.
-      glm::vec3 WorldSpaceFromUV(float u, float v, float depth = 9000) const;
+      glm::vec3 WorldSpaceFromUV(float u, float v, float depth = 900) const;
 
     protected:
       mutable std::mutex m_colorMutex; ///< Mutex to control access to information that must be read as a single unit.

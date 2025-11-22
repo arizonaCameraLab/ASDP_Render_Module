@@ -1274,14 +1274,13 @@ static bool ScreenSpaceFromWorldSpace(const float* viewProjection, const float* 
                  (theta_y - bottomHalfVOVRad) / (topHalfVOVRad - bottomHalfVOVRad) * 2.0f - 1.0f,
                  (length_xz - vri.nearClip) / (vri.farClip - vri.nearClip) * 2.0f - 1.0f,
                  1.0f };
-  }
-  else {
+  } else {
     glm::mat4 VP = glm::make_mat4(viewProjection);
     screenPos = VP * glm::vec4(worldPos.x, worldPos.y, worldPos.z, 1.0);
     screenPos /= screenPos.w;
 
-    // If this is behind the camera, skip it (remember that we're looking down the -Z axis).
-    if (screenPos.z >= 0) {
+    // If this is behind the camera, skip it.
+    if (screenPos.z <= 0) {
       return false;
     }
   }
@@ -1540,17 +1539,75 @@ void CompositeCameras::RenderView(asdp::Time scanOutTime, const float* viewProje
       float textX = screenPos[0];
       float textY = screenPos[1];
       if (annotation.bbox) {
-        /// @todo
+        // There is a bounding box associated with the annotation, so we'll render a haloed box
+        // oriented according to the bbox coordinates, and then render the text to the upper right
+        // of the box.
+        // First determine the screen-space coordinates of the specified X and Y distances from the
+        // center position.
+        std::array<float, 2> screenPosX, screenPosY;
+        if (!ScreenSpaceFromWorldSpace(viewProjection, modelViewMatrix,
+            cameraInfo->WorldSpaceFromUV(annotation.uv[0] + (*annotation.bbox)[0], annotation.uv[1]),
+            leftHalfHOVRad,  rightHalfHOVRad,
+            bottomHalfVOVRad, topHalfVOVRad,
+            vri,
+            screenPosX,
+            m_CP_enabled)) {
+          // Behind the camera, skip it.
+          continue;
+        }
+        if (!ScreenSpaceFromWorldSpace(viewProjection, modelViewMatrix,
+            cameraInfo->WorldSpaceFromUV(annotation.uv[0], annotation.uv[1] + (*annotation.bbox)[1]),
+            leftHalfHOVRad,  rightHalfHOVRad,
+            bottomHalfVOVRad, topHalfVOVRad,
+            vri,
+            screenPosY,
+            m_CP_enabled)) {
+          // Behind the camera, skip it.
+          continue;
+        }
+        glm::vec3 dx = glm::vec3(screenPosX[0] - screenPos[0], screenPosX[1] - screenPos[1], 0.0f);
+        glm::vec3 dy = glm::vec3(screenPosY[0] - screenPos[0], screenPosY[1] - screenPos[1], 0.0f);
+        glm::vec3 center = glm::vec3(screenPos[0], screenPos[1], 0.0f);
+
+        // Make a vector of lines for the box, specifying both ends of each line.
+        // The first four lines are around the outside and they are twice as far out for visibility.
+        // The next for lines go from the center of each edge to halfway back to the center of the box.
+        std::vector< std::array< std::array<float, 2>, 2> > boxLines = {
+          { { { center.x - 2.0f * dx.x - 2.0f * dy.x, center.y - 2.0f * dx.y - 2.0f * dy.y },
+              { center.x + 2.0f * dx.x - 2.0f * dy.x, center.y + 2.0f * dx.y - 2.0f * dy.y } } },
+          { { { center.x + 2.0f * dx.x - 2.0f * dy.x, center.y + 2.0f * dx.y - 2.0f * dy.y },
+              { center.x + 2.0f * dx.x + 2.0f * dy.x, center.y + 2.0f * dx.y + 2.0f * dy.y } } },
+          { { { center.x + 2.0f * dx.x + 2.0f * dy.x, center.y + 2.0f * dx.y + 2.0f * dy.y },
+              { center.x - 2.0f * dx.x + 2.0f * dy.x, center.y - 2.0f * dx.y + 2.0f * dy.y } } },
+          { { { center.x - 2.0f * dx.x + 2.0f * dy.x, center.y - 2.0f * dx.y + 2.0f * dy.y },
+              { center.x - 2.0f * dx.x - 2.0f * dy.x, center.y - 2.0f * dx.y - 2.0f * dy.y } } },
+          { { { center.x - dx.x, center.y - dx.y }, { center.x - 2.0f * dx.x, center.y - 2.0f * dx.y } } },
+          { { { center.x + dx.x, center.y + dx.y }, { center.x + 2.0f * dx.x, center.y + 2.0f * dx.y } } },
+          { { { center.x - dy.x, center.y - dy.y }, { center.x - 2.0f * dy.x, center.y - 2.0f * dy.y } } },
+          { { { center.x + dy.x, center.y + dy.y }, { center.x + 2.0f * dy.x, center.y + 2.0f * dy.y } } }
+        };
+        std::array<float, 3> lineColor = { annotation.color[0], annotation.color[1], annotation.color[2] };
+        float alpha = annotation.color[3];
+        std::array<float, 3> bgColor = { 0.0f, 0.0f, 0.0f };
+        m_renderHaloedLines->Draw(boxLines, 2, 4, lineColor, bgColor, alpha);
+
+        // Move the text to the top-right corner of the box.  This makes all of the vectors be positive in
+        // all elements.
+        glm::vec3 dxMag = { abs(dx.x), abs(dx.y), 0.0f };
+        glm::vec3 dyMag = { abs(dy.x), abs(dy.y), 0.0f };
+        glm::vec3 textPos = center + 2.0f * dxMag + 2.0f * dyMag;
+        textX = textPos.x;
+        textY = textPos.y;
       } else {
         // There is no bounding box associated with the annotation, so we'll render a haloed line
-        // from around 1/1000th of the camera image size away from the position going down to the
+        // from around 2/1000th of the camera image size away from the position going down to the
         // right for about 10 pixels distance. We determine the screen-space projected distance between
-        // the center and a point offset by 1/1000th of the image in both X and Y to determine
+        // the center and a point offset by 2/1000th of the image in both X and Y to determine
         // the scale to apply.  We set the text drawing point to be just down and to the right
         // of the end of the line.
         std::array<float, 2> screenPosOffset;
         if (!ScreenSpaceFromWorldSpace(viewProjection, modelViewMatrix,
-            cameraInfo->WorldSpaceFromUV(annotation.uv[0] + 0.001f, annotation.uv[1] + 0.001f),
+            cameraInfo->WorldSpaceFromUV(annotation.uv[0] + 0.002f, annotation.uv[1] + 0.002f),
             leftHalfHOVRad,  rightHalfHOVRad,
             bottomHalfVOVRad, topHalfVOVRad,
             vri,
@@ -1575,8 +1632,7 @@ void CompositeCameras::RenderView(asdp::Time scanOutTime, const float* viewProje
         std::array<float, 3> lineColor = { annotation.color[0], annotation.color[1], annotation.color[2] };
         float alpha = annotation.color[3];
         std::array<float, 3> bgColor = { 0.0f, 0.0f, 0.0f };
-        m_renderHaloedLines->Draw(line,
-          2, 4, lineColor, bgColor, alpha);
+        m_renderHaloedLines->Draw(line, 2, 4, lineColor, bgColor, alpha);
       }
 
       m_renderText->Draw(annotation.label,
