@@ -13,6 +13,7 @@
 #include <RangeEstimator.h>
 #include <ASDP_Core_API.h>
 #include <GLFW/glfw3.h>
+#include <glm/glm.hpp>
 
 using namespace asdp::render;
 
@@ -60,10 +61,20 @@ std::vector<CompositeCameras::Annotation> AnnotationCallbackHandler()
   std::vector<CompositeCameras::Annotation> cameraAnnotations;
 
   CompositeCameras::Annotation annotation;
+
+  // Add a point annotation in the center of the image for camera ID 1.
   annotation.uv = { 0.5, 0.5 };       // Center of the image
   annotation.color = { 1.0f, 1.0f, 0.0f, 1.0f };  // Yellow and fully opaque
   annotation.cameraID = 1;
   annotation.label = "CamID: " + std::to_string(1);
+  cameraAnnotations.push_back(annotation);
+
+  // Add a rectangle annotation near a corner of the image for camera ID 1.
+  annotation.uv = { 0.1, 0.1 };       // Top-left corner of the image
+  annotation.color = { 0.0f, 1.0f, 0.0f, 1.0f };  // Green and fully opaque
+  annotation.cameraID = 1;
+  annotation.label = "Rectangle\n  with two lines of text";
+  annotation.bbox = std::make_shared< std::array<float, 2> >(std::array<float, 2>{0.1f, 0.1f});
   cameraAnnotations.push_back(annotation);
 
   return cameraAnnotations;
@@ -150,19 +161,21 @@ int main()
     0, asdp::Time(0,17000), nullptr, rangeEstimator, 900.0, AnnotationCallbackHandler);
 
   // Loop until the user closes the window.
-  std::cout << "You should see a row of three distorted dark boxes horizontally across" << std::endl;
-  std::cout << "the center of the view, the first and third brighter on the left and the" << std::endl;
-  std::cout << "second brighter on the right." << std::endl;
-  std::cout << "Above should be brighter extensions and below should be darker ones." << std::endl;
-  std::cout << "The extensions meet at dark and then bright boundaries from left to right." << std::endl;
-  std::cout << "A smaller box should be in the center of the view, black at bottom to white at top." << std::endl;
-  std::cout << "" << std::endl;
-  std::cout << "Press the space bar to toggle between the whole color range and only the" << std::endl;
-  std::cout << "range 0.25 through 0.75." << std::endl;
+  std::cout << "You should see a yellow line annotation in the center of the image and a green" << std::endl;
+  std::cout << "rectangle annotation with two lines of text near the top-left corner." << std::endl;
+  std::cout << "The viewpoint will slowly rotate around the scene and text should stay aligned." << std::endl;
   std::cout << "" << std::endl;
   std::cout << "Close the window to exit." << std::endl;
   auto start = std::chrono::steady_clock::now();
   while (!glfwWindowShouldClose(window)) {
+
+    // Slowly rotate the viewpoint over time by changing the orientation Y-axis value.
+    // Store the orientation in a GL quaternion (W,X,Y,Z) format.
+    auto now = std::chrono::steady_clock::now();
+    std::chrono::duration<double> elapsed_seconds = now - start;
+    float yaw = static_cast<float>(fmod(elapsed_seconds.count() * degreesPerSecond, 360.0));
+    glm::quat q = glm::quat(glm::radians(glm::vec3(0.0f, yaw, 0.0f)));
+    views[0].orientation = { q.w, q.x, q.y, q.z };
 
     // Render here
     composite.Render(asdp::Time(), views);

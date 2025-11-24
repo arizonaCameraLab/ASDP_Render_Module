@@ -52,7 +52,8 @@ void CameraRenderInfo::ComputePlanarCameraMeshInfo(size_t nx, size_t ny, float d
     for (size_t i = 0; i <= nx; i++) {
       // Compute the U and V normalized texture coordinates for the vertex in the range 0 to 1.
       // The normalized texture coordinates in the range 0 to 1 handle mapping the texture so that
-      // the corners of the last pixels are at the edges of the quad.
+      // the corners of the last pixels are at the edges of the quad.  Flip the V coordinate so that
+      // the image can be drawn in right-handed coordinates.
       GLfloat u = i * fnxInv;
       GLfloat v = 1.0f - j * fnyInv;
 
@@ -130,8 +131,9 @@ glm::vec3 CameraRenderInfo::WorldSpaceFromUV(float u, float v, float depth) cons
     glm::vec3(0.0f, 0.0f, 1.0f));
 
   // Compute the normalized X, Y, coordinates in the range -1 to 1.
-  double xn = -1.0f + 2.0f * u;
-  double yn = -1.0f + 2.0f * v;
+  // Flip the Y coordinate to match what is done in the mesh generation.
+  double xn =   -1.0f + 2.0f * u;
+  double yn = -(-1.0f + 2.0f * v);
 
   // Compute the scaled X, Y coordinates for the four corners of the quad that place them
   // for a correctly-sized quad given the camera info to get them to scaled space.
