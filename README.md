@@ -364,6 +364,11 @@ and a thicker green line, both with haloes around them. The expected image is sh
 
 ![Test of the RenderHaloedLines class](RenderHaloedLines_Test.png "Test of the RenderHaloedLines class")
 
+**Annotation_Test:** This displays a window with a spinning image that has a yellow line annotation at its center
+and a green rectangle annotation in its upper-left cornet. A frame from the expected animation is shown below.
+
+![Test of the Annotation class](Annotation_Test.png "Test of the Annotation class")
+
 ## Calibration
 
 ### Geometric Calibration
@@ -582,4 +587,4 @@ Example NUC.json file:
 
 ## Credits
 
-Portions of this software are copyright (c) 2025 The FreeType Project (https://freetype.org).  All rights reserved.
+Portions of this software are copyright (c) 2025 The FreeType Project (https://freetype.org).  Used under the terms of the MIT License.

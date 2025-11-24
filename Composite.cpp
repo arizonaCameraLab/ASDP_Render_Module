@@ -1591,13 +1591,18 @@ void CompositeCameras::RenderView(asdp::Time scanOutTime, const float* viewProje
         std::array<float, 3> bgColor = { 0.0f, 0.0f, 0.0f };
         m_renderHaloedLines->Draw(boxLines, 2, 4, lineColor, bgColor, alpha);
 
-        // Move the text to the top-right corner of the box.  This makes all of the vectors be positive in
-        // all elements.
-        glm::vec3 dxMag = { abs(dx.x), abs(dx.y), 0.0f };
-        glm::vec3 dyMag = { abs(dy.x), abs(dy.y), 0.0f };
-        glm::vec3 textPos = center + 2.0f * dxMag + 2.0f * dyMag;
-        textX = textPos.x;
-        textY = textPos.y;
+        // Move the text to whichever vertex has the largest X value.
+        std::array<float, 2> textXY = boxLines[0][0];
+        for (const auto& line : boxLines) {
+          for (const auto& point : line) {
+            if (point[0] > textXY[0]) {
+              textXY = point;
+            }
+          }
+        }
+
+        textX = textXY[0];
+        textY = textXY[1];
       } else {
         // There is no bounding box associated with the annotation, so we'll render a haloed line
         // from around 2/1000th of the camera image size away from the position going down to the
