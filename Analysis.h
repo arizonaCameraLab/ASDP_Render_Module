@@ -35,11 +35,14 @@ namespace asdp {
       /// @param chanceThreshold Minimum chance value for including a classification in the annotation (range 0-1).
       /// @param alpha Transparency level for the annotation (range 0-1).
       /// @return An annotation. Its label field will be empty if no classifications meet the chance threshold.
-      asdp::render::CompositeCameras::Annotation ConvertToAnnotation(float chanceThreshold = 0.0f, float alpha = 1.0f);
+      asdp::render::CompositeCameras::Annotation ConvertToAnnotation(float chanceThreshold = 0.0f, float alpha = 1.0f) const;
 
       /// @brief Test function for the analysis module.
       /// @return An empty string on success, or an error message on failure.
       static std::string Test();
+
+      //=========================================================================================
+      // Member variables holding the data.
 
       /// Required entries
       uint32_t CamID = 0;
@@ -49,7 +52,7 @@ namespace asdp {
       /// Optional entries. Shared pointer value of nullptr indicates absence of the entry.
       std::shared_ptr< std::array<float, 2> > Loc;
       std::shared_ptr< std::array<float, 2> > Rect;
-      std::shared_ptr< std::vector< std::array<float, 3> > > Vel;
+      std::shared_ptr< std::array<float, 2> > Vel;
 
       /// Possibly empty vector of detected classes
       class Classification {

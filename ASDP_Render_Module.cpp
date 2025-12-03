@@ -45,12 +45,14 @@
 #include <RangeEstimator.h>
 #include <Calibration_Helpers.h>
 #include <PointCorrespondences.h>
+#include <Analysis.h>
 #include <cuda.h>
 #include <cuda_runtime.h>
 #include <cuda_gl_interop.h>
 
 using namespace asdp;
 using namespace asdp::render;
+using namespace asdp::analysis;
 using json = nlohmann::json;
 
 static std::string VERSION = "3.21.0";
@@ -97,11 +99,18 @@ static std::vector< std::array<uint32_t, 2> > g_cameraPairs = {
   {2, 3}, {5, 6}, {8, 9}, {11, 12}, {14, 15}, {17, 18}, {20, 21}      // Bottom row
 };
 
-/// @brief Vector of Annotation objects to hold the current annotations.
-static std::vector<CompositeCameras::Annotation> g_currentAnnotations;
+/// @brief Atomic shared pointer to a vector of AnalysisReport objects to hold the current objects.
+/// Filled in by the Analysis API reading thread and used by the annotation callback.
+static std::shared_ptr< std::vector<AnalysisReport> > g_currentReports;
+
+static float g_analysisFadeTimeSeconds = 1.0f;  ///< Time in seconds for analysis annotations to fade out.
+static float g_analysisChanceThreshold = 0.0f; ///< Minimum chance threshold for analysis annotations to be shown.
 
 /// @brief Vector of Annotation objects to hold camera annotations if they are shown.
 static std::vector<CompositeCameras::Annotation> g_cameraAnnotations;
+
+/// @brief Atomic boolean to control the analysis thread.
+static std::atomic_bool g_runAnalysisThread;
 
 /// @brief Mutex to protect access to the current annotations.
 static std::mutex g_annotationMutex;
@@ -1049,15 +1058,128 @@ std::shared_ptr<NUCInfo> ReadNUCInfoFromDirectory(const std::string& nucInfoDire
 }
 
 /// @brief Callback handler to process annotations requests from the CompositeCameras.
-std::vector<CompositeCameras::Annotation> AnnotationCallbackHandler()
+std::vector<CompositeCameras::Annotation> AnnotationCallbackHandler(void *userData)
 {
-  // Avoid concurrent access to the annotation vectors.
-  std::lock_guard<std::mutex> lock(g_annotationMutex);
+  // Atomically make a copy of the current analysis annotations to add to the camera annotations.
+  std::shared_ptr< std::vector<AnalysisReport> > analysis = std::atomic_load(&g_currentReports);
+
+  // Fill in the annotations vector to return. Adjust their poses based on any velocity since analysis time.
+  // Adjust their opacity based on the fading factor times the time since analysis time.  Remove any whose
+  // opacity is zero or less or whose Chance value is below threshold.
+  std::vector<CompositeCameras::Annotation> annotations;
+  if (analysis) {
+    Timer* timer = reinterpret_cast<Timer*>(userData);
+    Time now;
+    if (timer->GetCoreTime(now) != OKAY) {
+      std::cerr << "AnnotationCallbackHandler(): Error getting current core time." << std::endl;
+      return annotations;
+    }
+
+    // Fill in an entry for each report.
+    for (const AnalysisReport& report : *analysis) {
+      CompositeCameras::Annotation annotation;
+
+      // Determine the opacity based on time since analysis and fading factor.
+      float dt = 0;
+      if (report.Timestamp < now) {
+        Time delta = now - report.Timestamp;
+        dt = delta.seconds + delta.microseconds * 1e-6;
+      }
+      float opacity = 1.0f - dt / g_analysisFadeTimeSeconds;
+      if (opacity <= 0.0f) {
+        // Fully faded out, skip it.
+        continue;
+      }
+
+      // Convert to an annotation and verify that the label is not empty.
+      annotation = report.ConvertToAnnotation(g_analysisFadeTimeSeconds, g_analysisChanceThreshold);
+      if (annotation.label.empty()) {
+        // No label, skip it.
+        continue;
+      }
+
+      // If there are both position and velocity, update the position based on time since analysis.
+      if (report.Loc && report.Vel) {
+        annotation.uv[0] += (*report.Vel)[0] * dt;
+        annotation.uv[1] += (*report.Vel)[1] * dt;
+      }
+
+      // Add the annotation to the list.
+      annotations.push_back(annotation);
+    }
+  }
 
   // Make a vector that adds the current annotations and the camera annotations.
-  std::vector<CompositeCameras::Annotation> annotations = g_currentAnnotations;
+  // Avoid concurrent access to the annotation vectors.
+  std::lock_guard<std::mutex> lock(g_annotationMutex);
   annotations.insert(annotations.end(), g_cameraAnnotations.begin(), g_cameraAnnotations.end());
   return annotations;
+}
+
+/// @brief Thread to handle analysis reports and keep the vector of current reports updated.
+void HandleAnalysisThread(std::vector< std::shared_ptr<JSONStringReceiver> > analysisReceivers, std::shared_ptr<Timer> timer)
+{
+  // Vector of vectors of analysis reports, one per receiver.
+  std::vector< std::vector<AnalysisReport> > reportVectors(analysisReceivers.size());
+
+  while (g_runAnalysisThread) {
+    std::vector<AnalysisReport> reports;
+    for (size_t i = 0; i < analysisReceivers.size(); i++) {
+      auto& receiver = analysisReceivers[i];
+      auto& rv = reportVectors[i];
+
+      // Read all of the pending reports from this receiver.
+      std::string jsonString;
+      Status status = receiver->Receive(0.0f, jsonString);
+      while (status == OKAY) {
+        // Parse the JSON string into analysis reports.
+        try {
+          // Convert this to a report
+          AnalysisReport report(jsonString);
+
+          // See if there is already a report with the same name as this one.  If so, remove it.
+          auto it = std::remove_if(rv.begin(), rv.end(),
+            [&report](const AnalysisReport& r) { return r.Name == report.Name; });
+
+          // Push this report onto the vector.
+          rv.push_back(report);
+        } catch (const std::exception& e) {
+          std::cerr << "Error parsing analysis report JSON: " << e.what() << std::endl;
+        }
+        // Get the next report if there is one.
+        status = receiver->Receive(0.0f, jsonString);
+      }
+
+      // Remove any reports that are too old.
+      Time now;
+      if (timer->GetCoreTime(now) != OKAY) {
+        std::cerr << "HandleAnalysisThread(): Error getting current core time." << std::endl;
+        return;
+      }
+      rv.erase(std::remove_if(rv.begin(), rv.end(),
+        [now](const AnalysisReport& r) {
+          Time delta;
+          if (now >= r.Timestamp) {
+            delta = now - r.Timestamp;
+            float dt = delta.seconds + delta.microseconds * 1e-6f;
+            return dt > g_analysisFadeTimeSeconds;
+          } else {
+            return false;
+          }
+        }), rv.end());
+    }
+
+    // Update the current reports atomically.
+    // Make a shared pointer to a new vector that combines all of the report vectors into one.
+    std::shared_ptr< std::vector<AnalysisReport> > combinedReports = std::make_shared< std::vector<AnalysisReport> >();
+    for (const auto& rv : reportVectors) {
+      combinedReports->insert(combinedReports->end(), rv.begin(), rv.end());
+    }
+    std::atomic_store(&g_currentReports, combinedReports);
+
+    // Sleep a bit to avoid eating the entire CPU.
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  }
 }
 
 static void usage(std::string name)
@@ -1073,12 +1195,13 @@ static void usage(std::string name)
   std::cerr << "  --frameStride <frame stride>        Read one out of every this many frames. Set to 1 for every frame." << std::endl;
   std::cerr << "  --toneMap <tone map>                The tone map to use.  Options are: linear blackbody bluesky 10bit balcony" << std::endl;
   std::cerr << "  --NUCInfo <directory> <tempType>    Add the directory containing the NUC information and the temperature type to use (sensor or core)." << std::endl;
-  std::cerr << "  --addDisplay                        Add another display with defaults that can be overridden" << std::endl;
   std::cerr << "  --replay <stream id>                ID of the stream to replay (1+)." << std::endl;
   std::cerr << "  --loopReplay                        Loop the replay (default not)." << std::endl;
   std::cerr << "  --lineBatchesPerGPUSend <int>       The number of batches of lines to group (default 16 Linux, 110 Windows)" << std::endl;
   std::cerr << "  --noPoses                           Do not stream poses from the server, so no latency adjustment." << std::endl;
   std::cerr << "  --dumpTiming <file name base>       Write timing on quit to CSV files with the specified base name." << std::endl;
+  std::cerr << "  --addAnalysis <URL>                 Add an analysis module from the specified URL (can be used multiple times)." << std::endl;
+  std::cerr << "  --addDisplay                        Add another display with defaults that can be overridden" << std::endl;
   std::cerr << "  --triggerAheadMicroseconds <int>    Microseconds ahead of render to trigger camera (default 22000)." << std::endl;
   std::cerr << "  --depthAheadMicroseconds <int>      Microseconds ahead of render to compute depth (default 8000)." << std::endl;
   std::cerr << "  --lockRotation                      Lock the rotation of the viewer to the initial helicopter pose." << std::endl;
@@ -1133,6 +1256,7 @@ int main(int argc, char** argv)
   float depthThreshold = 10.0f;   ///< Depth threshold in squared pixel value differences.
   double staticDepth = 900.0;     ///< The static depth to use for cameras without depth information.
   std::vector<NUCInfo> nucInfos;  ///< All instances of NUC information for all cameras.
+  std::vector<std::string> analysisModuleURLs; ///< The URLs of analysis modules to load.
   //======================================
   // Added by Sang Yoon to add a command line argument to enable the display interface of overview plus detail view.
   bool enableOD = false;          ///< The flag to enable/disable the display interface of overview plus detail view.
@@ -1248,6 +1372,12 @@ int main(int argc, char** argv)
       }
       nucInfo->temperatureType = argv[i];
       nucInfos.push_back(*nucInfo);
+    } else if (std::string("--addAnalysis") == argv[i]) {
+      if (++i >= argc) {
+        usage(argv[0]);
+        return 2;
+      }
+      analysisModuleURLs.push_back(argv[i]);
     } else if (std::string("--addDisplay") == argv[i]) {
       displayInfos.push_back(DisplayInfo());
     } else if (std::string("--replay") == argv[i]) {
@@ -1386,6 +1516,21 @@ int main(int argc, char** argv)
     std::cout << "ASDP Render Module version " << VERSION + "-" + BUILD_TYPE << " using Core API "
       << asdp::Core::GetVersion() << std::endl;
 
+    //=================================================================
+    // Open any analysis modules receivers specified on the command line.  Make a vector of shared_ptr to them.
+    std::vector< std::shared_ptr<JSONStringReceiver> > analysisModules;
+    for (const std::string& url : analysisModuleURLs) {
+      std::shared_ptr<JSONStringReceiver> analysisModule;
+      Status status = JSONStringReceiver::Create(url, analysisModule);
+      if (status != OKAY) {
+        std::cerr << "Failed to create analysis module from URL " << url << ": "
+          << ErrorMessage(status) << std::endl;
+        return 2;
+      }
+      analysisModules.push_back(analysisModule);
+    }
+
+    //=================================================================
     // Create a PoseAdjuster to handle helicopter motion.
     PoseAdjusterCoordinates poseAdjusterCoordinates = HELICOPTER;
     if (lockRotation) {
@@ -1394,6 +1539,7 @@ int main(int argc, char** argv)
     std::shared_ptr<PoseAdjuster> poseAdjuster = std::make_shared<PoseAdjuster>(2000, poseAdjusterCoordinates,
       disableLatencyCompensation);
 
+    //=================================================================
     // Open a client, specifying the IP address to listen on.
     std::shared_ptr<CoreClient> client = std::make_shared<CoreClient>(ip_address);
     if (client->GetConstructorStatus() != OKAY) {
@@ -1852,7 +1998,7 @@ int main(int argc, char** argv)
         g_visibleCameras, toneMapTexture, poseAdjuster, Time(1/cameraFPS),
         renderOffsetMicroseconds,
         Time(0, 1000000 / displayInfos[i].fps), (i == 0) ? (&g_timingInfo) : nullptr,
-        rangeEstimator, staticDepth, AnnotationCallbackHandler);
+        rangeEstimator, staticDepth, AnnotationCallbackHandler, timer.get());
 
       //======================================
       // Added by Sang Yoon to just pass the status of enabling the cylindrical projection (true or false) from DisplayInfos[i] to composite.
@@ -2145,6 +2291,13 @@ int main(int argc, char** argv)
     // Keeps track of when we were paused so we can adjust our clock synchronization when resumed.
     Time pausedTime = {};
 
+    // If there are any analysis modules, launch a thread to service all of them, passing it the vector of modules.
+    std::thread analysisThread;
+    if (!analysisModules.empty()) {
+      g_runAnalysisThread = true;
+      analysisThread = std::thread(HandleAnalysisThread, analysisModules, timer);
+    }
+
     // Render frames until someone has marked us to be done.
     bool nowPaused = false;
     bool replayDone = false;
@@ -2216,6 +2369,12 @@ int main(int argc, char** argv)
       if (thread.joinable()) {
         thread.join();
       }
+    }
+
+    // Shut down any analysis thread.
+    g_runAnalysisThread = false;
+    if (analysisThread.joinable()) {
+      analysisThread.join();
     }
 
     // Destroy our client
@@ -2464,6 +2623,7 @@ int main(int argc, char** argv)
       }
       summaryTimingFile.close();
     }
+
   } // End of block that causes destruction of all objects before returning.
 
   // Clean up the global objects.

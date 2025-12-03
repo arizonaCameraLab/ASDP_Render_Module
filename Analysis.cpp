@@ -46,7 +46,7 @@ AnalysisReport::AnalysisReport(std::string jsonString)
 
   try {
     if (jsonObject.contains("Vel")) {
-      Vel = std::make_shared<std::vector<std::array<float, 3>>>(jsonObject.at("Vel").get<std::vector<std::array<float, 3>>>());
+      Vel = std::make_shared< std::array<float, 2> >(jsonObject.at("Vel").get<std::array<float, 2>>());
     }
   } catch (...) {}
 
@@ -70,7 +70,7 @@ AnalysisReport::AnalysisReport(std::string jsonString)
   } catch (...) {}
 }
 
-asdp::render::CompositeCameras::Annotation AnalysisReport::ConvertToAnnotation(float chanceThreshold, float alpha)
+asdp::render::CompositeCameras::Annotation AnalysisReport::ConvertToAnnotation(float chanceThreshold, float alpha) const
 {
   asdp::render::CompositeCameras::Annotation annotation;
 
@@ -166,7 +166,7 @@ std::string asdp::analysis::AnalysisReport::Test()
       "Name": "TestAnalysis",
       "Loc": [34.05, -118.25],
       "Rect": [100.0, 200.0],
-      "Vel": [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+      "Vel": [1.0, 0.0],
       "Class": [
         {"Type": "Car", "Chance": 0.95, "IFF": "friend"},
         {"Type": "Person", "Chance": 0.85}

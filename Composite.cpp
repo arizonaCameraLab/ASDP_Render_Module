@@ -874,7 +874,7 @@ CompositeCameras::CompositeCameras(std::vector< std::shared_ptr<CameraRenderInfo
   uint32_t renderOffsetMicroseconds, Time renderFrameInterval, RenderTimingInfo *renderTimingInfo,
   std::shared_ptr<asdp::render::RangeEstimator> rangeEstimator,
   double defaultStaticDepth,
-  AnnotationCallbackFunction annotationCallback)
+  AnnotationCallbackFunction annotationCallback, void* annotationUserData)
   : Composite()
   , m_cameraRenderInfos(cameraRenderInfo)
   , m_toneMapTexture(toneMaptexture)
@@ -886,6 +886,7 @@ CompositeCameras::CompositeCameras(std::vector< std::shared_ptr<CameraRenderInfo
   , m_rangeEstimator(rangeEstimator)
   , m_defaultStaticDepth(defaultStaticDepth)
   , m_annotationCallback(annotationCallback)
+  , m_annotationUserData(annotationUserData)
   , m_programId(0)
   , m_viewProjectionUniformId(0)
   , m_poseAdjustUniformId(0)
@@ -1506,7 +1507,7 @@ void CompositeCameras::RenderView(asdp::Time scanOutTime, const float* viewProje
     float topHalfVOVRad = glm::radians(vri.topHalfFOV);
     float bottomHalfVOVRad = glm::radians(vri.bottomHalfFOV);
 
-    std::vector<Annotation> annotations = m_annotationCallback();
+    std::vector<Annotation> annotations = m_annotationCallback(m_annotationUserData);
     for (const auto& annotation : annotations) {
       // Render each annotation at position of the center of its camera.  First look up the
       // camera render info with the corresponding ID and then get its position.

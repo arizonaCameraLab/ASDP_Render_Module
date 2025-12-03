@@ -240,7 +240,7 @@ namespace asdp {
       } Annotation;
 
       /// @brief Description of callback handler function that returns a vector of Annotation objects.
-      typedef std::function< std::vector<Annotation>() > AnnotationCallbackFunction;
+      typedef std::function< std::vector<Annotation>(void* userData) > AnnotationCallbackFunction;
 
       /// @brief Constructor
       /// @param cameraRenderInfo The configuration of the cameras needed to generate textured geometry.
@@ -257,6 +257,7 @@ namespace asdp {
       /// @param rangeEstimator A shared pointer to the range estimator to use for tone-map range determination.
       /// @param defaultStaticDepth The default static depth to use for cameras without depth information.
       /// @param annotationCallback A callback function to retrieve annotations for the rendered frames.
+      /// @param annotationUserData User data to pass to the annotation callback function.
       CompositeCameras(std::vector< std::shared_ptr<CameraRenderInfo> >& cameraRenderInfo, GLuint toneMapTexture,
         std::shared_ptr<PoseAdjuster> poseAdjuster, Time cameraFrameInterval,
         uint32_t renderOffsetMicroseconds = 0,
@@ -264,7 +265,8 @@ namespace asdp {
         RenderTimingInfo *renderTimingInfo = nullptr,
         std::shared_ptr<asdp::render::RangeEstimator> rangeEstimator = nullptr,
         double defaultStaticDepth = 900.0,
-        AnnotationCallbackFunction annotationCallback = nullptr);
+        AnnotationCallbackFunction annotationCallback = nullptr,
+        void* annotationUserData = nullptr);
 
       /// @brief Update the vertex buffer object for a camera based on its current depth information.
       /// @details This function updates the vertex buffer object for a camera based on the current depth
@@ -292,6 +294,7 @@ namespace asdp {
       double m_defaultStaticDepth;          ///< The default static depth to use for cameras without depth information.
 
       AnnotationCallbackFunction m_annotationCallback; ///< A callback function to retrieve annotations for the rendered frames.
+      void* m_annotationUserData;           ///< User data to pass to the annotation callback function.
       std::shared_ptr<RenderText> m_renderText;  ///< The RenderText object to use for rendering annotations.
       std::shared_ptr<RenderHaloedLines> m_renderHaloedLines; ///< The RenderHaloedLines object to use for rendering annotation boxes.
 

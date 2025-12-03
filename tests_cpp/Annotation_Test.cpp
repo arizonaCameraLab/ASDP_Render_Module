@@ -56,7 +56,7 @@ GLuint MakeTexture(int width, int height, uint16_t minVal, uint16_t maxVal)
 }
 
 /// @brief Callback handler to process annotations requests from the CompositeCameras.
-std::vector<CompositeCameras::Annotation> AnnotationCallbackHandler()
+std::vector<CompositeCameras::Annotation> AnnotationCallbackHandler(void* userData)
 {
   std::vector<CompositeCameras::Annotation> cameraAnnotations;
 
