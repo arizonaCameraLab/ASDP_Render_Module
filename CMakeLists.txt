@@ -155,6 +155,7 @@ set (Render_Module_HEADERS
   PointCorrespondences.h
   RenderText.h
   RenderHaloedLines.h
+  Analysis.h
 )
 set (Render_Module_SOURCES
   CameraRenderInfo.cpp
@@ -173,6 +174,7 @@ set (Render_Module_SOURCES
   PointCorrespondences.cpp
   RenderText.cpp
   RenderHaloedLines.cpp
+  Analysis.cpp
 )
 add_library(Render_Module STATIC ${Render_Module_SOURCES} ${Render_Module_HEADERS})
 target_include_directories(Render_Module PUBLIC
@@ -187,7 +189,7 @@ target_include_directories(Render_Module PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/dependencies/glm"
 )
 target_link_libraries(Render_Module PUBLIC
-  ASDP_Core_API::ASDP_Core_API glfw GLEW::glew OpenGL::GL geogram freetype
+  ASDP_Core_API::ASDP_Core_API glfw GLEW::glew OpenGL::GL geogram freetype nlohmann_json::nlohmann_json
 )
 set_property(TARGET Render_Module PROPERTY CUDA_ARCHITECTURES 60 75 80)
 if(OPENXR_FOUND)
@@ -395,6 +397,7 @@ if(BUILD_TESTS)
     RenderText_Test
     RenderHaloedLines_Test
     Annotation_Test
+    Analysis_Test
   )
   foreach (BASE ${CPP_TESTS})
     set (APP ${BASE})
