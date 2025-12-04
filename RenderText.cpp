@@ -373,7 +373,7 @@ std::string RenderText::Impl::Draw(const std::string text, float xLoc, float yLo
     size_t chars = (text.size() + 1);
     vertexBufferData.clear();
     glBlendFunc(GL_SRC_COLOR, GL_ONE_MINUS_SRC_ALPHA);
-    addFontQuad(vertexBufferData, x, x + totalWidth, y - yMargin + h, y - yMargin, 0.5f, 0, 0, 0, 0.5f * alpha);
+    addFontQuad(vertexBufferData, x, x + totalWidth, y - yMargin + h, y - yMargin, 0.5f, 0, 0, 0, 0.9f * alpha);
     glBufferData(GL_ARRAY_BUFFER,
       sizeof(vertexBufferData[0]) * vertexBufferData.size(),
       &vertexBufferData[0], GL_STATIC_DRAW);

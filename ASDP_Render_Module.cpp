@@ -26,6 +26,7 @@
 #include <list>
 #include <atomic>
 #include <memory>
+#include <algorithm>
 #include <ASDP_Core_API.h>
 #include <ASDP_SpinFreeQueue.hpp>
 #include <ASDP_BufferPool.h>
@@ -1092,7 +1093,7 @@ std::vector<CompositeCameras::Annotation> AnnotationCallbackHandler(void *userDa
       }
 
       // Convert to an annotation and verify that the label is not empty.
-      annotation = report.ConvertToAnnotation(g_analysisFadeTimeSeconds, g_analysisChanceThreshold);
+      annotation = report.ConvertToAnnotation(g_analysisChanceThreshold, opacity);
       if (annotation.label.empty()) {
         // No label, skip it.
         continue;
@@ -1137,9 +1138,9 @@ void HandleAnalysisThread(std::vector< std::shared_ptr<JSONStringReceiver> > ana
           // Convert this to a report
           AnalysisReport report(jsonString);
 
-          // See if there is already a report with the same name as this one.  If so, remove it.
-          auto it = std::remove_if(rv.begin(), rv.end(),
-            [&report](const AnalysisReport& r) { return r.Name == report.Name; });
+          // Remove any existing report with the same name (erase-remove idiom).
+          rv.erase(std::remove_if(rv.begin(), rv.end(),
+            [&report](const AnalysisReport& r) { return r.Name == report.Name; }), rv.end());
 
           // Push this report onto the vector.
           rv.push_back(report);

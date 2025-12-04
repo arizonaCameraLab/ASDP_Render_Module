@@ -216,7 +216,7 @@ std::string RenderHaloedLines::Impl::Draw(std::vector< std::array< std::array<fl
 
     // Blend in a background wider line.
     vertexBufferData.clear();
-    addLine(vertexBufferData, line[0][0], line[0][1], line[1][0], line[1][1], 0.5f,
+    addLine(vertexBufferData, line[0][0], line[0][1], line[1][0], line[1][1], 0.1f,
       haloColor[0], haloColor[1], haloColor[2], alpha);
     glBufferData(GL_ARRAY_BUFFER,
       sizeof(vertexBufferData[0]) * vertexBufferData.size(),

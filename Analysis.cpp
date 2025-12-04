@@ -23,7 +23,7 @@ AnalysisReport::AnalysisReport(std::string jsonString)
   // Extract required fields
   try {
     CamID = jsonObject.at("CamID").get<uint32_t>();
-    json timeJson = jsonObject.at("Timestamp");
+    json timeJson = jsonObject.at("Time");
     Timestamp.seconds = timeJson[0];
     Timestamp.microseconds = timeJson[1];
     Name = jsonObject.at("Name").get<std::string>();
@@ -107,11 +107,11 @@ asdp::render::CompositeCameras::Annotation AnalysisReport::ConvertToAnnotation(f
   if (iffValues.size() == 1) {
     std::string iff = *iffValues.begin();
     if (iff == "friend") {
-      annotation.color = { 0.0f, 1.0f, 0.0f, alpha }; // Green
+      annotation.color = { 0.7f, 1.0f, 0.7f, alpha }; // Green
     } else if (iff == "foe") {
-      annotation.color = { 1.0f, 0.0f, 0.0f, alpha }; // Red
+      annotation.color = { 1.0f, 0.7f, 0.7f, alpha }; // Red
     } else if (iff == "neutral") {
-      annotation.color = { 1.0f, 1.0f, 0.0f, alpha }; // Yellow
+      annotation.color = { 1.0f, 1.0f, 0.5f, alpha }; // Yellow
     }
   }
 
@@ -162,7 +162,7 @@ std::string asdp::analysis::AnalysisReport::Test()
     // Create a sample JSON string
     std::string sampleJson = R"({
       "CamID": 1,
-      "Timestamp": [1625078400, 500000],
+      "Time": [1625078400, 500000],
       "Name": "TestAnalysis",
       "Loc": [34.05, -118.25],
       "Rect": [100.0, 200.0],
@@ -194,7 +194,7 @@ std::string asdp::analysis::AnalysisReport::Test()
     // Make another sample JSON with no optional fields.
     std::string minimalJson = R"({
       "CamID": 2,
-      "Timestamp": [1625078500, 0],
+      "Time": [1625078500, 0],
       "Name": "MinimalAnalysis"
     })";
 
@@ -225,7 +225,7 @@ std::string asdp::analysis::AnalysisReport::Test()
     // Make a malformed JSON string to test error handling.
     std::string malformedJson = R"({
       "CamID": 3,
-      "Timestamp": [1625078600, 0],
+      "Time": [1625078600, 0],
       "Name": "MalformedAnalysis",
       "Loc": [34.05, -118.25
     })"; // Missing closing bracket for Loc array
@@ -256,7 +256,7 @@ std::string asdp::analysis::AnalysisReport::Test()
     // Make a new report whose classifications have no Chance fields and verify that it is converted.
     std::string noChanceJson = R"({
       "CamID": 4,
-      "Timestamp": [1625078700, 0],
+      "Time": [1625078700, 0],
       "Name": "NoChanceAnalysis",
       "Class": [
         {"Type": "Bicycle", "IFF": "neutral"},
