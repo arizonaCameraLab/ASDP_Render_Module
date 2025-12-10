@@ -292,10 +292,9 @@ public:
       depthInfo.m_GPURegionBuffer = nullptr;
 
       m_perDepths.push_back(depthInfo);
-
-      // Fill in the default depth for all regions.
-      m_depths.resize(pixelCounts[0] * pixelCounts[1], defaultDepth);
     }
+    // Fill in the default depth for all regions.
+    m_depths.resize(pixelCounts[0] * pixelCounts[1], defaultDepth);
   }
 
   ~CameraPairInfo() {
@@ -359,9 +358,13 @@ struct CameraPairsKernelData {
   {
     size_t totalSizeFloats = 1; // m_numCameraPairs
 
+    // The fixed-size camera pair info for each pair
     totalSizeFloats += cameraPairs.size() * CameraPairBaseInfoSize;
 
-    /// @todo Add the sizes of other entries as needed.
+    // The depth information for each pair
+    for (auto const& pair : cameraPairs) {
+      totalSizeFloats += pair->m_depths.size();
+    }
 
     // Allocate the data
     if (cudaMallocManaged(&data, totalSizeFloats * sizeof(float)) != cudaSuccess) {
@@ -371,6 +374,7 @@ struct CameraPairsKernelData {
     // Fill in the data
     numCameraPairs() = static_cast<uint32_t>(cameraPairs.size());
 
+    // Fixed camera size data
     for (size_t i = 0; i < cameraPairs.size(); i++) {
       auto const& pair = cameraPairs[i];
       // Base info
@@ -384,7 +388,14 @@ struct CameraPairsKernelData {
       pairPixelCounts(i)[1] = static_cast<uint32_t>(pair->m_pixelCounts[1]);
     }
 
-    /// @todo
+    // Camera pair depth information
+    for (size_t i = 0; i < cameraPairs.size(); i++) {
+      auto const& pair = cameraPairs[i];
+      float* depths = pairDepths(i);
+      for (size_t j = 0; j < pair->m_depths.size(); j++) {
+        depths[j] = pair->m_depths[j];
+      }
+    }
   }
 
   /// @brief Destructor frees the allocated memory.
@@ -417,6 +428,15 @@ struct CameraPairsKernelData {
     return reinterpret_cast<uint32_t*>(&data[1 + i * CameraPairBaseInfoSize + 9]);
   };
 
+  /// The next batch of things packed are the depth values per pair.
+  __host__ __device__ float* pairDepths(size_t i) {
+    size_t depthIndex = 1 + numCameraPairs() * CameraPairBaseInfoSize;
+    for (size_t p = 0; p < i; p++) {
+      uint32_t* pixCounts = pairPixelCounts(p);
+      depthIndex += pixCounts[0] * pixCounts[1];
+    }
+    return &data[depthIndex];
+  };
 };
 
 /// @todo Output data structure to compact and re-fill the depth estimates from all CameraRenderInfos.
@@ -1294,7 +1314,7 @@ std::string DepthEstimator::Test()
     std::vector< std::shared_ptr<CameraPairInfo> > cameraPairs;
     std::shared_ptr<CameraRenderInfo> camera1, camera2;
     std::array<float, 2> fovs = { 40, 30 };
-    std::array<unsigned, 2> resolution = { 1280, 1024 };
+    std::array<unsigned, 2> resolution = { 80, 60 };
     std::shared_ptr<CameraPairInfo> pair1 = std::make_shared<CameraPairInfo>(toneMap, camera1, camera2,
       std::make_shared<RangeEstimatorFixed>(), glm::dvec3( 1, 2, 3 ), glm::angleAxis(0.0, glm::dvec3(0, 0, 1)),
       fovs, resolution,
@@ -1302,17 +1322,13 @@ std::string DepthEstimator::Test()
     std::shared_ptr<CameraPairInfo> pair2 = std::make_shared<CameraPairInfo>(toneMap, camera1, camera2,
       std::make_shared<RangeEstimatorFixed>(), glm::dvec3(4, 5, 6), glm::angleAxis(0.0, glm::dvec3(0, 0, 1)),
       fovs, resolution,
-      std::make_shared<PoseAdjuster>(2000, HELICOPTER, false), 1 / 60.0f, std::vector<float>(), 10.0);
+      std::make_shared<PoseAdjuster>(2000, HELICOPTER, false), 1 / 60.0f, std::vector<float>(), 20.0);
     cameraPairs.push_back(pair1);
     cameraPairs.push_back(pair2);
     CameraPairsKernelData kd(cameraPairs);
 
     if (kd.numCameraPairs() != 2) {
       return "CameraPairsKernelData initialization failed";
-    }
-    kd.numCameraPairs() = 1;
-    if (kd.numCameraPairs() != 1) {
-      return "CameraPairsKernelData numCameraPairs set/get failed";
     }
 
     for (size_t i = 0; i < cameraPairs.size(); i++) {
@@ -1328,6 +1344,17 @@ std::string DepthEstimator::Test()
       }
       if (kd.pairPixelCounts(i)[0] != resolution[0] || kd.pairPixelCounts(i)[1] != resolution[1]) {
         return "CameraPairsKernelData pairPixelCounts " + std::to_string(i) + " failed";
+      }
+    }
+
+    // All depth entries in the first pair should be 10 and all in the second pair should be 20.
+    size_t numDepths = resolution[0] * resolution[1];
+    for (size_t d = 0; d < numDepths; d++) {
+      float d0 = kd.pairDepths(0)[d];
+      float d1 = kd.pairDepths(1)[d];
+      if (d0 != 10 || d1 != 20) {
+        return "CameraPairsKernelData pairDepths information incorrect: got "
+          + std::to_string(d0) + ", " + std::to_string(d1) + " at element " + std::to_string(d);
       }
     }
 
