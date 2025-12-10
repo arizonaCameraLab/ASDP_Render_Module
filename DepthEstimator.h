@@ -76,12 +76,13 @@ namespace asdp {
       /// @return The estimated distance from ray start in Helicopter space to an object, -1e6 if there is an error.
       float EstimateDepth(const glm::vec3 &point, const glm::vec3 &direction) const;
 
-      /// @brief Update the mesh associated with a camera using calls to EstimateDepth().
-      /// @details This method is used to update a different camera mesh than the ones used to estimate
-      /// the depth.  It uses the depth estimates to update the mesh for the specified camera.
+      /// @brief Update the meshes associated with a list of cameras using calls to EstimateDepth().
+      /// @details This method is used to update different camera meshes than the ones used to estimate
+      /// the depth.  It uses the depth estimates to update the mesh for the specified cameras.
+      /// All cameras are passed at once to enable potential parallelism.
       /// A successfull call to ComputeDepthEstimate() must be made before calling this function.
-      /// @param cam Camera whose mesh we are to update.
-      void UpdateMesh(CameraRenderInfo& cam);
+      /// @param cams Cameras whose meshes we are to update.
+      void UpdateMeshes(std::vector<std::shared_ptr<CameraRenderInfo>> cams);
 
       /// @brief Test function to test the class.
       /// @return Empty string on success, string with error message on failure.
