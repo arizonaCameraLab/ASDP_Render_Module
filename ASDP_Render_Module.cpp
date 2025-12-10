@@ -661,6 +661,8 @@ static void ComputeDepth(Time renderTime, void* /* unused */)
   } else {
     for (std::shared_ptr<asdp::render::CameraRenderInfo> cri : g_visibleCameras) {
       g_depthEstimator->UpdateMesh(*cri);
+    }
+    for (std::shared_ptr<asdp::render::CameraRenderInfo> cri : g_visibleCameras) {
       g_composite->UpdateVertexBuffer(*cri);
     }
   }
