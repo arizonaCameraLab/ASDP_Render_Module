@@ -44,10 +44,19 @@ struct Vec3 {
   __host__ __device__ Vec3 operator*(float scalar) const {
     return Vec3(vals[0] * scalar, vals[1] * scalar, vals[2] * scalar);
   }
+  __host__ __device__ bool operator==(const Vec3 other) const {
+    return (vals[0] == other.vals[0]) && (vals[1] == other.vals[1]) && (vals[2] == other.vals[2]);
+  }
+  __host__ __device__ bool operator!=(const Vec3 other) const {
+    return !((*this) == other);
+  }
 
   // Normalization.
+  __host__ __device__ float Length() const {
+    return sqrt(vals[0] * vals[0] + vals[1] * vals[1] + vals[2] * vals[2]);
+  }
   __host__ __device__ Vec3 Normalize() const {
-    float length = sqrt(vals[0] * vals[0] + vals[1] * vals[1] + vals[2] * vals[2]);
+    float length = Length();
     if (length > 0.0f) {
       return Vec3(vals[0] / length, vals[1] / length, vals[2] / length);
     } else {
@@ -59,7 +68,6 @@ struct Vec3 {
   __host__ __device__ float Dot(const Vec3& other) const {
     return vals[0] * other.vals[0] + vals[1] * other.vals[1] + vals[2] * other.vals[2];
   }
-
 };
 
 struct Quat {
@@ -1017,6 +1025,32 @@ std::string DepthEstimator::ComputeDepthEstimate(Time time)
 /// @param planeNormal The normal to the plane.
 /// @param intersectionPoint The point of intersection.
 /// @return True if the ray intersects the plane, false otherwise.
+static bool intersectRayWithPlane(const Vec3& rayStart, const Vec3& rayDir,
+  const Vec3& planeStart, const Vec3& planeNormal, Vec3& intersectionPoint)
+{
+  float denom = rayDir.Dot(planeNormal);
+  if (abs(denom) < 1e-8f) {
+    // The ray is parallel to the plane
+    return false;
+  }
+
+  float t = (planeStart - rayStart).Dot(planeNormal) / denom;
+  if (t < 0) {
+    // The intersection is behind the ray's start point
+    return false;
+  }
+
+  intersectionPoint = rayStart + rayDir * t;
+  return true;
+}
+
+/// @brief Intersect a ray with a plane.
+/// @param rayStart The start point of the ray.
+/// @param rayDir The direction of the ray.
+/// @param planeStart A point on the plane.
+/// @param planeNormal The normal to the plane.
+/// @param intersectionPoint The point of intersection.
+/// @return True if the ray intersects the plane, false otherwise.
 static bool intersectRayWithPlane(const glm::dvec3& rayStart, const glm::dvec3& rayDir,
   const glm::dvec3& planeStart, const glm::dvec3& planeNormal,
   glm::dvec3& intersectionPoint)
@@ -1356,6 +1390,13 @@ std::string DepthEstimator::Test()
     Vec3 v1(1.0, 2.0, 3.0);
     Vec3 v2(4.0, 5.0, 6.0);
 
+    if (v1 != v1) {
+      return "Vec3 != failed";
+    }
+    if (v2 == v1) {
+      return "Vec3 == failed";
+    }
+
     Vec3 v3 = v1 + v2;
     if (v3[0] != 5 || v3[1] != 7 || v3[2] != 9) {
       return "Vec3 addition failed";
@@ -1514,7 +1555,6 @@ std::string DepthEstimator::Test()
         }
       }
     }
-    return "";
   }
 
   // Test intersectRayWithPlane()
@@ -1524,11 +1564,12 @@ std::string DepthEstimator::Test()
     glm::dvec3 planeStart(0, 0, 1);
     glm::dvec3 planeNormal(0, 0, 1);
     glm::dvec3 intersectionPoint;
+
     if (!intersectRayWithPlane(rayStart, rayDir, planeStart, planeNormal, intersectionPoint)) {
       return "intersectRayWithPlane() failed for perpendicular ray and plane";
     }
     if (intersectionPoint != glm::dvec3(0, 0, 1)) {
-      return "intersectRayWithPlane() failed for perpendicular ray and plane";
+      return "intersectRayWithPlane() location failed for perpendicular ray and plane";
     }
 
     rayDir = glm::dvec3(0, 0, -1);
@@ -1547,6 +1588,37 @@ std::string DepthEstimator::Test()
     }
     if (!glm::epsilonEqual(glm::distance(intersectionPoint, glm::dvec3(1, 0, 1)), 0.0, glm::epsilon<double>())) {
       return "intersectRayWithPlane() failed for skew ray and plane";
+    }
+
+    Vec3 vRayStart(0, 0, 0);
+    Vec3 vRayDir(0, 0, 1);
+    Vec3 vPlaneStart(0, 0, 1);
+    Vec3 vPlaneNormal(0, 0, 1);
+    Vec3 vIntersectionPoint;
+
+    if (!intersectRayWithPlane(vRayStart, vRayDir, vPlaneStart, vPlaneNormal, vIntersectionPoint)) {
+      return "intersectRayWithPlane() Vec3 failed for perpendicular ray and plane";
+    }
+    if (vIntersectionPoint != Vec3(0, 0, 1)) {
+      return "intersectRayWithPlane() Vec3 location failed for perpendicular ray and plane";
+    }
+
+    vRayDir = glm::dvec3(0, 0, -1);
+    if (intersectRayWithPlane(vRayStart, vRayDir, vPlaneStart, vPlaneNormal, vIntersectionPoint)) {
+      return "intersectRayWithPlane() Vec3should not have succeeded for anti-perpendicular ray and plane";
+    }
+
+    vRayDir = glm::dvec3(1, 0, 0);
+    if (intersectRayWithPlane(vRayStart, vRayDir, vPlaneStart, vPlaneNormal, vIntersectionPoint)) {
+      return "intersectRayWithPlane() Vec3 should not have succeeded for parallel ray and plane";
+    }
+
+    vRayDir = glm::dvec3(1, 0, 1);
+    if (!intersectRayWithPlane(vRayStart, vRayDir, vPlaneStart, vPlaneNormal, vIntersectionPoint)) {
+      return "intersectRayWithPlane() Vec3 failed for skew ray and plane";
+    }
+    if (abs((vIntersectionPoint - Vec3(1, 0, 1)).Length()) > 1e-8f) {
+      return "intersectRayWithPlane() Vec3 failed for skew ray and plane";
     }
   }
 
