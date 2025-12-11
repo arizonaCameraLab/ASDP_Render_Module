@@ -356,7 +356,7 @@ struct CameraPairsKernelData {
   /// @brief Constructor for the CPU-side code allocates memory and fills in the data.
   CameraPairsKernelData(std::vector< std::shared_ptr<CameraPairInfo> > const& cameraPairs)
   {
-    size_t totalSizeFloats = 1; // m_numCameraPairs
+    size_t totalSizeFloats = 1;
 
     // The fixed-size camera pair info for each pair
     totalSizeFloats += cameraPairs.size() * CameraPairBaseInfoSize;
@@ -439,7 +439,97 @@ struct CameraPairsKernelData {
   };
 };
 
+//==================================================================================================
 /// @todo Output data structure to compact and re-fill the depth estimates from all CameraRenderInfos.
+
+struct CameraRenderInfosKernelData {
+  CameraRenderInfosKernelData() = delete;
+
+  /// @brief Constructor for the CPU-side code allocates memory and fills in the data.
+  CameraRenderInfosKernelData(std::vector< std::shared_ptr<CameraRenderInfo> > cameraRenderInfos) : cris(cameraRenderInfos) {
+    size_t totalSizeFloats = 1;
+
+    // The fixed-size number of elements in X and Y for each camera
+    totalSizeFloats += cris.size() * 2;
+
+    // The depth information for each camera
+    for (auto const& cam : cris) {
+      totalSizeFloats += cam->m_mesh.vertexInfo.size();
+    }
+
+    // Allocate the data
+    if (cudaMallocManaged(&data, totalSizeFloats * sizeof(float)) != cudaSuccess) {
+      throw std::runtime_error("Failed to allocate crisKernelData");
+    }
+
+    // Fill in the data
+    numCameras() = static_cast<uint32_t>(cris.size());
+
+    // Fixed camera size data
+    for (size_t i = 0; i < cris.size(); i++) {
+      auto const& cam = cris[i];
+      cameraNx(i) = cam->m_mesh.nx;
+      cameraNy(i) = cam->m_mesh.ny;
+    }
+
+    // Camera depth information
+    for (size_t i = 0; i < cris.size(); i++) {
+      auto const& cam = cris[i];
+      float* depths = cameraDepths(i);
+      for (size_t j = 0; j < cam->m_mesh.vertexInfo.size(); j++) {
+        depths[j] = cam->m_mesh.vertexInfo[j].depth;
+      }
+    }
+  }
+
+  /// @brief Fill the depths back into the CameraRenderInfo objects from the data in this structure.
+  void FillDepthsBackToCameraRenderInfos() {
+    for (size_t i = 0; i < cris.size(); i++) {
+      auto const& cam = cris[i];
+      float* depths = cameraDepths(i);
+      for (size_t j = 0; j < cam->m_mesh.vertexInfo.size(); j++) {
+        cam->m_mesh.vertexInfo[j].depth = depths[j];
+      }
+    }
+  }
+
+  /// @brief Destructor frees the allocated memory.
+  ~CameraRenderInfosKernelData() {
+    cudaFree(data);
+    data = nullptr;
+  }
+
+  /// Stored camera render infos used to put depths back.
+  std::vector< std::shared_ptr<CameraRenderInfo> > cris;
+
+  /// This is a horrible hack to pack all of the data into a single vector of floats and then
+  /// provide accessors to the individual entries, some of which are not floats.
+  float* data = nullptr;
+
+  /// The size of the base info for each camera pair.
+  const size_t CameraBaseInfoSize = 2; // nx, ny
+
+  /// The first thing packed is the number of cameras.
+  __host__ __device__ uint32_t& numCameras() { return *reinterpret_cast<unsigned int*>(&data[0]); }
+
+  /// The second batch of things packed is the nx,ny info for each camera.
+  __host__ __device__ uint32_t& cameraNx(size_t i) {
+    return *reinterpret_cast<uint32_t*>(&data[1 + i * CameraBaseInfoSize]);
+  };
+  __host__ __device__ uint32_t& cameraNy(size_t i) {
+    return *reinterpret_cast<uint32_t*>(&data[1 + i * CameraBaseInfoSize + 1]);
+  };
+
+  /// The last batch of things packed are the depth values per camera.
+  __host__ __device__ float* cameraDepths(size_t i) {
+    size_t depthIndex = 1 + numCameras() * CameraBaseInfoSize;
+    for (size_t c = 0; c < i; c++) {
+      size_t pixCount = cameraNx(c) * cameraNy(c);
+      depthIndex += pixCount;
+    }
+    return &data[depthIndex];
+  }
+};
 
 //==================================================================================================
 
@@ -1357,9 +1447,74 @@ std::string DepthEstimator::Test()
           + std::to_string(d0) + ", " + std::to_string(d1) + " at element " + std::to_string(d);
       }
     }
+  }
 
-    /// @todo
+  // Test the CameraRenderInfosKernelData class
+  {
+    std::vector< std::shared_ptr<CameraRenderInfo> > cameras;
+    std::shared_ptr<CameraRenderInfo> camera1, camera2;
+    std::array<double, 3> positionMeters = { 1.0, 2.0, 3.0 };
+    std::array<double, 3> orientationDegrees = { 10.0, 20.0, 30.0 };
+    std::array<uint16_t, 2> resolution = { 1280, 1024 };
+    std::array<double, 2> fovs = { 40, 30 };
+    std::shared_ptr<Distortion> distortion = std::make_shared<DistortionNone>();
+    std::shared_ptr<Vignette> vignette = std::make_shared<VignetteNone>();
+    std::shared_ptr<asdp::render::ImageQueue> imageQueue;
+    std::shared_ptr<CameraRenderInfo> cam1 = std::make_shared<CameraRenderInfo>(1, positionMeters, orientationDegrees,
+      resolution, fovs, distortion, vignette, imageQueue, 0.0f);
+    std::shared_ptr<CameraRenderInfo> cam2 = std::make_shared<CameraRenderInfo>(2, positionMeters, orientationDegrees,
+      resolution, fovs, distortion, vignette, imageQueue, 0.0f);
+    cameras.push_back(cam1);
+    cameras.push_back(cam2);
 
+    // Fill in the mesh information with 900 for all elements.
+    for (auto& cam: cameras) {
+      cam->ComputePlanarCameraMeshInfo(30, 20, 900.0f);
+    }
+
+    CameraRenderInfosKernelData kd(cameras);
+
+    // Verify that all count and depth values match in the copied structure.
+    for (size_t i = 0; i < cameras.size(); i++) {
+      if (cameras[i]->m_mesh.nx != kd.cameraNx(i) || cameras[i]->m_mesh.ny != kd.cameraNy(i)) {
+        return "CameraRenderInfosKernelData count mismatch for camera " + std::to_string(i);
+      }
+
+      float* depths = kd.cameraDepths(i);
+      size_t count = cameras[i]->m_mesh.ny * cameras[i]->m_mesh.nx;
+
+      // Make sure the depth values match.
+      for (size_t d = 0; d < count; d++) {
+        if (cameras[i]->m_mesh.vertexInfo[d].depth != depths[d]) {
+          return "CameraRenderInfosKernelData data mismatch for camera " + std::to_string(i);
+        }
+      }
+    }
+
+    // Modify the depth values then write them back.
+    for (size_t i = 0; i < cameras.size(); i++) {
+      float* depths = kd.cameraDepths(i);
+      size_t count = cameras[i]->m_mesh.ny * cameras[i]->m_mesh.nx;
+
+      for (size_t d = 0; d < count; d++) {
+        depths[d] = 1.0f;
+      }
+    }
+    kd.FillDepthsBackToCameraRenderInfos();
+
+    // Verify that the value still match
+    for (size_t i = 0; i < cameras.size(); i++) {
+      float* depths = kd.cameraDepths(i);
+      size_t count = cameras[i]->m_mesh.ny * cameras[i]->m_mesh.nx;
+
+      // Make sure the depth values match.
+      for (size_t d = 0; d < count; d++) {
+        if (cameras[i]->m_mesh.vertexInfo[d].depth != depths[d]) {
+          return "CameraRenderInfosKernelData data mismatch after modification for camera " + std::to_string(i);
+        }
+      }
+    }
+    return "";
   }
 
   // Test intersectRayWithPlane()
