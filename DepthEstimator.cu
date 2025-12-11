@@ -420,24 +420,24 @@ struct CameraPairsKernelData {
   const size_t CameraPairBaseInfoSize = 3 + 4 + 2 + 2; // position(3) + orientation(4) + fovs(2) + pixelCounts(2)
 
   /// The first thing packed is the number of camera pairs.
-  __host__ __device__ uint32_t& numCameraPairs() { return *reinterpret_cast<unsigned int*>(&data[0]); }
+  __host__ __device__ uint32_t& numCameraPairs() const { return *reinterpret_cast<unsigned int*>(&data[0]); }
 
   /// The second batch of things packed is the base info for each camera pair, with all data for each together.
-  __host__ __device__ Vec3& pairPositions(size_t i) {
+  __host__ __device__ Vec3& pairPositions(size_t i) const {
     return *reinterpret_cast<Vec3*>(&data[1 + i * CameraPairBaseInfoSize]);
   };
-  __host__ __device__ Quat& pairOrientations(size_t i) {
+  __host__ __device__ Quat& pairOrientations(size_t i) const {
     return *reinterpret_cast<Quat*>(&data[1 + i * CameraPairBaseInfoSize + 3]);
   };
-  __host__ __device__ float* pairFOVs(size_t i) {
+  __host__ __device__ float* pairFOVs(size_t i) const {
     return &data[1 + i * CameraPairBaseInfoSize + 7];
   };
-  __host__ __device__ uint32_t* pairPixelCounts(size_t i) {
+  __host__ __device__ uint32_t* pairPixelCounts(size_t i) const {
     return reinterpret_cast<uint32_t*>(&data[1 + i * CameraPairBaseInfoSize + 9]);
   };
 
   /// The next batch of things packed are the depth values per pair.
-  __host__ __device__ float* pairDepths(size_t i) {
+  __host__ __device__ float* pairDepths(size_t i) const {
     size_t depthIndex = 1 + numCameraPairs() * CameraPairBaseInfoSize;
     for (size_t p = 0; p < i; p++) {
       uint32_t* pixCounts = pairPixelCounts(p);
@@ -518,13 +518,13 @@ struct CameraRenderInfosKernelData {
   const size_t CameraBaseInfoSize = 2; // nx, ny
 
   /// The first thing packed is the number of cameras.
-  __host__ __device__ uint32_t& numCameras() { return *reinterpret_cast<unsigned int*>(&data[0]); }
+  __host__ __device__ uint32_t& numCameras() const { return *reinterpret_cast<unsigned int*>(&data[0]); }
 
   /// The second batch of things packed is the nx,ny info for each camera.
-  __host__ __device__ uint32_t& cameraNx(size_t i) {
+  __host__ __device__ uint32_t& cameraNx(size_t i) const {
     return *reinterpret_cast<uint32_t*>(&data[1 + i * CameraBaseInfoSize]);
   };
-  __host__ __device__ uint32_t& cameraNy(size_t i) {
+  __host__ __device__ uint32_t& cameraNy(size_t i) const {
     return *reinterpret_cast<uint32_t*>(&data[1 + i * CameraBaseInfoSize + 1]);
   };
 
@@ -1018,14 +1018,21 @@ std::string DepthEstimator::ComputeDepthEstimate(Time time)
   return m_impl->ComputeDepthEstimate(time);
 }
 
-/// @brief Intersect a ray with a plane.
-/// @param rayStart The start point of the ray.
-/// @param rayDir The direction of the ray.
-/// @param planeStart A point on the plane.
-/// @param planeNormal The normal to the plane.
-/// @param intersectionPoint The point of intersection.
-/// @return True if the ray intersects the plane, false otherwise.
-static bool intersectRayWithPlane(const Vec3& rayStart, const Vec3& rayDir,
+/// @brief Convert from degrees to radians.
+static float radians(float deg)
+{
+  constexpr float kDegToRad = 3.14159265358979323846f / 180.0f;
+  return deg * kDegToRad;
+}
+
+/// @brief Clamp value to lie between min and max range specified
+static float clamp(float val, float minVal, float maxVal)
+{
+  return std::min(std::max(val, minVal), maxVal);
+}
+
+/// @brief CUDA-device-accessible function for computing the same value as intersectRayWithPlane() function.
+static __host__ __device__ bool intersectRayWithPlane(const Vec3& rayStart, const Vec3& rayDir,
   const Vec3& planeStart, const Vec3& planeNormal, Vec3& intersectionPoint)
 {
   float denom = rayDir.Dot(planeNormal);
@@ -1042,6 +1049,91 @@ static bool intersectRayWithPlane(const Vec3& rayStart, const Vec3& rayDir,
 
   intersectionPoint = rayStart + rayDir * t;
   return true;
+}
+
+/// @brief CUDA-device-accessible function for computing the same value as EstimateDepth() member function.
+static /*XXX __host__ __device__*/ float estimateDepth(const CameraPairsKernelData& data, const Vec3& point, const Vec3& direction,
+  float defaultDepth, unsigned int nx, unsigned int ny)
+{
+  // Compute values we'll need more than once.
+  Vec3 rayDir = direction.Normalize();
+  const Vec3& rayStart = point;
+
+  // Find out which camera pair has the largest positive normalized dot product with the ray.
+  // We rotate the +Y axis by the camera orientation to get the direction of the camera.
+  float bestDot = -2;
+  size_t bestPair = 0;
+  Vec3 cameraDir = Vec3(0, 1, 0);
+  for (size_t i = 0; i < data.numCameraPairs(); i++) {
+    Vec3 cameraDirRot = data.pairOrientations(i) * cameraDir;
+    float dot = rayDir.Dot(cameraDirRot);
+    if (dot > bestDot) {
+      bestDot = dot;
+      bestPair = i;
+    }
+  }
+
+  // Make references to all of the data from m_impl.
+  const Vec3& position = data.pairPositions(bestPair);
+  const Quat& orientation = data.pairOrientations(bestPair);
+  const float* fovsDeg = data.pairFOVs(bestPair);
+  const float* depths = data.pairDepths(bestPair);
+
+  // Find the coordinate of the ray's piercing point on the plane at the default depth.
+  // The plane's orientation is the camera axis rotated by the camera orientation, and its
+  // distance from the origin is the default depth.
+  Vec3 pierce;
+  Vec3 planeNormal = orientation * cameraDir;
+  Vec3 originOnPlane = position + planeNormal * defaultDepth;
+  if (!intersectRayWithPlane(rayStart, rayDir, originOnPlane, planeNormal, pierce)) {
+    return defaultDepth;
+  }
+
+  // Determine the coordinates in the view frustum of the piercing point, clamping to the
+  // range -1 to 1 in each dimension.  In helicopter space, the screen is in the XZ plane,
+  // so screen Y will correspond to helicopter-space Z.
+  float halfX = defaultDepth * tan(radians(fovsDeg[0] / 2));
+  float halfY = defaultDepth * tan(radians(fovsDeg[1] / 2));
+  Vec3 xDir = orientation * Vec3(1, 0, 0);
+  Vec3 yDir = orientation * Vec3(0, 0, 1);
+  float x = (pierce - originOnPlane).Dot(xDir) / halfX;
+  float y = (pierce - originOnPlane).Dot(yDir) / halfY;
+  x = clamp(x, -1.0f, 1.0f);
+  y = clamp(y, -1.0f, 1.0f);
+
+  // Convert the coordinates to the region index, which goes from 0 to 1 on each axis with the
+  // -1 to 1 range covering half a pixel beyond the index point for each.  Clamp to the range 0 to 1 on each axis.
+  // Interpolate the depth value based on the fractional piercing index.
+  float xScaled = x * nx / (nx - 1.0f);
+  float yScaled = y * ny / (ny - 1.0f);
+  float xCoord = (xScaled + 1.0f) / 2.0f * (nx - 1.0f);
+  xCoord = clamp(xCoord, 0.0f, nx - 1.0f);
+  float yCoord = (yScaled + 1.0f) / 2.0 * (ny - 1.0f);
+  yCoord = clamp(yCoord, 0.0, ny - 1.0f);
+
+  // Look up the four values (floor and ceiling) around the point and use bilinear interpolation
+  // to determine the depth at the point.
+  size_t xFloor = size_t(floor(xCoord));
+  size_t xCeil = size_t(ceil(xCoord));
+  size_t yFloor = size_t(floor(yCoord));
+  size_t yCeil = size_t(ceil(yCoord));
+  float xFrac = xCoord - xFloor;
+  float yFrac = yCoord - yFloor;
+  float depthFF = depths[yFloor * nx + xFloor];
+  float depthFC = depths[yFloor * nx + xCeil];
+  float depthCF = depths[yCeil * nx + xFloor];
+  float depthCC = depths[yCeil * nx + xCeil];
+  float depth = (1 - xFrac) * (1 - yFrac) * depthFF + xFrac * (1 - yFrac) * depthFC +
+    (1 - xFrac) * yFrac * depthCF + xFrac * yFrac * depthCC;
+
+  // Estimate the contact point as that depth from the camera pair origin in the direction of the
+  // piercing point, scaled by ratio of the found depth to the default depth to make it match the
+  // one that would have been found for a plane at the found depth.
+  Vec3 cameraToPierce = pierce - position;
+  Vec3 contactPoint = position + cameraToPierce * (depth / defaultDepth);
+
+  // Return the distance from the ray start to that point.
+  return (contactPoint - rayStart).Length();
 }
 
 /// @brief Intersect a ray with a plane.
@@ -1721,6 +1813,49 @@ std::string DepthEstimator::Test()
       }
 
       //================================================================================================
+      // Repeat the above tests using the static estimateDepth() function
+      {
+        CameraPairsKernelData kd(de.m_impl->m_cameraPairs);
+
+        // Test the depth at the origin, shooting along the +Y axis towards the plane.
+        estimatedDepth = estimateDepth(kd, glm::vec3(0, 0, 0), glm::vec3(0, 1, 0), defaultDepth,
+          de.m_impl->m_nx, de.m_impl->m_ny);
+        if (fabs(estimatedDepth - depth) > depth * 1e-6) {
+          return "estimateDepth() default-depth failed for origin";
+        }
+
+        // Test shooting at a slight angle to the +Y axis towards the plane.  The depth should scale
+        // with the length of the long edge of the triangle.
+        float dx = 0.1;
+        estimatedDepth = estimateDepth(kd, glm::vec3(0, 0, 0), glm::vec3(dx, 1, 0), defaultDepth,
+          de.m_impl->m_nx, de.m_impl->m_ny);
+        expectedDepth = sqrt(1 + dx * dx) * depth;
+        if (fabs(estimatedDepth - expectedDepth) > expectedDepth * 1e-6) {
+          return "estimateDepth() default-depth failed for slight angle";
+        }
+
+        // Test shooting at a slight angle in Z to the +Y axis towards the plane.  The depth should scale
+        // with the length of the long edge of the triangle.
+        float dy = 0.2;
+        estimatedDepth = estimateDepth(kd, glm::vec3(0, 0, 0), glm::vec3(0, 1, dy), defaultDepth,
+          de.m_impl->m_nx, de.m_impl->m_ny);
+        expectedDepth = sqrt(1 + dy * dy) * depth;
+        if (fabs(estimatedDepth - expectedDepth) > expectedDepth * 1e-6) {
+          return "estimateDepth() default-depth failed for slight Y angle";
+        }
+
+        // Test shooting at an angle that is beyond the edge.  It should use the same depth as the
+        // value at the edge.
+        dx = 2.0;
+        estimatedDepth = estimateDepth(kd, glm::vec3(0, 0, 0), glm::vec3(dx, 1, 0), defaultDepth,
+          de.m_impl->m_nx, de.m_impl->m_ny);
+        expectedDepth = sqrt(1 + dx * dx) * depth;
+        if (fabs(estimatedDepth - expectedDepth) > expectedDepth * 1e-6) {
+          return "estimateDepth() default-depth failed for edge";
+        }
+      }
+
+      //================================================================================================
       // Fill in half of the default depth for all regions and test EstimateDepth() again.
       depth /= 2;
       de.m_impl->m_cameraPairs[0]->m_depths.clear();
@@ -1755,6 +1890,47 @@ std::string DepthEstimator::Test()
       expectedDepth = sqrt(1 + dx * dx) * depth;
       if (fabs(estimatedDepth - expectedDepth) > expectedDepth * 1e-6) {
         return "EstimateDepth() half-default-depth failed for edge";
+      }
+
+      //================================================================================================
+      // Repeat the above tests using the static estimateDepth() function
+      {
+        CameraPairsKernelData kd(de.m_impl->m_cameraPairs);
+
+        // Test the depth at the origin, shooting along the - axis away from the plane.
+        // This should return the default depth because there is not intersection.
+        estimatedDepth = estimateDepth(kd, glm::vec3(0, 0, 0), glm::vec3(0, -1, 0), defaultDepth,
+          de.m_impl->m_nx, de.m_impl->m_ny);
+        if (fabs(estimatedDepth - defaultDepth) > defaultDepth * 1e-6) {
+          return "estimateDepth() half-default-depth failed away from origin";
+        }
+
+        // Test the depth at the origin, shooting along the +Y axis towards the plane.
+        estimatedDepth = estimateDepth(kd,glm::vec3(0, 0, 0), glm::vec3(0, 1, 0), defaultDepth,
+          de.m_impl->m_nx, de.m_impl->m_ny);
+        if (fabs(estimatedDepth - depth) > depth * 1e-6) {
+          return "estimateDepth() half-default-depth failed for origin";
+        }
+
+        // Test shooting at a slight angle in X to the +Y axis towards the plane.  The depth should scale
+        // with the length of the long edge of the triangle.
+        dx = 0.1;
+        estimatedDepth = estimateDepth(kd, glm::vec3(0, 0, 0), glm::vec3(dx, 1, 0), defaultDepth,
+          de.m_impl->m_nx, de.m_impl->m_ny);
+        expectedDepth = sqrt(1 + dx * dx) * depth;
+        if (fabs(estimatedDepth - expectedDepth) > expectedDepth * 1e-6) {
+          return "estimateDepth() half-default-depth failed for slight X angle";
+        }
+
+        // Test shooting at an angle that is beyond the edge.  It should use the same depth as the
+        // value at the edge
+        dx = 2.0;
+        estimatedDepth = estimateDepth(kd, glm::vec3(0, 0, 0), glm::vec3(dx, 1, 0), defaultDepth,
+          de.m_impl->m_nx, de.m_impl->m_ny);
+        expectedDepth = sqrt(1 + dx * dx) * depth;
+        if (fabs(estimatedDepth - expectedDepth) > expectedDepth * 1e-6) {
+          return "estimateDepth() half-default-depth failed for edge";
+        }
       }
 
       //================================================================================================
@@ -1812,6 +1988,63 @@ std::string DepthEstimator::Test()
       estimatedDepth = de.EstimateDepth(glm::vec3(0, 0, 0), glm::vec3(0, 1, dz));
       if (fabs(estimatedDepth - expectedDepth) > expectedDepth * 1e-6) {
         return "EstimateDepth() varying depth failed for interpolating between two points in -Y";
+      }
+
+      //================================================================================================
+      // Repeat the above tests using the static estimateDepth() function
+      {
+        CameraPairsKernelData kd(de.m_impl->m_cameraPairs);
+
+        // Test the depth at the origin, shooting along the +Y axis towards the plane.
+        estimatedDepth = estimateDepth(kd, glm::vec3(0, 0, 0), glm::vec3(0, 1, 0), defaultDepth,
+          de.m_impl->m_nx, de.m_impl->m_ny);
+        if (fabs(estimatedDepth - centerDepth) > centerDepth * 1e-6) {
+          return "estimateDepth() varying depth failed for origin";
+        }
+
+        // Test shooting at a wide angle in X to the +Y axis towards the plane.  The depth should scale
+        // with the length of the long edge of the triangle.
+        dx = 2.0;
+        estimatedDepth = estimateDepth(kd, glm::vec3(0, 0, 0), glm::vec3(dx, 1, 0), defaultDepth,
+          de.m_impl->m_nx, de.m_impl->m_ny);
+        expectedDepth = sqrt(1 + dx * dx) * depth;
+        if (fabs(estimatedDepth - expectedDepth) > expectedDepth * 1e-6) {
+          return "estimateDepth() varying depth failed for slight X angle";
+        }
+
+        // Test shooting between two points and make sure that the answer is between the two depths.
+        // We aim for slightly over halfway to the edge, which should be between the center and
+        // outer points.
+        dx = tan(glm::radians(de.m_impl->m_cameraPairs[0]->m_fovsDeg[0]) / 2.0) / 2.0 + 0.01;
+        double below = sqrt(1 + dx * dx) * depth;
+        double above = sqrt(1 + dx * dx) * centerDepth;
+        estimatedDepth = estimateDepth(kd, glm::vec3(0, 0, 0), glm::vec3(dx, 1, 0), defaultDepth,
+          de.m_impl->m_nx, de.m_impl->m_ny);
+        if (estimatedDepth <= below || estimatedDepth >= above) {
+          return "estimateDepth() varying depth failed for interpolating between two points";
+        }
+
+        // Test shooting between two points in +Y screen (+Z world) and make sure that the answer
+        // is between the two depths.
+        // We aim for slightly over halfway to the edge, which should be between the center and
+        // outer points.
+        double dz = tan(glm::radians(de.m_impl->m_cameraPairs[0]->m_fovsDeg[0]) / 2.0) / 2.0 + 0.01;
+        below = sqrt(1 + dz * dz) * depth;
+        above = sqrt(1 + dz * dz) * centerDepth;
+        estimatedDepth = estimateDepth(kd, glm::vec3(0, 0, 0), glm::vec3(0, 1, dz), defaultDepth,
+          de.m_impl->m_nx, de.m_impl->m_ny);
+        if (estimatedDepth <= below || estimatedDepth >= above) {
+          return "estimateDepth() varying depth failed for interpolating between two points in +Y";
+        }
+
+        // Test in -Y screen (-Z world) and make sure that the answer is centerDepth.
+        dz = -dz;
+        expectedDepth = sqrt(1 + dz * dz) * centerDepth;
+        estimatedDepth = estimateDepth(kd, glm::vec3(0, 0, 0), glm::vec3(0, 1, dz), defaultDepth,
+          de.m_impl->m_nx, de.m_impl->m_ny);
+        if (fabs(estimatedDepth - expectedDepth) > expectedDepth * 1e-6) {
+          return "estimateDepth() varying depth failed for interpolating between two points in -Y";
+        }
       }
 
       //================================================================================================
