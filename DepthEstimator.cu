@@ -362,8 +362,7 @@ struct CameraPairsKernelData {
   CameraPairsKernelData() = delete;
 
   /// @brief Constructor for the CPU-side code allocates memory and fills in the data.
-  CameraPairsKernelData(std::vector< std::shared_ptr<CameraPairInfo> > const& cameraPairs)
-    : m_cameraPairs(cameraPairs)
+  CameraPairsKernelData(std::vector< std::shared_ptr<CameraPairInfo> > const& cameraPairs) : m_cameraPairs(cameraPairs)
   {
     totalSizeFloats = 1;
 
@@ -423,8 +422,9 @@ struct CameraPairsKernelData {
   ~CameraPairsKernelData()
   {
     cudaFree(data);
-    cudaFree(kData);
     data = nullptr;
+    cudaFree(kData);
+    kData = nullptr;
   }
 
   /// This is a horrible hack to pack all of the data into a single vector of floats and then
@@ -495,35 +495,40 @@ struct CameraDepthInfoKernelData {
   CameraDepthInfoKernelData() = delete;
 
   /// @brief Constructor for the CPU-side code allocates memory and fills in the data.
+  /// @details The data in the pinned-memory data pointer is undefined until after a copy from the GPU.
+  /// @param cameraRenderInfo The camera render info object to manage depth data for.
   CameraDepthInfoKernelData(std::shared_ptr<CameraRenderInfo> cameraRenderInfo) : cri(cameraRenderInfo) {
-    // The fixed-size number of elements in X and Y
-    size_t totalSizeFloats = CameraBaseInfoSize;
 
-    // The depth information for the camera
-    totalSizeFloats += cri->m_mesh.vertexInfo.size();
-
-    // Allocate the data
-    if (cudaMallocManaged(&data, totalSizeFloats * sizeof(float)) != cudaSuccess) {
+    // Allocate the data, pinned memory on the host and GPU memory for the device.
+    if (cudaMallocHost(&data, cri->m_mesh.vertexInfo.size() * sizeof(float)) != cudaSuccess) {
       throw std::runtime_error("Failed to allocate CameraRenderInfoKernelData");
     }
+    if (cudaMalloc(&kData, cri->m_mesh.vertexInfo.size() * sizeof(float)) != cudaSuccess) {
+      throw std::runtime_error("Failed to allocate GPU CameraRenderInfoKernelData");
+    }
+  }
 
-    // Fill in the data
-    // Fixed camera size data
-    cameraNx() = cri->m_mesh.nx;
-    cameraNy() = cri->m_mesh.ny;
-
-    // Camera depth information
-    float* depths = cameraDepths();
-    for (size_t j = 0; j < cri->m_mesh.vertexInfo.size(); j++) {
-      depths[j] = cri->m_mesh.vertexInfo[j].depth;
+  /// @brief Start the copy of the data from the GPU back to the pinned CPU memory on the specified stream.
+  /// @details This initiates an asynchronous copy of the data from the GPU to the CPU pinned memory on the
+  /// specified CUDA stream.
+  /// @param stream The CUDA stream to use for the copy.
+  void CopyDataFromGPU(cudaStream_t stream = 0) {
+    // Initiate a copy of the data from the GPU using the provided stream.
+    cudaError_t res = cudaMemcpyAsync(data, kData, cri->m_mesh.vertexInfo.size() * sizeof(float), cudaMemcpyDeviceToHost, stream);
+    if (res != cudaSuccess) {
+      throw std::runtime_error("Failed to copy CameraRenderInfoKernelData from GPU: " + std::string(cudaGetErrorString(res)));
     }
   }
 
   /// @brief Fill the depths back into the CameraRenderInfo objects from the data in this structure.
-  void FillDepthsBackToCameraRenderInfos() {
-    float* depths = cameraDepths();
+  /// @details This function waits for the specified stream to complete and then fills the depths
+  /// back into the CameraRenderInfo objects. The CopyDataFromGPU() method must have been called previously
+  /// to initiate the copy of the data from the GPU.
+  /// @param stream The CUDA stream to synchronize before filling depths.
+  void FillDepthsBackToCameraRenderInfos(cudaStream_t stream = 0) {
+    cudaStreamSynchronize(stream);
     for (size_t j = 0; j < cri->m_mesh.vertexInfo.size(); j++) {
-      cri->m_mesh.vertexInfo[j].depth = depths[j];
+      cri->m_mesh.vertexInfo[j].depth = data[j];
     }
   }
 
@@ -531,6 +536,8 @@ struct CameraDepthInfoKernelData {
   ~CameraDepthInfoKernelData() {
     cudaFree(data);
     data = nullptr;
+    cudaFree(kData);
+    kData = nullptr;
   }
 
   /// Stored camera render info used to put depths back.
@@ -540,22 +547,10 @@ struct CameraDepthInfoKernelData {
   /// provide accessors to the individual entries, some of which are not floats.
   float* data = nullptr;
 
-  /// The size of the base info for each camera pair.
-  const size_t CameraBaseInfoSize = 2; // nx, ny
-
-  /// The first batch of things packed is the nx,ny info for each camera.
-  __host__ __device__ uint32_t& cameraNx() const {
-    return *reinterpret_cast<uint32_t*>(&data[0]);
-  };
-  __host__ __device__ uint32_t& cameraNy() const {
-    return *reinterpret_cast<uint32_t*>(&data[1]);
-  };
-
-  /// The last batch of things packed are the depth values for the camera.
-  __host__ __device__ float* cameraDepths() {
-    size_t depthIndex = CameraBaseInfoSize;
-    return &data[depthIndex];
-  }
+  /// This is an even more horrible hack that defines different accessors for the info on the CPU and
+  /// kernel sides based on the correct pointer.  This is the pointer to be used on the GPU kernel.
+  /// It starts out undefined and should be filled in before CopyDataFromGPU() is called.
+  float* kData = nullptr;
 };
 
 //==================================================================================================
@@ -1676,30 +1671,30 @@ std::string DepthEstimator::Test()
 
     CameraDepthInfoKernelData kd(camera);
 
-    // Verify that all count and depth values match in the copied structure.
-    if (camera->m_mesh.nx != kd.cameraNx() || camera->m_mesh.ny != kd.cameraNy()) {
-      return "CameraDepthInfoKernelData count mismatch for camera 0";
-    }
-    float* depths = kd.cameraDepths();
+    // Fill in a grid of depth values from the camera mesh and then copy them to the GPU buffer.
     size_t count = camera->m_mesh.ny * camera->m_mesh.nx;
+    std::vector<float> depths(count);
+    for (size_t d = 0; d < count; d++) {
+      depths[d] = camera->m_mesh.vertexInfo[d].depth;
+    }
+    cudaMemcpy(kd.kData, depths.data(), sizeof(float) * count, cudaMemcpyHostToDevice);
+
+    // Copy the GPU data back to the CPU buffer and verify that it matches.
+    kd.CopyDataFromGPU();
+    cudaDeviceSynchronize();
 
     // Make sure the depth values match.
     for (size_t d = 0; d < count; d++) {
-      if (camera->m_mesh.vertexInfo[d].depth != depths[d]) {
-        return "CameraDepthInfoKernelData data mismatch for camera 0";
+      if (camera->m_mesh.vertexInfo[d].depth != kd.data[d]) {
+        return "CameraDepthInfoKernelData data mismatch after GPU readback to pinned memory";
       }
     }
 
-    // Modify the depth values then write them back.
-    for (size_t d = 0; d < count; d++) {
-      depths[d] = 1.0f;
-    }
+    // Copy the CPU data back to the camera mesh and verify that they still match.
     kd.FillDepthsBackToCameraRenderInfos();
-
-    // Make sure the depth values match.
     for (size_t d = 0; d < count; d++) {
-      if (camera->m_mesh.vertexInfo[d].depth != depths[d]) {
-        return "CameraDepthInfoKernelData data mismatch after modification";
+      if (camera->m_mesh.vertexInfo[d].depth != kd.data[d]) {
+        return "CameraDepthInfoKernelData FillDepthsBackToCameraRenderInfos() data mismatch after final fill";
       }
     }
   }
