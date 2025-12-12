@@ -363,8 +363,9 @@ struct CameraPairsKernelData {
 
   /// @brief Constructor for the CPU-side code allocates memory and fills in the data.
   CameraPairsKernelData(std::vector< std::shared_ptr<CameraPairInfo> > const& cameraPairs)
+    : m_cameraPairs(cameraPairs)
   {
-    size_t totalSizeFloats = 1;
+    totalSizeFloats = 1;
 
     // The fixed-size camera pair info for each pair
     totalSizeFloats += cameraPairs.size() * CameraPairBaseInfoSize;
@@ -374,41 +375,55 @@ struct CameraPairsKernelData {
       totalSizeFloats += pair->m_depths.size();
     }
 
-    // Allocate the data
-    if (cudaMallocManaged(&data, totalSizeFloats * sizeof(float)) != cudaSuccess) {
-      throw std::runtime_error("Failed to allocate CameraPairsKernelData");
+    // Allocate the pinned CPU data and the GPU data
+    if (cudaMallocHost(&data, totalSizeFloats * sizeof(float)) != cudaSuccess) {
+      throw std::runtime_error("Failed to allocate pinned CameraPairsKernelData");
     }
+    if (cudaMalloc(&kData, totalSizeFloats * sizeof(float)) != cudaSuccess) {
+      throw std::runtime_error("Failed to allocate GPU CameraPairsKernelData");
+    }
+  }
 
-    // Fill in the data
-    numCameraPairs() = static_cast<uint32_t>(cameraPairs.size());
+  void CopyDataToGPU(cudaStream_t stream = 0)
+  {
+    // Fill in the data on the pinned memory
+    numCameraPairsCPU() = static_cast<uint32_t>(m_cameraPairs.size());
 
     // Fixed camera size data
-    for (size_t i = 0; i < cameraPairs.size(); i++) {
-      auto const& pair = cameraPairs[i];
+    for (size_t i = 0; i < m_cameraPairs.size(); i++) {
+      auto const& pair = m_cameraPairs[i];
       // Base info
-      pairPositions(i) = Vec3(static_cast<float>(pair->m_position.x),
+      pairPositionsCPU(i) = Vec3(static_cast<float>(pair->m_position.x),
         static_cast<float>(pair->m_position.y),
         static_cast<float>(pair->m_position.z));
-      pairOrientations(i) = Quat(pair->m_orientation);
-      pairFOVs(i)[0] = pair->m_fovsDeg[0];
-      pairFOVs(i)[1] = pair->m_fovsDeg[1];
-      pairPixelCounts(i)[0] = static_cast<uint32_t>(pair->m_pixelCounts[0]);
-      pairPixelCounts(i)[1] = static_cast<uint32_t>(pair->m_pixelCounts[1]);
+      pairOrientationsCPU(i) = Quat(pair->m_orientation);
+      pairFOVsCPU(i)[0] = pair->m_fovsDeg[0];
+      pairFOVsCPU(i)[1] = pair->m_fovsDeg[1];
+      pairPixelCountsCPU(i)[0] = static_cast<uint32_t>(pair->m_pixelCounts[0]);
+      pairPixelCountsCPU(i)[1] = static_cast<uint32_t>(pair->m_pixelCounts[1]);
     }
 
     // Camera pair depth information
-    for (size_t i = 0; i < cameraPairs.size(); i++) {
-      auto const& pair = cameraPairs[i];
-      float* depths = pairDepths(i);
+    for (size_t i = 0; i < m_cameraPairs.size(); i++) {
+      auto const& pair = m_cameraPairs[i];
+      float* depths = pairDepthsCPU(i);
       for (size_t j = 0; j < pair->m_depths.size(); j++) {
         depths[j] = pair->m_depths[j];
       }
     }
+
+    // Initiate a copy of the data to the GPU using the provided stream.
+    cudaError_t res = cudaMemcpyAsync(kData, data, totalSizeFloats * sizeof(float), cudaMemcpyHostToDevice, stream);
+    if (res != cudaSuccess) {
+      throw std::runtime_error("Failed to copy CameraPairsKernelData to GPU: " + std::string(cudaGetErrorString(res)));
+    }
   }
 
   /// @brief Destructor frees the allocated memory.
-  ~CameraPairsKernelData() {
+  ~CameraPairsKernelData()
+  {
     cudaFree(data);
+    cudaFree(kData);
     data = nullptr;
   }
 
@@ -416,35 +431,61 @@ struct CameraPairsKernelData {
   /// provide accessors to the individual entries, some of which are not floats.
   float* data = nullptr;
 
+  /// This is an even more horrible hack that defines different accessors for the info on the CPU and
+  /// kernel sides based on the correct pointer.  This is the pointer to be used on the GPU kernel.
+  float* kData = nullptr;
+
+  /// The total size in floats of the data.
+  size_t totalSizeFloats = 0;
+
   /// The size of the base info for each camera pair.
-  const size_t CameraPairBaseInfoSize = 3 + 4 + 2 + 2; // position(3) + orientation(4) + fovs(2) + pixelCounts(2)
+  static const size_t CameraPairBaseInfoSize = 3 + 4 + 2 + 2; // position(3) + orientation(4) + fovs(2) + pixelCounts(2)
 
   /// The first thing packed is the number of camera pairs.
-  __host__ __device__ uint32_t& numCameraPairs() const { return *reinterpret_cast<unsigned int*>(&data[0]); }
+  __host__ __device__ static uint32_t& numCameraPairs(float *d) { return *reinterpret_cast<unsigned int*>(&d[0]); }
+  __host__ uint32_t& numCameraPairsCPU() const { return numCameraPairs(data); }
+  __device__ uint32_t& numCameraPairsGPU() const { return numCameraPairs(kData); }
 
   /// The second batch of things packed is the base info for each camera pair, with all data for each together.
-  __host__ __device__ Vec3& pairPositions(size_t i) const {
-    return *reinterpret_cast<Vec3*>(&data[1 + i * CameraPairBaseInfoSize]);
+  __host__ __device__ static Vec3& pairPositions(float* d, size_t i) {
+    return *reinterpret_cast<Vec3*>(&d[1 + i * CameraPairBaseInfoSize]);
   };
-  __host__ __device__ Quat& pairOrientations(size_t i) const {
-    return *reinterpret_cast<Quat*>(&data[1 + i * CameraPairBaseInfoSize + 3]);
+  __host__ Vec3& pairPositionsCPU(size_t i) const { return pairPositions(data, i); };
+  __device__ Vec3& pairPositionsGPU(size_t i) const { return pairPositions(kData, i); };
+
+  __host__ __device__ static Quat& pairOrientations(float* d, size_t i) {
+    return *reinterpret_cast<Quat*>(&d[1 + i * CameraPairBaseInfoSize + 3]);
   };
-  __host__ __device__ float* pairFOVs(size_t i) const {
-    return &data[1 + i * CameraPairBaseInfoSize + 7];
+  __host__ Quat& pairOrientationsCPU(size_t i) const { return pairOrientations(data, i); };
+  __device__ Quat& pairOrientationsGPU(size_t i) const { return pairOrientations(kData, i); };
+
+  __host__ __device__ static float* pairFOVs(float* d, size_t i) {
+    return &d[1 + i * CameraPairBaseInfoSize + 7];
   };
-  __host__ __device__ uint32_t* pairPixelCounts(size_t i) const {
-    return reinterpret_cast<uint32_t*>(&data[1 + i * CameraPairBaseInfoSize + 9]);
+  __host__ float* pairFOVsCPU(size_t i) const { return pairFOVs(data, i); };
+  __device__ float* pairFOVsGPU(size_t i) const { return pairFOVs(kData, i); };
+
+  __host__ __device__ static uint32_t* pairPixelCounts(float* d, size_t i) {
+    return reinterpret_cast<uint32_t*>(&d[1 + i * CameraPairBaseInfoSize + 9]);
   };
+  __host__ uint32_t* pairPixelCountsCPU(size_t i) const { return pairPixelCounts(data, i); };
+  __device__ uint32_t* pairPixelCountsGPU(size_t i) const { return pairPixelCounts(kData, i); };
 
   /// The next batch of things packed are the depth values per pair.
-  __host__ __device__ float* pairDepths(size_t i) const {
-    size_t depthIndex = 1 + numCameraPairs() * CameraPairBaseInfoSize;
+  __host__ __device__ static float* pairDepths(float* d, size_t i) {
+    size_t depthIndex = 1 + numCameraPairs(d) * CameraPairBaseInfoSize;
     for (size_t p = 0; p < i; p++) {
-      uint32_t* pixCounts = pairPixelCounts(p);
+      uint32_t* pixCounts = pairPixelCounts(d, p);
       depthIndex += pixCounts[0] * pixCounts[1];
     }
-    return &data[depthIndex];
+    return &d[depthIndex];
   };
+  __host__ float* pairDepthsCPU(size_t i) const { return pairDepths(data, i); };
+  __device__ float* pairDepthsGPU(size_t i) const { return pairDepths(kData, i); };
+
+protected:
+  /// Stores the camera pairs for when we need to refer back to them.
+  std::vector< std::shared_ptr<CameraPairInfo> > m_cameraPairs;
 };
 
 //==================================================================================================
@@ -1030,7 +1071,8 @@ static __host__ __device__ bool intersectRayWithPlane(const Vec3& rayStart, cons
 }
 
 /// @brief CUDA-device-accessible function for computing the same value as EstimateDepth() member function.
-static /*XXX __host__ __device__*/ float estimateDepth(const CameraPairsKernelData& data, const Vec3& point, const Vec3& direction,
+/// @param data The DepthEstimator's compacted data structure appropriate for the calling context (CPU or GPU).
+static __device__ __host__ float estimateDepth(float *data, const Vec3& point, const Vec3& direction,
   float defaultDepth, unsigned int nx, unsigned int ny)
 {
   // Compute values we'll need more than once.
@@ -1042,8 +1084,8 @@ static /*XXX __host__ __device__*/ float estimateDepth(const CameraPairsKernelDa
   float bestDot = -2;
   size_t bestPair = 0;
   Vec3 cameraDir = Vec3(0, 1, 0);
-  for (size_t i = 0; i < data.numCameraPairs(); i++) {
-    Vec3 cameraDirRot = data.pairOrientations(i) * cameraDir;
+  for (size_t i = 0; i < CameraPairsKernelData::numCameraPairs(data); i++) {
+    Vec3 cameraDirRot = CameraPairsKernelData::pairOrientations(data, i) * cameraDir;
     float dot = rayDir.Dot(cameraDirRot);
     if (dot > bestDot) {
       bestDot = dot;
@@ -1052,10 +1094,10 @@ static /*XXX __host__ __device__*/ float estimateDepth(const CameraPairsKernelDa
   }
 
   // Make references to all of the data from m_impl.
-  const Vec3& position = data.pairPositions(bestPair);
-  const Quat& orientation = data.pairOrientations(bestPair);
-  const float* fovsDeg = data.pairFOVs(bestPair);
-  const float* depths = data.pairDepths(bestPair);
+  const Vec3& position = CameraPairsKernelData::pairPositions(data, bestPair);
+  const Quat& orientation = CameraPairsKernelData::pairOrientations(data, bestPair);
+  const float* fovsDeg = CameraPairsKernelData::pairFOVs(data, bestPair);
+  const float* depths = CameraPairsKernelData::pairDepths(data, bestPair);
 
   // Find the coordinate of the ray's piercing point on the plane at the default depth.
   // The plane's orientation is the camera axis rotated by the camera orientation, and its
@@ -1231,7 +1273,38 @@ float DepthEstimator::EstimateDepth(const glm::vec3& point, const glm::vec3& dir
   return glm::length(glm::vec3(contactPoint - rayStart));
 }
 
-void DepthEstimator::UpdateMeshes(std::vector<std::shared_ptr<CameraRenderInfo>> cams)
+void DepthEstimator::UpdateMeshesCPU(std::vector<std::shared_ptr<CameraRenderInfo>> cams)
+{
+  // Update the mesh depth values for each camera.
+  for (std::shared_ptr<CameraRenderInfo> c : cams) {
+    CameraRenderInfo& cam = *c;
+
+    // Lock the mutex to protect the mesh data.
+    std::lock_guard<std::mutex> lock(cam.m_meshMutex);
+
+    // Record the camera position offset.
+    glm::vec3 cameraPosition(cam.m_positionMeters[0], cam.m_positionMeters[1], cam.m_positionMeters[2]);
+
+    // Look up the depth for each vertex in the mesh and update the depth in the mesh.
+    // We add a small offset based on how far the mesh point is from the center of the camera
+    // so that the visible triangle at a location is from the camera whose center of projection
+    // is closest.
+    const double offsetScale = 0.01;
+    double xCenter = cam.m_mesh.nx / 2.0;
+    double yCenter = cam.m_mesh.ny / 2.0;
+    for (int y = 0; y < cam.m_mesh.ny; y++) {
+      double yOff = y - yCenter;
+      for (int x = 0; x < cam.m_mesh.nx; x++) {
+        double xOff = x - xCenter;
+        VertexInfo& v = cam.m_mesh.vertexInfo[y * cam.m_mesh.nx + x];
+        double offsetFactor = 1.0 + offsetScale * sqrt(xOff * xOff + yOff * yOff);
+        v.depth = EstimateDepth(cameraPosition, v.normalizedOffset) * offsetFactor;
+      }
+    }
+  }
+}
+
+void DepthEstimator::UpdateMeshesGPU(std::vector<std::shared_ptr<CameraRenderInfo>> cams)
 {
   // Ensure that we have an entry in m_cameraStreams for each camera.  If not, create one.
   for (auto c : cams) {
@@ -1240,7 +1313,7 @@ void DepthEstimator::UpdateMeshes(std::vector<std::shared_ptr<CameraRenderInfo>>
       cudaStream_t* stream = new cudaStream_t;
       cudaError_t res = cudaStreamCreate(stream);
       if (res != cudaSuccess) {
-        throw std::runtime_error("DepthEstimator::UpdateMeshes(): cudaStreamCreate() failed for camera ID "
+        throw std::runtime_error("DepthEstimator::UpdateMeshesGPU(): cudaStreamCreate() failed for camera ID "
           + std::to_string(camID) + ": " + std::string(cudaGetErrorString(res)));
       }
       m_impl->m_cameraStreams[camID] = stream;
@@ -1461,6 +1534,12 @@ float DepthEstimator::SpeedTestSingleEstimation(uint16_t width, uint16_t height,
   return elapsed.count() / iterations;
 }
 
+__global__ void TestEstimateDepthKernel(float* depthInfo, Vec3 point, Vec3 direction, float defaultDepth,
+  unsigned int nx, unsigned int ny, float *out)
+{
+  *out = estimateDepth(depthInfo, point, direction, defaultDepth, nx, ny);
+}
+
 std::string DepthEstimator::Test()
 {
   // Test Vec3 and Quat classes
@@ -1535,23 +1614,24 @@ std::string DepthEstimator::Test()
     cameraPairs.push_back(pair1);
     cameraPairs.push_back(pair2);
     CameraPairsKernelData kd(cameraPairs);
+    kd.CopyDataToGPU();
 
-    if (kd.numCameraPairs() != 2) {
+    if (kd.numCameraPairsCPU() != 2) {
       return "CameraPairsKernelData initialization failed";
     }
 
     for (size_t i = 0; i < cameraPairs.size(); i++) {
-      if (kd.pairPositions(i)[0] != (i * 3 + 1) || kd.pairPositions(i)[1] != (i * 3 + 2) || kd.pairPositions(i)[2] != (i * 3 + 3)) {
+      if (kd.pairPositionsCPU(i)[0] != (i * 3 + 1) || kd.pairPositionsCPU(i)[1] != (i * 3 + 2) || kd.pairPositionsCPU(i)[2] != (i * 3 + 3)) {
         return "CameraPairsKernelData pairPositions " + std::to_string(i) + " failed";
       }
-      if (kd.pairOrientations(i)[0] != 0 || kd.pairOrientations(i)[1] != 0 ||
-        kd.pairOrientations(i)[2] != 0 || kd.pairOrientations(i)[3] != 1) {
+      if (kd.pairOrientationsCPU(i)[0] != 0 || kd.pairOrientationsCPU(i)[1] != 0 ||
+        kd.pairOrientationsCPU(i)[2] != 0 || kd.pairOrientationsCPU(i)[3] != 1) {
         return "CameraPairsKernelData pairOrientations " + std::to_string(i) + " failed";
       }
-      if (kd.pairFOVs(i)[0] != fovs[0] || kd.pairFOVs(i)[1] != fovs[1]) {
+      if (kd.pairFOVsCPU(i)[0] != fovs[0] || kd.pairFOVsCPU(i)[1] != fovs[1]) {
         return "CameraPairsKernelData pairFOVs " + std::to_string(i) + " failed";
       }
-      if (kd.pairPixelCounts(i)[0] != resolution[0] || kd.pairPixelCounts(i)[1] != resolution[1]) {
+      if (kd.pairPixelCountsCPU(i)[0] != resolution[0] || kd.pairPixelCountsCPU(i)[1] != resolution[1]) {
         return "CameraPairsKernelData pairPixelCounts " + std::to_string(i) + " failed";
       }
     }
@@ -1559,10 +1639,21 @@ std::string DepthEstimator::Test()
     // All depth entries in the first pair should be 10 and all in the second pair should be 20.
     size_t numDepths = resolution[0] * resolution[1];
     for (size_t d = 0; d < numDepths; d++) {
-      float d0 = kd.pairDepths(0)[d];
-      float d1 = kd.pairDepths(1)[d];
+      float d0 = kd.pairDepthsCPU(0)[d];
+      float d1 = kd.pairDepthsCPU(1)[d];
       if (d0 != 10 || d1 != 20) {
         return "CameraPairsKernelData pairDepths information incorrect: got "
+          + std::to_string(d0) + ", " + std::to_string(d1) + " at element " + std::to_string(d);
+      }
+    }
+
+    // Copy the GPU data back to the CPU buffer and verify that it matches.
+    cudaMemcpy(kd.kData, kd.data, sizeof(float) * kd.totalSizeFloats, cudaMemcpyDeviceToHost);
+    for (size_t d = 0; d < numDepths; d++) {
+      float d0 = kd.pairDepthsCPU(0)[d];
+      float d1 = kd.pairDepthsCPU(1)[d];
+      if (d0 != 10 || d1 != 20) {
+        return "CameraPairsKernelData pairDepths copied information incorrect: got "
           + std::to_string(d0) + ", " + std::to_string(d1) + " at element " + std::to_string(d);
       }
     }
@@ -1780,9 +1871,10 @@ std::string DepthEstimator::Test()
       // Repeat the above tests using the static estimateDepth() function
       {
         CameraPairsKernelData kd(de.m_impl->m_cameraPairs);
+        kd.CopyDataToGPU();
 
         // Test the depth at the origin, shooting along the +Y axis towards the plane.
-        estimatedDepth = estimateDepth(kd, glm::vec3(0, 0, 0), glm::vec3(0, 1, 0), defaultDepth,
+        estimatedDepth = estimateDepth(kd.data, glm::vec3(0, 0, 0), glm::vec3(0, 1, 0), defaultDepth,
           de.m_impl->m_nx, de.m_impl->m_ny);
         if (fabs(estimatedDepth - depth) > depth * 1e-6) {
           return "estimateDepth() default-depth failed for origin";
@@ -1791,7 +1883,7 @@ std::string DepthEstimator::Test()
         // Test shooting at a slight angle to the +Y axis towards the plane.  The depth should scale
         // with the length of the long edge of the triangle.
         float dx = 0.1;
-        estimatedDepth = estimateDepth(kd, glm::vec3(0, 0, 0), glm::vec3(dx, 1, 0), defaultDepth,
+        estimatedDepth = estimateDepth(kd.data, glm::vec3(0, 0, 0), glm::vec3(dx, 1, 0), defaultDepth,
           de.m_impl->m_nx, de.m_impl->m_ny);
         expectedDepth = sqrt(1 + dx * dx) * depth;
         if (fabs(estimatedDepth - expectedDepth) > expectedDepth * 1e-6) {
@@ -1801,7 +1893,7 @@ std::string DepthEstimator::Test()
         // Test shooting at a slight angle in Z to the +Y axis towards the plane.  The depth should scale
         // with the length of the long edge of the triangle.
         float dy = 0.2;
-        estimatedDepth = estimateDepth(kd, glm::vec3(0, 0, 0), glm::vec3(0, 1, dy), defaultDepth,
+        estimatedDepth = estimateDepth(kd.data, glm::vec3(0, 0, 0), glm::vec3(0, 1, dy), defaultDepth,
           de.m_impl->m_nx, de.m_impl->m_ny);
         expectedDepth = sqrt(1 + dy * dy) * depth;
         if (fabs(estimatedDepth - expectedDepth) > expectedDepth * 1e-6) {
@@ -1811,7 +1903,7 @@ std::string DepthEstimator::Test()
         // Test shooting at an angle that is beyond the edge.  It should use the same depth as the
         // value at the edge.
         dx = 2.0;
-        estimatedDepth = estimateDepth(kd, glm::vec3(0, 0, 0), glm::vec3(dx, 1, 0), defaultDepth,
+        estimatedDepth = estimateDepth(kd.data, glm::vec3(0, 0, 0), glm::vec3(dx, 1, 0), defaultDepth,
           de.m_impl->m_nx, de.m_impl->m_ny);
         expectedDepth = sqrt(1 + dx * dx) * depth;
         if (fabs(estimatedDepth - expectedDepth) > expectedDepth * 1e-6) {
@@ -1860,17 +1952,18 @@ std::string DepthEstimator::Test()
       // Repeat the above tests using the static estimateDepth() function
       {
         CameraPairsKernelData kd(de.m_impl->m_cameraPairs);
+        kd.CopyDataToGPU();
 
         // Test the depth at the origin, shooting along the - axis away from the plane.
         // This should return the default depth because there is not intersection.
-        estimatedDepth = estimateDepth(kd, glm::vec3(0, 0, 0), glm::vec3(0, -1, 0), defaultDepth,
+        estimatedDepth = estimateDepth(kd.data, glm::vec3(0, 0, 0), glm::vec3(0, -1, 0), defaultDepth,
           de.m_impl->m_nx, de.m_impl->m_ny);
         if (fabs(estimatedDepth - defaultDepth) > defaultDepth * 1e-6) {
           return "estimateDepth() half-default-depth failed away from origin";
         }
 
         // Test the depth at the origin, shooting along the +Y axis towards the plane.
-        estimatedDepth = estimateDepth(kd,glm::vec3(0, 0, 0), glm::vec3(0, 1, 0), defaultDepth,
+        estimatedDepth = estimateDepth(kd.data,glm::vec3(0, 0, 0), glm::vec3(0, 1, 0), defaultDepth,
           de.m_impl->m_nx, de.m_impl->m_ny);
         if (fabs(estimatedDepth - depth) > depth * 1e-6) {
           return "estimateDepth() half-default-depth failed for origin";
@@ -1879,7 +1972,7 @@ std::string DepthEstimator::Test()
         // Test shooting at a slight angle in X to the +Y axis towards the plane.  The depth should scale
         // with the length of the long edge of the triangle.
         dx = 0.1;
-        estimatedDepth = estimateDepth(kd, glm::vec3(0, 0, 0), glm::vec3(dx, 1, 0), defaultDepth,
+        estimatedDepth = estimateDepth(kd.data, glm::vec3(0, 0, 0), glm::vec3(dx, 1, 0), defaultDepth,
           de.m_impl->m_nx, de.m_impl->m_ny);
         expectedDepth = sqrt(1 + dx * dx) * depth;
         if (fabs(estimatedDepth - expectedDepth) > expectedDepth * 1e-6) {
@@ -1889,7 +1982,7 @@ std::string DepthEstimator::Test()
         // Test shooting at an angle that is beyond the edge.  It should use the same depth as the
         // value at the edge
         dx = 2.0;
-        estimatedDepth = estimateDepth(kd, glm::vec3(0, 0, 0), glm::vec3(dx, 1, 0), defaultDepth,
+        estimatedDepth = estimateDepth(kd.data, glm::vec3(0, 0, 0), glm::vec3(dx, 1, 0), defaultDepth,
           de.m_impl->m_nx, de.m_impl->m_ny);
         expectedDepth = sqrt(1 + dx * dx) * depth;
         if (fabs(estimatedDepth - expectedDepth) > expectedDepth * 1e-6) {
@@ -1958,9 +2051,10 @@ std::string DepthEstimator::Test()
       // Repeat the above tests using the static estimateDepth() function
       {
         CameraPairsKernelData kd(de.m_impl->m_cameraPairs);
+        kd.CopyDataToGPU();
 
         // Test the depth at the origin, shooting along the +Y axis towards the plane.
-        estimatedDepth = estimateDepth(kd, glm::vec3(0, 0, 0), glm::vec3(0, 1, 0), defaultDepth,
+        estimatedDepth = estimateDepth(kd.data, glm::vec3(0, 0, 0), glm::vec3(0, 1, 0), defaultDepth,
           de.m_impl->m_nx, de.m_impl->m_ny);
         if (fabs(estimatedDepth - centerDepth) > centerDepth * 1e-6) {
           return "estimateDepth() varying depth failed for origin";
@@ -1969,7 +2063,7 @@ std::string DepthEstimator::Test()
         // Test shooting at a wide angle in X to the +Y axis towards the plane.  The depth should scale
         // with the length of the long edge of the triangle.
         dx = 2.0;
-        estimatedDepth = estimateDepth(kd, glm::vec3(0, 0, 0), glm::vec3(dx, 1, 0), defaultDepth,
+        estimatedDepth = estimateDepth(kd.data, glm::vec3(0, 0, 0), glm::vec3(dx, 1, 0), defaultDepth,
           de.m_impl->m_nx, de.m_impl->m_ny);
         expectedDepth = sqrt(1 + dx * dx) * depth;
         if (fabs(estimatedDepth - expectedDepth) > expectedDepth * 1e-6) {
@@ -1982,7 +2076,7 @@ std::string DepthEstimator::Test()
         dx = tan(glm::radians(de.m_impl->m_cameraPairs[0]->m_fovsDeg[0]) / 2.0) / 2.0 + 0.01;
         double below = sqrt(1 + dx * dx) * depth;
         double above = sqrt(1 + dx * dx) * centerDepth;
-        estimatedDepth = estimateDepth(kd, glm::vec3(0, 0, 0), glm::vec3(dx, 1, 0), defaultDepth,
+        estimatedDepth = estimateDepth(kd.data, glm::vec3(0, 0, 0), glm::vec3(dx, 1, 0), defaultDepth,
           de.m_impl->m_nx, de.m_impl->m_ny);
         if (estimatedDepth <= below || estimatedDepth >= above) {
           return "estimateDepth() varying depth failed for interpolating between two points";
@@ -1995,7 +2089,7 @@ std::string DepthEstimator::Test()
         double dz = tan(glm::radians(de.m_impl->m_cameraPairs[0]->m_fovsDeg[0]) / 2.0) / 2.0 + 0.01;
         below = sqrt(1 + dz * dz) * depth;
         above = sqrt(1 + dz * dz) * centerDepth;
-        estimatedDepth = estimateDepth(kd, glm::vec3(0, 0, 0), glm::vec3(0, 1, dz), defaultDepth,
+        estimatedDepth = estimateDepth(kd.data, glm::vec3(0, 0, 0), glm::vec3(0, 1, dz), defaultDepth,
           de.m_impl->m_nx, de.m_impl->m_ny);
         if (estimatedDepth <= below || estimatedDepth >= above) {
           return "estimateDepth() varying depth failed for interpolating between two points in +Y";
@@ -2004,10 +2098,39 @@ std::string DepthEstimator::Test()
         // Test in -Y screen (-Z world) and make sure that the answer is centerDepth.
         dz = -dz;
         expectedDepth = sqrt(1 + dz * dz) * centerDepth;
-        estimatedDepth = estimateDepth(kd, glm::vec3(0, 0, 0), glm::vec3(0, 1, dz), defaultDepth,
+        estimatedDepth = estimateDepth(kd.data, glm::vec3(0, 0, 0), glm::vec3(0, 1, dz), defaultDepth,
           de.m_impl->m_nx, de.m_impl->m_ny);
         if (fabs(estimatedDepth - expectedDepth) > expectedDepth * 1e-6) {
           return "estimateDepth() varying depth failed for interpolating between two points in -Y";
+        }
+      }
+
+      //================================================================================================
+      // Test the estimateDepth() function running on the GPU, called from a kernel run.
+      {
+        CameraPairsKernelData kd(de.m_impl->m_cameraPairs);
+        kd.CopyDataToGPU();
+
+        // Allocate GPU memory for the result.
+        float* d_estimatedDepth;
+        cudaMalloc(&d_estimatedDepth, sizeof(float));
+        cudaMemset(d_estimatedDepth, 0, sizeof(float));
+
+        // Launch a kernel to call estimateDepth().
+        // Test the depth at the origin, shooting along the +Y axis towards the plane.
+        dim3 blockSize(1, 1, 1);
+        dim3 gridSize(1, 1, 1);
+        TestEstimateDepthKernel << <gridSize, blockSize >> > (kd.kData, glm::vec3(0, 0, 0), glm::vec3(0, 1, 0),
+          defaultDepth, de.m_impl->m_nx, de.m_impl->m_ny, d_estimatedDepth);
+
+        // Copy the result back to the CPU.
+        float estimatedDepth;
+        cudaMemcpy(&estimatedDepth, d_estimatedDepth, sizeof(float), cudaMemcpyDeviceToHost);
+        cudaFree(d_estimatedDepth);
+
+        // Test the value.
+        if (abs(estimatedDepth - defaultDepth) > 1e-6f) {
+          return "estimateDepth() GPU test failed for origin";
         }
       }
 
