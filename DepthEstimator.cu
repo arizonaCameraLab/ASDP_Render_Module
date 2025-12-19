@@ -500,10 +500,10 @@ struct CameraOffsetInfoKernelData {
   CameraOffsetInfoKernelData(std::shared_ptr<CameraRenderInfo> cameraRenderInfo) : cri(cameraRenderInfo) {
 
     // Allocate the data, pinned memory on the host and GPU memory for the device.
-    if (cudaMallocHost(&data, cri->m_mesh.vertexInfo.size() * sizeof(Vec3)) != cudaSuccess) {
+    if (cudaMallocHost(&data, cri->m_mesh.vertexInfo.size() * 3 * sizeof(float)) != cudaSuccess) {
       throw std::runtime_error("Failed to allocate CameraOffsetInfoKernelData");
     }
-    if (cudaMalloc(&kData, cri->m_mesh.vertexInfo.size() * sizeof(Vec3)) != cudaSuccess) {
+    if (cudaMalloc(&kData, cri->m_mesh.vertexInfo.size() * 3 * sizeof(float)) != cudaSuccess) {
       throw std::runtime_error("Failed to allocate GPU CameraOffsetInfoKernelData");
     }
   }
@@ -1042,6 +1042,9 @@ public:
   /// Map from camera to CUDA stream pointers.  Used to enable multiple camera depths to be computed in parallel.
   std::map<CameraRenderInfo const*, cudaStream_t*> m_cameraStreams;
 
+  /// Map from camera to offset info kernel data pointers.
+  std::map<CameraRenderInfo const*, std::shared_ptr < CameraOffsetInfoKernelData>> m_cameraOffsetInfoKernelData;
+
   /// Map from camera to depth info kernel data pointers.
   std::map<CameraRenderInfo const*, std::shared_ptr<CameraDepthInfoKernelData>> m_cameraDepthInfoKernelData;
 
@@ -1364,12 +1367,14 @@ void DepthEstimator::UpdateMeshesCPU(std::vector<std::shared_ptr<CameraRenderInf
   }
 }
 
-__global__ void UpdateMeshesKernel(float *out, uint16_t nx, uint16_t ny)
+__global__ void UpdateMeshesKernel(float* cameraPairData, Vec3 point, Vec3* directions, float defaultDepth,
+  uint16_t nx, uint16_t ny, float* outDepths)
 {
-  uint16_t x = blockIdx.x * blockDim.x + threadIdx.x;
-  uint16_t y = blockIdx.y * blockDim.y + threadIdx.y;
+  size_t x = blockIdx.x * blockDim.x + threadIdx.x;
+  size_t y = blockIdx.y * blockDim.y + threadIdx.y;
   if (x < nx && y < ny) {
-    /// @todo
+    size_t index = y * nx + x;
+    outDepths[index] = estimateDepth(cameraPairData, point, directions[index], defaultDepth, nx, ny);
   }
 }
 
@@ -1380,8 +1385,19 @@ void DepthEstimator::UpdateMeshesGPU(std::vector<std::shared_ptr<CameraRenderInf
     m_impl->m_cameraPairsKernelData = std::make_shared<CameraPairsKernelData>(m_impl->m_cameraPairs);
   }
 
-  // Ensure that we have an entry in m_cameraStreams and m_cameraDepthInfoKernelData for each camera.  If not, create one.
+  // Ensure that we have an entry in m_cameraStreams and m_cameraOffsetInfoKernelData and
+  // m_cameraDepthInfoKernelData for each camera.  If not, create them.
   for (auto c : cams) {
+
+    // if one or more of the cameras has no mesh defined, we cannot proceed and so return here and wait
+    // until a later call when there is one.  We hold the mesh mutex while checking to avoid
+    // race conditions.
+    {
+      std::lock_guard<std::mutex> lock(c->m_meshMutex);
+      if (c->m_mesh.vertexInfo.size() == 0) {
+        return;
+      }
+    }
 
     if (m_impl->m_cameraStreams.find(c.get()) == m_impl->m_cameraStreams.end()) {
       cudaStream_t* stream = new cudaStream_t;
@@ -1391,6 +1407,10 @@ void DepthEstimator::UpdateMeshesGPU(std::vector<std::shared_ptr<CameraRenderInf
           + std::to_string(c->m_ID) + ": " + std::string(cudaGetErrorString(res)));
       }
       m_impl->m_cameraStreams[c.get()] = stream;
+    }
+
+    if (m_impl->m_cameraOffsetInfoKernelData.find(c.get()) == m_impl->m_cameraOffsetInfoKernelData.end()) {
+      m_impl->m_cameraOffsetInfoKernelData[c.get()] = std::make_shared<CameraOffsetInfoKernelData>(c);
     }
 
     if (m_impl->m_cameraDepthInfoKernelData.find(c.get()) == m_impl->m_cameraDepthInfoKernelData.end()) {
@@ -1404,18 +1424,44 @@ void DepthEstimator::UpdateMeshesGPU(std::vector<std::shared_ptr<CameraRenderInf
   m_impl->m_cameraPairsKernelData->CopyDataToGPU(*m_impl->m_cameraStreams[cams[0].get()]);
   cudaStreamSynchronize(*m_impl->m_cameraStreams[cams[0].get()]);
 
-  // Update the mesh depth values for each camera.
-  /// @todo
+  // Fill in the camera offset information, then compute the depths, then copy them back for each camera.
+  for (std::shared_ptr<CameraRenderInfo> c : cams) {
+
+    // Lock the mutex to protect the mesh data while we copy it out.
+    {
+      std::lock_guard<std::mutex> lock(c->m_meshMutex);
+      m_impl->m_cameraOffsetInfoKernelData[c.get()]->CopyDataToGPU(*m_impl->m_cameraStreams[c.get()]);
+    }
+
+    // Launch the kernel to compute the depths for the mesh.
+    dim3 blockSize(16, 16);
+    dim3 gridSize((c->m_mesh.nx + blockSize.x - 1) / blockSize.x, (c->m_mesh.ny + blockSize.y - 1) / blockSize.y);
+    UpdateMeshesKernel <<<gridSize, blockSize, 0, *m_impl->m_cameraStreams[c.get()]>>>(
+      m_impl->m_cameraPairsKernelData->kData,
+      Vec3(c->m_positionMeters[0], c->m_positionMeters[1], c->m_positionMeters[2]),
+      m_impl->m_cameraOffsetInfoKernelData[c.get()]->kData,
+      m_impl->m_defaultDepth,
+      c->m_mesh.nx, c->m_mesh.ny,
+      m_impl->m_cameraDepthInfoKernelData[c.get()]->kData
+    );
+
+    // Start to copy the computed depths back to CPU memory.  We'll finish the copy when we're done queueing all cameras.
+    m_impl->m_cameraDepthInfoKernelData[c.get()]->CopyDataFromGPU(*m_impl->m_cameraStreams[c.get()]);
+  }
+
+  // Finish copying data back from all cameras to ensure completion.  It awaits stream completion and then
+  // copies back.
+  for (auto c : cams) {
+    m_impl->m_cameraDepthInfoKernelData[c.get()]->FillDepthsBackToCameraRenderInfos(*m_impl->m_cameraStreams[c.get()]);
+  }
+
+  // Apply offsets to the mesh depth values for each camera.
   for (std::shared_ptr<CameraRenderInfo> c : cams) {
     CameraRenderInfo& cam = *c;
 
     // Lock the mutex to protect the mesh data.
     std::lock_guard<std::mutex> lock(cam.m_meshMutex);
 
-    // Record the camera position offset.
-    glm::vec3 cameraPosition(cam.m_positionMeters[0], cam.m_positionMeters[1], cam.m_positionMeters[2]);
-
-    // Look up the depth for each vertex in the mesh and update the depth in the mesh.
     // We add a small offset based on how far the mesh point is from the center of the camera
     // so that the visible triangle at a location is from the camera whose center of projection
     // is closest.
@@ -1428,14 +1474,9 @@ void DepthEstimator::UpdateMeshesGPU(std::vector<std::shared_ptr<CameraRenderInf
         double xOff = x - xCenter;
         VertexInfo& v = cam.m_mesh.vertexInfo[y * cam.m_mesh.nx + x];
         double offsetFactor = 1.0 + offsetScale * sqrt(xOff * xOff + yOff * yOff);
-        v.depth = EstimateDepth(cameraPosition, v.normalizedOffset) * offsetFactor;
+        v.depth *= offsetFactor;
       }
     }
-  }
-
-  // Synchronize all of the CUDA streams to ensure completion.
-  for (auto c : cams) {
-    cudaStreamSynchronize(*m_impl->m_cameraStreams[c.get()]);
   }
 }
 

@@ -659,7 +659,7 @@ static void ComputeDepth(Time renderTime, void* /* unused */)
   if (ret != "") {
     std::cerr << "Error computing depth estimate: " << ret << std::endl;
   } else {
-    g_depthEstimator->UpdateMeshesCPU(g_visibleCameras);
+    g_depthEstimator->UpdateMeshesGPU(g_visibleCameras);
     for (std::shared_ptr<asdp::render::CameraRenderInfo> cri : g_visibleCameras) {
       g_composite->UpdateVertexBuffer(*cri);
     }

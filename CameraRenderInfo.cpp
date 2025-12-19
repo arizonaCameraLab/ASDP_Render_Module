@@ -12,11 +12,13 @@
 #include <glm/gtx/quaternion.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include "CameraRenderInfo.h"
+#include <iostream>
 
 using namespace asdp::render;
 
 void CameraRenderInfo::ComputePlanarCameraMeshInfo(size_t nx, size_t ny, float depth)
 {
+  std::cout << "XXX ComputePlanarCameraMeshInfo nx=" << nx << " ny=" << ny << " depth=" << depth << " ID= " << m_ID << std::endl;
   // Lock the mutex to protect the mesh data.
   std::lock_guard<std::mutex> lock(m_meshMutex);
 
