@@ -191,7 +191,7 @@ target_include_directories(Render_Module PRIVATE
 target_link_libraries(Render_Module PUBLIC
   ASDP_Core_API::ASDP_Core_API glfw GLEW::glew OpenGL::GL geogram freetype nlohmann_json::nlohmann_json
 )
-set_property(TARGET Render_Module PROPERTY CUDA_ARCHITECTURES 60 75 80)
+set_property(TARGET Render_Module PROPERTY CUDA_ARCHITECTURES 75 80 89 120)
 if(OPENXR_FOUND)
   target_compile_definitions(Render_Module PRIVATE XR_USE_GRAPHICS_API_OPENGL)
   if(WIN32)
@@ -357,7 +357,7 @@ if(BUILD_UTILITIES)
     target_link_libraries(${APP} PRIVATE
 	    Render_Module
     )
-    set_property(TARGET ${APP} PROPERTY CUDA_ARCHITECTURES 60 75 80)
+    set_property(TARGET ${APP} PROPERTY CUDA_ARCHITECTURES 75 80 89 120)
     install(TARGETS ${APP} EXPORT ${PROJECT_NAME}
       RUNTIME DESTINATION bin
     )
@@ -431,7 +431,7 @@ if(BUILD_TESTS)
       "${CMAKE_CURRENT_SOURCE_DIR}"
       "${CMAKE_CURRENT_SOURCE_DIR}/dependencies/glm"
     )
-    set_property(TARGET ${APP} PROPERTY CUDA_ARCHITECTURES 60 75 80)
+    set_property(TARGET ${APP} PROPERTY CUDA_ARCHITECTURES 75 80 89 120)
     target_link_libraries(${APP}
       Render_Module
     )

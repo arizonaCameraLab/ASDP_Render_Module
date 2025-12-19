@@ -1342,6 +1342,11 @@ void DepthEstimator::UpdateMeshesCPU(std::vector<std::shared_ptr<CameraRenderInf
   for (std::shared_ptr<CameraRenderInfo> c : cams) {
     CameraRenderInfo& cam = *c;
 
+    if (cam.m_mesh.vertexInfo.size() == 0) {
+      // No mesh yet for this camera.
+      continue;
+    }
+
     // Lock the mutex to protect the mesh data.
     std::lock_guard<std::mutex> lock(cam.m_meshMutex);
 
@@ -1355,11 +1360,12 @@ void DepthEstimator::UpdateMeshesCPU(std::vector<std::shared_ptr<CameraRenderInf
     const double offsetScale = 0.01;
     double xCenter = cam.m_mesh.nx / 2.0;
     double yCenter = cam.m_mesh.ny / 2.0;
-    for (int y = 0; y < cam.m_mesh.ny; y++) {
+    // We have an extra row and column of vertices compared to nx and ny.
+    for (int y = 0; y <= cam.m_mesh.ny; y++) {
       double yOff = y - yCenter;
-      for (int x = 0; x < cam.m_mesh.nx; x++) {
+      for (int x = 0; x <= cam.m_mesh.nx; x++) {
         double xOff = x - xCenter;
-        VertexInfo& v = cam.m_mesh.vertexInfo[y * cam.m_mesh.nx + x];
+        VertexInfo& v = cam.m_mesh.vertexInfo[y * (cam.m_mesh.nx + 1) + x];
         double offsetFactor = 1.0 + offsetScale * sqrt(xOff * xOff + yOff * yOff);
         v.depth = EstimateDepth(cameraPosition, v.normalizedOffset) * offsetFactor;
       }
@@ -1367,13 +1373,23 @@ void DepthEstimator::UpdateMeshesCPU(std::vector<std::shared_ptr<CameraRenderInf
   }
 }
 
+/// @brief CUDA kernel to update the mesh depths for a camera.
+/// @param cameraPairData The DepthEstimator's compacted data structure appropriate for the calling context.
+/// @param point The camera position.
+/// @param directions The array of direction vectors for each vertex in the mesh.
+/// @param defaultDepth The default depth value.
+/// @param nx Number of regions in the X direction, which is one less than the number of vertices.
+/// @param ny Number of regions in the Y direction, which is one less than the number of vertices.
+/// @param outDepths The output array of depths for each vertex in the mesh.
 __global__ void UpdateMeshesKernel(float* cameraPairData, Vec3 point, Vec3* directions, float defaultDepth,
   uint16_t nx, uint16_t ny, float* outDepths)
 {
   size_t x = blockIdx.x * blockDim.x + threadIdx.x;
   size_t y = blockIdx.y * blockDim.y + threadIdx.y;
-  if (x < nx && y < ny) {
-    size_t index = y * nx + x;
+  // We have an extra row and column of vertices compared to nx and ny.
+  if (x <= nx && y <= ny) {
+    size_t index = y * (nx + 1) + x;
+    // We pass the actual number of regions (nx, ny) so that the estimateDepth() function works correctly.
     outDepths[index] = estimateDepth(cameraPairData, point, directions[index], defaultDepth, nx, ny);
   }
 }
@@ -1387,7 +1403,7 @@ void DepthEstimator::UpdateMeshesGPU(std::vector<std::shared_ptr<CameraRenderInf
 
   // Ensure that we have an entry in m_cameraStreams and m_cameraOffsetInfoKernelData and
   // m_cameraDepthInfoKernelData for each camera.  If not, create them.
-  for (auto c : cams) {
+  for (std::shared_ptr<CameraRenderInfo> c : cams) {
 
     // if one or more of the cameras has no mesh defined, we cannot proceed and so return here and wait
     // until a later call when there is one.  We hold the mesh mutex while checking to avoid
@@ -1434,8 +1450,9 @@ void DepthEstimator::UpdateMeshesGPU(std::vector<std::shared_ptr<CameraRenderInf
     }
 
     // Launch the kernel to compute the depths for the mesh.
+    // We have an extra row and column of vertices compared to nx and ny so we must add one to the count of points on each edge.
     dim3 blockSize(16, 16);
-    dim3 gridSize((c->m_mesh.nx + blockSize.x - 1) / blockSize.x, (c->m_mesh.ny + blockSize.y - 1) / blockSize.y);
+    dim3 gridSize((c->m_mesh.nx + blockSize.x - 1 + 1) / blockSize.x, (c->m_mesh.ny + blockSize.y - 1 + 1) / blockSize.y);
     UpdateMeshesKernel <<<gridSize, blockSize, 0, *m_impl->m_cameraStreams[c.get()]>>>(
       m_impl->m_cameraPairsKernelData->kData,
       Vec3(c->m_positionMeters[0], c->m_positionMeters[1], c->m_positionMeters[2]),
@@ -1451,7 +1468,7 @@ void DepthEstimator::UpdateMeshesGPU(std::vector<std::shared_ptr<CameraRenderInf
 
   // Finish copying data back from all cameras to ensure completion.  It awaits stream completion and then
   // copies back.
-  for (auto c : cams) {
+  for (std::shared_ptr<CameraRenderInfo> c : cams) {
     m_impl->m_cameraDepthInfoKernelData[c.get()]->FillDepthsBackToCameraRenderInfos(*m_impl->m_cameraStreams[c.get()]);
   }
 
@@ -1465,14 +1482,15 @@ void DepthEstimator::UpdateMeshesGPU(std::vector<std::shared_ptr<CameraRenderInf
     // We add a small offset based on how far the mesh point is from the center of the camera
     // so that the visible triangle at a location is from the camera whose center of projection
     // is closest.
+    // Remember that we have one more row and column of vertices than nx and ny.
     const double offsetScale = 0.01;
     double xCenter = cam.m_mesh.nx / 2.0;
     double yCenter = cam.m_mesh.ny / 2.0;
-    for (int y = 0; y < cam.m_mesh.ny; y++) {
+    for (int y = 0; y <= cam.m_mesh.ny; y++) {
       double yOff = y - yCenter;
-      for (int x = 0; x < cam.m_mesh.nx; x++) {
+      for (int x = 0; x <= cam.m_mesh.nx; x++) {
         double xOff = x - xCenter;
-        VertexInfo& v = cam.m_mesh.vertexInfo[y * cam.m_mesh.nx + x];
+        VertexInfo& v = cam.m_mesh.vertexInfo[y * (cam.m_mesh.nx + 1) + x];
         double offsetFactor = 1.0 + offsetScale * sqrt(xOff * xOff + yOff * yOff);
         v.depth *= offsetFactor;
       }
