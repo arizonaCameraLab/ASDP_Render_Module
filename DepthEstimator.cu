@@ -6,6 +6,7 @@
 #include <chrono>
 #include <memory>
 #include <map>
+#include <random>
 #include <cstddef>
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
@@ -74,7 +75,7 @@ struct Quat {
   float vals[4];
   __host__ __device__ Quat() : vals{0, 0, 0, 1} {}
   __host__ __device__ Quat(float x, float y, float z, float w) : vals{x, y, z, w} {}
-  __host__ __device__ Quat(glm::quat q) : vals{ (float)q.x, (float)q.y, (float)q.z, (float)q.w } {}
+  __host__ __device__ Quat(glm::quat q) : vals{ q.x, q.y, q.z, q.w } {}
   __host__ __device__ Quat(glm::dquat q) : vals{ (float)q.x, (float)q.y, (float)q.z, (float)q.w } {}
 
   // Index operator.
@@ -1696,6 +1697,12 @@ __global__ void TestEstimateDepthKernel(float* depthInfo, Vec3 point, Vec3 direc
   *out = estimateDepth(depthInfo, point, direction, defaultDepth, nx, ny);
 }
 
+static bool VecClose(const Vec3& a, const Vec3& b, float eps = 1e-4f) {
+  return fabs(a.vals[0] - b.vals[0]) <= eps &&
+         fabs(a.vals[1] - b.vals[1]) <= eps &&
+         fabs(a.vals[2] - b.vals[2]) <= eps;
+}
+
 std::string DepthEstimator::Test()
 {
   // Test Vec3 and Quat classes
@@ -1749,6 +1756,42 @@ std::string DepthEstimator::Test()
     Vec3 v8 = q2 * v1;
     if (fabs(v8[0] + 2.0) > 1e-6 || fabs(v8[1] - 1.0) > 1e-6 || fabs(v8[2] - 3.0) > 1e-6) {
       return "Quat rotation failed";
+    }
+
+    // Randomized comparisons vs. glm
+    const size_t N = 2048;
+    std::mt19937 rng(12345);
+    std::uniform_real_distribution<float> unif(-1.0f, 1.0f);
+    std::vector<Vec3> vecs(N);
+    std::vector<Vec3> outHost(N);
+    std::vector<Vec3> outGLM(N);
+
+    for (size_t i = 0; i < N; ++i) {
+      vecs[i] = Vec3(unif(rng), unif(rng), unif(rng));
+    }
+
+    for (size_t i = 0; i < N; ++i) {
+      // pick random axis-angle
+      glm::vec3 axis(unif(rng), unif(rng), unif(rng));
+      if (glm::length(axis) < 1e-6f) axis = glm::vec3(1, 0, 0);
+      axis = glm::normalize(axis);
+      float angle = unif(rng) * glm::pi<float>(); // [-pi,pi]
+      glm::quat gq = glm::angleAxis(angle, axis);
+      Quat q(gq);
+
+      // glm rotate expects glm::vec3
+      for (size_t j = 0; j < 1; ++j) { /* single test per quaternion */ }
+
+      // compute single-vector expected and actual for a sample index (test many)
+      size_t idx = i; // reuse same index
+      glm::vec3 gv(vecs[idx].vals[0], vecs[idx].vals[1], vecs[idx].vals[2]);
+      glm::vec3 expected = gq * gv; // glm::rotate also acceptable
+      Vec3 actual = q * vecs[idx];
+      outGLM[idx] = Vec3(expected.x, expected.y, expected.z);
+      outHost[idx] = actual;
+      if (!VecClose(actual, outGLM[idx], 1e-4f)) {
+        return "QuatRotationUnitTests: host vs glm mismatch at index " + std::to_string(idx);
+      }
     }
   }
 
