@@ -452,37 +452,37 @@ struct CameraPairsKernelData {
   static const size_t CameraPairBaseInfoSize = 3 + 4 + 2 + 2; // position(3) + orientation(4) + fovs(2) + pixelCounts(2)
 
   /// The first thing packed is the number of camera pairs.
-  __host__ __device__ static uint32_t& numCameraPairs(float *d) { return *reinterpret_cast<unsigned int*>(&d[0]); }
+  static __host__ __device__ uint32_t& numCameraPairs(float *d) { return *reinterpret_cast<unsigned int*>(&d[0]); }
   __host__ uint32_t& numCameraPairsCPU() const { return numCameraPairs(data); }
   __device__ uint32_t& numCameraPairsGPU() const { return numCameraPairs(kData); }
 
   /// The second batch of things packed is the base info for each camera pair, with all data for each together.
-  __host__ __device__ static Vec3& pairPositions(float* d, size_t i) {
+  static __host__ __device__ Vec3& pairPositions(float* d, size_t i) {
     return *reinterpret_cast<Vec3*>(&d[1 + i * CameraPairBaseInfoSize]);
   };
   __host__ Vec3& pairPositionsCPU(size_t i) const { return pairPositions(data, i); };
   __device__ Vec3& pairPositionsGPU(size_t i) const { return pairPositions(kData, i); };
 
-  __host__ __device__ static Quat& pairOrientations(float* d, size_t i) {
+  static __host__ __device__ Quat& pairOrientations(float* d, size_t i) {
     return *reinterpret_cast<Quat*>(&d[1 + i * CameraPairBaseInfoSize + 3]);
   };
   __host__ Quat& pairOrientationsCPU(size_t i) const { return pairOrientations(data, i); };
   __device__ Quat& pairOrientationsGPU(size_t i) const { return pairOrientations(kData, i); };
 
-  __host__ __device__ static float* pairFOVs(float* d, size_t i) {
+  static __host__ __device__ float* pairFOVs(float* d, size_t i) {
     return &d[1 + i * CameraPairBaseInfoSize + 7];
   };
   __host__ float* pairFOVsCPU(size_t i) const { return pairFOVs(data, i); };
   __device__ float* pairFOVsGPU(size_t i) const { return pairFOVs(kData, i); };
 
-  __host__ __device__ static uint32_t* pairPixelCounts(float* d, size_t i) {
+  static __host__ __device__ uint32_t* pairPixelCounts(float* d, size_t i) {
     return reinterpret_cast<uint32_t*>(&d[1 + i * CameraPairBaseInfoSize + 9]);
   };
   __host__ uint32_t* pairPixelCountsCPU(size_t i) const { return pairPixelCounts(data, i); };
   __device__ uint32_t* pairPixelCountsGPU(size_t i) const { return pairPixelCounts(kData, i); };
 
   /// The next batch of things packed are the depth values per pair.
-  __host__ __device__ static float* pairDepths(float* d, size_t i) {
+  static __host__ __device__ float* pairDepths(float* d, size_t i) {
     size_t depthIndex = 1 + numCameraPairs(d) * CameraPairBaseInfoSize;
     for (size_t p = 0; p < i; p++) {
       uint32_t* pixCounts = pairPixelCounts(d, p);
@@ -594,7 +594,12 @@ struct CameraDepthInfoKernelData {
   /// to initiate the copy of the data from the GPU.
   /// @param stream The CUDA stream to synchronize before filling depths.
   void FillDepthsBackToCameraRenderInfos(cudaStream_t stream) {
-    cudaStreamSynchronize(stream);
+    cudaError_t ret = cudaStreamSynchronize(stream);
+    // Check for errors.
+    if (ret != cudaSuccess) {
+      throw std::runtime_error("Failed to synchronize stream in FillDepthsBackToCameraRenderInfos: " + std::string(cudaGetErrorString(ret)));
+    }
+
     for (size_t j = 0; j < cri->m_mesh.vertexInfo.size(); j++) {
       cri->m_mesh.vertexInfo[j].depth = data[j];
     }
@@ -1111,14 +1116,14 @@ std::string DepthEstimator::ComputeDepthEstimate(Time time)
 }
 
 /// @brief Convert from degrees to radians.
-static float radians(float deg)
+static __host__ __device__ float radians(float deg)
 {
   constexpr float kDegToRad = 3.14159265358979323846f / 180.0f;
   return deg * kDegToRad;
 }
 
 /// @brief Clamp value to lie between min and max range specified
-static float clamp(float val, float minVal, float maxVal)
+static __host__ __device__ float clamp(float val, float minVal, float maxVal)
 {
   return std::min(std::max(val, minVal), maxVal);
 }
@@ -1150,7 +1155,7 @@ static __host__ __device__ bool intersectRayWithPlane(const Vec3& rayStart, cons
 /// @param defaultDepth The default depth to use if no depth can be estimated.
 /// @param nx The number of depth regions in the X direction in the DepthEstimatorImpl.
 /// @param ny The number of depth regions in the Y direction in the DepthEstimatorImpl.
-static __device__ __host__ float estimateDepth(float *data, const Vec3& point, const Vec3& direction,
+static __host__ __device__ float estimateDepth(float *data, const Vec3& point, const Vec3& direction,
   float defaultDepth, unsigned int nx, unsigned int ny)
 {
   // Compute values we'll need more than once.
@@ -1477,6 +1482,13 @@ void DepthEstimator::UpdateMeshesGPU(std::vector<std::shared_ptr<CameraRenderInf
       m_impl->m_nx, m_impl->m_ny,
       m_impl->m_cameraDepthInfoKernelData[c.get()]->kData
     );
+
+    // Check for kernel launch errors.
+    cudaError_t err = cudaGetLastError();
+    if (err != cudaSuccess) {
+      throw std::runtime_error("DepthEstimator::UpdateMeshesGPU(): UpdateMeshesKernel launch failed for camera ID "
+        + std::to_string(c->m_ID) + ": " + std::string(cudaGetErrorString(err)));
+    }
 
     // Start to copy the computed depths back to CPU memory.  We'll finish the copy when we're done queueing all cameras.
     m_impl->m_cameraDepthInfoKernelData[c.get()]->CopyDataFromGPU(*m_impl->m_cameraStreams[c.get()]);
