@@ -84,17 +84,26 @@ struct Quat {
 
   // Quaternion multiplication of a Vec3 to rotate it.
   __host__ __device__ Vec3 operator*(const Vec3& v) const {
-    // Rotate vector v by this quaternion.
-    Vec3 qVec(vals[0], vals[1], vals[2]);
-    Vec3 t = qVec * (2.0f * qVec.Dot(v));
-    Vec3 u = v * (vals[3] * vals[3] - qVec.Dot(qVec));
-    Vec3 vCrossQ = Vec3(
-      vals[1] * v.vals[2] - vals[2] * v.vals[1],
-      vals[2] * v.vals[0] - vals[0] * v.vals[2],
-      vals[0] * v.vals[1] - vals[1] * v.vals[0]
+    // q.xyz
+    Vec3 qv(vals[0], vals[1], vals[2]);
+
+    // t = 2 * cross(qv, v)
+    Vec3 t = Vec3(
+      qv[1] * v.vals[2] - qv[2] * v.vals[1],
+      qv[2] * v.vals[0] - qv[0] * v.vals[2],
+      qv[0] * v.vals[1] - qv[1] * v.vals[0]
+    ) * 2.0f;
+
+    // v' = v + q.w * t + cross(qv, t)
+    Vec3 v_prime = v + (t * vals[3]);
+
+    Vec3 cross_q_t = Vec3(
+      qv[1] * t.vals[2] - qv[2] * t.vals[1],
+      qv[2] * t.vals[0] - qv[0] * t.vals[2],
+      qv[0] * t.vals[1] - qv[1] * t.vals[0]
     );
-    Vec3 w = vCrossQ * (2.0f * vals[3]);
-    return t + u + w;
+
+    return v_prime + cross_q_t;
   }
 };
 
@@ -1139,8 +1148,7 @@ static __host__ __device__ bool intersectRayWithPlane(const Vec3& rayStart, cons
 /// @param direction The direction of the ray.
 /// @param defaultDepth The default depth to use if no depth can be estimated.
 /// @param nx The number of depth regions in the X direction in the DepthEstimatorImpl.
-/// @param ny The number of depth regions in the Y direction in the DepthEstimatorImpl
-/// .
+/// @param ny The number of depth regions in the Y direction in the DepthEstimatorImpl.
 static __device__ __host__ float estimateDepth(float *data, const Vec3& point, const Vec3& direction,
   float defaultDepth, unsigned int nx, unsigned int ny)
 {
@@ -1233,8 +1241,7 @@ static __device__ __host__ float estimateDepth(float *data, const Vec3& point, c
 /// @param intersectionPoint The point of intersection.
 /// @return True if the ray intersects the plane, false otherwise.
 static bool intersectRayWithPlane(const glm::dvec3& rayStart, const glm::dvec3& rayDir,
-  const glm::dvec3& planeStart, const glm::dvec3& planeNormal,
-  glm::dvec3& intersectionPoint)
+  const glm::dvec3& planeStart, const glm::dvec3& planeNormal, glm::dvec3& intersectionPoint)
 {
   float denom = glm::dot(rayDir, planeNormal);
   if (glm::epsilonEqual(denom, 0.0f, glm::epsilon<float>())) {
@@ -1934,7 +1941,7 @@ std::string DepthEstimator::Test()
 
     vRayDir = glm::dvec3(0, 0, -1);
     if (intersectRayWithPlane(vRayStart, vRayDir, vPlaneStart, vPlaneNormal, vIntersectionPoint)) {
-      return "intersectRayWithPlane() Vec3should not have succeeded for anti-perpendicular ray and plane";
+      return "intersectRayWithPlane() Vec3 should not have succeeded for anti-perpendicular ray and plane";
     }
 
     vRayDir = glm::dvec3(1, 0, 0);
