@@ -1135,6 +1135,12 @@ static __host__ __device__ bool intersectRayWithPlane(const Vec3& rayStart, cons
 
 /// @brief CUDA-device-accessible function for computing the same value as EstimateDepth() member function.
 /// @param data The DepthEstimator's compacted data structure appropriate for the calling context (CPU or GPU).
+/// @param point The starting point of the ray.
+/// @param direction The direction of the ray.
+/// @param defaultDepth The default depth to use if no depth can be estimated.
+/// @param nx The number of depth regions in the X direction in the DepthEstimatorImpl.
+/// @param ny The number of depth regions in the Y direction in the DepthEstimatorImpl
+/// .
 static __device__ __host__ float estimateDepth(float *data, const Vec3& point, const Vec3& direction,
   float defaultDepth, unsigned int nx, unsigned int ny)
 {
@@ -1378,19 +1384,20 @@ void DepthEstimator::UpdateMeshesCPU(std::vector<std::shared_ptr<CameraRenderInf
 /// @param point The camera position.
 /// @param directions The array of direction vectors for each vertex in the mesh.
 /// @param defaultDepth The default depth value.
-/// @param nx Number of regions in the X direction, which is one less than the number of vertices.
-/// @param ny Number of regions in the Y direction, which is one less than the number of vertices.
+/// @param nxCamera Number of regions in the X direction, which is one less than the number of vertices.
+/// @param nyCamera Number of regions in the Y direction, which is one less than the number of vertices.
+/// @param nxDepth Number of regions in the X direction in the DepthEstimatorImpl.
+/// @param nyDepth Number of regions in the Y direction in the DepthEstimatorImpl.
 /// @param outDepths The output array of depths for each vertex in the mesh.
 __global__ void UpdateMeshesKernel(float* cameraPairData, Vec3 point, Vec3* directions, float defaultDepth,
-  uint16_t nx, uint16_t ny, float* outDepths)
+  uint16_t nxCamera, uint16_t nyCamera, uint16_t nxDepth, uint16_t nyDepth, float* outDepths)
 {
   size_t x = blockIdx.x * blockDim.x + threadIdx.x;
   size_t y = blockIdx.y * blockDim.y + threadIdx.y;
   // We have an extra row and column of vertices compared to nx and ny.
-  if (x <= nx && y <= ny) {
-    size_t index = y * (nx + 1) + x;
-    // We pass the actual number of regions (nx, ny) so that the estimateDepth() function works correctly.
-    outDepths[index] = estimateDepth(cameraPairData, point, directions[index], defaultDepth, nx, ny);
+  if (x <= nxCamera && y <= nyCamera) {
+    size_t index = y * (nxCamera + 1) + x;
+    outDepths[index] = estimateDepth(cameraPairData, point, directions[index], defaultDepth, nxDepth, nyDepth);
   }
 }
 
@@ -1452,13 +1459,14 @@ void DepthEstimator::UpdateMeshesGPU(std::vector<std::shared_ptr<CameraRenderInf
     // Launch the kernel to compute the depths for the mesh.
     // We have an extra row and column of vertices compared to nx and ny so we must add one to the count of points on each edge.
     dim3 blockSize(16, 16);
-    dim3 gridSize((c->m_mesh.nx + blockSize.x - 1 + 1) / blockSize.x, (c->m_mesh.ny + blockSize.y - 1 + 1) / blockSize.y);
+    dim3 gridSize((c->m_mesh.nx + 1 + blockSize.x - 1) / blockSize.x, (c->m_mesh.ny + 1 + blockSize.y - 1) / blockSize.y);
     UpdateMeshesKernel <<<gridSize, blockSize, 0, *m_impl->m_cameraStreams[c.get()]>>>(
       m_impl->m_cameraPairsKernelData->kData,
       Vec3(c->m_positionMeters[0], c->m_positionMeters[1], c->m_positionMeters[2]),
       m_impl->m_cameraOffsetInfoKernelData[c.get()]->kData,
       m_impl->m_defaultDepth,
       c->m_mesh.nx, c->m_mesh.ny,
+      m_impl->m_nx, m_impl->m_ny,
       m_impl->m_cameraDepthInfoKernelData[c.get()]->kData
     );
 
