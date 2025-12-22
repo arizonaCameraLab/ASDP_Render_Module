@@ -1125,7 +1125,7 @@ static __host__ __device__ float radians(float deg)
 /// @brief Clamp value to lie between min and max range specified
 static __host__ __device__ float clamp(float val, float minVal, float maxVal)
 {
-  return std::min(std::max(val, minVal), maxVal);
+  return fminf(fmaxf(val, minVal), maxVal);
 }
 
 /// @brief CUDA-device-accessible function for computing the same value as intersectRayWithPlane() function.
