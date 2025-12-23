@@ -64,6 +64,7 @@ struct DataToSendToGPU {
 };
 
 /// @brief Class to handle processing of the data from the cameras and sending it to texture.
+/// @details This object is not normally created by user code; it is used by the CopyDataToTextures() function.
 class CPUDataToTextureHandler {
 public:
   /// @brief Constructor to create the handler and set up the resources needed to process a frame.

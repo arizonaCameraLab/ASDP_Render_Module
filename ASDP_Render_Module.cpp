@@ -669,7 +669,7 @@ static void ComputeDepth(Time renderTime, void* /* unused */)
 }
 
 /// @brief Callback handler to turn on and off depth rendering on the visible cameras.
-static void ChangeDepthRendering(bool depthRendering, void* /* unused */)
+static void SetDepthRendering(bool depthRendering, void* /* unused */)
 {
   for (std::shared_ptr<asdp::render::CameraRenderInfo> cri : g_visibleCameras) {
     if (depthRendering) {
@@ -1918,7 +1918,7 @@ int main(int argc, char** argv)
     if (g_depthEstimator) {
       handlers->ComputeDepth = ComputeDepth;
     }
-    handlers->SetToRenderDepth = ChangeDepthRendering;
+    handlers->SetToRenderDepth = SetDepthRendering;
     handlers->IncrementActiveCamera = IncrementActiveCamera;
     handlers->DecrementActiveCamera = DecrementActiveCamera;
     handlers->AdjustActiveCameraOffset = AdjustActiveCameraOffset;
