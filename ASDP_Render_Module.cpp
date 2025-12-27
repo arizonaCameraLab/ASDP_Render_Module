@@ -56,7 +56,7 @@ using namespace asdp::render;
 using namespace asdp::analysis;
 using json = nlohmann::json;
 
-static std::string VERSION = "3.21.0";
+static std::string VERSION = "3.22.0";
 
 /// @brief The path to the configuration file. Defined in the CMakeLists file.
 std::filesystem::path g_dirPath = CONFIG_FILE_PATH;
@@ -659,8 +659,8 @@ static void ComputeDepth(Time renderTime, void* /* unused */)
   if (ret != "") {
     std::cerr << "Error computing depth estimate: " << ret << std::endl;
   } else {
+    g_depthEstimator->UpdateMeshesGPU(g_visibleCameras);
     for (std::shared_ptr<asdp::render::CameraRenderInfo> cri : g_visibleCameras) {
-      g_depthEstimator->UpdateMesh(*cri);
       g_composite->UpdateVertexBuffer(*cri);
     }
   }
@@ -669,7 +669,7 @@ static void ComputeDepth(Time renderTime, void* /* unused */)
 }
 
 /// @brief Callback handler to turn on and off depth rendering on the visible cameras.
-static void ChangeDepthRendering(bool depthRendering, void* /* unused */)
+static void SetDepthRendering(bool depthRendering, void* /* unused */)
 {
   for (std::shared_ptr<asdp::render::CameraRenderInfo> cri : g_visibleCameras) {
     if (depthRendering) {
@@ -1918,7 +1918,7 @@ int main(int argc, char** argv)
     if (g_depthEstimator) {
       handlers->ComputeDepth = ComputeDepth;
     }
-    handlers->SetToRenderDepth = ChangeDepthRendering;
+    handlers->SetToRenderDepth = SetDepthRendering;
     handlers->IncrementActiveCamera = IncrementActiveCamera;
     handlers->DecrementActiveCamera = DecrementActiveCamera;
     handlers->AdjustActiveCameraOffset = AdjustActiveCameraOffset;
