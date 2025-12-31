@@ -1,4 +1,11 @@
 cmake_minimum_required(VERSION 3.16.0)
+
+if(UNIX)
+# @todo Add 120 once we've upgraded to a newer version of Linux that has CUDA 13.0 available
+set(CMAKE_CUDA_ARCHITECTURES "75;80;89")
+else(UNIX)
+set(CMAKE_CUDA_ARCHITECTURES "75;80;89;120")
+endif(UNIX)
 project(ASDP_Render_Module LANGUAGES CUDA CXX C)
 
 # We require C++17 for the use of std::filesystem.
@@ -191,7 +198,6 @@ target_include_directories(Render_Module PRIVATE
 target_link_libraries(Render_Module PUBLIC
   ASDP_Core_API::ASDP_Core_API glfw GLEW::glew OpenGL::GL geogram freetype nlohmann_json::nlohmann_json
 )
-set_property(TARGET Render_Module PROPERTY CUDA_ARCHITECTURES 75 80 89 120)
 if(OPENXR_FOUND)
   target_compile_definitions(Render_Module PRIVATE XR_USE_GRAPHICS_API_OPENGL)
   if(WIN32)
@@ -257,8 +263,8 @@ install(TARGETS ASDP_Render_Module EXPORT ${PROJECT_NAME}
   PUBLIC_HEADER DESTINATION include
 )
 
-# Install the directory of configuration files into the build and install binary directories
-install(DIRECTORY ${CMAKE_SOURCE_DIR}/ASDP_Render_Module_Configs DESTINATION ${CMAKE_BINARY_DIR})
+# Install the directory of configuration files into the install binary directory
+#install(DIRECTORY ${CMAKE_SOURCE_DIR}/ASDP_Render_Module_Configs DESTINATION ${CMAKE_BINARY_DIR})
 install(DIRECTORY ${CMAKE_SOURCE_DIR}/ASDP_Render_Module_Configs DESTINATION ${CMAKE_INSTALL_BINDIR})
 
 if(WIN32)
@@ -357,7 +363,6 @@ if(BUILD_UTILITIES)
     target_link_libraries(${APP} PRIVATE
 	    Render_Module
     )
-    set_property(TARGET ${APP} PROPERTY CUDA_ARCHITECTURES 75 80 89 120)
     install(TARGETS ${APP} EXPORT ${PROJECT_NAME}
       RUNTIME DESTINATION bin
     )
@@ -431,7 +436,6 @@ if(BUILD_TESTS)
       "${CMAKE_CURRENT_SOURCE_DIR}"
       "${CMAKE_CURRENT_SOURCE_DIR}/dependencies/glm"
     )
-    set_property(TARGET ${APP} PROPERTY CUDA_ARCHITECTURES 75 80 89 120)
     target_link_libraries(${APP}
       Render_Module
     )
