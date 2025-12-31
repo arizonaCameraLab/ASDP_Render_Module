@@ -56,7 +56,7 @@ using namespace asdp::render;
 using namespace asdp::analysis;
 using json = nlohmann::json;
 
-static std::string VERSION = "3.22.0";
+static std::string VERSION = "3.22.1";
 
 /// @brief The path to the configuration file. Defined in the CMakeLists file.
 std::filesystem::path g_dirPath = CONFIG_FILE_PATH;
@@ -1204,7 +1204,7 @@ static void usage(std::string name)
   std::cerr << "  --addAnalysis <URL>                 Add an analysis module from the specified URL (can be used multiple times)." << std::endl;
   std::cerr << "  --addDisplay                        Add another display with defaults that can be overridden" << std::endl;
   std::cerr << "  --triggerAheadMicroseconds <int>    Microseconds ahead of render to trigger camera (default 22000)." << std::endl;
-  std::cerr << "  --depthAheadMicroseconds <int>      Microseconds ahead of render to compute depth (default 8000)." << std::endl;
+  std::cerr << "  --depthAheadMicroseconds <int>      Microseconds ahead of render to compute depth (default 15000)." << std::endl;
   std::cerr << "  --lockRotation                      Lock the rotation of the viewer to the initial helicopter pose." << std::endl;
   std::cerr << "  --disableLatencyCompensation        Disable latency compensation." << std::endl;
   std::cerr << "  --autoRangeStd <below> <above>      Adjust color range to specified standard deviations above and below the mean." << std::endl;
@@ -1246,7 +1246,7 @@ int main(int argc, char** argv)
   bool doStreamPoses = true;      ///< Stream poses from the server, so we can adjust for latency.
   std::string dumpTimingFileName; ///< The base name for the timing files.
   unsigned triggerAheadMicroseconds = 22000; ///< Microseconds ahead of render to trigger camera.
-  unsigned depthAheadMicroseconds = 8000;    ///< Microseconds ahead of render to compute depth.
+  unsigned depthAheadMicroseconds = 15000;    ///< Microseconds ahead of render to compute depth.
   bool lockRotation = false;      ///< Lock the rotation of the viewer to the initial helicopter pose.
   bool disableLatencyCompensation = false; ///< Disable latency compensation.
   double cameraFPS = 0.0;         ///< The frames per second to run the camera at, 0 defaults to camera-specified maximum.
