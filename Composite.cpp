@@ -1407,6 +1407,11 @@ void CompositeCameras::RenderView(asdp::Time scanOutTime, const float* viewProje
     glBindTexture(GL_TEXTURE_2D, texture);
     glUniform1i(m_imageTextureId, 0);
 
+    // Fill in the frame time based on the information from the camera if it is nonzero.
+    if (m_images[c] != nullptr && m_images[c]->imageDurationMicroseconds != 0) {
+      frameTime = m_images[c]->imageDurationMicroseconds * 1.0e-6;
+    }
+
     // Adjust for helicopter motion from image acquisition to scan-out.
     // The camera points are in the helicopter coordinate system, so we need to adjust
     // from where they are (canonical position at render time) to where they were at
@@ -1426,7 +1431,8 @@ void CompositeCameras::RenderView(asdp::Time scanOutTime, const float* viewProje
 
     // Construct the differential shift matrix to adjust the camera points to the scan-out time.
     // These must all be in the helicopter coordinate system but scaled to a single frame time.
-    PoseAdjuster::VelocityEstimate velocity = m_poseAdjuster->EstimateVelocity(m_images[c]->imageCenterTime);
+    PoseAdjuster::VelocityEstimate velocity;
+    if (m_images[c] != nullptr) velocity = m_poseAdjuster->EstimateVelocity(m_images[c]->imageCenterTime);
 
     std::array<GLfloat, 3> fVelocity = { velocity.vel[0] * frameTime, velocity.vel[1] * frameTime,
                                          velocity.vel[2] * frameTime };
