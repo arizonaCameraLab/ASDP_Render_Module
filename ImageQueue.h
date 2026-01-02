@@ -40,7 +40,12 @@ namespace asdp {
       /// @brief Time the middle of the image was read into the system.
       /// @details This time is used to determine how much to shift the image based
       /// on the change in pose of the helicopter since the image was taken.
-      asdp::Time imageCenterTime = {};
+      asdp::Time imageCenterTime;
+
+      /// @brief Duration of the image capture in microseconds.
+      /// @details This is the scan-out time of the image, from the time the first pixel is read
+      /// until the time the last pixel is read. For a global shutter camera, this will be zero.
+      uint32_t imageDurationMicroseconds = 0;
 
       /// @brief The gain used to capture the image.
       float gain = 0.0f;

@@ -47,6 +47,8 @@ struct MessageSummary {
   uint16_t bottom = 0;              ///< The bottom edge of the region to process (if present for a message type)
   float exposure = 0.0f;            ///< The exposure time for the image (if present for a message type)
   float gain = 0.0f;                ///< The gain for the image (if present for a message type)
+  Time firstPixelTime;              ///< The time the first pixel was captured (if present for a message type)
+  uint32_t durationUSec = 0;        ///< The duration of the image capture in microseconds (if present for a message type)
 };
 
 /// @brief Structure to hold the data needed to send data to the GPU and run the kernel.
@@ -95,6 +97,11 @@ public:
   /// @return Empty string on success, description of error on failure.
   std::string SetCenterTime(asdp::Time centerTime);
 
+  /// @brief Set the frame duration in micrsoseconds for the image data.  Can be called any time before destruction.
+  /// @param frameDurationMicroseconds The duration of the image capture in microseconds.
+  /// @return Empty string on success, description of error on failure.
+  std::string SetFrameDurationMicroseconds(uint32_t frameDurationMicroseconds);
+
   /// @brief Get the status of the constructor.
   /// @return The status of the constructor, empty for good, error message for bad.
   std::string GetStatus() const { return m_status; }
@@ -108,7 +115,6 @@ protected:
   uint16_t m_batchSize;                       ///< The number of lines to send to the GPU at once
   int16_t m_lastLineSent;                     ///< The last line sent to the GPU, starts at -1 which is just below 0
   uint16_t m_largestLineReceived;             ///< The largest line received so far
-  asdp::Time m_centerTime;                    ///< The time the image was taken
   float m_exposure;                           ///< The exposure time for the image
   float m_gain;                               ///< The gain for the image
 

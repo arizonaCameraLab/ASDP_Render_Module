@@ -127,9 +127,6 @@ CPUDataToTextureHandler::~CPUDataToTextureHandler()
     std::cerr << "CPUDataToTextureHandler::~CPUDataToTextureHandler(): Error sending data to GPU: " << ret << std::endl;
   }
 
-  // Set the time on the image data to the average of the begin and end times.
-  m_imageData->imageCenterTime = m_centerTime;
-
   // Set the exposure and gain on the image data.
   m_imageData->exposure = m_exposure;
   m_imageData->gain = m_gain;
@@ -155,7 +152,13 @@ CPUDataToTextureHandler::~CPUDataToTextureHandler()
 
 std::string CPUDataToTextureHandler::SetCenterTime(asdp::Time centerTime)
 {
-  m_centerTime = centerTime;
+  m_imageData->imageCenterTime = centerTime;
+  return "";
+}
+
+std::string CPUDataToTextureHandler::SetFrameDurationMicroseconds(uint32_t frameDurationMicroseconds)
+{
+  m_imageData->imageDurationMicroseconds = frameDurationMicroseconds;
   return "";
 }
 
@@ -309,20 +312,35 @@ void asdp::render::CopyDataToTextures(uint16_t width, uint16_t height,
         }
 
         if (message.isFrameEnd) {
-          // Set the center time for the image data, which is the average of the frame begin and end times.
-          // If both of these bits are set for this same frame, we'll average the time with itself, which is fine.
-          if (message.cameraID >= frameTimes.size()) {
-            std::cerr << "CopyDataToGPU: FRAME_END: Error: Camera ID " << message.cameraID << " not found in frameTimes." << std::endl;
-            done = true;
-            return;
-          }
+          // See if the first-pixel time is nonzero; if so, we can use it to refine the center time.  Otherwise, we compute
+          // it from the frame begin and end times.
+          asdp::Time centerTime = message.firstPixelTime + asdp::Time(0, message.durationUSec / 2);
           asdp::Time duration = message.time - frameTimes[message.cameraID];
           float durationSeconds = duration.seconds + duration.microseconds / 1.0e6f;
-          float halfDurationSeconds = durationSeconds / 2;
-          asdp::Time centerTime = frameTimes[message.cameraID] + asdp::Time(halfDurationSeconds);
+          if (centerTime == Time()) {
+            // Estimate the center time for the image data, which is the average of the frame begin and end times.
+            // If both of these bits are set for this same frame, we'll average the time with itself, which is fine.
+            if (message.cameraID >= frameTimes.size()) {
+              std::cerr << "CopyDataToGPU: FRAME_END: Error: Camera ID " << message.cameraID << " not found in frameTimes." << std::endl;
+              done = true;
+              return;
+            }
+            float halfDurationSeconds = durationSeconds / 2;
+            centerTime = frameTimes[message.cameraID] + asdp::Time(halfDurationSeconds);
+          }
           std::string ret = handlers[message.cameraID]->SetCenterTime(centerTime);
           if (!ret.empty()) {
             std::cerr << "Error setting center time: " << ret << std::endl;
+            done = true;
+            return;
+          }
+
+          // Set the frame duration in microseconds. Try reading it from the message first, and if that is zero,
+          // compute it from the difference between the frame begin and end times.
+          uint32_t durUSec = message.durationUSec == 0 ? static_cast<uint32_t>(durationSeconds * 1.0e6f + 0.5f) : message.durationUSec;
+          ret = handlers[message.cameraID]->SetFrameDurationMicroseconds(durUSec);
+          if (!ret.empty()) {
+            std::cerr << "Error setting frame duration microseconds: " << ret << std::endl;
             done = true;
             return;
           }
@@ -369,11 +387,13 @@ void asdp::render::CopyDataToTextures(uint16_t width, uint16_t height,
 /// @param bottom The bottom coordinate of the region of interest in the image data.
 /// @param exposure The exposure time for the image data.
 /// @param gain The gain for the image data.
+/// @param firstPixelTime The time of the first pixel in the image data.
+/// @param durationUSec The duration of the image data in microseconds.
 /// @param dataPtr Pointer to the image data in the message.
 /// @return OKAY on success, error status on failure.
 static asdp::Status ParseFrameMessage(Message& message, bool &isFrameBegin, bool &isFrameEnd, Time& time,
   uint32_t& cameraID, uint16_t& width, uint16_t& height, uint16_t& left, uint16_t& top, uint16_t& right, uint16_t& bottom,
-  float& exposure, float& gain, uint8_t*& dataPtr)
+  float& exposure, float& gain, Time& firstPixelTime, uint32_t& durationUSec, uint8_t*& dataPtr)
 {
   MessageConsolidatedFrameData frameData(message);
   if (frameData.GetConstructorStatus() != OKAY) {
@@ -429,6 +449,14 @@ static asdp::Status ParseFrameMessage(Message& message, bool &isFrameBegin, bool
     return status;
   }
   status = frameData.GetGain(gain);
+  if (status != OKAY) {
+    return status;
+  }
+  status = frameData.GetFirstPixelTime(firstPixelTime);
+  if (status != OKAY) {
+    return status;
+  }
+  status = frameData.GetFrameDurationUSec(durationUSec);
   if (status != OKAY) {
     return status;
   }
@@ -532,8 +560,10 @@ void asdp::render::ReceiveDataThread(ReceiverUDP& receiveSocket, size_t maxBytes
             uint16_t left, right, top, bottom;
             uint8_t* data;
             float exposure, gain;
+            Time firstPixelTime;
+            uint32_t durationUSec;
             status = ParseFrameMessage(*message, isFrameBegin, isFrameEnd, time, cameraID, width, height,
-              left, top, right, bottom, exposure, gain, data);
+              left, top, right, bottom, exposure, gain, firstPixelTime, durationUSec, data);
             if (OKAY != status) {
               std::cerr << "ReceiveDataThread: ParseFrameMessage() failed: " << ErrorMessage(status) << std::endl;
               done = true;
@@ -608,6 +638,8 @@ void asdp::render::ReceiveDataThread(ReceiverUDP& receiveSocket, size_t maxBytes
             summary.bottom = bottom;
             summary.exposure = exposure;
             summary.gain = gain;
+            summary.firstPixelTime = firstPixelTime;
+            summary.durationUSec = durationUSec;
             messageSummaries.push_back(summary);
 
             if (isFrameEnd) {
