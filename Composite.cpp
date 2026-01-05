@@ -1417,11 +1417,11 @@ void CompositeCameras::RenderView(asdp::Time scanOutTime, const float* viewProje
     // from where they are (canonical position at render time) to where they were at
     // image acquisition.
     glm::dmat4 shiftPoints = glm::dmat4(1.0);
-    if (scanOutTime > Time(0, m_renderOffsetMicroseconds)) {
-      Time imageTime = {};
+    Time renderOffsetTime(m_renderOffsetMicroseconds / 1000000, m_renderOffsetMicroseconds % 1000000);
+    if (scanOutTime > renderOffsetTime) {
+      Time imageTime;
       if (m_images[c] != nullptr) { imageTime = m_images[c]->imageCenterTime; }
-      shiftPoints = m_poseAdjuster->GetTransform(scanOutTime - Time(0, m_renderOffsetMicroseconds),
-        imageTime);
+      shiftPoints = m_poseAdjuster->GetTransform(scanOutTime - renderOffsetTime, imageTime);
     }
     const double* data = glm::value_ptr(shiftPoints);
     float fShift[16];
