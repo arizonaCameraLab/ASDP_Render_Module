@@ -21,6 +21,12 @@
 #include <Calibration_Helpers.h>
 #include <spot_tracker.h>
 #include <nlohmann/json.hpp>
+#ifdef USE_OPENCV
+#include <opencv2/opencv.hpp>
+#include <opencv2/core/mat.hpp>
+#include <opencv2/core/types.hpp>
+#include <opencv2/calib3d.hpp>
+#endif
 
 using namespace asdp;
 using namespace asdp::render;
@@ -185,16 +191,6 @@ int main(int argc, char** argv)
 
     // Map per targetID of a map per cameraID of a bag of mappings.
     std::map<uint16_t, std::map<uint16_t, DistortionBagOfMappings::Bag> > perTargetBags;
-
-    // We always do a bag-of-mappings distortion model.
-    // Bag of mappings per camera, looked up by camera ID.
-    // This is filled in by the optimization routines using the information from the
-    // per-target mappings.
-    std::map<uint16_t, DistortionBagOfMappings::Bag> bags;
-    for (auto& cri : cameraRenderInfos) {
-      // Create an empty bag of mappings for each camera.
-      bags[cri.m_ID] = DistortionBagOfMappings::Bag();
-    }
 
     /// Map from target ID to location
     std::map<int, std::array<double, 3>> pointByID;
@@ -463,6 +459,16 @@ int main(int argc, char** argv)
       std::cout << "Wrote mappings to " << writeMapsFile << std::endl;
     }
 
+    // We always construct a bag-of-mappings distortion model.
+    // Bag of mappings per camera, looked up by camera ID.
+    // This is filled in by the optimization routines using the information from the
+    // per-target mappings.
+    std::map<uint16_t, DistortionBagOfMappings::Bag> bags;
+    for (auto& cri : cameraRenderInfos) {
+      // Create an empty bag of mappings for each camera.
+      bags[cri.m_ID] = DistortionBagOfMappings::Bag();
+    }
+
     // Perform the optimization to determine the camera models, including distortion.
     if (targetInfos.size() == 1) {
       // We have a single target, so we do a direct bag-of-mappings distortion model to make
@@ -473,35 +479,49 @@ int main(int argc, char** argv)
       bags = perTargetBags[targetInfos[0].id];
 
     } else {
-#ifdef USE_OPENCV
-
       // We have multiple targets, so do full estimation of position, orientation, and distortion
       // for each entry in cameraRenderInfos based on the ideal-camera FOV and the target locations.
-      // Modify the CRI information in place and set the bags distortion for each camera.
 
       std::cout << "Using multiple-depth distortion model" << std::endl;
 
-      // Construct a vector of bags of mappings per camera ID with an entry for each target in the
-      // targetInfos vector.  Use that to optimize the camera parameters for that camera.
+#ifdef USE_OPENCV
+
+      /// @todo Outer loop to optimize the target locations by randomly perturbing them and re-optimizing
+      // the camera parameters then checking the overall reprojection error.
+
+      // Modify the CRI information in place and set the bags distortion for each camera.
       for (auto& cri : cameraRenderInfos) {
 
-        // Find the bags for this camera ID.
-        std::vector<DistortionBagOfMappings::Bag> myBags;
-        for (auto& target : targetInfos) {
-          auto& bag = perTargetBags[target.id][cri.m_ID];
-          myBags.push_back(bag);
-        }
-
-        // Use the bags to optimize the camera parameters for this camera and to construct its
-        // bag-of-mappings distortion (maps from actual pixel location to location in the ideal
-        // camera, which may be outside of the ideal camera FOV).
-        /// @todo Remember to map FROM actual location TO ideal (expected) location.
-
+        // Fill in OpenCV matrix and distortion estimates for this camera ID.
+        cv::Size imageSize(cri.m_resolutionPixels[0], cri.m_resolutionPixels[1]);
         /// @todo
+        cv::Mat cameraMatrix;
+        cv::Mat distCoeffs;
+
+        // Fill in the point entries for this camera ID that will be used to optimize the camera parameters.
+        // Each point is rotated based on the gimbal angles at which it was observed.
+        /// @todo
+        std::vector< std::vector<cv::Point3d> > objectPoints;
+        std::vector< std::vector<cv::Point3d> > imagePoints;
+
+        // Optimize the camera extrinsic parameters and distortion model based on the point entries.
+        /// @todo
+        std::vector<cv::Mat> rvecs;
+        std::vector<cv::Mat> tvecs;
+        int flags = 0;  ///< @todo Adjust
+        cv::TermCriteria termCrit(cv::TermCriteria::COUNT + cv::TermCriteria::EPS, 30, 1e-6);   ///< @todo Adjust
+        double rmsError = cv::calibrateCamera(objectPoints, imagePoints, imageSize, cameraMatrix, distCoeffs, rvecs, tvecs,
+          flags, termCrit);
+
+        // Fill in the camera intrinsic and extrinc parameters in the cri structure.
+        /// @todo
+
+        // Fill in the bags for this camera ID's distortion mapping by converting a range of expected points
+        // into actual points using the OpenCV distortion.
+        /// @todo
+        bags[cri.m_ID] = DistortionBagOfMappings::Bag();
       }
 
-      std::cerr << "Error: Multiple target solver not yet implemented." << std::endl;
-      return 100;
 #else
       std::cerr << "Error: Multiple target solver requires OpenCV during compilation." << std::endl;
       return 100;
