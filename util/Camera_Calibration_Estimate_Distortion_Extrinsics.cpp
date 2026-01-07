@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2025: Arizona Board of Regents on Behalf of the University of Arizona
+ * Copyright (C) 2025-2026: Arizona Board of Regents on Behalf of the University of Arizona
  */
 
 /**
@@ -27,7 +27,7 @@ using namespace asdp::render;
 using namespace asdp::render::calibration;
 using json = nlohmann::json;
 
-static std::string VERSION = "1.1.0";
+static std::string VERSION = "2.0.0";
 
 void usage(std::string name)
 {
@@ -44,6 +44,20 @@ void usage(std::string name)
   std::cerr << "    --writeMaps <filename.csv>  Write the expected to as-seen mappings to the specified CSV file." << std::endl;
   std::cerr << "    --readMaps <filename.csv>   Read the expected to as-seen mappings from the specified CSV file, don't compute." << std::endl;
   std::cerr << "    --invert                    Invert each image (useful for dark targets)." << std::endl;
+};
+
+/// @brief Structure to hold a point entry for a camera, describing its 3D location in space and its 2D projection.
+struct PointEntry {
+  PointEntry(std::array<double, 3> &p3D, std::array<double, 2> imgPt, double zRotDeg, double xRotDeg)
+    : point3D(p3D), imagePoint(imgPt), zRotationDegrees(zRotDeg), xRotationDegrees(xRotDeg) {}
+
+  /// Reference to the 3D location of the point in helicopter coordinates
+  /// (using a reference enables an outer loop to move these and then re-optimize without having to update all vectors
+  /// of points).
+  std::array<double, 3>& point3D;
+  std::array<double, 2> imagePoint;   ///< The 2D measured location of the point in image coordinates.
+  double zRotationDegrees;            ///< The gimbal Z rotation in degrees when the measurement was made.
+  double xRotationDegrees;            ///< The gimbal X rotation in degrees when the measurement was made.
 };
 
 int main(int argc, char** argv)
@@ -182,6 +196,15 @@ int main(int argc, char** argv)
       bags[cri.m_ID] = DistortionBagOfMappings::Bag();
     }
 
+    /// Map from target ID to location
+    std::map<int, std::array<double, 3>> pointByID;
+    for (const auto& target : targetInfos) {
+      pointByID[target.id] = { target.position.x, target.position.y, target.position.z };
+    }
+
+    /// Map from camera ID to a vector of point entries associated with that camera.
+    std::map<int, std::vector<PointEntry> > pointEntries;
+
     // If we are writing the mappings to a file, open that file and write the header line.
     std::ofstream outMapFile;
     if (!writeMapsFile.empty()) {
@@ -233,10 +256,15 @@ int main(int argc, char** argv)
           DistortionBagOfMappings::Point2D expected = PlaneIntersectionForPixelNoDistortion(cameraRenderInfos[whichCamera], {x1, y1});
           DistortionBagOfMappings::Point2D actual = PlaneIntersectionForPixelNoDistortion(cameraRenderInfos[whichCamera], { x2, y2 });
           DistortionBagOfMappings::Mapping mapping = { actual, expected };
-          perTargetBags[pose.targetID][pose.cameraID].push_back(mapping); // Assuming all mappings are for camera ID 0 for now.
+          perTargetBags[pose.targetID][pose.cameraID].push_back(mapping);
+          pointEntries[pose.cameraID].emplace_back(
+            pointByID[pose.targetID],
+            actual,
+            pose.zRotationDegrees,
+            pose.xRotationDegrees);
         } else {
           std::cerr << "Error: Unable to read mapping line for pose " << pose.frameIndex << " camera " << pose.cameraID << std::endl;
-          return 53;
+          return 54;
         }
       }
       inFile.close();
@@ -407,6 +435,11 @@ int main(int argc, char** argv)
           // Map from the actual (as rendered) position to the ideal (expected) position.
           DistortionBagOfMappings::Mapping mapping = { actual, expected };
           bag.push_back(mapping);
+          pointEntries[pose.cameraID].emplace_back(
+            pointByID[pose.targetID],
+            actual,
+            pose.zRotationDegrees,
+            pose.xRotationDegrees);
 
           count++;
           std::cout << count << " / " << poseInfos.size() << " processed; pose " << pose.frameIndex
@@ -440,6 +473,8 @@ int main(int argc, char** argv)
       bags = perTargetBags[targetInfos[0].id];
 
     } else {
+#ifdef USE_OPENCV
+
       // We have multiple targets, so do full estimation of position, orientation, and distortion
       // for each entry in cameraRenderInfos based on the ideal-camera FOV and the target locations.
       // Modify the CRI information in place and set the bags distortion for each camera.
@@ -463,10 +498,14 @@ int main(int argc, char** argv)
         /// @todo Remember to map FROM actual location TO ideal (expected) location.
 
         /// @todo
-
-        std::cerr << "Error: Multiple targets not yet implemented." << std::endl;
-        return 100;
       }
+
+      std::cerr << "Error: Multiple target solver not yet implemented." << std::endl;
+      return 100;
+#else
+      std::cerr << "Error: Multiple target solver requires OpenCV during compilation." << std::endl;
+      return 100;
+#endif
     }
 
     // Bring the positions back to the original camera position by subtracting the offsets we added above.
