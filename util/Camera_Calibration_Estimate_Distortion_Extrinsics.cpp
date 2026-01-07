@@ -494,26 +494,42 @@ int main(int argc, char** argv)
 
         // Fill in OpenCV matrix and distortion estimates for this camera ID.
         cv::Size imageSize(cri.m_resolutionPixels[0], cri.m_resolutionPixels[1]);
-        /// @todo
-        cv::Mat cameraMatrix;
-        cv::Mat distCoeffs;
+        cv::Mat distCoeffs = cv::Mat::zeros(8, 1, CV_64F);
+        double cx = cri.m_resolutionPixels[0] / 2.0;
+        double cy = cri.m_resolutionPixels[1] / 2.0;
+        double fx = (cri.m_resolutionPixels[0] / 2.0) / tan((cri.m_fovDegrees[0] / 2.0) * M_PI / 180.0);
+        double fy = (cri.m_resolutionPixels[1] / 2.0) / tan((cri.m_fovDegrees[1] / 2.0) * M_PI / 180.0);
+        cv::Mat cameraMatrix = cv::Mat::eye(3, 3, CV_64F);
+        cameraMatrix.at<double>(0, 0) = fx;
+        cameraMatrix.at<double>(1, 1) = fy;
+        cameraMatrix.at<double>(0, 2) = cx;
+        cameraMatrix.at<double>(1, 2) = cy;
 
         // Fill in the point entries for this camera ID that will be used to optimize the camera parameters.
         // Each point is rotated based on the gimbal angles at which it was observed.
-        /// @todo
+        // All points for both targets go into a single set of object points and image points.
         std::vector< std::vector<cv::Point3d> > objectPoints;
-        std::vector< std::vector<cv::Point3d> > imagePoints;
+        objectPoints.push_back(std::vector<cv::Point3d>());
+        std::vector< std::vector<cv::Point2d> > imagePoints;
+        imagePoints.push_back(std::vector<cv::Point2d>());
+        for (auto const & entry : pointEntries[cri.m_ID]) {
+          // Rotate the 3D point based on the gimbal angles.
+          std::array<double, 3> rotatedPoint = HelicopterToRotatedBall(entry.point3D,
+            gimbalInfo.pitchFirst, entry.zRotationDegrees, entry.xRotationDegrees);
+          // Add to the object points and image points.
+          objectPoints.back().emplace_back(rotatedPoint[0], rotatedPoint[1], rotatedPoint[2]);
+          imagePoints.back().emplace_back(entry.imagePoint[0], entry.imagePoint[1]);
+        }
 
         // Optimize the camera extrinsic parameters and distortion model based on the point entries.
-        /// @todo
         std::vector<cv::Mat> rvecs;
         std::vector<cv::Mat> tvecs;
-        int flags = 0;  ///< @todo Adjust
+        int flags = cv::CALIB_USE_INTRINSIC_GUESS;  ///< @todo Adjust as needed
         cv::TermCriteria termCrit(cv::TermCriteria::COUNT + cv::TermCriteria::EPS, 30, 1e-6);   ///< @todo Adjust
         double rmsError = cv::calibrateCamera(objectPoints, imagePoints, imageSize, cameraMatrix, distCoeffs, rvecs, tvecs,
           flags, termCrit);
 
-        // Fill in the camera intrinsic and extrinc parameters in the cri structure.
+        // Fill in the camera intrinsic and extrinsic parameters in the cri structure.
         /// @todo
 
         // Fill in the bags for this camera ID's distortion mapping by converting a range of expected points
