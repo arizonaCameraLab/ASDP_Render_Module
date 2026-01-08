@@ -161,6 +161,16 @@ bool TargetProjectedLocationNoDistortion(const asdp::render::CameraRenderInfo& c
 std::array<double, 2> PlaneIntersectionForPixelNoDistortion(const asdp::render::CameraRenderInfo& cri,
   std::array<double, 2> locPixels);
 
+/// @brief Rotate a 3D point by the inverse of the specified gimbal angles to take a point from
+/// helicopter coordinates to rotated ball coordinates.
+/// @param point The 3D point to rotate.
+/// @param rotateXFirst If true, gymbal rotates around the X axis first, then the Z axis; otherwise, Z first.
+/// @param zRotationDegrees The gimbal rotation around the Z axis in degrees.
+/// @param xRotationDegrees The gimbal rotation around the X axis in degrees.
+/// @return The rotated 3D point.
+std::array<double, 3> HelicopterToRotatedBall(std::array<double, 3> point,
+  bool rotateXFirst, double zRotationDegrees, double xRotationDegrees);
+
 /// @brief Test the calibration helpers.
 /// @return An empty string if the test passes, otherwise an error message.
 std::string Test();

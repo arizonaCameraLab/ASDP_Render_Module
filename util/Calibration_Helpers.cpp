@@ -714,6 +714,26 @@ std::array<double, 2> asdp::render::calibration::PlaneIntersectionForPixelNoDist
   return { xPlane, yPlane };
 }
 
+std::array<double, 3> asdp::render::calibration::HelicopterToRotatedBall(std::array<double, 3> point,
+  bool rotateXFirst, double zRotationDegrees, double xRotationDegrees)
+{
+  glm::dvec3 p(point[0], point[1], point[2]);
+
+  // Okay, we now have the ray start and direction in the camera ball's coordinate system.
+  // We must rotate both by the gimbal angle, rotating around the two axes in the specified order.
+  glm::dquat rotationZ = glm::angleAxis(glm::radians(zRotationDegrees), glm::dvec3(0.0, 0.0, 1.0));
+  glm::dquat rotationX = glm::angleAxis(glm::radians(xRotationDegrees), glm::dvec3(1.0, 0.0, 0.0));
+  glm::dquat rotationTotal;
+  if (rotateXFirst) {
+    rotationTotal = rotationX * rotationZ;
+  } else {
+    rotationTotal = rotationZ * rotationX;
+  }
+  glm::dquat inverseRotationTotal = glm::inverse(rotationTotal);
+  glm::dvec3 pRotated = inverseRotationTotal * p;
+  return { pRotated.x, pRotated.y, pRotated.z };
+}
+
 std::string asdp::render::calibration::Test()
 {
   // Used in multiple tests.
@@ -1257,6 +1277,40 @@ std::string asdp::render::calibration::Test()
         return "Test failed: TargetProjectedLocationNoDistortion() after reorienting camera for target "
           + std::to_string(target[0]) + ", " + std::to_string(target[1]) + ", " + std::to_string(target[2])
           + " Y pixel: " + std::to_string(yPixels) + ", expected: " + std::to_string(center[1]);
+      }
+    }
+  }
+
+  // Test HelicopterToRotatedBall()
+  {
+    // Rotate a point along the +Y axis using a 90 degree rotation around Z and verify that it rotates
+    // near to the +X axis.
+    std::array<double, 3> pointOnBall = { 0, 1, 0 };
+    {
+      std::array<double, 3> helicopterRotated = HelicopterToRotatedBall(pointOnBall, false, 90, 0);
+      glm::dvec3 helicopterRotatedVec(helicopterRotated[0], helicopterRotated[1], helicopterRotated[2]);
+      if (glm::length(helicopterRotatedVec - glm::dvec3(1, 0, 0)) > 1e-6) {
+        return "Test failed: HelicopterToRotatedBall() 90 degree Z rotation.";
+      }
+    }
+
+    // Rotate the same point using a 90 degree rotation around X and verify that it rotates
+    // to the -Z axis.
+    {
+      std::array<double, 3> helicopterRotated = HelicopterToRotatedBall(pointOnBall, false, 0, 90);
+      glm::dvec3 helicopterRotatedVec(helicopterRotated[0], helicopterRotated[1], helicopterRotated[2]);
+      if (glm::length(helicopterRotatedVec - glm::dvec3(0, 0, -1)) > 1e-6) {
+        return "Test failed: HelicopterToRotatedBall() 90 degree X rotation.";
+      }
+    }
+
+    // Use rotateXFirst = true and verify that a 90 degree rotation around X followed by Z
+    // rotates the point near the -Z axis.
+    {
+      std::array<double, 3> helicopterRotated = HelicopterToRotatedBall(pointOnBall, true, 90, 90);
+      glm::dvec3 helicopterRotatedVec(helicopterRotated[0], helicopterRotated[1], helicopterRotated[2]);
+      if (glm::length(helicopterRotatedVec - glm::dvec3(0, 0, -1)) > 1e-6) {
+        return "Test failed: HelicopterToRotatedBall() 90 degree X then Z rotation.";
       }
     }
   }
