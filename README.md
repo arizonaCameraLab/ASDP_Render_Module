@@ -413,7 +413,7 @@ described in Appendix A.  The workflow is as follows:
     - Copy the target_*_poses.csv files into the calibration directory.
     - Capture or simulate the frames for each target and save them in a directory named for the target.
         - If simulating for validation:
-            - Open the **calibration_v5.blend** file from the **FlightSim** repository in Blender 4.0 and
+            - Open the **calibration_v6.blend** file from the **FlightSim** repository in Blender 4.0 and
               edit the file names at the top of the script to point at the camera, traget and gimbal
               configuration files and the poses file for each of the targets, setting the
               renderPath to an empty subdirectory in the calibration directory
@@ -459,7 +459,7 @@ described in Appendix A.  The workflow is as follows:
       other spurious sources that are capturing the target estimation.  **Note:** It may be necessary to
       loop back to the *Target_Calibration_Make_Scan* step, using the optimized file as the new input file,
       to produce a better estimate of the target lateral positions using new scan data.
-- **Estimate single-depth distortion:**
+- **Estimate camera parameters and distortion:**
     - Run the **Camera_Calibration_Make_Scan** program and give it **cameras_opt.json**, **targets_lateral_opt.json**, and
       the gimbal configuration files.  It will produce a **poses.csv** file for all cameras.
     - Copy the poses.csv file into the calibration directory.
@@ -479,6 +479,11 @@ described in Appendix A.  The workflow is as follows:
       locations in each camera for later examination.  This file can be copied into the Render Module's
       *ASDP_Render_Module_Configs* directory named as `#.map.csv` (where # is the camera serial number) for
       use during rendering.
+        - When run with a single target, this will not estimate the camera extrinsic or instrinsic
+          parameters, only the distortion parameters. These will be used to construct a bag-of-mappings
+          distortion model that will be accurate near the target depth.
+        - When run with multiple targets at different depths, this will also estimate the camera extrinsic
+          and intrinsic parameters, which will be accurate over a range of depths.
 - **Use distortion:**
     - Copy the optimized camera configuration file to the Render Module's configuration directory
       as #.json (where # is the camera serial number).
