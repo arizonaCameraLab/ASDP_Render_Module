@@ -90,7 +90,7 @@ inline std::array<double, 3> QuaternionToEulerXYZIJK(int i, int j, int k, const 
 }
 
 /// @brief Does the machinations required to get the Euler angles in the order we want.
-inline glm::dvec3 QuaternionToEulerXYZDegrees(const glm::dquat& qIn)
+glm::dvec3 asdp::render::calibration::QuaternionToEulerXYZDegrees(const glm::dquat& qIn)
 {
   // This asks for the results in the order (Z, Y, X) which matches the internal specification for
   // GLM's documentation but does not match the convention we are using -- we must be using extrinsic

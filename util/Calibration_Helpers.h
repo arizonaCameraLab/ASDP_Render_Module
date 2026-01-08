@@ -171,6 +171,11 @@ std::array<double, 2> PlaneIntersectionForPixelNoDistortion(const asdp::render::
 std::array<double, 3> HelicopterToRotatedBall(std::array<double, 3> point,
   bool rotateXFirst, double zRotationDegrees, double xRotationDegrees);
 
+/// @brief Convert a quaternion to Euler angles in degrees using the XYZ order.
+/// @param qIn The input quaternion.
+/// @return The Euler angles in degrees.
+glm::dvec3 QuaternionToEulerXYZDegrees(const glm::dquat& qIn);
+
 /// @brief Test the calibration helpers.
 /// @return An empty string if the test passes, otherwise an error message.
 std::string Test();

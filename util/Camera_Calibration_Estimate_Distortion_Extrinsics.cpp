@@ -26,6 +26,8 @@
 #include <opencv2/core/mat.hpp>
 #include <opencv2/core/types.hpp>
 #include <opencv2/calib3d.hpp>
+#include <glm/glm.hpp>
+#include <glm/gtc/quaternion.hpp> // For glm::quat and glm::mat3
 #endif
 
 using namespace asdp;
@@ -490,7 +492,9 @@ int main(int argc, char** argv)
       // the camera parameters then checking the overall reprojection error.
 
       // Modify the CRI information in place and set the bags distortion for each camera.
-      for (auto& cri : cameraRenderInfos) {
+#pragma omp parallel for
+      for (int camIndex = 0; camIndex < cameraRenderInfos.size(); camIndex++) {
+        auto& cri = cameraRenderInfos[camIndex];
 
         // Fill in OpenCV matrix and distortion estimates for this camera ID.
         cv::Size imageSize(cri.m_resolutionPixels[0], cri.m_resolutionPixels[1]);
@@ -521,7 +525,7 @@ int main(int argc, char** argv)
           imagePoints.back().emplace_back(entry.imagePoint[0], entry.imagePoint[1]);
         }
 
-        // Optimize the camera extrinsic parameters and distortion model based on the point entries.
+        // Optimize the camera intrinsic and extrinsic parameters and distortion based on the point entries.
         std::vector<cv::Mat> rvecs;
         std::vector<cv::Mat> tvecs;
         int flags = cv::CALIB_USE_INTRINSIC_GUESS;  ///< @todo Adjust as needed
@@ -529,13 +533,79 @@ int main(int argc, char** argv)
         double rmsError = cv::calibrateCamera(objectPoints, imagePoints, imageSize, cameraMatrix, distCoeffs, rvecs, tvecs,
           flags, termCrit);
 
-        // Fill in the camera intrinsic and extrinsic parameters in the cri structure.
-        /// @todo
+        // Print the OpenCV calibration results for this camera to standard output.
+        std::cout << "Camera ID " << cri.m_ID << " OpenCV calibration results:" << std::endl;
+        std::cout << "RMS error: " << rmsError << std::endl;
+        std::cout << "Camera matrix: " << cameraMatrix << std::endl;
+        std::cout << "rvec: " << rvecs[0] << std::endl;
+        std::cout << "tvec: " << tvecs[0] << std::endl;
+        std::cout << "Distortion coefficients: " << distCoeffs << std::endl;
 
+        //======================
+        // Fill in the camera intrinsic and extrinsic parameters in the cri structure. Note that we need the inverse of
+        // the translation and rotations given by OpenCV because they give the transformation from world to camera coordinates.
+
+        // Compute the fields of view.
+        cri.m_fovDegrees[0] = 2.0 * atan2(cri.m_resolutionPixels[0] / 2.0, cameraMatrix.at<double>(0, 0)) * 180.0 / M_PI;
+        cri.m_fovDegrees[1] = 2.0 * atan2(cri.m_resolutionPixels[1] / 2.0, cameraMatrix.at<double>(1, 1)) * 180.0 / M_PI;
+        // Convert rvec to a rotation matrix.
+        cv::Mat rotationMatrix;
+        cv::Rodrigues(rvecs[0], rotationMatrix);
+        // Convert the rotation matrix to a Quaternion.
+        glm::dquat q(glm::dmat3(
+          rotationMatrix.at<double>(0, 0), rotationMatrix.at<double>(0, 1), rotationMatrix.at<double>(0, 2),
+          rotationMatrix.at<double>(1, 0), rotationMatrix.at<double>(1, 1), rotationMatrix.at<double>(1, 2),
+          rotationMatrix.at<double>(2, 0), rotationMatrix.at<double>(2, 1), rotationMatrix.at<double>(2, 2)
+        ));
+        q = glm::conjugate(q); // Invert the rotation.
+        // Convert the Quaternion to Euler angles in degrees.
+        glm::dvec3 eulerDegrees = asdp::render::calibration::QuaternionToEulerXYZDegrees(q);
+        cri.m_orientationDegrees = { eulerDegrees.x, eulerDegrees.y, eulerDegrees.z };
+        // Store the inverse translation.
+        cri.m_positionMeters = { -tvecs[0].at<double>(0), -tvecs[0].at<double>(1), -tvecs[0].at<double>(2) };
+
+        //======================
         // Fill in the bags for this camera ID's distortion mapping by converting a range of expected points
         // into actual points using the OpenCV distortion.
-        /// @todo
+
+        // Target a camera matrix whose fields of view match the optimized ones above but whose center is at
+        // the middle of the sensor.
+        /// @todo Consider using the original FOVs of the camera instead of the optimized ones.
+        /// @todo Consider expanding the FOVs slightly to help ensure coverage of the entire projected image.
+        cv::Mat targetCameraMatrix = cv::Mat::eye(3, 3, CV_64F);
+        targetCameraMatrix.at<double>(0, 0) = cameraMatrix.at<double>(0, 0);
+        targetCameraMatrix.at<double>(1, 1) = cameraMatrix.at<double>(1, 1);
+        targetCameraMatrix.at<double>(0, 2) = cri.m_resolutionPixels[0] / 2.0;
+        targetCameraMatrix.at<double>(1, 2) = cri.m_resolutionPixels[1] / 2.0;
+
+        // Compute the undistortion rectification maps, which map from an undistorted (actual) camera pixel location to the
+        // X and Y coordinates of the original (expected) pixel locations (perhaps fractional). Some points in the actual
+        // image may not map to any point in the expected image, but this is okay.
+        // Note that the projected region of the original image may extend past the edges of the undistorted image, in which
+        // case the mapping will only accurately capture the central region.
+        cv::Mat map1, map2;
+        cv::initUndistortRectifyMap(cameraMatrix, distCoeffs, cv::Mat(), targetCameraMatrix, imageSize, CV_64F, map1, map2);
+
+        // Use a 100x100 grid of (fractional location) pixels across the image.
         bags[cri.m_ID] = DistortionBagOfMappings::Bag();
+        double stepX = static_cast<double>(cri.m_resolutionPixels[0]) / 100.0;
+        double stepY = static_cast<double>(cri.m_resolutionPixels[1]) / 100.0;
+        for (double yf = 0.0; yf < cri.m_resolutionPixels[1]; yf += stepY) {
+          int y = static_cast<int>(yf);
+          for (double xf = 0.0; xf < cri.m_resolutionPixels[0]; xf += stepX) {
+            int x = static_cast<int>(xf);
+
+            // Find the expected location by looking up in the undistortion maps.
+            double expectedX = map1.at<double>(y, x);
+            double expectedY = map2.at<double>(y, x);
+
+            // Add the mapping from expected to actual location.
+            DistortionBagOfMappings::Point2D expected = PlaneIntersectionForPixelNoDistortion(cri, { expectedX, expectedY });
+            DistortionBagOfMappings::Point2D actual = PlaneIntersectionForPixelNoDistortion(cri, { float(x), float(y) });
+            DistortionBagOfMappings::Mapping mapping = { expected, actual };
+            bags[cri.m_ID].push_back(mapping);
+          }
+        }
       }
 
 #else
