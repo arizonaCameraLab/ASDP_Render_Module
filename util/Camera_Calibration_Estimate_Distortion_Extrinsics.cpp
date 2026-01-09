@@ -505,7 +505,6 @@ int main(int argc, char** argv)
       // the camera parameters then checking the overall reprojection error.
 
       // Modify the CRI information in place and set the bags distortion for each camera.
-#pragma omp parallel for
       for (int camIndex = 0; camIndex < cameraRenderInfos.size(); camIndex++) {
         auto& cri = cameraRenderInfos[camIndex];
 
@@ -525,17 +524,22 @@ int main(int argc, char** argv)
         // Fill in the point entries for this camera ID that will be used to optimize the camera parameters.
         // Each point is rotated based on the gimbal angles at which it was observed.
         // All points for both targets go into a single set of object points and image points.
-        std::vector< std::vector<cv::Point3d> > objectPoints;
-        objectPoints.push_back(std::vector<cv::Point3d>());
-        std::vector< std::vector<cv::Point2d> > imagePoints;
-        imagePoints.push_back(std::vector<cv::Point2d>());
+        std::vector< std::vector<cv::Point3f> > objectPoints;
+        objectPoints.emplace_back(); // one view (all correspondences in a single view)
+        std::vector< std::vector<cv::Point2f> > imagePoints;
+        imagePoints.emplace_back();
         for (auto const & entry : pointEntries[cri.m_ID]) {
           // Rotate the 3D point based on the gimbal angles.
           std::array<double, 3> rotatedPoint = HelicopterToRotatedBall(entry.point3D,
             gimbalInfo.pitchFirst, entry.zRotationDegrees, entry.xRotationDegrees);
-          // Add to the object points and image points.
-          objectPoints.back().emplace_back(rotatedPoint[0], rotatedPoint[1], rotatedPoint[2]);
-          imagePoints.back().emplace_back(entry.imagePoint[0], entry.imagePoint[1]);
+          // Add to the object points and image points (use float types expected by OpenCV helpers).
+          objectPoints.back().emplace_back(
+            static_cast<float>(rotatedPoint[0]),
+            static_cast<float>(rotatedPoint[1]),
+            static_cast<float>(rotatedPoint[2]));
+          imagePoints.back().emplace_back(
+            static_cast<float>(entry.imagePoint[0]),
+            static_cast<float>(entry.imagePoint[1]));
         }
 
         // Optimize the camera intrinsic and extrinsic parameters and distortion based on the point entries.
@@ -543,16 +547,58 @@ int main(int argc, char** argv)
         std::vector<cv::Mat> tvecs;
         int flags = cv::CALIB_USE_INTRINSIC_GUESS;  ///< @todo Adjust as needed
         cv::TermCriteria termCrit(cv::TermCriteria::COUNT + cv::TermCriteria::EPS, 30, 1e-6);   ///< @todo Adjust
-        double rmsError = cv::calibrateCamera(objectPoints, imagePoints, imageSize, cameraMatrix, distCoeffs, rvecs, tvecs,
-          flags, termCrit);
 
-        // Print the OpenCV calibration results for this camera to standard output.
+        // Validate that objectPoints/imagePoints are non-empty and correspond
+        if (objectPoints.empty() || imagePoints.empty() || objectPoints.size() != imagePoints.size()) {
+          std::cerr << "Warning: insufficient or mismatched calibration views for camera " << cri.m_ID << "; skipping calibration for this camera." << std::endl;
+          continue;
+        }
+        bool hasAnyPoints = false;
+        for (size_t vi = 0; vi < objectPoints.size(); ++vi) {
+          if (!objectPoints[vi].empty() && !imagePoints[vi].empty() && objectPoints[vi].size() == imagePoints[vi].size()) {
+            hasAnyPoints = true;
+            break;
+          }
+        }
+        if (!hasAnyPoints) {
+          std::cerr << "Warning: no valid correspondence points for camera " << cri.m_ID << "; skipping calibration for this camera." << std::endl;
+          continue;
+        }
+
+        // Call calibrateCamera
+        //cv::setNumThreads(1);
+        //cv::setUseOptimized(false);
+        double rmsError;
+        try {
+          rmsError = cv::calibrateCamera(objectPoints, imagePoints, imageSize, cameraMatrix, distCoeffs, rvecs, tvecs,
+            flags, termCrit);
+        } catch (const cv::Exception& e) {
+          std::cerr << "Error: OpenCV exception during calibrateCamera for camera " << cri.m_ID
+            << ": " << e.what() << "; skipping calibration for this camera." << std::endl;
+          continue;
+        }
+
         std::cout << "Camera ID " << cri.m_ID << " OpenCV calibration results:" << std::endl;
-        std::cout << "RMS error: " << rmsError << std::endl;
-        std::cout << "Camera matrix: " << cameraMatrix << std::endl;
-        std::cout << "rvec: " << rvecs[0] << std::endl;
-        std::cout << "tvec: " << tvecs[0] << std::endl;
-        std::cout << "Distortion coefficients: " << distCoeffs << std::endl;
+        std::cout << "  RMS error: " << rmsError << std::endl;
+        std::cout << "  Camera matrix: " << cameraMatrix << std::endl;
+
+        // Guard against empty outputs (calibration may fail and not populate rvecs/tvecs)
+        if (rvecs.empty() || tvecs.empty()) {
+          std::cerr << "Error: calibrateCamera did not produce rotation/translation vectors for camera " << cri.m_ID << "; skipping extrinsics update." << std::endl;
+          std::cerr << "  rvecs.size()=" << rvecs.size() << " tvecs.size()=" << tvecs.size() << std::endl;
+          std::cerr << "  Ensure there are sufficient, matching object/image point sets (and OpenCV built with required modules)." << std::endl;
+          continue;
+        }
+
+        // Use the first view's rvec/tvec safely (check element shapes)
+        if (rvecs[0].total() < 3 || (tvecs[0].rows * tvecs[0].cols) < 3) {
+          std::cerr << "Error: rvecs[0] or tvecs[0] has unexpected size for camera " << cri.m_ID << "; skipping." << std::endl;
+          continue;
+        }
+
+        std::cout << "  rvec: " << rvecs[0] << std::endl;
+        std::cout << "  tvec: " << tvecs[0] << std::endl;
+        std::cout << "  Distortion coefficients: " << distCoeffs << std::endl;
 
         //======================
         // Fill in the camera intrinsic and extrinsic parameters in the cri structure. Note that we need the inverse of
@@ -597,7 +643,13 @@ int main(int argc, char** argv)
         // Note that the projected region of the original image may extend past the edges of the undistorted image, in which
         // case the mapping will only accurately capture the central region.
         cv::Mat map1, map2;
-        cv::initUndistortRectifyMap(cameraMatrix, distCoeffs, cv::Mat(), targetCameraMatrix, imageSize, CV_64F, map1, map2);
+        try {
+          cv::initUndistortRectifyMap(cameraMatrix, distCoeffs, cv::Mat(), targetCameraMatrix, imageSize, CV_32F, map1, map2);
+        } catch (const cv::Exception& e) {
+          std::cerr << "Error: OpenCV exception during initUndistortRectifyMap for camera " << cri.m_ID
+            << ": " << e.what() << "; skipping distortion mapping for this camera." << std::endl;
+          continue;
+        }
 
         // Use a 100x100 grid of (fractional location) pixels across the image.
         bags[cri.m_ID] = DistortionBagOfMappings::Bag();
