@@ -208,7 +208,7 @@ int main(int argc, char** argv)
     if (!writeMapsFile.empty()) {
       outMapFile = std::ofstream(writeMapsFile);
       if (!outMapFile) {
-        std::cerr << "Error: Unable to open output file " << writeMapsFile << std::endl;
+        std::cerr << "Error: Unable to open output file: " << writeMapsFile << std::endl;
         return 40;
       }
       outMapFile << "targetID,frameIndex,cameraID,expectedX,expectedY,actualX,actualY" << std::endl;
@@ -224,49 +224,62 @@ int main(int argc, char** argv)
       std::string line;
       // Skip the header line.
       std::getline(inFile, line);
-      // Read the mappings from the file.
-      for (int p = 0; p < poseInfos.size(); p++) {
-        auto const& pose = poseInfos[p];
-        if (std::getline(inFile, line)) {
-          // Parse the line as a mapping from expected to actual location.
-          std::istringstream iss(line);
-          int targetID, frameIndex, cameraID;
-          double x1, y1, x2, y2;
-          char comma;
-          if (!(iss >> targetID >> comma >> frameIndex >> comma >> cameraID >> comma
-            >> x1 >> comma >> y1 >> comma >> x2 >> comma >> y2)) {
-            std::cerr << "Error: Unable to parse mapping line: " << line << std::endl;
-            return 51;
-          }
-          // Add the mapping to the appropriate bag of mappings for the appropriate target.
-          // We map from the actual (as rendered) position to the ideal (expected) position.
-          int whichCamera = -1;
-          for (size_t i = 0; i < cameraRenderInfos.size(); ++i) {
-            if (cameraRenderInfos[i].m_ID == cameraID) {
-              whichCamera = i;
-              break;
-            }
-          }
-          if (whichCamera == -1) {
-            std::cerr << "Error: Camera ID " << cameraID << " not found in camera configuration." << std::endl;
-            return 52;
-          }
-          DistortionBagOfMappings::Point2D expected = PlaneIntersectionForPixelNoDistortion(cameraRenderInfos[whichCamera], {x1, y1});
-          DistortionBagOfMappings::Point2D actual = PlaneIntersectionForPixelNoDistortion(cameraRenderInfos[whichCamera], { x2, y2 });
-          DistortionBagOfMappings::Mapping mapping = { actual, expected };
-          perTargetBags[pose.targetID][pose.cameraID].push_back(mapping);
-          pointEntries[pose.cameraID].emplace_back(
-            pointByID[pose.targetID],
-            actual,
-            pose.zRotationDegrees,
-            pose.xRotationDegrees);
-        } else {
-          std::cerr << "Error: Unable to read mapping line for pose " << pose.frameIndex << " camera " << pose.cameraID << std::endl;
-          return 54;
+      // Read the mappings from the file. Note that mappings may not have been written for each pose, so
+      // we just get the ones we find rather than looking for a specific number.
+      size_t numMappings = 0;
+      while (std::getline(inFile, line)) {
+        // Parse the line as a mapping from expected to actual location.
+        std::istringstream iss(line);
+        int targetID, frameIndex, cameraID;
+        double x1, y1, x2, y2;
+        char comma;
+        if (!(iss >> targetID >> comma >> frameIndex >> comma >> cameraID >> comma
+          >> x1 >> comma >> y1 >> comma >> x2 >> comma >> y2)) {
+          std::cerr << "Error: Unable to parse mapping line: " << line << std::endl;
+          return 51;
         }
+        // Add the mapping to the appropriate bag of mappings for the appropriate target.
+        // We map from the actual (as rendered) position to the ideal (expected) position.
+        int whichCamera = -1;
+        for (size_t i = 0; i < cameraRenderInfos.size(); ++i) {
+          if (cameraRenderInfos[i].m_ID == cameraID) {
+            whichCamera = i;
+            break;
+          }
+        }
+        if (whichCamera == -1) {
+          std::cerr << "Error: Camera ID " << cameraID << " not found in camera configuration." << std::endl;
+          return 52;
+        }
+        DistortionBagOfMappings::Point2D expected = PlaneIntersectionForPixelNoDistortion(cameraRenderInfos[whichCamera], {x1, y1});
+        DistortionBagOfMappings::Point2D actual = PlaneIntersectionForPixelNoDistortion(cameraRenderInfos[whichCamera], { x2, y2 });
+        DistortionBagOfMappings::Mapping mapping = { actual, expected };
+        perTargetBags[targetID][cameraID].push_back(mapping);
+
+        // Look up the pose information for this frameIndex to get the rotations.
+        PoseInfo pose;
+        bool foundPose = false;
+        for (const auto& p : poseInfos) {
+          if (p.frameIndex == frameIndex && p.cameraID == cameraID && p.targetID == targetID) {
+            pose = p;
+            foundPose = true;
+            break;
+          }
+        }
+        if (!foundPose) {
+          std::cerr << "Error: Unable to find pose for frameIndex " << frameIndex
+            << ", cameraID " << cameraID << ", targetID " << targetID << std::endl;
+          return 53;
+        }
+        pointEntries[cameraID].emplace_back(
+          pointByID[targetID],
+          actual,
+          pose.zRotationDegrees,
+          pose.xRotationDegrees);
+        ++numMappings;
       }
       inFile.close();
-      std::cout << "Read mappings from " << readMapsFile << std::endl;
+      std::cout << "Read " << numMappings << " mappings from " << readMapsFile << std::endl;
 
     } else {
       // Fill in a mapping entry for the appropriate camera and pose.
@@ -302,7 +315,7 @@ int main(int argc, char** argv)
           }
         }
         catch (const std::exception& e) {
-          std::cerr << "Error: Unable to read PGM file" << filename << ": " << e.what() << std::endl;
+          std::cerr << "Error: Unable to read PGM file: " << filename << ": " << e.what() << std::endl;
           exit(20);
         }
         for (index = 2; index <= pose.numFrames; ++index) {
