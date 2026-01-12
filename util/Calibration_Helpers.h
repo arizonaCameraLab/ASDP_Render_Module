@@ -116,7 +116,7 @@ void PointPixelAtTargetNoDistortion(const asdp::render::CameraRenderInfo& cri, d
   glm::dvec3 target,
   double rotateXFirst,
   double &outZRotationDegrees, double &outXRotationDegrees,
-  double precisionDegrees = 0.01,
+  double precisionDegrees = 0.0001,
   bool verbose = false);
 
 /// @brief Reorient the camera to point a pixel at a target location, ignoring distortion.

@@ -75,8 +75,16 @@ static void RunAlongLine(std::ofstream& outFile, int& frameIndex,
       double xPixels, yPixels;
       TargetProjectedLocationNoDistortion(camera, gimbalInfo.pitchFirst, zRotationDegrees, xRotationDegrees, targetPoint,
         xPixels, yPixels);
-      if ((xPixels >= leftMarginPixels && xPixels <= (camera.m_resolutionPixels[0] - 1) - rightMarginPixels) &&
-          (yPixels >= topMarginPixels  && yPixels <= (camera.m_resolutionPixels[1] - 1) - bottomMarginPixels)) {
+      if (camera.m_ID == cri.m_ID) {
+        if (std::sqrt( (xPixels - x)*(xPixels - x) + (yPixels - y)*(yPixels - y) ) > 1) {
+          std::cerr << "Warning: Camera " << camera.m_ID << " unable to point pixel at target " << targetID
+            << " at pixel " << x << "," << y << " (got " << xPixels << "," << yPixels << "), frame " << frameIndex << std::endl;
+          continue;
+        }
+      }
+      // If we're in the same camera and didn't skip above, we are good to go.  Otherwise, check for this camera's margin.
+      if (camera.m_ID == cri.m_ID || (xPixels >= leftMarginPixels && xPixels <= (camera.m_resolutionPixels[0] - 1) - rightMarginPixels &&
+          yPixels >= topMarginPixels  && yPixels <= (camera.m_resolutionPixels[1] - 1) - bottomMarginPixels)) {
         outFile << frameIndex << "," << zRotationDegrees << "," << xRotationDegrees << ","
           << camera.m_ID << "," << numFrames << "," << targetID << std::endl;
       }
