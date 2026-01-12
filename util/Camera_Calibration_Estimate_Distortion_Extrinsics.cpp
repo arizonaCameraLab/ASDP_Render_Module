@@ -603,10 +603,15 @@ int main(int argc, char** argv)
         //======================
         // Fill in the camera intrinsic and extrinsic parameters in the cri structure. Note that we need the inverse of
         // the translation and rotations given by OpenCV because they give the transformation from world to camera coordinates.
+        // We then need to convert this from OpenCV's orientation to helicopter orientation (translation stays the same).
+        // OpenCV uses a right-handed coordinate system with X right, Y down, Z forward.
+        // Helicopter coordinates use X right, Y forward, Z up.
+        // To convert, we must rotate about the X axis by 90 degrees.
 
         // Compute the fields of view.
         cri.m_fovDegrees[0] = 2.0 * atan2(cri.m_resolutionPixels[0] / 2.0, cameraMatrix.at<double>(0, 0)) * 180.0 / M_PI;
         cri.m_fovDegrees[1] = 2.0 * atan2(cri.m_resolutionPixels[1] / 2.0, cameraMatrix.at<double>(1, 1)) * 180.0 / M_PI;
+
         // Convert rvec to a rotation matrix.
         cv::Mat rotationMatrix;
         cv::Rodrigues(rvecs[0], rotationMatrix);
@@ -617,6 +622,8 @@ int main(int argc, char** argv)
           rotationMatrix.at<double>(2, 0), rotationMatrix.at<double>(2, 1), rotationMatrix.at<double>(2, 2)
         ));
         q = glm::conjugate(q); // Invert the rotation.
+        // Rotate by 90 degrees about the X axis to convert from OpenCV to helicopter coordinates.
+        q = glm::angleAxis(glm::radians(90.0), glm::dvec3(1.0, 0.0, 0.0)) * q;
         // Convert the Quaternion to Euler angles in degrees.
         glm::dvec3 eulerDegrees = asdp::render::calibration::QuaternionToEulerXYZDegrees(q);
         cri.m_orientationDegrees = { eulerDegrees.x, eulerDegrees.y, eulerDegrees.z };

@@ -27,7 +27,7 @@ using namespace asdp;
 using namespace asdp::render;
 using namespace asdp::render::calibration;
 
-static std::string VERSION = "2.1.0";
+static std::string VERSION = "2.2.0";
 
 void usage(std::string name)
 {
@@ -75,10 +75,8 @@ static void RunAlongLine(std::ofstream& outFile, int& frameIndex,
       double xPixels, yPixels;
       TargetProjectedLocationNoDistortion(camera, gimbalInfo.pitchFirst, zRotationDegrees, xRotationDegrees, targetPoint,
         xPixels, yPixels);
-      // The pixel is always in range in the reference camera, by construction.
-      if (camera.m_ID == cri.m_ID ||
-          (xPixels >= leftMarginPixels && xPixels <= (camera.m_resolutionPixels[0] - 1) - rightMarginPixels &&
-          yPixels >= topMarginPixels && yPixels <= (camera.m_resolutionPixels[1] - 1) - bottomMarginPixels)) {
+      if ((xPixels >= leftMarginPixels && xPixels <= (camera.m_resolutionPixels[0] - 1) - rightMarginPixels) &&
+          (yPixels >= topMarginPixels  && yPixels <= (camera.m_resolutionPixels[1] - 1) - bottomMarginPixels)) {
         outFile << frameIndex << "," << zRotationDegrees << "," << xRotationDegrees << ","
           << camera.m_ID << "," << numFrames << "," << targetID << std::endl;
       }
