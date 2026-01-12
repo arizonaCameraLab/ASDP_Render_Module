@@ -374,7 +374,9 @@ and a green rectangle annotation in its upper-left cornet. A frame from the expe
 ### Geometric Calibration
 
 Camera calibration is described in **TR-011v3_Geometric_Calibration.docx**, with the steps here
-described in Appendix A.  The workflow is as follows:
+described in Appendix A. **Note:** Because of the order of rotations of the iOptron gimbals, all targets must
+be mainly in the forward direction; if they move too far to one side, there will be no
+pointing solution for them. The workflow is as follows:
 - **Estimate target lateral location:**
     - Generate an as-designed camera calibration JSON file for the camera to be calibrated. This has
       the camera's center of rotation as the center of helicopter space with the +X axis pointing
