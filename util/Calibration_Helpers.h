@@ -180,6 +180,20 @@ std::array<double, 3> HelicopterToRotatedBall(std::array<double, 3> point,
 /// @return The 3D point in local camera space.
 std::array<double, 3> RotatedBallToCamera(std::array<double, 3> point, CameraRenderInfo const& cri);
 
+/// @brief Find the coordinates of a point in local camera space in rotated ball (Helicopter) space.
+/// @details This finds the global Helicopter space (with +X to the right, +Y forward, +Z up)
+/// of a point specified in local camera space. This takes into acount both the camera position and orientation.
+/// @param point The 3D point in local camera coordinates.
+/// @param cri The camera render information.
+/// @return The 3D point in global Helicopter space (ignoring gimbal rotation).
+std::array<double, 3> CameraToRotatedBall(std::array<double, 3> point, CameraRenderInfo const& cri);
+
+/// @brief Convert a differential quaternion rotation from local camera space to rotated ball (Helicopter) space.
+/// @param qIn The input quaternion that represents a differential rotation in local camera space.
+/// @return The output quaternion representing the same differential rotation in rotated ball (Helicopter) space
+/// without regards to gimbal rotation.
+glm::dquat CameraToRotatedBall(const glm::dquat& qIn, CameraRenderInfo const& cri);
+
 /// @brief Convert a point from camera space (+X right, +Y forward, +Z up) to OpenCV space (+X right, +Y down, +Z forward).
 /// @param pointInCamera The 3D point in camera space.
 /// @return The 3D point in OpenCV space.
@@ -189,6 +203,11 @@ std::array<double, 3> CameraToOpenCV(std::array<double, 3> pointInCamera);
 /// @param pointInOpenCV The 3D point in OpenCV space.
 /// @return The 3D point in camera space.
 std::array<double, 3> OpenCVToCamera(std::array<double, 3> pointInOpenCV);
+
+/// @brief Convert a differential quaternion rotation from OpenCV space to local camera space.
+/// @param qIn The input quaternion that represents a differential rotation in local space.
+/// @return The output quaternion representing the same differential rotation in local camera space.
+glm::dquat OpenCVToCamera(const glm::dquat& qIn);
 
 /// @brief Convert a quaternion to Euler angles in degrees using the XYZ order.
 /// @param qIn The input quaternion.
