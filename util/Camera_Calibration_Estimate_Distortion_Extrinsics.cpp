@@ -522,7 +522,8 @@ int main(int argc, char** argv)
         cameraMatrix.at<double>(1, 2) = cy;
 
         // Fill in the point entries for this camera ID that will be used to optimize the camera parameters.
-        // Each point is rotated based on the gimbal angles at which it was observed.
+        // We transform the points from their original Helicopter space into the local OpenCV camera coordinate system
+        // in three steps.
         // All points for both targets go into a single set of object points and image points.
         std::vector< std::vector<cv::Point3f> > objectPoints;
         objectPoints.emplace_back(); // one view (all correspondences in a single view)
@@ -532,11 +533,13 @@ int main(int argc, char** argv)
           // Rotate the 3D point based on the gimbal angles.
           std::array<double, 3> rotatedPoint = HelicopterToRotatedBall(entry.point3D,
             gimbalInfo.pitchFirst, entry.zRotationDegrees, entry.xRotationDegrees);
+          std::array<double, 3> cameraPoint = RotatedBallToCamera(rotatedPoint, cri);
+          std::array<double, 3> ocvPoint = CameraToOpenCV(cameraPoint);
           // Add to the object points and image points (use float types expected by OpenCV helpers).
           objectPoints.back().emplace_back(
-            static_cast<float>(rotatedPoint[0]),
-            static_cast<float>(rotatedPoint[1]),
-            static_cast<float>(rotatedPoint[2]));
+            static_cast<float>(ocvPoint[0]),
+            static_cast<float>(ocvPoint[1]),
+            static_cast<float>(ocvPoint[2]));
           imagePoints.back().emplace_back(
             static_cast<float>(entry.imagePoint[0]),
             static_cast<float>(entry.imagePoint[1]));
@@ -546,7 +549,7 @@ int main(int argc, char** argv)
         std::vector<cv::Mat> rvecs;
         std::vector<cv::Mat> tvecs;
         int flags = cv::CALIB_USE_INTRINSIC_GUESS;  ///< @todo Adjust as needed
-        cv::TermCriteria termCrit(cv::TermCriteria::COUNT + cv::TermCriteria::EPS, 30, 1e-6);   ///< @todo Adjust
+        cv::TermCriteria termCrit(cv::TermCriteria::COUNT + cv::TermCriteria::EPS, 30, 1e-6);   ///< @todo Adjust as needed
 
         // Validate that objectPoints/imagePoints are non-empty and correspond
         if (objectPoints.empty() || imagePoints.empty() || objectPoints.size() != imagePoints.size()) {
@@ -607,6 +610,7 @@ int main(int argc, char** argv)
         // OpenCV uses a right-handed coordinate system with X right, Y down, Z forward.
         // Helicopter coordinates use X right, Y forward, Z up.
         // To convert, we must rotate about the X axis by 90 degrees.
+        /// @todo Full coordinate transformation here for orientation and position differences
 
         // Compute the fields of view.
         cri.m_fovDegrees[0] = 2.0 * atan2(cri.m_resolutionPixels[0] / 2.0, cameraMatrix.at<double>(0, 0)) * 180.0 / M_PI;
