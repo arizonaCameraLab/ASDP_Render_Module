@@ -674,7 +674,7 @@ int main(int argc, char** argv)
         targetCameraMatrix.at<double>(0, 2) = cri.m_resolutionPixels[0] / 2.0;
         targetCameraMatrix.at<double>(1, 2) = cri.m_resolutionPixels[1] / 2.0;
 
-        // Compute the undistortion rectification maps, which map from an undistorted (actual) camera pixel location to the
+        // Compute the undistortion rectification maps, which map from an as-mapped (actual) camera pixel location to the
         // X and Y coordinates of the original (expected) pixel locations (perhaps fractional). Some points in the actual
         // image may not map to any point in the expected image, but this is okay.
         // Note that the projected region of the original image may extend past the edges of the undistorted image, in which
@@ -698,8 +698,8 @@ int main(int argc, char** argv)
             int x = static_cast<int>(xf);
 
             // Find the expected location by looking up in the undistortion maps.
-            double expectedX = map1.at<double>(y, x);
-            double expectedY = map2.at<double>(y, x);
+            double expectedX = map1.at<float>(y, x);
+            double expectedY = map2.at<float>(y, x);
 
             // Add the mapping from expected to actual location.
             DistortionBagOfMappings::Point2D expected = PlaneIntersectionForPixelNoDistortion(cri, { expectedX, expectedY });
