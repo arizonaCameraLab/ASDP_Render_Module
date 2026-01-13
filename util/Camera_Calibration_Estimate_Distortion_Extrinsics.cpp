@@ -530,7 +530,7 @@ int main(int argc, char** argv)
         objectPoints.emplace_back(); // one view (all correspondences in a single view)
         std::vector< std::vector<cv::Point2f> > imagePoints;
         imagePoints.emplace_back();
-#define SAVE_OPENCV_INPUTS
+//#define SAVE_OPENCV_INPUTS
 #ifdef SAVE_OPENCV_INPUTS
         std::ofstream cvPtsFile("openCVPoints_cam" + std::to_string(cri.m_ID) + ".csv");
         cvPtsFile << "objectX,objectY,objectZ,imageX,imageY" << std::endl;
@@ -561,8 +561,9 @@ int main(int argc, char** argv)
         // Optimize the camera intrinsic and extrinsic parameters and distortion based on the point entries.
         std::vector<cv::Mat> rvecs;
         std::vector<cv::Mat> tvecs;
-        int flags = cv::CALIB_USE_INTRINSIC_GUESS;  ///< @todo Adjust as needed
-        cv::TermCriteria termCrit(cv::TermCriteria::COUNT + cv::TermCriteria::EPS, 30, 1e-6);   ///< @todo Adjust as needed
+        int flags = cv::CALIB_USE_INTRINSIC_GUESS;  ///< @todo Adjust as needed, but CALIB_USE_INTRINSIC_GUESS is required
+        //flags |= cv::CALIB_FIX_ASPECT_RATIO;
+        cv::TermCriteria termCrit(cv::TermCriteria::COUNT + cv::TermCriteria::EPS, 300, 1e-7);   ///< @todo Adjust as needed
 
         // Validate that objectPoints/imagePoints are non-empty and correspond
         if (objectPoints.empty() || imagePoints.empty() || objectPoints.size() != imagePoints.size()) {
@@ -618,34 +619,39 @@ int main(int argc, char** argv)
 
         //======================
         // Fill in the camera intrinsic and extrinsic parameters in the cri structure. Note that we need the inverse of
-        // the translation and rotations given by OpenCV because they give the transformation from world to camera coordinates.
-        // We then need to convert this from OpenCV's orientation to helicopter orientation (translation stays the same).
+        // the translation and rotation given by OpenCV because they give the transformation from world to camera coordinates.
+        // We then need to convert this from OpenCV's orientation to helicopter orientation (both orientation and translation).
         // OpenCV uses a right-handed coordinate system with X right, Y down, Z forward.
         // Helicopter coordinates use X right, Y forward, Z up.
-        // To convert, we must rotate about the X axis by 90 degrees.
         /// @todo Full coordinate transformation here for orientation and position differences
 
         // Compute the fields of view.
         cri.m_fovDegrees[0] = 2.0 * atan2(cri.m_resolutionPixels[0] / 2.0, cameraMatrix.at<double>(0, 0)) * 180.0 / M_PI;
         cri.m_fovDegrees[1] = 2.0 * atan2(cri.m_resolutionPixels[1] / 2.0, cameraMatrix.at<double>(1, 1)) * 180.0 / M_PI;
 
+        // Find the offset in local camera space, which is the converted negative translation.
+        std::array<double, 3> offsetLocal = OpenCVToCamera({ -tvecs[0].at<double>(0), -tvecs[0].at<double>(1), -tvecs[0].at<double>(2) });
+
         // Convert rvec to a rotation matrix.
         cv::Mat rotationMatrix;
         cv::Rodrigues(rvecs[0], rotationMatrix);
         // Convert the rotation matrix to a Quaternion.
-        glm::dquat q(glm::dmat3(
+        glm::dquat qLocal(glm::dmat3(
           rotationMatrix.at<double>(0, 0), rotationMatrix.at<double>(0, 1), rotationMatrix.at<double>(0, 2),
           rotationMatrix.at<double>(1, 0), rotationMatrix.at<double>(1, 1), rotationMatrix.at<double>(1, 2),
           rotationMatrix.at<double>(2, 0), rotationMatrix.at<double>(2, 1), rotationMatrix.at<double>(2, 2)
         ));
-        q = glm::conjugate(q); // Invert the rotation.
-        // Rotate by 90 degrees about the X axis to convert from OpenCV to helicopter coordinates.
-        q = glm::angleAxis(glm::radians(90.0), glm::dvec3(1.0, 0.0, 0.0)) * q;
+        qLocal = glm::conjugate(qLocal); // Invert the rotation.
+
+        // Convert the rotation from OpenCV to camera coordinates.
+        qLocal = OpenCVToCamera(qLocal);
+
+        // Convert to global helicopter coordinates for both translation and rotation.
         // Convert the Quaternion to Euler angles in degrees.
+        cri.m_positionMeters = CameraToRotatedBall(offsetLocal, cri);
+        glm::dquat q = CameraToRotatedBall(qLocal, cri);
         glm::dvec3 eulerDegrees = asdp::render::calibration::QuaternionToEulerXYZDegrees(q);
         cri.m_orientationDegrees = { eulerDegrees.x, eulerDegrees.y, eulerDegrees.z };
-        // Store the inverse translation.
-        cri.m_positionMeters = { -tvecs[0].at<double>(0), -tvecs[0].at<double>(1), -tvecs[0].at<double>(2) };
 
         //======================
         // Fill in the bags for this camera ID's distortion mapping by converting a range of expected points

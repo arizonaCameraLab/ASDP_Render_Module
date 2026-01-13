@@ -800,7 +800,7 @@ std::array<double, 3> asdp::render::calibration::OpenCVToCamera(std::array<doubl
   return { pointInOpenCV[0], pointInOpenCV[2], -pointInOpenCV[1] };
 }
 
-glm::dquat OpenCVToCamera(const glm::dquat& qIn)
+glm::dquat asdp::render::calibration::OpenCVToCamera(const glm::dquat& qIn)
 {
   // Convert a differential rotation from OpenCV space (+X right, +Y down, +Z forward) to camera space (+X right, +Y forward, +Z up).
 
