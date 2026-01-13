@@ -171,6 +171,25 @@ std::array<double, 2> PlaneIntersectionForPixelNoDistortion(const asdp::render::
 std::array<double, 3> HelicopterToRotatedBall(std::array<double, 3> point,
   bool rotateXFirst, double zRotationDegrees, double xRotationDegrees);
 
+/// @brief Find the coordinates of a point in rotated ball coordinates in local camera space.
+/// @details This finds the camera-space coordinates (with +X to the right, +Y forward, and +Z up)
+/// of a point specified in rotated ball coordinates (which is the same as Helicopter coordinates for
+/// an un-rotated ball). This takes into acount both the camera position and orientation.
+/// @param point The 3D point in rotated ball coordinates (same as Helicopter coordinates for an un-rotated ball).
+/// @param cri The camera render information.
+/// @return The 3D point in local camera space.
+std::array<double, 3> RotatedBallToCamera(std::array<double, 3> point, CameraRenderInfo const& cri);
+
+/// @brief Convert a point from camera space (+X right, +Y forward, +Z up) to OpenCV space (+X right, +Y down, +Z forward).
+/// @param pointInCamera The 3D point in camera space.
+/// @return The 3D point in OpenCV space.
+std::array<double, 3> CameraToOpenCV(std::array<double, 3> pointInCamera);
+
+/// @brief Convert a point from OpenCV space (+X right, +Y down, +Z forward) to camera space (+X right, +Y forward, +Z up).
+/// @param pointInOpenCV The 3D point in OpenCV space.
+/// @return The 3D point in camera space.
+std::array<double, 3> OpenCVToCamera(std::array<double, 3> pointInOpenCV);
+
 /// @brief Convert a quaternion to Euler angles in degrees using the XYZ order.
 /// @param qIn The input quaternion.
 /// @return The Euler angles in degrees.

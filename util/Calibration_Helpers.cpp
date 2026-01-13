@@ -719,7 +719,6 @@ std::array<double, 3> asdp::render::calibration::HelicopterToRotatedBall(std::ar
 {
   glm::dvec3 p(point[0], point[1], point[2]);
 
-  // Okay, we now have the ray start and direction in the camera ball's coordinate system.
   // We must rotate both by the gimbal angle, rotating around the two axes in the specified order.
   glm::dquat rotationZ = glm::angleAxis(glm::radians(zRotationDegrees), glm::dvec3(0.0, 0.0, 1.0));
   glm::dquat rotationX = glm::angleAxis(glm::radians(xRotationDegrees), glm::dvec3(1.0, 0.0, 0.0));
@@ -729,9 +728,40 @@ std::array<double, 3> asdp::render::calibration::HelicopterToRotatedBall(std::ar
   } else {
     rotationTotal = rotationZ * rotationX;
   }
+
+  // We need the inverse rotation to go from helicopter to rotated ball space.
   glm::dquat inverseRotationTotal = glm::inverse(rotationTotal);
   glm::dvec3 pRotated = inverseRotationTotal * p;
   return { pRotated.x, pRotated.y, pRotated.z };
+}
+
+std::array<double, 3> asdp::render::calibration::RotatedBallToCamera(std::array<double, 3> point, CameraRenderInfo const& cri)
+{
+  // Find the vector from the camera center to the point in rotated ball space.
+  glm::dvec3 p(point[0], point[1], point[2]);
+  glm::dvec3 cameraPosition(cri.m_positionMeters[0], cri.m_positionMeters[1], cri.m_positionMeters[2]);
+  glm::dvec3 pFromCamera = p - cameraPosition;
+
+  // Rotate the point by the inverse of the camera rotation (negative and backwards order).
+  glm::dquat rotationX = glm::angleAxis(glm::radians(-cri.m_orientationDegrees[0]), glm::dvec3(1.0, 0.0, 0.0));
+  glm::dquat rotationY = glm::angleAxis(glm::radians(-cri.m_orientationDegrees[1]), glm::dvec3(0.0, 1.0, 0.0));
+  glm::dquat rotationZ = glm::angleAxis(glm::radians(-cri.m_orientationDegrees[2]), glm::dvec3(0.0, 0.0, 1.0));
+  glm::dquat rotationTotal = rotationZ * rotationY * rotationX;
+  glm::dvec3 pInCamera = rotationTotal * pFromCamera;
+
+  return { pInCamera.x, pInCamera.y, pInCamera.z };
+}
+
+std::array<double, 3> asdp::render::calibration::CameraToOpenCV(std::array<double, 3> pointInCamera)
+{
+  // Convert a point from camera space (+X right, +Y forward, +Z up) to OpenCV space (+X right, +Y down, +Z forward).
+  return { pointInCamera[0], -pointInCamera[2], pointInCamera[1] };
+}
+
+std::array<double, 3> asdp::render::calibration::OpenCVToCamera(std::array<double, 3> pointInOpenCV)
+{
+  // Convert a point from OpenCV space (+X right, +Y down, +Z forward) to camera space (+X right, +Y forward, +Z up).
+  return { pointInOpenCV[0], pointInOpenCV[2], -pointInOpenCV[1] };
 }
 
 std::string asdp::render::calibration::Test()
@@ -1312,6 +1342,67 @@ std::string asdp::render::calibration::Test()
       if (glm::length(helicopterRotatedVec - glm::dvec3(0, 0, -1)) > 1e-6) {
         return "Test failed: HelicopterToRotatedBall() 90 degree X then Z rotation.";
       }
+    }
+  }
+
+  // Test RotatedBallToCamera()
+  {
+    // Construct a CameraRenderInfo with a 90 degree field of view whose center of projection is (0,1,0)
+    // with no rotation.  Test a point that is on the Y axis at (0,2,0) to verify that it is at (0,1,0) in
+    // camera space.
+    {
+      CameraRenderInfo cri(1, { 0, 1, 0 }, { 0, 0, 0 }, { 1024, 1024 }, { 90, 90 },
+        distNull, vigNull, nullptr, 1.0);
+      std::array<double, 3> pInRBC = { 0, 2, 0 };
+      std::array<double, 3> pInCam = RotatedBallToCamera(pInRBC, cri);
+      glm::dvec3 pInCamVec(pInCam[0], pInCam[1], pInCam[2]);
+      if (glm::length(pInCamVec - glm::dvec3(0, 1, 0)) > 1e-6) {
+        return "Test failed: RotatedBallToCamera() with no rotation.";
+      }
+    }
+    
+    // Construct a CameraRenderInfo whose rotation is 90 degrees around Z. Verify that the point (0,2,0) goes
+    // to (1,0,0).
+    {
+      CameraRenderInfo cri(1, { 0, 1, 0 }, { 0, 0, 90 }, { 1024, 1024 }, { 90, 90 },
+        distNull, vigNull, nullptr, 1.0);
+      std::array<double, 3> pInRBC = { 0, 2, 0 };
+      std::array<double, 3> pInCam = RotatedBallToCamera(pInRBC, cri);
+      glm::dvec3 pInCamVec(pInCam[0], pInCam[1], pInCam[2]);
+      if (glm::length(pInCamVec - glm::dvec3(1, 0, 0)) > 1e-6) {
+        return "Test failed: RotatedBallToCamera() with 90 Z rotation.";
+      }
+    }
+  }
+
+  // Test CameraToOpenCV and OpenCVToCamera
+  {
+    // Point that is straight ahead (+Y) in camera space should be straight ahead (+Z) in OpenCV.
+    if (CameraToOpenCV({0, 1, 0}) != std::array<double, 3>{0, 0, 1}) {
+      return "Test failed: CameraToOpenCV() for point straight ahead.";
+    }
+
+    // Point that is straight ahead (+Z) in OpenCV should be straight ahead (+Y) in camera space.
+    if (OpenCVToCamera({0, 0, 1}) != std::array<double, 3>{0, 1, 0}) {
+      return "Test failed: OpenCVToCamera() for point straight ahead.";
+    }
+
+    // Point that is to the right should remain to the right.
+    if (CameraToOpenCV({1, 0, 0}) != std::array<double, 3>{1, 0, 0}) {
+      return "Test failed: CameraToOpenCV() for point to the right.";
+    }
+    if (OpenCVToCamera({ 1, 0, 0 }) != std::array<double, 3>{1, 0, 0}) {
+      return "Test failed: OpenCVToCamera() for point to the right.";
+    }
+
+    // Point that is straight up (+Z) in camera space should be straight up (-Y) in OpenCV.
+    if (CameraToOpenCV({ 0, 0, 1 }) != std::array<double, 3>{0, -1, 0}) {
+      return "Test failed: CameraToOpenCV() for point straight up.";
+    }
+
+    // Point that is straight up (-Y) in OpenCV should be straight up (+Z) in camera space.
+    if (OpenCVToCamera({ 0, -1, 0 }) != std::array<double, 3>{0, 0, 1}) {
+      return "Test failed: OpenCVToCamera() for point straight up.";
     }
   }
 
