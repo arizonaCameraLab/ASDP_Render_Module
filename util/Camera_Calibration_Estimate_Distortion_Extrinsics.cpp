@@ -562,8 +562,8 @@ int main(int argc, char** argv)
         std::vector<cv::Mat> rvecs;
         std::vector<cv::Mat> tvecs;
         int flags = cv::CALIB_USE_INTRINSIC_GUESS;  ///< @todo Adjust as needed, but CALIB_USE_INTRINSIC_GUESS is required
-        //flags |= cv::CALIB_FIX_ASPECT_RATIO;
-        cv::TermCriteria termCrit(cv::TermCriteria::COUNT + cv::TermCriteria::EPS, 300, 1e-7);   ///< @todo Adjust as needed
+        flags |= cv::CALIB_FIX_ASPECT_RATIO;
+        cv::TermCriteria termCrit(cv::TermCriteria::COUNT + cv::TermCriteria::EPS, 3000, 1e-7);   ///< @todo Adjust as needed
 
         // Validate that objectPoints/imagePoints are non-empty and correspond
         if (objectPoints.empty() || imagePoints.empty() || objectPoints.size() != imagePoints.size()) {
@@ -647,9 +647,16 @@ int main(int argc, char** argv)
         qLocal = OpenCVToCamera(qLocal);
 
         // Convert to global helicopter coordinates for both translation and rotation.
+        // Apply the global differential rotation to the global orientation.
         // Convert the Quaternion to Euler angles in degrees.
         cri.m_positionMeters = CameraToRotatedBall(offsetLocal, cri);
-        glm::dquat q = CameraToRotatedBall(qLocal, cri);
+        glm::dquat dq = CameraToRotatedBall(qLocal, cri);
+
+        glm::dquat xRot = glm::angleAxis(cri.m_orientationDegrees[0] * M_PI / 180.0, glm::dvec3(1.0, 0.0, 0.0));
+        glm::dquat yRot = glm::angleAxis(cri.m_orientationDegrees[1] * M_PI / 180.0, glm::dvec3(0.0, 1.0, 0.0));
+        glm::dquat zRot = glm::angleAxis(cri.m_orientationDegrees[2] * M_PI / 180.0, glm::dvec3(0.0, 0.0, 1.0));
+        glm::dquat q = xRot * yRot * zRot * dq;
+
         glm::dvec3 eulerDegrees = asdp::render::calibration::QuaternionToEulerXYZDegrees(q);
         cri.m_orientationDegrees = { eulerDegrees.x, eulerDegrees.y, eulerDegrees.z };
 
@@ -735,6 +742,7 @@ int main(int argc, char** argv)
         if (cri.m_ID == id) {
           camera["positionMeters"] = cri.m_positionMeters;
           camera["orientationDegrees"] = cri.m_orientationDegrees;
+          camera["fieldOfViewDegrees"] = cri.m_fovDegrees;
 
           // Build the JSON object for the distortion map, which has a "type" field with
           // "bagOfMappings", and a "parameters" field with a "map" field with the bag of mappings.
