@@ -62,8 +62,8 @@ struct PointEntry {
   /// Reference to the 3D location of the point in helicopter coordinates
   /// (using a reference enables an outer loop to move these and then re-optimize without having to update all vectors
   /// of points).
-  std::array<double, 3>& point3D;
-  std::array<double, 2> imagePoint;   ///< The 2D measured location of the point in image coordinates.
+  std::array<double, 3>& point3D;     ///< The 3D location of the point in world (gimbol helicopter) coordinates.
+  std::array<double, 2> imagePoint;   ///< The 2D measured location of the point in pixel coordinates.
   double zRotationDegrees;            ///< The gimbal Z rotation in degrees when the measurement was made.
   double xRotationDegrees;            ///< The gimbal X rotation in degrees when the measurement was made.
 };
@@ -251,7 +251,7 @@ int main(int argc, char** argv)
           std::cerr << "Error: Camera ID " << cameraID << " not found in camera configuration." << std::endl;
           return 52;
         }
-        DistortionBagOfMappings::Point2D expected = PlaneIntersectionForPixelNoDistortion(cameraRenderInfos[whichCamera], {x1, y1});
+        DistortionBagOfMappings::Point2D expected = PlaneIntersectionForPixelNoDistortion(cameraRenderInfos[whichCamera], { x1, y1 });
         DistortionBagOfMappings::Point2D actual = PlaneIntersectionForPixelNoDistortion(cameraRenderInfos[whichCamera], { x2, y2 });
         DistortionBagOfMappings::Mapping mapping = { actual, expected };
         perTargetBags[targetID][cameraID].push_back(mapping);
@@ -271,9 +271,10 @@ int main(int argc, char** argv)
             << ", cameraID " << cameraID << ", targetID " << targetID << std::endl;
           return 53;
         }
+        std::array<double, 2> pixelLocation = { x2, y2 };
         pointEntries[cameraID].emplace_back(
           pointByID[targetID],
-          actual,
+          pixelLocation,
           pose.zRotationDegrees,
           pose.xRotationDegrees);
         ++numMappings;
@@ -529,6 +530,11 @@ int main(int argc, char** argv)
         objectPoints.emplace_back(); // one view (all correspondences in a single view)
         std::vector< std::vector<cv::Point2f> > imagePoints;
         imagePoints.emplace_back();
+#define SAVE_OPENCV_INPUTS
+#ifdef SAVE_OPENCV_INPUTS
+        std::ofstream cvPtsFile("openCVPoints_cam" + std::to_string(cri.m_ID) + ".csv");
+        cvPtsFile << "objectX,objectY,objectZ,imageX,imageY" << std::endl;
+#endif
         for (auto const & entry : pointEntries[cri.m_ID]) {
           // Rotate the 3D point based on the gimbal angles.
           std::array<double, 3> rotatedPoint = HelicopterToRotatedBall(entry.point3D,
@@ -543,7 +549,14 @@ int main(int argc, char** argv)
           imagePoints.back().emplace_back(
             static_cast<float>(entry.imagePoint[0]),
             static_cast<float>(entry.imagePoint[1]));
+#ifdef SAVE_OPENCV_INPUTS
+          cvPtsFile << ocvPoint[0] << "," << ocvPoint[1] << "," << ocvPoint[2] << ","
+            << entry.imagePoint[0] << "," << entry.imagePoint[1] << std::endl;
+#endif
         }
+#ifdef SAVE_OPENCV_INPUTS
+        cvPtsFile.close();
+#endif
 
         // Optimize the camera intrinsic and extrinsic parameters and distortion based on the point entries.
         std::vector<cv::Mat> rvecs;
