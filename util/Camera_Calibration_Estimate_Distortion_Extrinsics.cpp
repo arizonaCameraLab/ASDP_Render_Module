@@ -678,7 +678,7 @@ int main(int argc, char** argv)
             // Add the mapping from expected to actual location.
             DistortionBagOfMappings::Point2D expected = PlaneIntersectionForPixelNoDistortion(cri, { expectedX, expectedY });
             DistortionBagOfMappings::Point2D actual = PlaneIntersectionForPixelNoDistortion(cri, { float(x), float(y) });
-            DistortionBagOfMappings::Mapping mapping = { expected, actual };
+            DistortionBagOfMappings::Mapping mapping = { actual, expected };
             bags[cri.m_ID].push_back(mapping);
           }
         }
