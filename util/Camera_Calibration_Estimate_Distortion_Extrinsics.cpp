@@ -625,9 +625,15 @@ int main(int argc, char** argv)
         // Helicopter coordinates use X right, Y forward, Z up.
         /// @todo Full coordinate transformation here for orientation and position differences
 
+        // Target a camera matrix whose fields of view match the optimized ones above but whose center is at
+        // the middle of the sensor. Use an alpha of 1 so that we provide mapping coordinates for all pixels in
+        // the original image (we'll provide warps for non-existent pixels, but that's okay).
+        cv::Mat targetCameraMatrix = cv::getOptimalNewCameraMatrix(cameraMatrix, distCoeffs,
+          cv::Size(cri.m_resolutionPixels[0], cri.m_resolutionPixels[1]), 1, cv::Size(), nullptr, true);
+
         // Compute the fields of view.
-        cri.m_fovDegrees[0] = 2.0 * atan2(cri.m_resolutionPixels[0] / 2.0, cameraMatrix.at<double>(0, 0)) * 180.0 / M_PI;
-        cri.m_fovDegrees[1] = 2.0 * atan2(cri.m_resolutionPixels[1] / 2.0, cameraMatrix.at<double>(1, 1)) * 180.0 / M_PI;
+        cri.m_fovDegrees[0] = 2.0 * atan2(cri.m_resolutionPixels[0] / 2.0, targetCameraMatrix.at<double>(0, 0)) * 180.0 / M_PI;
+        cri.m_fovDegrees[1] = 2.0 * atan2(cri.m_resolutionPixels[1] / 2.0, targetCameraMatrix.at<double>(1, 1)) * 180.0 / M_PI;
 
         // Find the offset in local camera space, which is the converted negative translation.
         std::array<double, 3> offsetLocal = OpenCVToCamera({ -tvecs[0].at<double>(0), -tvecs[0].at<double>(1), -tvecs[0].at<double>(2) });
@@ -652,6 +658,8 @@ int main(int argc, char** argv)
         cri.m_positionMeters = CameraToRotatedBall(offsetLocal, cri);
         glm::dquat dq = CameraToRotatedBall(qLocal, cri);
 
+        /// @todo Pull this change of basis conversion out into a separate function to ensure consistency and unit test it.
+        /// @todo Consider the order of operations for rotation and translation (including where the differential rotation happens).
         glm::dquat xRot = glm::angleAxis(cri.m_orientationDegrees[0] * M_PI / 180.0, glm::dvec3(1.0, 0.0, 0.0));
         glm::dquat yRot = glm::angleAxis(cri.m_orientationDegrees[1] * M_PI / 180.0, glm::dvec3(0.0, 1.0, 0.0));
         glm::dquat zRot = glm::angleAxis(cri.m_orientationDegrees[2] * M_PI / 180.0, glm::dvec3(0.0, 0.0, 1.0));
@@ -663,16 +671,6 @@ int main(int argc, char** argv)
         //======================
         // Fill in the bags for this camera ID's distortion mapping by converting a range of expected points
         // into actual points using the OpenCV distortion.
-
-        // Target a camera matrix whose fields of view match the optimized ones above but whose center is at
-        // the middle of the sensor.
-        /// @todo Consider using the original FOVs of the camera instead of the optimized ones.
-        /// @todo Consider expanding the FOVs slightly to help ensure coverage of the entire projected image.
-        cv::Mat targetCameraMatrix = cv::Mat::eye(3, 3, CV_64F);
-        targetCameraMatrix.at<double>(0, 0) = cameraMatrix.at<double>(0, 0);
-        targetCameraMatrix.at<double>(1, 1) = cameraMatrix.at<double>(1, 1);
-        targetCameraMatrix.at<double>(0, 2) = cri.m_resolutionPixels[0] / 2.0;
-        targetCameraMatrix.at<double>(1, 2) = cri.m_resolutionPixels[1] / 2.0;
 
         // Compute the undistortion rectification maps, which map from an as-mapped (actual) camera pixel location to the
         // X and Y coordinates of the original (expected) pixel locations (perhaps fractional). Some points in the actual
