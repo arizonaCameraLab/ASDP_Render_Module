@@ -814,6 +814,14 @@ glm::dquat asdp::render::calibration::OpenCVToCamera(const glm::dquat& qIn)
   return qConvertInv * qIn * qConvert;
 }
 
+glm::dquat asdp::render::calibration::ApplyDifferentialRotation(const glm::dquat& differentialRotation, CameraRenderInfo const& cri)
+{
+  glm::dquat xRot = glm::angleAxis(glm::radians(cri.m_orientationDegrees[0]), glm::dvec3(1.0, 0.0, 0.0));
+  glm::dquat yRot = glm::angleAxis(glm::radians(cri.m_orientationDegrees[1]), glm::dvec3(0.0, 1.0, 0.0));
+  glm::dquat zRot = glm::angleAxis(glm::radians(cri.m_orientationDegrees[2]), glm::dvec3(0.0, 0.0, 1.0));
+  return differentialRotation * xRot * yRot * zRot;
+}
+
 std::string asdp::render::calibration::Test()
 {
   // Used in multiple tests.
@@ -1456,6 +1464,30 @@ std::string asdp::render::calibration::Test()
       glm::dvec3 eulerRBC = glm::eulerAngles(rotateRBC);
       if (glm::length(eulerRBC - glm::dvec3(0, 0, glm::radians(90.0))) > 1e-6) {
         return "Test failed: CameraToRotatedBall() differential rotation with 90 X rotation.";
+      }
+    }
+  }
+
+  // Test ApplyDifferentialRotation
+  {
+    // Construct a CameraRenderInfo rotated by 90 degrees around X and then Z and verify that with an identity
+    // differential rotation it takes a point on the +Y axis to the -X axis.
+    {
+      CameraRenderInfo cri(1, { 0, 1, 0 }, { 90, 0, 90 }, { 1024, 1024 }, { 90, 90 },
+        distNull, vigNull, nullptr, 1.0);
+      glm::dquat initialRot = ApplyDifferentialRotation(glm::dquat(1, 0, 0, 0), cri);
+      glm::dvec3 pointVec(0, 1, 0);
+      glm::dvec3 rotatedPointVec = initialRot * pointVec;
+      if (glm::length(rotatedPointVec - glm::dvec3(-1, 0, 0)) > 1e-6) {
+        return "Test failed: ApplyDifferentialRotation() with identity differential rotation.";
+      }
+
+      // Now try with a 90 degree differential rotation around Z and verify that the point goes to -Y.
+      glm::dquat differentialRot = glm::angleAxis(glm::radians(90.0), glm::dvec3(0, 0, 1));
+      glm::dquat newRot = ApplyDifferentialRotation(differentialRot, cri);
+      rotatedPointVec = newRot * pointVec;
+      if (glm::length(rotatedPointVec - glm::dvec3(0, -1, 0)) > 1e-6) {
+        return "Test failed: ApplyDifferentialRotation() with 90 degree Z differential rotation.";
       }
     }
   }

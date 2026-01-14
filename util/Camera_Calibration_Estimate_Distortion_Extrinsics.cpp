@@ -512,10 +512,11 @@ int main(int argc, char** argv)
         // Fill in OpenCV matrix and distortion estimates for this camera ID.
         cv::Size imageSize(cri.m_resolutionPixels[0], cri.m_resolutionPixels[1]);
         cv::Mat distCoeffs = cv::Mat::zeros(8, 1, CV_64F);
-        double cx = cri.m_resolutionPixels[0] / 2.0;
-        double cy = cri.m_resolutionPixels[1] / 2.0;
+        double cx = (cri.m_resolutionPixels[0] - 1) / 2.0;
+        double cy = (cri.m_resolutionPixels[1] - 1) / 2.0;
         double fx = (cri.m_resolutionPixels[0] / 2.0) / tan((cri.m_fovDegrees[0] / 2.0) * M_PI / 180.0);
-        double fy = (cri.m_resolutionPixels[1] / 2.0) / tan((cri.m_fovDegrees[1] / 2.0) * M_PI / 180.0);
+        double fy = fx;   ///< Assume square pixels
+        //double fy = (cri.m_resolutionPixels[1] / 2.0) / tan((cri.m_fovDegrees[1] / 2.0) * M_PI / 180.0);
         cv::Mat cameraMatrix = cv::Mat::eye(3, 3, CV_64F);
         cameraMatrix.at<double>(0, 0) = fx;
         cameraMatrix.at<double>(1, 1) = fy;
@@ -558,13 +559,6 @@ int main(int argc, char** argv)
         cvPtsFile.close();
 #endif
 
-        // Optimize the camera intrinsic and extrinsic parameters and distortion based on the point entries.
-        std::vector<cv::Mat> rvecs;
-        std::vector<cv::Mat> tvecs;
-        int flags = cv::CALIB_USE_INTRINSIC_GUESS;  ///< @todo Adjust as needed, but CALIB_USE_INTRINSIC_GUESS is required
-        flags |= cv::CALIB_FIX_ASPECT_RATIO;
-        cv::TermCriteria termCrit(cv::TermCriteria::COUNT + cv::TermCriteria::EPS, 3000, 1e-7);   ///< @todo Adjust as needed
-
         // Validate that objectPoints/imagePoints are non-empty and correspond
         if (objectPoints.empty() || imagePoints.empty() || objectPoints.size() != imagePoints.size()) {
           std::cerr << "Warning: insufficient or mismatched calibration views for camera " << cri.m_ID << "; skipping calibration for this camera." << std::endl;
@@ -582,13 +576,41 @@ int main(int argc, char** argv)
           continue;
         }
 
+        // Optimize the camera intrinsic and extrinsic parameters and distortion based on the point entries.
+        std::vector<cv::Mat> rvecs;
+        std::vector<cv::Mat> tvecs;
+        cv::TermCriteria termCrit(cv::TermCriteria::COUNT + cv::TermCriteria::EPS, 3000, 1e-7);   ///< @todo Adjust as needed
+
+        // Make a series of flag combinations for runs:
+        //  The first will solve only for the principal point.
+        //  The second will refine only radial distortion.
+        //  The third will rfine only tangential distortion.
+        //int flags = cv::CALIB_USE_INTRINSIC_GUESS;  ///< CALIB_USE_INTRINSIC_GUESS is required for non-planar points
+        //flags |= cv::CALIB_FIX_ASPECT_RATIO;        ///< Fixes the pixel aspect ratio (fx/fy) to the initial estimate (square pixels)
+        // The flag below removes tangential distortion correction.
+        //flags |= cv::CALIB_ZERO_TANGENT_DIST;
+        // The below removes radial distortion correction.
+        //flags |= cv::CALIB_FIX_K1 | cv::CALIB_FIX_K2 | cv::CALIB_FIX_K3 | cv::CALIB_FIX_K4 | cv::CALIB_FIX_K5 | cv::CALIB_FIX_K6;
+        // The below flag fixes the principal point at the center of the image.
+        //flags |= cv::CALIB_FIX_PRINCIPAL_POINT;
+        std::vector<int> protocol = {
+          cv::CALIB_USE_INTRINSIC_GUESS | cv::CALIB_FIX_ASPECT_RATIO | cv::CALIB_ZERO_TANGENT_DIST |
+            cv::CALIB_FIX_K1 | cv::CALIB_FIX_K2 | cv::CALIB_FIX_K3 | cv::CALIB_FIX_K4 | cv::CALIB_FIX_K5 | cv::CALIB_FIX_K6,
+          cv::CALIB_USE_INTRINSIC_GUESS | cv::CALIB_FIX_ASPECT_RATIO | cv::CALIB_ZERO_TANGENT_DIST | cv::CALIB_FIX_PRINCIPAL_POINT,
+          cv::CALIB_USE_INTRINSIC_GUESS | cv::CALIB_FIX_ASPECT_RATIO | cv::CALIB_FIX_PRINCIPAL_POINT |
+            cv::CALIB_FIX_K1 | cv::CALIB_FIX_K2 | cv::CALIB_FIX_K3 | cv::CALIB_FIX_K4 | cv::CALIB_FIX_K5 | cv::CALIB_FIX_K6
+        };
+
         // Call calibrateCamera
         //cv::setNumThreads(1);
         //cv::setUseOptimized(false);
         double rmsError;
         try {
-          rmsError = cv::calibrateCamera(objectPoints, imagePoints, imageSize, cameraMatrix, distCoeffs, rvecs, tvecs,
-            flags, termCrit);
+          // Run all of our protocols in sequence, using the output of each as the input to the next.
+          for (auto flags : protocol) {
+            rmsError = cv::calibrateCamera(objectPoints, imagePoints, imageSize, cameraMatrix, distCoeffs, rvecs, tvecs,
+              flags, termCrit);
+          }
         } catch (const cv::Exception& e) {
           std::cerr << "Error: OpenCV exception during calibrateCamera for camera " << cri.m_ID
             << ": " << e.what() << "; skipping calibration for this camera." << std::endl;
@@ -655,16 +677,10 @@ int main(int argc, char** argv)
         // Convert to global helicopter coordinates for both translation and rotation.
         // Apply the global differential rotation to the global orientation.
         // Convert the Quaternion to Euler angles in degrees.
+        /// @todo Consider whether we need to adjust the position based on the rotation.
         cri.m_positionMeters = CameraToRotatedBall(offsetLocal, cri);
         glm::dquat dq = CameraToRotatedBall(qLocal, cri);
-
-        /// @todo Pull this change of basis conversion out into a separate function to ensure consistency and unit test it.
-        /// @todo Consider the order of operations for rotation and translation (including where the differential rotation happens).
-        glm::dquat xRot = glm::angleAxis(cri.m_orientationDegrees[0] * M_PI / 180.0, glm::dvec3(1.0, 0.0, 0.0));
-        glm::dquat yRot = glm::angleAxis(cri.m_orientationDegrees[1] * M_PI / 180.0, glm::dvec3(0.0, 1.0, 0.0));
-        glm::dquat zRot = glm::angleAxis(cri.m_orientationDegrees[2] * M_PI / 180.0, glm::dvec3(0.0, 0.0, 1.0));
-        glm::dquat q = xRot * yRot * zRot * dq;
-
+        glm::dquat q = ApplyDifferentialRotation(dq, cri);
         glm::dvec3 eulerDegrees = asdp::render::calibration::QuaternionToEulerXYZDegrees(q);
         cri.m_orientationDegrees = { eulerDegrees.x, eulerDegrees.y, eulerDegrees.z };
 

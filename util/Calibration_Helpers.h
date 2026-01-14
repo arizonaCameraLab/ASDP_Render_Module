@@ -194,6 +194,12 @@ std::array<double, 3> CameraToRotatedBall(std::array<double, 3> point, CameraRen
 /// without regards to gimbal rotation.
 glm::dquat CameraToRotatedBall(const glm::dquat& qIn, CameraRenderInfo const& cri);
 
+/// @brief Apply a differential rotation to a base orientation.
+/// @param differentialRotation The differential rotation quaternion in world space to apply.
+/// @param cri The camera render information that provides the base orientation in world space.
+/// @return The resulting orientation quaternion.
+glm::dquat ApplyDifferentialRotation(const glm::dquat& differentialRotation, CameraRenderInfo const& cri);
+
 /// @brief Convert a point from camera space (+X right, +Y forward, +Z up) to OpenCV space (+X right, +Y down, +Z forward).
 /// @param pointInCamera The 3D point in camera space.
 /// @return The 3D point in OpenCV space.
