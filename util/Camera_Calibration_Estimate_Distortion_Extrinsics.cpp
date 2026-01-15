@@ -393,9 +393,12 @@ int main(int argc, char** argv)
             pose.zRotationDegrees, pose.xRotationDegrees, target->position,
             expectedLocation[0], expectedLocation[1])) {
           // The target does not hit the image plane, so skip this pose.
-          std::cout << "Warning: Target " << target->id << " does not hit the image plane for camera "
+          std::cerr << "Error: Target " << target->id << " does not hit the image plane for camera "
             << pose.cameraID << " at pose " << pose.frameIndex << std::endl;
-          continue;
+          std::cerr << "  Expected location: (" << expectedLocation[0] << ", " << expectedLocation[1] << ")" << std::endl;
+          std::cerr << "  This happens when Camera_Calibration_Make_Scan was run with a different set of config files" << std::endl;
+          std::cerr << "  than are being used here." << std::endl;
+          exit(25);
         }
 
         // Find the pixel above threshold closest to the expected location of the point in the average image.
