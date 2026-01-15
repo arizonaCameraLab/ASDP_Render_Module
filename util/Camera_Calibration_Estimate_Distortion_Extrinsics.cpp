@@ -432,6 +432,13 @@ int main(int argc, char** argv)
         symmetrictracker.set_pixel_accuracy(0.01);
         symmetrictracker.optimize_xy(*avg, 0, x, y, x, y);
 
+        // If the optimized location is out of bounds, skip this pose with a warning.
+        if (x < 0 || x > width - 1 || y < 0 || y > height - 1) {
+          std::cerr << "Warning: Optimized target location out of bounds in pose " << pose.frameIndex
+            << " for camera " << pose.cameraID << ": (" << x << ", " << y << ")" << std::endl;
+          continue;
+        }
+
         // Add a mapping entry from the expected location to the actual location in the image
         // and tell what we did.  Make a critical section to avoid thread contention during this time.
 #pragma omp critical
