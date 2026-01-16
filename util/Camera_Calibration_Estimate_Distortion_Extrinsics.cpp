@@ -410,7 +410,6 @@ int main(int argc, char** argv)
             pose.zRotationDegrees, pose.xRotationDegrees, target->position,
             expectedLocation[0], expectedLocation[1])) {
           // The target does not hit the image plane, there is a problem.
-          continue;
           std::cerr << "Error: Target " << target->id << " does not hit the image plane for camera "
             << pose.cameraID << " at pose " << pose.frameIndex << std::endl;
           std::cerr << "  Expected location: (" << expectedLocation[0] << ", " << expectedLocation[1] << ")" << std::endl;
@@ -460,7 +459,7 @@ int main(int argc, char** argv)
         symmetrictracker.optimize_xy(*avg, 0, x, y, x, y);
 
         // If the optimized location is out of bounds, skip this pose with a warning.
-        if (x < 0 || x > width - 1 || y < 0 || y > height - 1) {
+        if (x < 10 || x > width - 11 || y < 10 || y > height - 11) {
           std::cerr << "Warning: Optimized target location out of bounds in pose " << pose.frameIndex
             << " for camera " << pose.cameraID << ": (" << x << ", " << y << ")" << std::endl;
           continue;
