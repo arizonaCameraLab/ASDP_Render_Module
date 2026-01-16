@@ -16,6 +16,7 @@
 #include <string>
 #include <vector>
 #include <map>
+#include <climits>
 #include <CameraRenderInfo.h>
 #include <ASDP_ImageSource.h>
 #include <Calibration_Helpers.h>
@@ -35,7 +36,7 @@ using namespace asdp::render;
 using namespace asdp::render::calibration;
 using json = nlohmann::json;
 
-static std::string VERSION = "2.0.0";
+static std::string VERSION = "2.1.0";
 
 void usage(std::string name)
 {
@@ -49,6 +50,7 @@ void usage(std::string name)
   std::cerr << "  outputConfig.json             Output configuration file." << std::endl;
   std::cerr << "  Options:" << std::endl;
   std::cerr << "    --help                      Print this information and quit." << std::endl;
+  std::cerr << "    --offsetThresholdPixels <int>  Threshold brightness (int value) for target center. Default MAXINT for 1 target, 400 for >1." << std::endl;
   std::cerr << "    --writeMaps <filename.csv>  Write the expected to as-seen mappings to the specified CSV file." << std::endl;
   std::cerr << "    --readMaps <filename.csv>   Read the expected to as-seen mappings from the specified CSV file, don't compute." << std::endl;
   std::cerr << "    --invert                    Invert each image (useful for dark targets)." << std::endl;
@@ -72,6 +74,7 @@ int main(int argc, char** argv)
 {
   std::string camConfigFile, targetConfigFile, gimbalConfigFile, posesFile, imageDirectory, outputFile;
   std::string writeMapsFile, readMapsFile;
+  int offsetThresholdPixels = -1;
   int targetBrightnessThreshold = 35767;
   bool invert = false; ///< Whether to invert the images (useful for dark targets).
   size_t realParams = 0;          ///< The number of non-flag parameters we've seen.
@@ -93,6 +96,12 @@ int main(int argc, char** argv)
         return 1;
       }
       readMapsFile = argv[++i];
+    } else if (std::string("--offsetThresholdPixels") == argv[i]) {
+      if (i + 1 >= argc) {
+        std::cerr << "Error: --offsetThresholdPixels option requires an integer value." << std::endl;
+        return 1;
+      }
+      offsetThresholdPixels = std::stoi(argv[++i]);
     } else if (std::string("--invert") == argv[i]) {
       invert = true;
     } else if (argv[i][0] == '-') {
@@ -159,6 +168,14 @@ int main(int argc, char** argv)
       return 11;
     }
     std::cout << "Read target configuration from " << targetConfigFile << std::endl;
+
+    if (offsetThresholdPixels < 0) {
+      if (targetInfos.size() > 1) {
+        offsetThresholdPixels = 400;
+      } else {
+        offsetThresholdPixels = INT_MAX;
+      }
+    }
 
     GimbalInfo gimbalInfo;
     try {
@@ -392,7 +409,8 @@ int main(int argc, char** argv)
         if (!TargetProjectedLocationNoDistortion(*cri, gimbalInfo.pitchFirst,
             pose.zRotationDegrees, pose.xRotationDegrees, target->position,
             expectedLocation[0], expectedLocation[1])) {
-          // The target does not hit the image plane, so skip this pose.
+          // The target does not hit the image plane, there is a problem.
+          continue;
           std::cerr << "Error: Target " << target->id << " does not hit the image plane for camera "
             << pose.cameraID << " at pose " << pose.frameIndex << std::endl;
           std::cerr << "  Expected location: (" << expectedLocation[0] << ", " << expectedLocation[1] << ")" << std::endl;
@@ -424,6 +442,12 @@ int main(int argc, char** argv)
           std::cerr << "Warning: No target found in pose " << pose.frameIndex << " for camera " << pose.cameraID << std::endl;
           continue;
         }
+        if (minSquaredDistance > double(offsetThresholdPixels) * double(offsetThresholdPixels)) {
+          std::cerr << "Warning: Target found too far from expected location in pose " << pose.frameIndex
+            << " for camera " << pose.cameraID << ": distance = " << sqrt(minSquaredDistance)
+            << " pixels, threshold = " << offsetThresholdPixels << " pixels." << std::endl;
+          continue;
+        }
         
         // Optimize a bright-centered cone tracker starting at the specified location to robustly lock onto the bright spot and
         // then optimize a symmetric spot tracker with radius 10 pixels starting there for more precision.
@@ -447,9 +471,6 @@ int main(int argc, char** argv)
 #pragma omp critical
         {
           auto& bag = perTargetBags[pose.targetID][pose.cameraID];
-          // Convert from pixel coordinates to 2D coordinates in the Z=-1 plane based on the ideal-
-          // camera parameters.
-          std::array<double, 2> idealCameraLocation;
 
           DistortionBagOfMappings::Point2D expected = PlaneIntersectionForPixelNoDistortion(*cri, expectedLocation);
           DistortionBagOfMappings::Point2D actual = PlaneIntersectionForPixelNoDistortion(*cri, { x, y });
@@ -457,9 +478,10 @@ int main(int argc, char** argv)
           // Map from the actual (as rendered) position to the ideal (expected) position.
           DistortionBagOfMappings::Mapping mapping = { actual, expected };
           bag.push_back(mapping);
+          std::array<double, 2> pixelLocation = { x, y };
           pointEntries[pose.cameraID].emplace_back(
             pointByID[pose.targetID],
-            actual,
+            pixelLocation,
             pose.zRotationDegrees,
             pose.xRotationDegrees);
 
