@@ -27,22 +27,23 @@ using namespace asdp;
 using namespace asdp::render;
 using namespace asdp::render::calibration;
 
-static std::string VERSION = "2.2.0";
+static std::string VERSION = "2.3.0";
 
 void usage(std::string name)
 {
   std::cerr << "Usage: " << name << " [options] camConfig.json targetConfig.json, gimbalConfigFile" << std::endl;
-  std::cerr << "  camConfig.json                Camera configuration file." << std::endl;
-  std::cerr << "  targetConfig.json             Target configuration file." << std::endl;
-  std::cerr << "  gimbalConfig.json             Gimbal configuration file." << std::endl;
+  std::cerr << "  camConfig.json                  Camera configuration file." << std::endl;
+  std::cerr << "  targetConfig.json               Target configuration file." << std::endl;
+  std::cerr << "  gimbalConfig.json               Gimbal configuration file." << std::endl;
   std::cerr << "  Options:" << std::endl;
-  std::cerr << "    --frames <int>              Number of frames per location (default 10)." << std::endl;
-  std::cerr << "    --stepPixels <int>          Step size in pixels (default 30)." << std::endl;
-  std::cerr << "    --topMarginPixels <int>     Margin away from top of image (default 10)." << std::endl;
-  std::cerr << "    --bottomMarginPixels <int>  Margin away from bottom of image (default 10)." << std::endl;
-  std::cerr << "    --leftMarginPixels <int>    Margin away from left of image (default 10)." << std::endl;
-  std::cerr << "    --rightMarginPixels <int>   Margin away from right of image (default 10)." << std::endl;
-  std::cerr << "    --help                      Print this information and quit." << std::endl;
+  std::cerr << "    --frames <int>                Number of frames per location (default 10)." << std::endl;
+  std::cerr << "    --stepPixels <int>            Step size in pixels (default 30)." << std::endl;
+  std::cerr << "    --topMarginPixels <int>       Margin away from top of image (default 10)." << std::endl;
+  std::cerr << "    --bottomMarginPixels <int>    Margin away from bottom of image (default 10)." << std::endl;
+  std::cerr << "    --leftMarginPixels <int>      Margin away from left of image (default 10)." << std::endl;
+  std::cerr << "    --rightMarginPixels <int>     Margin away from right of image (default 10)." << std::endl;
+  std::cerr << "    --densityScaleFactor <float>  Multiplies density moving from outer to next square (default 2.0)." << std::endl;
+  std::cerr << "    --help                        Print this information and quit." << std::endl;
   std::cerr << "  Writes poses.csv file." << std::endl;
 };
 
@@ -101,6 +102,7 @@ int main(int argc, char** argv)
   int bottomMarginPixels = 10;
   int leftMarginPixels = 10;
   int rightMarginPixels = 10;
+  double densityScaleFactor = 2.0;
   size_t realParams = 0;          ///< The number of non-flag parameters we've seen.
 
   // Parse the command line arguments, with the first non-flag argument being the
@@ -144,6 +146,12 @@ int main(int argc, char** argv)
         return 1;
       }
       rightMarginPixels = std::stoi(argv[i]);
+    } else if (std::string("--densityScaleFactor") == argv[i]) {
+      if (++i >= argc) {
+        usage(argv[0]);
+        return 1;
+      }
+      densityScaleFactor = std::stod(argv[i]);
     } else if (argv[i][0] == '-') {
       usage(argv[0]);
       return 1;
@@ -284,7 +292,7 @@ int main(int argc, char** argv)
           // have more samples near the edges where distortion gradient magnitude is expected.
           double rangeScale;
           rangeScale = 1.0 - (i + 1) * 0.1;
-          curStep *= 2;
+          curStep *= densityScaleFactor;
           xMin = xCenter - (xCenter - xMin) * rangeScale;
           xMax = xCenter + (xMax - xCenter) * rangeScale;
           yMin = yCenter - (yCenter - yMin) * rangeScale;

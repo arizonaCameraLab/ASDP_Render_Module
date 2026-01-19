@@ -726,7 +726,7 @@ int main(int argc, char** argv)
         // case the mapping will only accurately capture the central region.
         cv::Mat map1, map2;
         try {
-          cv::initUndistortRectifyMap(cameraMatrix, distCoeffs, cv::Mat(), targetCameraMatrix, imageSize, CV_32F, map1, map2);
+          cv::initUndistortRectifyMap(cameraMatrix, distCoeffs, cv::Mat(), targetCameraMatrix, imageSize, CV_32FC1, map1, map2);
         } catch (const cv::Exception& e) {
           std::cerr << "Error: OpenCV exception during initUndistortRectifyMap for camera " << cri.m_ID
             << ": " << e.what() << "; skipping distortion mapping for this camera." << std::endl;

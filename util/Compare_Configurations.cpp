@@ -107,7 +107,7 @@ int main(int argc, char** argv)
         std::cerr << "Error: Unable to open output file " << dumpDataFile << std::endl;
         return 10;
       }
-      dumpData << "CameraID,X1,Y1,Z1,X2,Y2,Z2,X1/Z1,Y1/Z1,X2/Z2,Y2/Z2" << std::endl;
+      dumpData << "CameraID,X1,Y1,Z1,X2,Y2,Z2,X1/Z1,Y1/Z1,X2/Z2,Y2/Z2,Distance,Mesh X,Mesh Y,Pixel distance" << std::endl;
     }
 
     // Construct CameraRenderInfos for each configuration file.
@@ -184,16 +184,6 @@ int main(int argc, char** argv)
           glm::vec3 diff = vertex1 - vertex2;
           double dist = glm::length(diff);
 
-          // If we're dumping data, write the camera ID and the two vertex locations to the file.
-          // Also dump the normalized locations of the two vertices.
-          if (dumpData) {
-            dumpData << cameraRenderInfos1[c].m_ID << ","
-              << vertex1[0] << "," << vertex1[1] << "," << vertex1[2] << ","
-              << vertex2[0] << "," << vertex2[1] << "," << vertex2[2] << ","
-              << vertex1[0] / vertex1[2] << "," << vertex1[1] / vertex1[2] << ","
-              << vertex2[0] / vertex2[2] << "," << vertex2[1] / vertex2[2] << std::endl;
-          }
-
           meanDistDiff += dist;
           maxDistDiff = std::max(maxDistDiff, dist);
 
@@ -217,6 +207,19 @@ int main(int argc, char** argv)
           double pixelSize = width / cameraRenderInfos1[c].m_resolutionPixels[0];
           meanPixelDiff += projectedDist / pixelSize;
           maxPixelDiff = std::max(maxPixelDiff, projectedDist / pixelSize);
+
+          // If we're dumping data, write the camera ID and the two vertex locations to the file.
+          // Also dump the normalized locations of the two vertices.
+          if (dumpData) {
+            dumpData << cameraRenderInfos1[c].m_ID << ","
+              << vertex1[0] << "," << vertex1[1] << "," << vertex1[2] << ","
+              << vertex2[0] << "," << vertex2[1] << "," << vertex2[2] << ","
+              << vertex1[0] / vertex1[2] << "," << vertex1[1] / vertex1[2] << ","
+              << vertex2[0] / vertex2[2] << "," << vertex2[1] / vertex2[2] << ","
+              << dist << ","
+              << x << "," << y << "," << projectedDist / pixelSize
+              << std::endl;
+          }
 
           // Find the difference in vignette scaling.
           double xNorm = 2.0 * x / (mesh1.nx - 1) - 1.0;
