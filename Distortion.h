@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2024-2025: Arizona Board of Regents on Behalf of the University of Arizona
+ * Copyright (C) 2024-2026: Arizona Board of Regents on Behalf of the University of Arizona
  */
 
  /**
@@ -28,17 +28,26 @@ namespace asdp {
       /// @brief Virtual destructor so that proper deconstruction happens on pointers.
       virtual ~Distortion() = default;
 
-      /// @brief Map a point from the ideal camera to the distorted real camera location.
-      /// @param point Point in ideal-camera space.  The distortion map will have been generated
-      /// for an ideal camera of known horizontal and vertical fields of view whose center of
+      /// @brief Map a point from a projected sensor pixel location to its projected real-world location
+      /// as seen by an ideal camera.
+      /// @details This function moves points on a plane in front of an ideal camera based on a distortion
+      /// map.  Different derived classes implement different distortion models with different parameters.
+      /// In all cases, the distortion map will have been generated
+      /// based on an ideal camera of known horizontal and vertical fields of view whose center of
       /// projection is the center of the image sensor.  The camera will be right-handed with its
       /// +X axis to the right in the image, its +Y axis pointing up in the image, looking down
       /// the -Z axis.  The center of projection for the camera is at the origin.  For example,
       /// the point (0, 0, -5) will project to the center of the image, 5 units away from the camera
       /// in an ideal camera's space.
-      /// @return Projection point for this pixel in the real camera.  The point will have the same
-      /// Z value as the input point, but the X and Y values will be distorted to account for the
-      /// lens distortion.
+      /// @param point Point in projected sensor pixel space, specified in ideal-camera space.  The point is given
+      /// as (X, Y, Z) where Z is negative.  If an object is seen at a particular pixel in the image, the point
+      /// would be the projection of that pixel into some -Z plane in the ideal camera's space.
+      /// @return Projection of the actual location of the object, also in ideal camera space, onto the same -Z plane.
+      /// The point will have the same Z value as the input point, but the X and Y values will be adjusted
+      /// to account for the distortions.  When building a distortion mesh for rendering, a regular sampling of
+      /// points in X and Y at a fixed Z value (e.g., Z = -200) would be fed into this function and the
+      /// results used to build the deformed mesh that would make images appear undistorted with each pixel
+      /// in the proper direction within the ideal camera space.
       /// Depending on the distortion model, the point may be shifted, scaled, or rotated.  It may
       /// lie outside of the field of view of the ideal camera.
       virtual std::array<double, 3> MapPoint(std::array<double, 3> point) const = 0;
@@ -61,13 +70,18 @@ namespace asdp {
     class DistortionRadialLERP : public Distortion {
     public:
       /// @brief Constructor that takes the center of projection and control points for the distortion.
-      /// @param COP Center of projection for the distortion.  This (X,Y) is the location where the center of
-      /// projection pierces the Z=-1 plane.  For an ideal camera, the center of the sensor would be (0.0, 0.0).
+      /// @param COP Center of projection for the distortion.  This (X,Y) is the location where the ray
+      /// from the center of distortion on the image sensor intersects the Z = -1 plane in ideal camera space.
+      /// For a camera whose center of distortion is at the center of the sensor, this will be (0,0).
+      /// The principal ray is always along the -Z axis from the center of the image sensor (which will
+      /// be between pixels for a sensor with an even pixel count).
       /// @param controlPoints Control points for the distortion.  These points are the radial distance
-      /// from the center of projection and they lie on a plane that is 1 unit down the -Z axis.  The first
-      /// element is the radial distance in the undistored case, and the second element is the radial distance
-      /// in the distorted case.  The control points must start at 0 and be in increasing order of radial distance.
-      /// There must be at least two control points.  Points outside of the range of the control points will be
+      /// from the center of projection and they lie on the Z =-1 plane.  The first
+      /// element is the radial distance for the projection of a pixel that sees an object, and the second
+      /// element is the radial distance for the actual location of the object as projected onto the Z = -1 plane
+      /// using the ideal camera's coordinate system.  The control points must start at 0 and be in increasing
+      /// order of radial distance.
+      /// There must be at least two control points.  Points that project outside of the range of the control points will be
       /// left unchanged (remember that the control points must reach all the way to the corners of the image,
       /// not just the edges).
       DistortionRadialLERP(std::array<double, 2> const &COP, std::vector<std::array<double, 2>> const &controlPoints);
@@ -79,25 +93,32 @@ namespace asdp {
       std::vector<std::array<double, 2>> m_controlPoints;
     };
 
-    /// @brief Distortion model that uses a bag of mappings from projection-plane points from the ideal camera to the distorted camera.
-    /// @details This model is constructed with a vector of mappings from 2D points in the ideal camera's
-    /// projection plane to points in the distorted camera's projection plane.  The points do not have to be
-    /// in a grid or in any particular order.  The mapping is done by finding the closest three non-collinear
-    /// points in the bag and using them to perform a linear interpolation or extrapolation of the distortion.
+    /// @brief Distortion model that uses a bag of mappings from as-seen points to real-world points on the Z=-1 plane
+    /// of an ideal camera model.
+    /// @details This model is constructed from a vector of mappings from 2D as-seen points to real-world points
+    /// in the ideal camera's Z = -1 projection plane.  The points need not lie in a grid or in any particular order.
+    /// The mapping is done by finding the closest three non-collinear points in the bag and using them to perform
+    /// a linear interpolation or extrapolation of the distortion.
     class DistortionBagOfMappings : public Distortion {
     public:
       /// @brief A 2D point location in the projection plane.
       typedef std::array<double, 2> Point2D;
-      /// @brief A mapping from a point in the ideal camera's projection plane to a distorted point also in the projection plane.
-      /// @details The first point is the expected (undistorted) location and the second point is the actual (distorted) location.
+      /// @brief A mapping from an as-seen point in the ideal camera's Z = -1 projection plane to the actual direction point
+      /// in the same projection plane.
+      /// @details The first point is the projected location of a pixel (perhaps to subpixel accuracy) that sees the center
+      /// of an object in the ideal camera's Z = -1 projection plane.  The second point is the projected location of the
+      /// actual object in the ideal camera's Z = -1 projection plane.  For example, if a real camera sees the center of a
+      /// bright sphere at a specific pixel, the first point would be the projection of that pixel into the Z = -1 plane
+      /// and the second point would be the projection of the actual location of the center of the bright sphere into
+      /// the same Z = -1 plane using the ideal camera's parameters.
       typedef std::array<Point2D, 2> Mapping;
       /// @brief A vector of mappings in arbitrary order in the plane.
       typedef std::vector<Mapping> Bag;
 
       /// @brief Constructor that takes the bag of points in the projection plane.
-      /// @param mappings A bag of mappings from undistorted point to distorted points in the Z=-1 plane.
-      /// The same undistorted point must not appear more than once in the bag or points near it may not be
-      /// distorted.
+      /// @param mappings A bag of mappings from as-seen points to real-world points in the Z=-1 plane.
+      /// The same as-seen point must not appear more than once in the bag or points near it may not be
+      /// properly distorted.
       DistortionBagOfMappings(Bag const& mappings);
 
       std::array<double, 3> MapPoint(std::array<double, 3> point) const override;

@@ -222,15 +222,17 @@ distortion field (other approaches may be added).  The parameters field depends 
       each axis.  This is the point in the image that is not distorted.  A value of [0.0, 0.0] is the center of the image.
       A value of [1.0, 1.0] is the upper right corner of the image.  A value of [-1.0, -1.0] is the lower left corner.
     - **map** A list of points with the first one being [0,0] and the later ones in increasing order that specify
-      the ideal-camera radius and its distorted radius.  These are for points that are projected onto the
+      (1) the radius of a projected pixel location of an object is seen in the camera and (2) the radius of the
+      projection of its actual direction as seen in the ideal camera. These are for points that are projected onto the
       Z = -1 plane.  They must span the entire range of the image (including the corners).  For example, a
-      distortion that increased the distance by a factor of 2 could be specified by the list [[0,0], [1,2]] for
+      distortion that increased the scale by a constant factor of 2 could be specified by the list [[0,0], [1,2]] for
       a camera whose field of view is less than 45 degrees at its corners, with the second entry changed to
       [3, 6] for a wider field of view.
 - For *bagOfMappings* distortion, the parameter has a single entry:
     - **map** A list of mappings, where each mapping has a pair of 2D locations on the Z = -1 plane.
-      The first in each pair is the undistorted location and the second is the distorted location.
-      The same undistorted location must not appear more than once in the list.
+      The first location in each pair is the projection of the sensor pixel where an object is seen
+      (to sub-pixel accuracy) and the second is the projection of its actual direction as seen by the ideal camera.
+      The same first location must not appear more than once in the list.
 
 The **color** field is an optional object that can specify the global offset and gain to apply to the image.  The
 default offset is in pixel counts and is 0.0.  The default gain is 1.0.  The offset is added and the result

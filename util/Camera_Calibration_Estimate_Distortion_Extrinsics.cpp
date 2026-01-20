@@ -256,7 +256,7 @@ int main(int argc, char** argv)
           return 51;
         }
         // Add the mapping to the appropriate bag of mappings for the appropriate target.
-        // We map from the actual (as rendered) position to the ideal (expected) position.
+        // We map from the actual (as seen) position to the ideal (expected) position.
         int whichCamera = -1;
         for (size_t i = 0; i < cameraRenderInfos.size(); ++i) {
           if (cameraRenderInfos[i].m_ID == cameraID) {
@@ -465,7 +465,7 @@ int main(int argc, char** argv)
           continue;
         }
 
-        // Add a mapping entry from the expected location to the actual location in the image
+        // Add a mapping entry from the actual location to the expected location in the image
         // and tell what we did.  Make a critical section to avoid thread contention during this time.
 #pragma omp critical
         {
@@ -474,7 +474,7 @@ int main(int argc, char** argv)
           DistortionBagOfMappings::Point2D expected = PlaneIntersectionForPixelNoDistortion(*cri, expectedLocation);
           DistortionBagOfMappings::Point2D actual = PlaneIntersectionForPixelNoDistortion(*cri, { x, y });
 
-          // Map from the actual (as rendered) position to the ideal (expected) position.
+          // Map from the actual (as seen) position to the ideal (expected) position.
           DistortionBagOfMappings::Mapping mapping = { actual, expected };
           bag.push_back(mapping);
           std::array<double, 2> pixelLocation = { x, y };
@@ -716,12 +716,12 @@ int main(int argc, char** argv)
         cri.m_orientationDegrees = { eulerDegrees.x, eulerDegrees.y, eulerDegrees.z };
 
         //======================
-        // Fill in the bags for this camera ID's distortion mapping by converting a range of expected points
-        // into actual points using the OpenCV distortion.
+        // Fill in the bags for this camera ID's distortion mapping by converting a range of actual points
+        // into expected points using the OpenCV distortion.
 
-        // Compute the undistortion rectification maps, which map from an as-mapped (actual) camera pixel location to the
-        // X and Y coordinates of the original (expected) pixel locations (perhaps fractional). Some points in the actual
-        // image may not map to any point in the expected image, but this is okay.
+        // Compute the undistortion rectification maps, which map from an undistorted (expected) camera pixel location to the
+        // X and Y coordinates of the original (actual) pixel locations (perhaps fractional). Some points in the expected
+        // image may not map to any point in the actual image, but this is okay.
         // Note that the projected region of the original image may extend past the edges of the undistorted image, in which
         // case the mapping will only accurately capture the central region.
         cv::Mat map1, map2;
@@ -743,12 +743,12 @@ int main(int argc, char** argv)
             int x = static_cast<int>(xf);
 
             // Find the expected location by looking up in the undistortion maps.
-            double expectedX = map1.at<float>(y, x);
-            double expectedY = map2.at<float>(y, x);
+            double actualX = map1.at<float>(y, x);
+            double actualY = map2.at<float>(y, x);
 
             // Add the mapping from expected to actual location.
-            DistortionBagOfMappings::Point2D expected = PlaneIntersectionForPixelNoDistortion(cri, { expectedX, expectedY });
-            DistortionBagOfMappings::Point2D actual = PlaneIntersectionForPixelNoDistortion(cri, { float(x), float(y) });
+            DistortionBagOfMappings::Point2D expected = PlaneIntersectionForPixelNoDistortion(cri, { float(x), float(y) });
+            DistortionBagOfMappings::Point2D actual = PlaneIntersectionForPixelNoDistortion(cri, { actualX, actualY });
             DistortionBagOfMappings::Mapping mapping = { actual, expected };
             bags[cri.m_ID].push_back(mapping);
           }

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2024-2025: Arizona Board of Regents on Behalf of the University of Arizona
+ * Copyright (C) 2024-2026: Arizona Board of Regents on Behalf of the University of Arizona
  */
 
 #include <cmath>
