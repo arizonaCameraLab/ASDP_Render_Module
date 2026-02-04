@@ -239,7 +239,7 @@ std::string asdp::analysis::AnalysisReport::Test()
     // Convert the first report to an annotation and validate.
     auto annotation = report.ConvertToAnnotation(0.9f, 0.8f);
     if (annotation.cameraID != 1) return "Annotation cameraID mismatch";
-    if (annotation.color[0] != 0.0f || annotation.color[1] != 1.0f || annotation.color[2] != 0.0f ||
+    if (annotation.color[0] != 0.7f || annotation.color[1] != 1.0f || annotation.color[2] != 0.7f ||
         annotation.color[3] != 0.8f) {
       return "Annotation color mismatch";
     }
@@ -269,7 +269,7 @@ std::string asdp::analysis::AnalysisReport::Test()
     if (annotationNoChance.label.find("Bicycle") == std::string::npos) return "NoChance Annotation label missing classification";
     if (annotationNoChance.label.find("Dog") == std::string::npos) return "NoChance Annotation label missing classification";
     if (annotationNoChance.color[0] != 1.0f || annotationNoChance.color[1] != 1.0f ||
-        annotationNoChance.color[2] != 0.0f || annotationNoChance.color[3] != 1.0f) {
+        annotationNoChance.color[2] != 0.5f || annotationNoChance.color[3] != 1.0f) {
       return "NoChance Annotation color mismatch";
     }
 
