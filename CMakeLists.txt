@@ -319,6 +319,7 @@ if(BUILD_UTILITIES)
     Camera_Calibration_Gain_And_Offsets
     Camera_Calibration_Per_Pixel_Gain_And_Offsets
     Print_PointCorrespondences
+    Parse_Analysis_JSON
   )
   foreach (BASE ${CPP_UTILS})
     set (APP ${BASE})
