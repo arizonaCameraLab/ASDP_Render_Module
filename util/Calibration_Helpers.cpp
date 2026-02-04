@@ -803,15 +803,13 @@ std::array<double, 3> asdp::render::calibration::OpenCVToCamera(std::array<doubl
 glm::dquat asdp::render::calibration::OpenCVToCamera(const glm::dquat& qIn)
 {
   // Convert a differential rotation from OpenCV space (+X right, +Y down, +Z forward) to camera space (+X right, +Y forward, +Z up).
-
   // Find the rotation matrix that converts points in OpenCV space to camera space, rotating -90 degrees around X.
   glm::dquat qConvert = glm::angleAxis(glm::radians(-90.0), glm::dvec3(1.0, 0.0, 0.0));
   // Find the inverse rotation matrix.
   glm::dquat qConvertInv = glm::inverse(qConvert);
 
   // Convert the differential rotation.
-  // Spaces transform according to the inverse transform of points, so we use the forward on the right and the inverse on the left.
-  return qConvertInv * qIn * qConvert;
+  return qConvert * qIn * qConvertInv;
 }
 
 glm::dquat asdp::render::calibration::ApplyDifferentialRotation(const glm::dquat& differentialRotation, CameraRenderInfo const& cri)
@@ -1451,10 +1449,10 @@ std::string asdp::render::calibration::Test()
     {
       CameraRenderInfo cri(1, { 0, 1, 0 }, { 90, 0, 90 }, { 1024, 1024 }, { 90, 90 },
         distNull, vigNull, nullptr, 1.0);
-      std::array<double, 3> pInRBC = { 0, 0, -1 };
-      std::array<double, 3> pInCam = CameraToRotatedBall(pInRBC, cri);
-      glm::dvec3 pInCamVec(pInCam[0], pInCam[1], pInCam[2]);
-      if (glm::length(pInCamVec - glm::dvec3(0, 2, 0)) > 1e-6) {
+      std::array<double, 3> pInCam = { 0, 0, -1 };
+      std::array<double, 3> pInRBC = CameraToRotatedBall(pInCam, cri);
+      glm::dvec3 pInRBCVec(pInRBC[0], pInRBC[1], pInRBC[2]);
+      if (glm::length(pInRBCVec - glm::dvec3(0, 2, 0)) > 1e-6) {
         return "Test failed: CameraToRotatedBall() with 90 X then Z rotation.";
       }
 
@@ -1525,11 +1523,32 @@ std::string asdp::render::calibration::Test()
 
   // Test OpenCVToCamera for differential rotations
   {
+    // A small rotation around X in OpenCV should be a small rotation around X in camera space.
+    {
+      glm::dquat dRotOCV = glm::angleAxis(glm::radians(0.01), glm::dvec3(1, 0, 0));
+      glm::dquat dRotCam = OpenCVToCamera(dRotOCV);
+      glm::dvec3 eulerCam = QuaternionToEulerXYZDegrees(dRotCam);
+      if (glm::length(eulerCam - glm::dvec3(0.01, 0, 0)) > 1e-6) {
+        return "Test failed: OpenCVToCamera_DifferentialRotation() for small X rotation.";
+      }
+    }
+
+    // A small rotation around Y in OpenCV should be a small rotation around -Z in camera space.
+    {
+      glm::dquat dRotOCV = glm::angleAxis(glm::radians(0.01), glm::dvec3(0, 1, 0));
+      glm::dquat dRotCam = OpenCVToCamera(dRotOCV);
+      glm::dvec3 eulerCam = QuaternionToEulerXYZDegrees(dRotCam);
+      if (glm::length(eulerCam - glm::dvec3(0, 0, -0.01)) > 1e-6) {
+        return "Test failed: OpenCVToCamera_DifferentialRotation() for small Y rotation.";
+      }
+    }
+
     // A small rotation around Z in OpenCV should be a small rotation around Y in camera space.
     {
-      std::array<double, 3> dRotOCV = { 0, 0, .01 };
-      std::array<double, 3> dRotCam = OpenCVToCamera(dRotOCV);
-      if (glm::length(glm::dvec3(dRotCam[0], dRotCam[1], dRotCam[2]) - glm::dvec3(0, .01, 0)) > 1e-6) {
+      glm::dquat dRotOCV = glm::angleAxis(glm::radians(0.01), glm::dvec3(0, 0, 1));
+      glm::dquat dRotCam = OpenCVToCamera(dRotOCV);
+      glm::dvec3 eulerCam = QuaternionToEulerXYZDegrees(dRotCam);
+      if (glm::length(eulerCam - glm::dvec3(0, .01, 0)) > 1e-6) {
         return "Test failed: OpenCVToCamera_DifferentialRotation() for small Z rotation.";
       }
     }
