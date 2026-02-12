@@ -694,11 +694,11 @@ int main(int argc, char** argv)
         // Convert rvec to a rotation matrix.
         cv::Mat rotationMatrix;
         cv::Rodrigues(rvecs[0], rotationMatrix);
-        // Convert the rotation matrix to a Quaternion.
+        // Convert the rotation matrix to a Quaternion, getting the row order correct.
         glm::dquat qLocal(glm::dmat3(
-          rotationMatrix.at<double>(0, 0), rotationMatrix.at<double>(0, 1), rotationMatrix.at<double>(0, 2),
-          rotationMatrix.at<double>(1, 0), rotationMatrix.at<double>(1, 1), rotationMatrix.at<double>(1, 2),
-          rotationMatrix.at<double>(2, 0), rotationMatrix.at<double>(2, 1), rotationMatrix.at<double>(2, 2)
+          rotationMatrix.at<double>(0, 0), rotationMatrix.at<double>(1, 0), rotationMatrix.at<double>(2, 0),
+          rotationMatrix.at<double>(0, 1), rotationMatrix.at<double>(1, 1), rotationMatrix.at<double>(2, 1),
+          rotationMatrix.at<double>(0, 2), rotationMatrix.at<double>(1, 2), rotationMatrix.at<double>(2, 2)
         ));
         qLocal = glm::conjugate(qLocal); // Invert the rotation.
 
