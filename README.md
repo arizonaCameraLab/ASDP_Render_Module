@@ -296,7 +296,7 @@ by the specified offset and then rotated about this new center, first around X t
 Y, then around the new Z axis.  For example, a camera that is in portrait mode that is slightly ahead
 of the camera center looking straight forward with its X axis down would have an offset of (0, 0.1, 0)
 and a rotation of (0, 90, 0). If its X axis is pointing up, then its rotation would be (0, -90, 0).
-The camera's local coordinate system has it looking along the -Y axis with the +Z axis up and the +X
+The camera's local coordinate system has it looking along the +Y axis with the +Z axis up and the +X
 axis to the right.
 
 **ViewRenderInfo:** These transformations are also specified in the local helicopter space.
