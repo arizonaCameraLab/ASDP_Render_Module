@@ -91,8 +91,8 @@ void CameraRenderInfo::ComputePlanarCameraMeshInfo(size_t nx, size_t ny, float d
 
       // Rotate the points in the helicopter view space by the specified orientation change
       // to point them in the direction that the camera is looking.
-      glm::vec3 point(xh, yh, zh);
-      glm::vec3 transformedPoint = glm::vec3(rotation * glm::vec4(point, 1.0f));
+      glm::vec4 point(xh, yh, zh, 1.0f);
+      glm::vec3 transformedPoint = glm::vec3(rotation * point);
 
       // Add the vertex description, computing quantities as needed
       VertexInfo vertex;
