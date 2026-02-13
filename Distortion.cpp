@@ -11,6 +11,14 @@
 #include <geogram/delaunay/delaunay.h>
 using namespace asdp::render;
 
+// Threshold for determining whether a triangle is degenerate and should be skipped when looking for the closest triangle to a point
+// or when trying to determine Barycentric coordinates.  This is 2x the area of a triangle with a base and height of 1e-7,
+// which is small enough to be negligible for our purposes but large enough to avoid numerical issues.
+// When we set it to 1e-8 or lower (1e-9 much worse), we had issues with incorrect point locations during mesh generation.
+// When we set it to 1e-3 we were missing triangles completely in the OpenCV optimization case.
+// The value of 1e-7 seems to be the sweet spot.
+static constexpr double DEGENERATE_TRIANGLE_DOUBLE_AREA = 1e-7;
+
 //==============================================================================
 // Radial LERP distortion class
 
@@ -297,7 +305,7 @@ std::array<double, 3> DistortionBagOfMappings::BarycentricCoordinates(const Poin
 {
   // Calculate 2x the area of the triangle formed by a, b, and c
   double doubleArea = (b[1] - c[1]) * (a[0] - c[0]) + (c[0] - b[0]) * (a[1] - c[1]);
-  if (std::abs(doubleArea) < 1e-8) {
+  if (std::abs(doubleArea) < DEGENERATE_TRIANGLE_DOUBLE_AREA) {
     // The points are collinear, so we can't interpolate. Return coordinate slightly outside of the triangle.
     return { 0.5, 0.4, -0.1 };
   }
@@ -380,7 +388,7 @@ std::array<double, 3> DistortionBagOfMappings::MapPoint(std::array<double, 3> po
 
     // Skip degenerate triangles that have small areas
     double doubleArea = (B[1] - C[1]) * (A[0] - C[0]) + (C[0] - B[0]) * (A[1] - C[1]);
-    if (std::abs(doubleArea) < 1e-8) {
+    if (std::abs(doubleArea) < DEGENERATE_TRIANGLE_DOUBLE_AREA) {
       continue;
     }
 
