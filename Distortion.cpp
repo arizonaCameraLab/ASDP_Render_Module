@@ -296,7 +296,7 @@ std::array<double, 3> DistortionBagOfMappings::BarycentricCoordinates(const Poin
   const Point2D& a, const Point2D& b, const Point2D& c)
 {
   // Calculate 2x the area of the triangle formed by a, b, and c
-  double doubleArea = (-b[1] * c[0] + a[1] * (-b[0] + c[0]) + a[0] * (b[1] - c[1]) + b[0] * c[1]);
+  double doubleArea = (b[1] - c[1]) * (a[0] - c[0]) + (c[0] - b[0]) * (a[1] - c[1]);
   if (std::abs(doubleArea) < 1e-8) {
     // The points are collinear, so we can't interpolate. Return coordinate slightly outside of the triangle.
     return { 0.5, 0.4, -0.1 };
@@ -379,8 +379,8 @@ std::array<double, 3> DistortionBagOfMappings::MapPoint(std::array<double, 3> po
     }
 
     // Skip degenerate triangles that have small areas
-    double area = (-B[1] * C[0] + A[1] * (-B[0] + C[0]) + A[0] * (B[1] - C[1]) + B[0] * C[1]);
-    if (std::abs(area) < 1e-3) {
+    double doubleArea = (B[1] - C[1]) * (A[0] - C[0]) + (C[0] - B[0]) * (A[1] - C[1]);
+    if (std::abs(doubleArea) < 1e-8) {
       continue;
     }
 

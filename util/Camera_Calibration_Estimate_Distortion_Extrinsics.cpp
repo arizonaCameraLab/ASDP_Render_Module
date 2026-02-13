@@ -615,7 +615,7 @@ int main(int argc, char** argv)
         // Make a series of flag combinations for runs:
         //  The first will solve only for the principal point.
         //  The second will refine only radial distortion.
-        //  The third will rfine only tangential distortion.
+        //  The third will refine only tangential distortion.
         //int flags = cv::CALIB_USE_INTRINSIC_GUESS;  ///< CALIB_USE_INTRINSIC_GUESS is required for non-planar points
         //flags |= cv::CALIB_FIX_ASPECT_RATIO;        ///< Fixes the pixel aspect ratio (fx/fy) to the initial estimate (square pixels)
         // The flag below removes tangential distortion correction.
