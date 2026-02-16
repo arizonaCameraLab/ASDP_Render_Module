@@ -386,9 +386,9 @@ std::array<double, 3> DistortionBagOfMappings::MapPoint(std::array<double, 3> po
       break;
     }
 
-    // Skip degenerate triangles that have small areas
+    // Skip triangles that have small areas even when they are not degenerate because they can have small baselines.
     double doubleArea = (B[1] - C[1]) * (A[0] - C[0]) + (C[0] - B[0]) * (A[1] - C[1]);
-    if (std::abs(doubleArea) < DEGENERATE_TRIANGLE_DOUBLE_AREA) {
+    if (std::abs(doubleArea) < 1e-4) {
       continue;
     }
 
