@@ -17,6 +17,7 @@
 #include <vector>
 #include <map>
 #include <climits>
+#include <random>
 #include <CameraRenderInfo.h>
 #include <ASDP_ImageSource.h>
 #include <Calibration_Helpers.h>
@@ -86,11 +87,12 @@ class RMSErrorFunction : public cv::MinProblemSolver::Function
 public:
 
   RMSErrorFunction(std::vector<CameraRenderInfo> const& cameraRenderInfos, std::vector<TargetInfo> targetInfos,
-    std::map<int, std::vector<PointEntry> > pointEntries, bool pitchFirst)
+    std::map<int, std::vector<PointEntry> > pointEntries, bool pitchFirst, int verbosity = 1)
     : m_cameraRenderInfos(cameraRenderInfos)
     , m_targetInfos(targetInfos)
     , m_pointEntriesInitial(pointEntries)
     , m_pitchFirst(pitchFirst)
+    , m_verbosity(verbosity)
   {
   }
 
@@ -111,6 +113,14 @@ public:
     targetInfos[1].position.x += x[3];
     targetInfos[1].position.y += x[4];
     targetInfos[1].position.z += x[5];
+
+    if (m_verbosity > 1) {
+      std::cout << "calc() solving for position: ";
+      for (int i = 0; i < 2; i++) {
+        std::cout << targetInfos[i].position.x << " " << targetInfos[i].position.y << " " << targetInfos[i].position.z << " ";
+      }
+      std::cout << std::endl;
+    }
 
     // Make maps for CameraRenderInfo and TargetInfo by ID for easy lookup.
     std::map<uint16_t, const CameraRenderInfo*> cameraRenderInfoByID;
@@ -157,7 +167,7 @@ public:
     }
 
     // Solve for the optimal OpenCV camera information for each camera.
-    double rmsSum = 0;
+    std::vector<double> rmsVals;
     for (int camIndex = 0; camIndex < m_cameraRenderInfos.size(); camIndex++) {
       auto& cri = m_cameraRenderInfos[camIndex];
 
@@ -274,8 +284,10 @@ public:
         continue;
       }
 
-      std::cout << "Camera ID " << cri.m_ID << "  RMS error: " << rmsError << std::endl;
-      //std::cout << "  Camera matrix: " << cameraMatrix << std::endl;
+      if (m_verbosity > 0) {
+        std::cout << "Camera ID " << cri.m_ID << "  RMS error: " << rmsError << std::endl;
+        //std::cout << "  Camera matrix: " << cameraMatrix << std::endl;
+      }
 
       // Guard against empty outputs (calibration may fail and not populate rvecs/tvecs)
       if (rvecs.empty() || tvecs.empty()) {
@@ -304,11 +316,23 @@ public:
       m_distCoeffs[cri.m_ID] = distCoeffs;
 
       // Increment the error
-      rmsSum += rmsError;
+      rmsVals.push_back(rmsError);
     }
-    std::cout << "RMS error sum over all cameras: " << rmsSum
-      << " at parameters: " << x[0] << "," << x[1] << "," << x[2] << "," << x[3] << "," << x[4] << "," << x[5]
-      << std::endl;
+    // Compute the sum of the lowest half of the RMS errors across cameras, which is what we will minimize across parameter sets.
+    double rmsSum = 0.0;
+    if (!rmsVals.empty()) {
+      std::sort(rmsVals.begin(), rmsVals.end());
+      size_t numToInclude = (rmsVals.size() + 1) / 2;  // round up to include the middle value when odd
+      for (size_t i = 0; i < numToInclude; i++) {
+        rmsSum += rmsVals[i];
+      }
+    }
+
+    if (m_verbosity > 0) {
+      std::cout << "RMS error sum over the best half of the cameras: " << rmsSum
+        << " at parameters: " << x[0] << "," << x[1] << "," << x[2] << "," << x[3] << "," << x[4] << "," << x[5]
+        << std::endl;
+    }
 
     return rmsSum;
   }
@@ -353,6 +377,7 @@ protected:
   std::vector<TargetInfo> m_targetInfos;
   std::map<int, std::vector<PointEntry> > m_pointEntriesInitial;
   bool m_pitchFirst;
+  int m_verbosity;
 
   /// Output values looked up by camera ID after calc() is called.
   mutable std::map< uint16_t, std::vector<cv::Mat> > m_rvecs;
@@ -361,10 +386,10 @@ protected:
   mutable std::map<uint16_t, cv::Mat> m_distCoeffs;
 };
 
-/// @brief Class to optimize using steps to all neighboring lattice locations then halving step sizes.
-class LatticeOptimizer : public cv::MinProblemSolver {
+/// @brief Class to optimize using random steps within the parameter space, reducing the size over time.
+class RandomOptimizer : public cv::MinProblemSolver {
 public:
-    LatticeOptimizer(): cv::MinProblemSolver() {}
+    RandomOptimizer(int verbosity = 1): cv::MinProblemSolver(), m_verbosity(verbosity) {}
 
     void setFunction(const cv::Ptr<Function>& f) override { m_function = f; }
     cv::Ptr<Function> getFunction() const override { return m_function; }
@@ -391,17 +416,79 @@ public:
       }
 
       // Solve for the initial parameter set, making this our initial best parameters and error.
-      m_bestParameters = x.getMat().clone();
+      x.copyTo(m_bestParameters);
       m_bestError = m_function->calc(m_bestParameters.ptr<double>());
 
-      // This is a placeholder for a brute-force optimization implementation.
-      // The actual implementation would involve iterating over the parameter space in a structured way,
-      // evaluating the error function at each point, and keeping track of the best parameters found.
-      // For simplicity, this example just returns the initial parameters without optimization.
+      // If we are not set to terminate based on iterations, then set the max count at the maximum integer value.
+      int maxIterations = m_termCriteria.maxCount;
+      if ((m_termCriteria.type & cv::TermCriteria::MAX_ITER) == 0) {
+        maxIterations = std::numeric_limits<int>::max();
+      }
+
+      // Repeatedly generate a random step within the parameter space, evaluate the error function at that point,
+      // and keep track of the best parameters found.  When we find a new best, we re-center around it by storing
+      // it into the x parameter and we reduce the step sizes to focus the search around that area.
+      // We stop when we hit the maximum number of iterations or when the step sizes get sufficiently small.
+      // If we don't find a better solution within 20 steps, we increase the step sizes to try to get out of a local minima.
+      int iter = 0;
+      int numStepsSinceImprovement = 0;
+      cv::Mat currentStepSize = m_initialStepSizes.clone();
+      while (iter < maxIterations) {
+        // Generate a random step within the parameter space.
+        cv::Mat randomStep(m_initialStepSizes.size(), CV_64F);
+        for (int i = 0; i < randomStep.total(); ++i) {
+          randomStep.at<double>(i) = (static_cast<double>(rand()) / RAND_MAX * 2.0 - 1.0) * currentStepSize.at<double>(i);
+        }
+        // Evaluate the error function at the new point.
+        cv::Mat newParameters = m_bestParameters.clone() + randomStep;
+        double error = m_function->calc(newParameters.ptr<double>());
+        // If this is the best error we've seen, update our best parameters and error, and re-center around it.
+        if (error < m_bestError) {
+          m_bestError = error;
+          m_bestParameters = newParameters.clone();
+          // Reduce the step sizes to focus the search around this area.
+          currentStepSize *= 0.9;  // Reduce step sizes by 10% each time we find a better solution.
+          if (m_verbosity > 0) {
+            std::cout << "Iteration " << iter << ": Found better solution with error " << m_bestError << std::endl;
+            std::cout << "  Parameters: " << m_bestParameters << std::endl;
+            std::cout << "  New step sizes: " << currentStepSize << std::endl;
+          }
+          // See if the largest of the step sizes is now smaller than the epsilon threshold, and if so, stop.
+          double maxStepSize = 0;
+          for (int i = 0; i < currentStepSize.total(); ++i) {
+            maxStepSize = std::max(maxStepSize, currentStepSize.at<double>(i));
+          }
+          numStepsSinceImprovement = 0;
+          if (maxStepSize < m_termCriteria.epsilon) {
+            break;
+          }
+        } else {
+          numStepsSinceImprovement++;
+          if (numStepsSinceImprovement >= 20) {
+            currentStepSize *= 2;  // Increase step sizes by 10% to try to get out of a local minima.
+            numStepsSinceImprovement = 0;
+            // If the step sizes are now 3X larger 3than the initial step sizes, clamp them to 3X the initial
+            // step sizes to prevent them from growing without bound.
+            for (int i = 0; i < currentStepSize.total(); ++i) {
+              if (currentStepSize.at<double>(i) > 3.0 * m_initialStepSizes.at<double>(i)) {
+                currentStepSize.at<double>(i) = 3.0 * m_initialStepSizes.at<double>(i);
+              }
+            }
+            if (m_verbosity > 0) {
+              std::cout << "Iteration " << iter << ": Increasing step sizes to escape local minimum: " << currentStepSize << std::endl;
+            }
+          }
+        }
+        iter++;
+      }
+
+      // Set the input parameter to the best parameters we found and return the best error.
+      m_bestParameters.copyTo(x);
       return m_bestError;
     }
 
 protected:
+  int m_verbosity;
   cv::Ptr<Function> m_function;
   cv::TermCriteria m_termCriteria = cv::TermCriteria(cv::TermCriteria::MAX_ITER + cv::TermCriteria::EPS, 100, 1e-6);
   cv::Mat m_initialStepSizes;
@@ -862,17 +949,25 @@ int main(int argc, char** argv)
 
       // Create an RMSErrorFunction to use to compute the reprojection error for the optimization of the camera parameters.
       cv::Ptr<RMSErrorFunction> rmsFunction =
-        cv::makePtr<RMSErrorFunction>(cameraRenderInfos, targetInfos, pointEntries, gimbalInfo.pitchFirst);
+        cv::makePtr<RMSErrorFunction>(cameraRenderInfos, targetInfos, pointEntries, gimbalInfo.pitchFirst, 0);
 
-      /// @todo Outer loop to optimize the target locations by randomly perturbing them and re-optimizing
+      // Optimize the target locations by randomly perturbing them and re-optimizing
       // the camera parameters then checking the overall reprojection error.
       std::vector<double> params(rmsFunction->getDims(), 0.0); // Initial parameters (dx, dy, dz for each target).
-      cv::Ptr<cv::DownhillSolver> solver = cv::DownhillSolver::create();
-      //std::shared_ptr<LatticeOptimizer> solver = std::make_shared<LatticeOptimizer>();
+      /// @todo Remove this once we see if it gets good results
+      /*
+      params[0] = 0.1;
+      params[1] = 0.02;
+      params[3] = -0.1;
+      params[4] = -0.02;
+      */
+      //cv::Ptr<cv::DownhillSolver> solver = cv::DownhillSolver::create();
+      std::shared_ptr<RandomOptimizer> solver = std::make_shared<RandomOptimizer>();
       cv::Ptr<cv::MinProblemSolver::Function> function_ptr(rmsFunction);
       solver->setFunction(function_ptr);
-      std::vector<double> stepSizes(rmsFunction->getDims(), 0.1); // Step sizes for the optimization.
-      stepSizes[2] = stepSizes[5] = 0.01; // Smaller step size for Z since it's more precisely measured.
+      std::vector<double> stepSizes(rmsFunction->getDims(), 0.2); // Step sizes for the optimization.
+      stepSizes[1] /= 2; // Smaller step size for Y since it's more precisely measured.
+      stepSizes[4] /= 2; // Smaller step size for Y since it's more precisely measured.
       solver->setInitStep(stepSizes);
       cv::TermCriteria termCrit(cv::TermCriteria::MAX_ITER + cv::TermCriteria::EPS, 1000, 1e-6);
       solver->setTermCriteria(termCrit);
