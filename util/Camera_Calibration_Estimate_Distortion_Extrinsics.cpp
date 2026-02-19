@@ -260,7 +260,7 @@ public:
       // Call calibrateCamera
       //cv::setNumThreads(1);
       //cv::setUseOptimized(false);
-      double rmsError;
+      double rmsError = 1e6;
       try {
         // Run all of our protocols in sequence, using the output of each as the input to the next.
         for (auto flags : protocol) {
@@ -274,9 +274,8 @@ public:
         continue;
       }
 
-      std::cout << "Camera ID " << cri.m_ID << " OpenCV calibration results:" << std::endl;
-      std::cout << "  RMS error: " << rmsError << std::endl;
-      std::cout << "  Camera matrix: " << cameraMatrix << std::endl;
+      std::cout << "Camera ID " << cri.m_ID << "  RMS error: " << rmsError << std::endl;
+      //std::cout << "  Camera matrix: " << cameraMatrix << std::endl;
 
       // Guard against empty outputs (calibration may fail and not populate rvecs/tvecs)
       if (rvecs.empty() || tvecs.empty()) {
@@ -292,9 +291,11 @@ public:
         continue;
       }
 
+      /*
       std::cout << "  rvec: " << rvecs[0] << std::endl;
       std::cout << "  tvec: " << tvecs[0] << std::endl;
       std::cout << "  Distortion coefficients: " << distCoeffs << std::endl;
+      */
 
       // Save the updated camera information for this camera ID to be looked up by the GetUpdate* functions.
       m_rvecs[cri.m_ID] = rvecs;
@@ -305,6 +306,9 @@ public:
       // Increment the error
       rmsSum += rmsError;
     }
+    std::cout << "RMS error sum over all cameras: " << rmsSum
+      << " at parameters: " << x[0] << "," << x[1] << "," << x[2] << "," << x[3] << "," << x[4] << "," << x[5]
+      << std::endl;
 
     return rmsSum;
   }
@@ -356,6 +360,55 @@ protected:
   mutable std::map<uint16_t, cv::Mat> m_cameraMatrices;
   mutable std::map<uint16_t, cv::Mat> m_distCoeffs;
 };
+
+/// @brief Class to optimize using steps to all neighboring lattice locations then halving step sizes.
+class LatticeOptimizer : public cv::MinProblemSolver {
+public:
+    LatticeOptimizer(): cv::MinProblemSolver() {}
+
+    void setFunction(const cv::Ptr<Function>& f) override { m_function = f; }
+    cv::Ptr<Function> getFunction() const override { return m_function; }
+
+    void setTermCriteria(const cv::TermCriteria& termcrit) override { m_termCriteria = termcrit; }
+    cv::TermCriteria getTermCriteria() const override { return m_termCriteria; }
+
+    void setInitStep(cv::InputArray step) { step.copyTo(m_initialStepSizes); }
+    void getInitStep(cv::OutputArray step) const { m_initialStepSizes.copyTo(step); }
+
+    double minimize(cv::InputOutputArray x) override
+    {
+      // If we have no function, then we can't optimize, so just return the initial value with a very high error.
+      if (m_function.empty()) {
+        throw std::runtime_error("Error: No function set for optimization.");
+      }
+
+      // Ensure that the parameters are of the correct size for our function.
+      if (x.total() != m_function->getDims()) {
+        throw std::runtime_error("Error: Input parameter size does not match function dimensions.");
+      }
+      if (m_initialStepSizes.total() != m_function->getDims()) {
+        throw std::runtime_error("Error: Initial step size size does not match function dimensions.");
+      }
+
+      // Solve for the initial parameter set, making this our initial best parameters and error.
+      m_bestParameters = x.getMat().clone();
+      m_bestError = m_function->calc(m_bestParameters.ptr<double>());
+
+      // This is a placeholder for a brute-force optimization implementation.
+      // The actual implementation would involve iterating over the parameter space in a structured way,
+      // evaluating the error function at each point, and keeping track of the best parameters found.
+      // For simplicity, this example just returns the initial parameters without optimization.
+      return m_bestError;
+    }
+
+protected:
+  cv::Ptr<Function> m_function;
+  cv::TermCriteria m_termCriteria = cv::TermCriteria(cv::TermCriteria::MAX_ITER + cv::TermCriteria::EPS, 100, 1e-6);
+  cv::Mat m_initialStepSizes;
+  cv::Mat m_bestParameters;
+  double m_bestError = std::numeric_limits<double>::max();
+};
+
 #endif
 
 int main(int argc, char** argv)
@@ -808,15 +861,35 @@ int main(int argc, char** argv)
 #ifdef USE_OPENCV
 
       // Create an RMSErrorFunction to use to compute the reprojection error for the optimization of the camera parameters.
-      RMSErrorFunction rmsFunction(cameraRenderInfos, targetInfos, pointEntries, gimbalInfo.pitchFirst);
-      std::vector<double> params(rmsFunction.getDims(), 0.0); // Initial parameters (dx, dy, dz for each target).
+      cv::Ptr<RMSErrorFunction> rmsFunction =
+        cv::makePtr<RMSErrorFunction>(cameraRenderInfos, targetInfos, pointEntries, gimbalInfo.pitchFirst);
 
       /// @todo Outer loop to optimize the target locations by randomly perturbing them and re-optimizing
       // the camera parameters then checking the overall reprojection error.
+      std::vector<double> params(rmsFunction->getDims(), 0.0); // Initial parameters (dx, dy, dz for each target).
+      cv::Ptr<cv::DownhillSolver> solver = cv::DownhillSolver::create();
+      //std::shared_ptr<LatticeOptimizer> solver = std::make_shared<LatticeOptimizer>();
+      cv::Ptr<cv::MinProblemSolver::Function> function_ptr(rmsFunction);
+      solver->setFunction(function_ptr);
+      std::vector<double> stepSizes(rmsFunction->getDims(), 0.1); // Step sizes for the optimization.
+      stepSizes[2] = stepSizes[5] = 0.01; // Smaller step size for Z since it's more precisely measured.
+      solver->setInitStep(stepSizes);
+      cv::TermCriteria termCrit(cv::TermCriteria::MAX_ITER + cv::TermCriteria::EPS, 1000, 1e-6);
+      solver->setTermCriteria(termCrit);
+      std::cout << "Starting optimization of camera parameters..." << std::endl;
+      solver->minimize(params);
+      std::cout << "Optimization completed with values: ";
+      for (size_t i = 0; i < params.size(); ++i) {
+        std::cout << params[i];
+        if (i < params.size() - 1) {
+          std::cout << ", ";
+        }
+      }
+      std::cout << std::endl;
 
       // Call the calc() function for the optimal parameters to get the final camera parameters and distortion mappings.
       // The optimizer will have left the parameters at the optimal values.
-      double rmsError = rmsFunction.calc(params.data());
+      double rmsError = rmsFunction->calc(params.data());
       std::cout << "Total RMS reprojection error after optimization: " << rmsError << std::endl;
 
       // Modify the CRI information in place and set the bags distortion for each camera.
@@ -825,10 +898,10 @@ int main(int argc, char** argv)
         cv::Size imageSize(cri.m_resolutionPixels[0], cri.m_resolutionPixels[1]);
 
         // Get the updated camera information for this camera from the solver.
-        auto rvecs = rmsFunction.GetUpdatedRvecs(cri.m_ID);
-        auto tvecs = rmsFunction.GetUpdatedTvecs(cri.m_ID);
-        auto cameraMatrix = rmsFunction.GetUpdatedCameraMatrix(cri.m_ID);
-        auto distCoeffs = rmsFunction.GetUpdatedDistCoeffs(cri.m_ID);
+        auto rvecs = rmsFunction->GetUpdatedRvecs(cri.m_ID);
+        auto tvecs = rmsFunction->GetUpdatedTvecs(cri.m_ID);
+        auto cameraMatrix = rmsFunction->GetUpdatedCameraMatrix(cri.m_ID);
+        auto distCoeffs = rmsFunction->GetUpdatedDistCoeffs(cri.m_ID);
 
         //======================
         // Fill in the camera intrinsic and extrinsic parameters in the cri structure. Note that we need the inverse of
