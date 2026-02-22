@@ -688,8 +688,6 @@ CompositeCube::~CompositeCube()
 
 void CompositeCube::SetupRenderFrame(asdp::Time scanOutTime)
 {
-  glUseProgram(m_programId);
-  glDisable(GL_CULL_FACE);
 }
 
 //======================================
@@ -698,6 +696,9 @@ void CompositeCube::SetupRenderFrame(asdp::Time scanOutTime)
 void CompositeCube::RenderView(asdp::Time scanOutTime, const float* viewProjection,
   const float* modelViewMatrix, const ViewRenderInfo& vri)
 {
+  glUseProgram(m_programId);
+  glDisable(GL_CULL_FACE);
+
     if (!m_CP_enabled) // If the flag for cylindrical projection is not enabled, use the perspective projection
         // (following the original execution flow of RenderView()).
     {
@@ -1154,9 +1155,6 @@ static double TimeDiffMagnitude(asdp::Time t1, asdp::Time t2) {
 
 void CompositeCameras::SetupRenderFrame(asdp::Time scanOutTime)
 {
-  glUseProgram(m_programId);
-  glDisable(GL_CULL_FACE);
-
   // Figure out how many frames we must grab to cover the requested render-ahead time.
   // Grab an additional one to handle slight frame shifts.
   size_t framesToGrab = 1 + static_cast<size_t>(m_renderOffsetMicroseconds /
@@ -1299,6 +1297,9 @@ void CompositeCameras::RenderView(asdp::Time scanOutTime, const float* viewProje
   const ViewRenderInfo& vri)
 //======================================
 {
+  glUseProgram(m_programId);
+  glDisable(GL_CULL_FACE);
+
   // Set the RenderText object size to match the current viewport size.
   if (m_renderText) {
     m_renderText->SetWindowSize(vri.width, vri.height);
@@ -2115,9 +2116,6 @@ void CompositeLineRawData::ComputeVertexCoordinates(GLint width, GLint height, G
 
 void CompositeLineRawData::SetupRenderFrame(asdp::Time /* scanOutTime */)
 {
-  glUseProgram(m_programId);
-  glDisable(GL_CULL_FACE);
-  glPointSize(1.0f);
 }
 
 //======================================
@@ -2126,6 +2124,10 @@ void CompositeLineRawData::RenderView(asdp::Time /* scanOutTime */, const float*
   const float* /* modelViewMatrix */, const ViewRenderInfo& /* vri */)
 //======================================
 {
+  glUseProgram(m_programId);
+  glDisable(GL_CULL_FACE);
+  glPointSize(1.0f);
+
   // Turn off depth testing, we always want to draw the line.
   glDisable(GL_DEPTH_TEST);
 
@@ -2373,15 +2375,16 @@ CompositePackXSightFrame::~CompositePackXSightFrame()
 
 void CompositePackXSightFrame::SetupRenderFrame(asdp::Time /* scanOutTime */)
 {
-  glUseProgram(m_programId);
-
-  // Disable face culling, we always want to draw the quad.
-  glDisable(GL_CULL_FACE);
 }
 
 void CompositePackXSightFrame::RenderView(asdp::Time /* scanOutTime */, const float* /* viewProjection */,
   const float* /* modelViewMatrix */, const ViewRenderInfo& /* vri */)
 {
+  glUseProgram(m_programId);
+
+  // Disable face culling, we always want to draw the quad.
+  glDisable(GL_CULL_FACE);
+
   // Turn off depth testing, we always want to draw the quad.
   glDisable(GL_DEPTH_TEST);
 
