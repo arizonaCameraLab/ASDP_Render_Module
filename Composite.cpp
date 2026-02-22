@@ -1279,11 +1279,9 @@ static bool ScreenSpaceFromWorldSpace(const float* viewProjection, const float* 
     screenPos = VP * glm::vec4(worldPos.x, worldPos.y, worldPos.z, 1.0);
     screenPos /= screenPos.w;
 
-    // If this is behind the camera, skip it.
-    // The normalized device coordinate Z value is in the range [-1..1] with -1 being the near plane and 1 being the far plane,
-    // so if it is less than or equal to -1, it is behind the camera and if it is greater than or equal to 1, it is beyond the
-    // far plane, so in either case we should not draw it.
-    if (screenPos.z <= -1 || screenPos.z >= 1) {
+    // If this is outside the view, return false.
+    // The normalized device coordinate X, Y, and Z values are in the range [-1..1].
+    if (fabsf(screenPos.x) > 1.0f || fabsf(screenPos.y) > 1.0f || fabsf(screenPos.z) > 1.0f) {
       return false;
     }
   }
