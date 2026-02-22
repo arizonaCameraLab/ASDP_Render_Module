@@ -1254,7 +1254,7 @@ void CompositeCameras::SetupRenderFrame(asdp::Time scanOutTime)
 /// @param topHalfVOVRad The top half vertical FOV in radians.
 /// @param vri The view render info.
 /// @param outScreenXY The output screen-space XY coordinates in the range [-1..1].
-/// @return True if the position is in front of the camera, false if it is behind.
+/// @return True if the position is between the clipping planes, false if it is behind or beyond the far plane.
 static bool ScreenSpaceFromWorldSpace(const float* viewProjection, const float* modelViewMatrix, glm::vec3 worldPos,
   float leftHalfHOVRad, float rightHalfHOVRad, float bottomHalfVOVRad, float topHalfVOVRad,
   const ViewRenderInfo& vri,
@@ -1280,7 +1280,10 @@ static bool ScreenSpaceFromWorldSpace(const float* viewProjection, const float* 
     screenPos /= screenPos.w;
 
     // If this is behind the camera, skip it.
-    if (screenPos.z <= 0) {
+    // The normalized device coordinate Z value is in the range [-1..1] with -1 being the near plane and 1 being the far plane,
+    // so if it is less than or equal to -1, it is behind the camera and if it is greater than or equal to 1, it is beyond the
+    // far plane, so in either case we should not draw it.
+    if (screenPos.z <= -1 || screenPos.z >= 1) {
       return false;
     }
   }
