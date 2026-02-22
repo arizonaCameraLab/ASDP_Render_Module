@@ -698,6 +698,7 @@ void CompositeCube::RenderView(asdp::Time scanOutTime, const float* viewProjecti
 {
   glUseProgram(m_programId);
   glDisable(GL_CULL_FACE);
+  glDisable(GL_BLEND);
 
     if (!m_CP_enabled) // If the flag for cylindrical projection is not enabled, use the perspective projection
         // (following the original execution flow of RenderView()).
@@ -1299,6 +1300,7 @@ void CompositeCameras::RenderView(asdp::Time scanOutTime, const float* viewProje
 {
   glUseProgram(m_programId);
   glDisable(GL_CULL_FACE);
+  glDisable(GL_BLEND);
 
   // Set the RenderText object size to match the current viewport size.
   if (m_renderText) {
@@ -2126,6 +2128,7 @@ void CompositeLineRawData::RenderView(asdp::Time /* scanOutTime */, const float*
 {
   glUseProgram(m_programId);
   glDisable(GL_CULL_FACE);
+  glDisable(GL_BLEND);
   glPointSize(1.0f);
 
   // Turn off depth testing, we always want to draw the line.
@@ -2387,6 +2390,9 @@ void CompositePackXSightFrame::RenderView(asdp::Time /* scanOutTime */, const fl
 
   // Turn off depth testing, we always want to draw the quad.
   glDisable(GL_DEPTH_TEST);
+
+  // Disable blending, we always want to draw the quad.
+  glDisable(GL_BLEND);
 
   // Bind the texture to texture unit 0.
   glActiveTexture(GL_TEXTURE0);
