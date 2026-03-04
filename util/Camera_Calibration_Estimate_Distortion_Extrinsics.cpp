@@ -318,18 +318,16 @@ public:
       // Increment the error
       rmsVals.push_back(rmsError);
     }
-    // Compute the sum of the lowest half of the RMS errors across cameras, which is what we will minimize across parameter sets.
+    // Compute the sum over all cameras of the RMS error.
     double rmsSum = 0.0;
     if (!rmsVals.empty()) {
-      std::sort(rmsVals.begin(), rmsVals.end());
-      size_t numToInclude = (rmsVals.size() + 1) / 2;  // round up to include the middle value when odd
-      for (size_t i = 0; i < numToInclude; i++) {
+      for (size_t i = 0; i < rmsVals.size(); i++) {
         rmsSum += rmsVals[i];
       }
     }
 
     if (m_verbosity > 0) {
-      std::cout << "RMS error sum over the best half of the cameras: " << rmsSum
+      std::cout << "RMS error sum: " << rmsSum
         << " at parameters: " << x[0] << "," << x[1] << "," << x[2] << "," << x[3] << "," << x[4] << "," << x[5]
         << std::endl;
     }
@@ -425,6 +423,14 @@ public:
         maxIterations = std::numeric_limits<int>::max();
       }
 
+      // Construct a high-quality random number generator for generating random steps from -1.0 to 1.0.
+      std::random_device rd;
+      std::array<std::uint32_t, 8> seed_data;
+      for (auto &s : seed_data) { s = rd(); }
+      std::seed_seq seed_seq(seed_data.begin(), seed_data.end());
+      std::mt19937_64 rng(seed_seq);
+      std::uniform_real_distribution<double> uni_dist(-1.0, 1.0);
+
       // Repeatedly generate a random step within the parameter space, evaluate the error function at that point,
       // and keep track of the best parameters found.  When we find a new best, we re-center around it by storing
       // it into the x parameter and we reduce the step sizes to focus the search around that area.
@@ -437,7 +443,8 @@ public:
         // Generate a random step within the parameter space.
         cv::Mat randomStep(m_initialStepSizes.size(), CV_64F);
         for (int i = 0; i < randomStep.total(); ++i) {
-          randomStep.at<double>(i) = (static_cast<double>(rand()) / RAND_MAX * 2.0 - 1.0) * currentStepSize.at<double>(i);
+          double r = uni_dist(rng); // in [-1.0, 1.0]
+          randomStep.at<double>(i) = r * currentStepSize.at<double>(i);
         }
         // Evaluate the error function at the new point.
         cv::Mat newParameters = m_bestParameters.clone() + randomStep;
@@ -599,7 +606,7 @@ int main(int argc, char** argv)
 
     if (offsetThresholdPixels < 0) {
       if (targetInfos.size() > 1) {
-        offsetThresholdPixels = 400;
+        offsetThresholdPixels = 250;
       } else {
         offsetThresholdPixels = INT_MAX;
       }
@@ -954,15 +961,10 @@ int main(int argc, char** argv)
       // Optimize the target locations by randomly perturbing them and re-optimizing
       // the camera parameters then checking the overall reprojection error.
       std::vector<double> params(rmsFunction->getDims(), 0.0); // Initial parameters (dx, dy, dz for each target).
-      /// @todo Remove this once we see if it gets good results
-      /*
-      params[0] = 0.1;
-      params[1] = 0.02;
-      params[3] = -0.1;
-      params[4] = -0.02;
-      */
-      //cv::Ptr<cv::DownhillSolver> solver = cv::DownhillSolver::create();
-      std::shared_ptr<RandomOptimizer> solver = std::make_shared<RandomOptimizer>();
+      cv::Ptr<cv::DownhillSolver> solver = cv::DownhillSolver::create();
+      // If you want to use the RandomOptimizer instead, comment out the above line and uncomment the below line.
+      // The random optimizer got much worse results than the downhill solver in a ground-truth test.
+      //std::shared_ptr<RandomOptimizer> solver = std::make_shared<RandomOptimizer>();
       cv::Ptr<cv::MinProblemSolver::Function> function_ptr(rmsFunction);
       solver->setFunction(function_ptr);
       std::vector<double> stepSizes(rmsFunction->getDims(), 0.2); // Step sizes for the optimization.
