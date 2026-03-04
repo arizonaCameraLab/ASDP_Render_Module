@@ -688,8 +688,6 @@ CompositeCube::~CompositeCube()
 
 void CompositeCube::SetupRenderFrame(asdp::Time scanOutTime)
 {
-  glUseProgram(m_programId);
-  glDisable(GL_CULL_FACE);
 }
 
 //======================================
@@ -698,6 +696,10 @@ void CompositeCube::SetupRenderFrame(asdp::Time scanOutTime)
 void CompositeCube::RenderView(asdp::Time scanOutTime, const float* viewProjection,
   const float* modelViewMatrix, const ViewRenderInfo& vri)
 {
+  glUseProgram(m_programId);
+  glDisable(GL_CULL_FACE);
+  glDisable(GL_BLEND);
+
     if (!m_CP_enabled) // If the flag for cylindrical projection is not enabled, use the perspective projection
         // (following the original execution flow of RenderView()).
     {
@@ -1154,9 +1156,6 @@ static double TimeDiffMagnitude(asdp::Time t1, asdp::Time t2) {
 
 void CompositeCameras::SetupRenderFrame(asdp::Time scanOutTime)
 {
-  glUseProgram(m_programId);
-  glDisable(GL_CULL_FACE);
-
   // Figure out how many frames we must grab to cover the requested render-ahead time.
   // Grab an additional one to handle slight frame shifts.
   size_t framesToGrab = 1 + static_cast<size_t>(m_renderOffsetMicroseconds /
@@ -1255,7 +1254,7 @@ void CompositeCameras::SetupRenderFrame(asdp::Time scanOutTime)
 /// @param topHalfVOVRad The top half vertical FOV in radians.
 /// @param vri The view render info.
 /// @param outScreenXY The output screen-space XY coordinates in the range [-1..1].
-/// @return True if the position is in front of the camera, false if it is behind.
+/// @return True if the position is between the clipping planes, false if it is behind or beyond the far plane.
 static bool ScreenSpaceFromWorldSpace(const float* viewProjection, const float* modelViewMatrix, glm::vec3 worldPos,
   float leftHalfHOVRad, float rightHalfHOVRad, float bottomHalfVOVRad, float topHalfVOVRad,
   const ViewRenderInfo& vri,
@@ -1280,8 +1279,9 @@ static bool ScreenSpaceFromWorldSpace(const float* viewProjection, const float* 
     screenPos = VP * glm::vec4(worldPos.x, worldPos.y, worldPos.z, 1.0);
     screenPos /= screenPos.w;
 
-    // If this is behind the camera, skip it.
-    if (screenPos.z <= 0) {
+    // If this is outside the view, return false.
+    // The normalized device coordinate X, Y, and Z values are in the range [-1..1].
+    if (fabsf(screenPos.x) > 1.0f || fabsf(screenPos.y) > 1.0f || fabsf(screenPos.z) > 1.0f) {
       return false;
     }
   }
@@ -1299,6 +1299,10 @@ void CompositeCameras::RenderView(asdp::Time scanOutTime, const float* viewProje
   const ViewRenderInfo& vri)
 //======================================
 {
+  glUseProgram(m_programId);
+  glDisable(GL_CULL_FACE);
+  glDisable(GL_BLEND);
+
   // Set the RenderText object size to match the current viewport size.
   if (m_renderText) {
     m_renderText->SetWindowSize(vri.width, vri.height);
@@ -2115,9 +2119,6 @@ void CompositeLineRawData::ComputeVertexCoordinates(GLint width, GLint height, G
 
 void CompositeLineRawData::SetupRenderFrame(asdp::Time /* scanOutTime */)
 {
-  glUseProgram(m_programId);
-  glDisable(GL_CULL_FACE);
-  glPointSize(1.0f);
 }
 
 //======================================
@@ -2126,6 +2127,11 @@ void CompositeLineRawData::RenderView(asdp::Time /* scanOutTime */, const float*
   const float* /* modelViewMatrix */, const ViewRenderInfo& /* vri */)
 //======================================
 {
+  glUseProgram(m_programId);
+  glDisable(GL_CULL_FACE);
+  glDisable(GL_BLEND);
+  glPointSize(1.0f);
+
   // Turn off depth testing, we always want to draw the line.
   glDisable(GL_DEPTH_TEST);
 
@@ -2373,17 +2379,21 @@ CompositePackXSightFrame::~CompositePackXSightFrame()
 
 void CompositePackXSightFrame::SetupRenderFrame(asdp::Time /* scanOutTime */)
 {
-  glUseProgram(m_programId);
-
-  // Disable face culling, we always want to draw the quad.
-  glDisable(GL_CULL_FACE);
 }
 
 void CompositePackXSightFrame::RenderView(asdp::Time /* scanOutTime */, const float* /* viewProjection */,
   const float* /* modelViewMatrix */, const ViewRenderInfo& /* vri */)
 {
+  glUseProgram(m_programId);
+
+  // Disable face culling, we always want to draw the quad.
+  glDisable(GL_CULL_FACE);
+
   // Turn off depth testing, we always want to draw the quad.
   glDisable(GL_DEPTH_TEST);
+
+  // Disable blending, we always want to draw the quad.
+  glDisable(GL_BLEND);
 
   // Bind the texture to texture unit 0.
   glActiveTexture(GL_TEXTURE0);

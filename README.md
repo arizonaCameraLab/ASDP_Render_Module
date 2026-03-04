@@ -376,9 +376,19 @@ and a green rectangle annotation in its upper-left cornet. A frame from the expe
 ### Geometric Calibration
 
 Camera calibration is described in **TR-011v3_Geometric_Calibration.docx**, with the steps here
-described in Appendix A. **Note:** Because of the order of rotations of the iOptron gimbals, all targets must
-be mainly in the forward direction; if they move too far to one side, there will be no
-pointing solution for them. The workflow is as follows:
+described in Appendix A.
+    - **Note:** Because of the order of rotations of the iOptron gimbals, all targets must
+      be mainly in the forward direction; if they move too far to one side, there will be no
+      pointing solution for them.
+    - **Note:** When doing two-depth calibration, ensure that the two targets do not project
+      close to each other from any canera rotation. There is an empirical threshold distance of 250 pixels
+      and if they come closer than that, there can be confusion in the algorithm about which
+      target was visible at a given location.  If this threshold is made too small, then it will
+      not recognize the target due to camera distortion and if it is made too large, then it will
+      recognize the incorrect target when the actual target moves out of the image due to
+      incorrect initial position estimates.
+
+The workflow is as follows:
 - **Estimate target lateral location:**
     - Generate an as-designed camera calibration JSON file for the camera to be calibrated. This has
       the camera's center of rotation as the center of helicopter space with the +X axis pointing
