@@ -381,7 +381,7 @@ described in Appendix A.
       be mainly in the forward direction; if they move too far to one side, there will be no
       pointing solution for them.
     - **Note:** When doing two-depth calibration, ensure that the two targets do not project
-      close to each other from any canera rotation. There is an empirical threshold distance of 250 pixels
+      close to each other from any camera rotation. There is an empirical threshold distance of 200 pixels
       and if they come closer than that, there can be confusion in the algorithm about which
       target was visible at a given location.  If this threshold is made too small, then it will
       not recognize the target due to camera distortion and if it is made too large, then it will
@@ -389,7 +389,7 @@ described in Appendix A.
       incorrect initial position estimates.
 
 The workflow is as follows:
-- **Estimate target lateral location:**
+- **Prepare configuration files:**
     - Generate an as-designed camera calibration JSON file for the camera to be calibrated. This has
       the camera's center of rotation as the center of helicopter space with the +X axis pointing
       towards the axis the gimbal will rotate around for +pitch and the +Z axis pointing up. (The offset
@@ -420,6 +420,7 @@ The workflow is as follows:
       to be zero (the offset is added to each camera's position before calibration and subtracted afterwards).
     - Copy the calibration files to a new calibration directory on the data drive that will hold our calibration
       artifacts.
+- **Estimate target lateral location:** (only used for single-target calibration)
     - Run **Target_Calibration_Make_Scan** and give it the camera, target, and gimbal
       configuration files.  This will produce a CSV file for each target with the gimbal poses and
       the number of frames for each FrameIndex value.  This will write **target_1_poses.csv** (and
@@ -474,15 +475,18 @@ The workflow is as follows:
       loop back to the *Target_Calibration_Make_Scan* step, using the optimized file as the new input file,
       to produce a better estimate of the target lateral positions using new scan data.
 - **Estimate camera parameters and distortion:**
-    - Run the **Camera_Calibration_Make_Scan** program and give it **cameras_opt.json**, **targets_lateral_opt.json**, and
-      the gimbal configuration files.  It will produce a **poses.csv** file for all cameras.
+    - Run the **Camera_Calibration_Make_Scan** program. It will produce a **poses.csv** file for all cameras.
+      - For single-target calibration, give it **cameras_opt.json**, **targets_lateral_opt.json**, and
+        the gimbal configuration files.
+      - For multi-target calibration, give it **cameras.json**, **targets.json**, and the gimbal configuration files.
     - Copy the poses.csv file into the calibration directory.
     - Capture or simulate the frames for the cameras and save them, using the same approach described above
       for the target calibration but reading from poses.csv rather than target_N_poses.csv and saving the
       images into a directory called **camera_images** rather than target_lateral_N_images.  **Warning:** *ensure
       that the power and data cables can reach all orientations of the ball as it scans without binding.*
-    - Run the **Camera_Calibration_Estimate_Distortion_Extrinsics** program and give it **cameras_opt.json**,
-      **targets_lateral_opt.json** and gimbal configuration files, the poses file, the root directory
+    - Run the **Camera_Calibration_Estimate_Distortion_Extrinsics** program and give it **cameras_opt.json**
+      (**camera.json** for multi-target calibration), **targets_lateral_opt.json** (**targets.json** for
+      multi-target calibration) and gimbal configuration files, the poses file, the root directory
       where the simulation or measurement data was stored (camera_images directory), the threshold in
       pixel counts above which the target brightness will be found, and an output
       file name. (If using a cool IR target, use the `--invert` command-line

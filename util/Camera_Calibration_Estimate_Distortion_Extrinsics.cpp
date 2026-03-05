@@ -37,7 +37,7 @@ using namespace asdp::render;
 using namespace asdp::render::calibration;
 using json = nlohmann::json;
 
-static std::string VERSION = "2.2.0";
+static std::string VERSION = "2.3.0";
 
 void usage(std::string name)
 {
@@ -50,11 +50,12 @@ void usage(std::string name)
   std::cerr << "  threshold                     Threshold brightness (int value) for target center." << std::endl;
   std::cerr << "  outputConfig.json             Output configuration file." << std::endl;
   std::cerr << "  Options:" << std::endl;
-  std::cerr << "    --help                      Print this information and quit." << std::endl;
-  std::cerr << "    --offsetThresholdPixels <int>  Threshold brightness (int value) for target center. Default MAXINT for 1 target, 400 for >1." << std::endl;
-  std::cerr << "    --writeMaps <filename.csv>  Write the expected to as-seen mappings to the specified CSV file." << std::endl;
-  std::cerr << "    --readMaps <filename.csv>   Read the expected to as-seen mappings from the specified CSV file, don't compute." << std::endl;
-  std::cerr << "    --invert                    Invert each image (useful for dark targets)." << std::endl;
+  std::cerr << "    --help                        Print this information and quit." << std::endl;
+  std::cerr << "    --offsetThresholdPixels <int> Maximum offset in pixels before target ignored. Default MAXINT for 1 target, 200 for >1." << std::endl;
+  std::cerr << "                                  This is scaled based on the camera's field of view, specify based on 40-degree FOV camera." << std::endl;
+  std::cerr << "    --writeMaps <filename.csv>    Write the expected to as-seen mappings to the specified CSV file." << std::endl;
+  std::cerr << "    --readMaps <filename.csv>     Read the expected to as-seen mappings from the specified CSV file, don't compute." << std::endl;
+  std::cerr << "    --invert                      Invert each image (useful for dark targets)." << std::endl;
 };
 
 /// @brief Structure to hold a point entry for a camera, describing its 3D location in space and its 2D projection.
@@ -808,13 +809,6 @@ int main(int argc, char** argv)
           }
         }
 
-        // Find the camera whose ID matches the one in the pose.
-        CameraRenderInfo const* cri = cameraRenderInfoByID[pose.cameraID];
-        if (cri == nullptr) {
-          std::cerr << "Error: Camera ID " << pose.cameraID << " not found in camera configuration." << std::endl;
-          exit(23);
-        }
-
         // Find the target location by looking up in the targetInfos vector for the one with the
         // matching ID.
         TargetInfo const* target = targetInfoByID[pose.targetID];
@@ -822,6 +816,15 @@ int main(int argc, char** argv)
           std::cerr << "Error: Target ID " << pose.targetID << " not found in target configuration." << std::endl;
           exit(24);
         }
+
+        // Look up the camera render info based on this pose's camera ID.
+        // Then scale the offset threshold by the ratio of 40 and its horizontal FOV.
+        CameraRenderInfo const* cri = cameraRenderInfoByID[pose.cameraID];
+        if (cri == nullptr) {
+          std::cerr << "Error: Camera ID " << pose.cameraID << " not found in camera configuration." << std::endl;
+          exit(14);
+        }
+        double scaledOffsetThreshold = offsetThresholdPixels * (40.0 / cri->m_fovDegrees[0]);
 
         // Find the expected location of the target in the image in pixels based on ideal camera parameters.
         std::array<double, 2> expectedLocation;
@@ -860,10 +863,10 @@ int main(int argc, char** argv)
           std::cerr << "Warning: No target found in pose " << pose.frameIndex << " for camera " << pose.cameraID << std::endl;
           continue;
         }
-        if (minSquaredDistance > double(offsetThresholdPixels) * double(offsetThresholdPixels)) {
+        if (minSquaredDistance > double(scaledOffsetThreshold) * double(scaledOffsetThreshold)) {
           std::cerr << "Warning: Target found too far from expected location in pose " << pose.frameIndex
             << " for camera " << pose.cameraID << ": distance = " << sqrt(minSquaredDistance)
-            << " pixels, threshold = " << offsetThresholdPixels << " pixels." << std::endl;
+            << " pixels, threshold = " << scaledOffsetThreshold << " pixels." << std::endl;
           continue;
         }
         

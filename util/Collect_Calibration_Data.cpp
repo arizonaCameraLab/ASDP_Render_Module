@@ -26,7 +26,7 @@ static void usage(const char* progName)
   std::cerr << "       NIC: The network interface card (NIC) IP address for the camera (e.g., 10.10.10.32)." << std::endl;
   std::cerr << "       SERIAL: The serial number of the camera." << std::endl;
   std::cerr << "       POSES.csv: Poses to take images at." << std::endl;
-  std::cerr << "       OUTDIR: The output directory for the calibration data (probably named cameras_images)." << std::endl;
+  std::cerr << "       OUTDIR: The output directory for the calibration data (probably named camera_images)." << std::endl;
   std::cerr << "       Options:" << std::endl;
   std::cerr << "         --home: Search for and calibrate the gimbal home position before running." << std::endl;
   std::cerr << "         --listenPort <integer>: Listen on the specified port for discovery packets rather than the default." << std::endl;
