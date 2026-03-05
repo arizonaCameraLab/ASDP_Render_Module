@@ -37,7 +37,7 @@ using namespace asdp::render;
 using namespace asdp::render::calibration;
 using json = nlohmann::json;
 
-static std::string VERSION = "2.1.0";
+static std::string VERSION = "2.2.0";
 
 void usage(std::string name)
 {
@@ -606,7 +606,7 @@ int main(int argc, char** argv)
 
     if (offsetThresholdPixels < 0) {
       if (targetInfos.size() > 1) {
-        offsetThresholdPixels = 250;
+        offsetThresholdPixels = 200;
       } else {
         offsetThresholdPixels = INT_MAX;
       }
