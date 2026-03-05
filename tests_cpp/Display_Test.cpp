@@ -70,18 +70,19 @@ int main(int argc, char** argv)
     std::vector< std::shared_ptr<asdp::render::Display> > displays;
 
     // Create the appropriate Display object(s) based on the command-line arguments.
+    std::array<float, 3> viewpointOffset = { 0.0f, 0.0f, 0.0f };
     if (useOpenXR) {
       displays.push_back(std::make_shared<asdp::render::DisplayOpenXR>(composite, &texWindow, client,
-        0, 0, 0, 2500, 0, nullptr, nullptr, nullptr, false));
+        0, 0, 0, viewpointOffset, 2500, 0, nullptr, nullptr, nullptr, false));
     } else if (xSightNICName != "") {
       displays.push_back(std::make_shared<asdp::render::DisplayXSight>(xSightNICName, composite, &texWindow, client,
-        0, 0, 0,
+        0, 0, 0, viewpointOffset,
         2500, nullptr, nullptr, nullptr, false, xSightDisplay));
     } else {
       // Create a Display window to show the CompositeCube object that shares objects with the texWindow.
       // Control it using joystick 0.
       displays.push_back(std::make_shared<asdp::render::DisplayWindow>("Display_Test", composite, client,
-        0, 0, 0, 60.0f, 2500, width, height, 90, "GLFW::0", &texWindow));
+        0, 0, 0, viewpointOffset, 60.0f, 2500, width, height, 90, "GLFW::0", &texWindow));
       if (displays.back()->GetStatus() != "") {
         std::cerr << "Error opening first display: " << displays.back()->GetStatus() << std::endl;
         return 1;
@@ -91,7 +92,7 @@ int main(int argc, char** argv)
       // with the texWindow (and therefore the first Display window).
       // Control it using joystick 1.
       displays.push_back(std::make_shared<asdp::render::DisplayWindow>("Display_Test2", composite, client,
-        0, 0, 0, 60.0f, 2500, width, height,
+        0, 0, 0, viewpointOffset, 60.0f, 2500, width, height,
         90, "GLFW::1", &texWindow));
       if (displays.back()->GetStatus() != "") {
         std::cerr << "Error opening second display: " << displays.back()->GetStatus() << std::endl;

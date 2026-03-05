@@ -78,9 +78,10 @@ public:
 
 Display::Display(std::shared_ptr<Composite> composite,
   std::shared_ptr<CoreClient> client, uint8_t triggerID, uint32_t triggerAheadMicroseconds,
-  uint32_t depthAheadMicroseconds,
+  uint32_t depthAheadMicroseconds, std::array<float, 3> viewpointOffset,
   std::shared_ptr<EventHandlers> handlers, void* userData)
-  : m_composite(composite)
+  : m_viewpointOffset(viewpointOffset)
+  , m_composite(composite)
   , m_eventHandlers(handlers)
   , m_userData(userData)
   , m_nowPlaying(true)
@@ -280,14 +281,14 @@ public:
 
 DisplayWindow::DisplayWindow(std::string windowName, std::shared_ptr<Composite> composite,
     std::shared_ptr<CoreClient> client, uint8_t triggerID, uint32_t triggerAheadMicroseconds,
-    uint32_t depthAheadMicroseconds,
+    uint32_t depthAheadMicroseconds, std::array<float, 3> viewpointOffset,
     float fps, uint32_t renderAheadMicroseconds,
     int desiredWidth, int desiredHeight, float horizontalFOVDegrees,
     std::string joystick, Display* sharedWindow,
     bool fullScreen, int desiredDisplay, bool hidden,
     std::shared_ptr<EventHandlers> handlers, void* userData,
     RenderTimingInfo* timingInfo, bool replaying)
-  : Display(composite, client, triggerID, triggerAheadMicroseconds, depthAheadMicroseconds, handlers, userData)
+  : Display(composite, client, triggerID, triggerAheadMicroseconds, depthAheadMicroseconds, viewpointOffset, handlers, userData)
   , m_timingInfo(timingInfo)
   , m_replaying(replaying)
   , m_impl(new DisplayWindowImpl)
@@ -306,6 +307,7 @@ DisplayWindow::DisplayWindow(std::string windowName, std::shared_ptr<Composite> 
   // field of view that is 40 degrees total horizontal and the correct aspect ratio vertical.
   ViewRenderInfo view;
   SetViewportSizeAndFOVs(view, desiredWidth, desiredHeight);
+  view.viewpoint = m_viewpointOffset;
   m_impl->m_views.push_back(view);
 
   // Start the rendering thread.
@@ -1923,9 +1925,9 @@ bool asdp::render::DisplayOpenXR::DisplayOpenXRImpl::OpenXRRenderLayer(XrTime pr
 
     // Construct the ViewRenderInfo for the current view and push it onto the vector.
     ViewRenderInfo vri;
-    vri.viewpoint[0] = m_views[i].pose.position.x;
-    vri.viewpoint[1] = m_views[i].pose.position.y;
-    vri.viewpoint[2] = m_views[i].pose.position.z;
+    vri.viewpoint[0] = m_views[i].pose.position.x + m_display->m_viewpointOffset[0];
+    vri.viewpoint[1] = m_views[i].pose.position.y + m_display->m_viewpointOffset[1];
+    vri.viewpoint[2] = m_views[i].pose.position.z + m_display->m_viewpointOffset[2];
     vri.orientation[0] = quat.w;
     vri.orientation[1] = quat.x;
     vri.orientation[2] = quat.y;
@@ -2191,11 +2193,11 @@ void asdp::render::DisplayOpenXR::DisplayOpenXRImpl::OpenXRTearDown()
 
 DisplayOpenXR::DisplayOpenXR(std::shared_ptr<Composite> composite, Display* sharedWindow,
     std::shared_ptr<CoreClient> client, uint8_t triggerID, uint32_t triggerAheadMicroseconds,
-    uint32_t depthAheadMicroseconds,
+    uint32_t depthAheadMicroseconds, std::array<float, 3> viewpointOffset,
     uint32_t renderAheadMicroseconds, int verbosity,
     std::shared_ptr<EventHandlers> handlers, void* userData,
     RenderTimingInfo* timingInfo, bool replaying)
-  : Display(composite, client, triggerID, triggerAheadMicroseconds, depthAheadMicroseconds, handlers, userData)
+  : Display(composite, client, triggerID, triggerAheadMicroseconds, depthAheadMicroseconds, viewpointOffset, handlers, userData)
   , m_timingInfo(timingInfo)
   , m_replaying(replaying)
 {
@@ -2369,7 +2371,7 @@ public:
 
 DisplayXSight::DisplayXSight(std::string NICName, std::shared_ptr<Composite> composite, Display* sharedWindow,
   std::shared_ptr<CoreClient> client, uint8_t triggerID, uint32_t triggerAheadMicroseconds,
-  uint32_t depthAheadMicroseconds,
+  uint32_t depthAheadMicroseconds, std::array<float, 3> viewpointOffset,
   uint32_t renderAheadMicroseconds,
   std::shared_ptr<EventHandlers> handlers, void* userData,
   RenderTimingInfo* timingInfo, bool replaying,
@@ -2377,7 +2379,7 @@ DisplayXSight::DisplayXSight(std::string NICName, std::shared_ptr<Composite> com
   int desiredWidth, int desiredHeight, float fps,
   float horizontalFOVDegrees
   )
-  : Display(composite, client, triggerID, triggerAheadMicroseconds, depthAheadMicroseconds, handlers, userData)
+  : Display(composite, client, triggerID, triggerAheadMicroseconds, depthAheadMicroseconds, viewpointOffset, handlers, userData)
   , m_NICName(NICName)
   , m_timingInfo(timingInfo)
   , m_replaying(replaying)
@@ -2396,6 +2398,7 @@ DisplayXSight::DisplayXSight(std::string NICName, std::shared_ptr<Composite> com
   // field of view that is the requested horizontal and the correct aspect ratio vertical.
   ViewRenderInfo view;
   SetViewportSizeAndFOVs(view, desiredWidth, desiredHeight);
+  view.viewpoint = m_viewpointOffset;
   m_impl->m_views.push_back(view);
 
   // Start the rendering thread.

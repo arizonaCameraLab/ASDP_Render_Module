@@ -725,7 +725,8 @@ void MainWindow::ViewCamera(const QString& cameraID)
 
   // Construct a DisplayWindow to show the camera data.
   std::string name = "Camera " + cameraID.toStdString();
-  m_display = std::make_shared<DisplayWindow>(name, composite, m_client, 0, 0, 0,
+  std::array<float, 3> viewpointOffset = { 0.0f, 0.0f, 0.0f };
+  m_display = std::make_shared<DisplayWindow>(name, composite, m_client, 0, 0, 0, viewpointOffset,
     60, 2500,
     width, height, 40.0, "", m_displayTexture.get());
 

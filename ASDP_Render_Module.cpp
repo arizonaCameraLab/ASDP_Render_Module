@@ -56,7 +56,7 @@ using namespace asdp::render;
 using namespace asdp::analysis;
 using json = nlohmann::json;
 
-static std::string VERSION = "3.23.0";
+static std::string VERSION = "3.24.0";
 
 /// @brief The path to the configuration file. Defined in the CMakeLists file.
 std::filesystem::path g_dirPath = CONFIG_FILE_PATH;
@@ -915,6 +915,7 @@ struct DisplayInfo
   float fps = 60.0f;            ///< The frames per second to run at.
   bool fullScreen = false;      ///< Run in full screen mode.
   int fullScreenDisplay = 0;    ///< The display to run in full screen mode on.
+  std::array<float, 3> viewpointOffset = { 0.0f, 0.0f, 0.0f };  ///< The offset to apply to the viewpoint for this display, in meters.
 
   //======================================
   // Added by Sang Yoon to add a flag for enabling the cylindrical projection.
@@ -1223,6 +1224,7 @@ static void usage(std::string name)
   std::cerr << "  --joystick <string>                 The joystick to use for input (e.g. GLFW::0)." << std::endl;
   std::cerr << "  --fps <frames per second>           The frames per second to run at (default 60)." << std::endl;
   std::cerr << "  --fullScreen <display>              Run in full screen mode on the specified display (0+)." << std::endl;
+  std::cerr << "  --viewpointOffset <x> <y> <z>       The viewpoint offset to apply to all cameras in meters." << std::endl;
 };
 
 int main(int argc, char** argv)
@@ -1311,6 +1313,15 @@ int main(int argc, char** argv)
         return 2;
       }
       displayInfos.back().XSightDisplay = std::stoi(argv[i]);
+    }
+    else if (std::string("--viewpointOffset") == argv[i]) {
+      if (i + 3 >= argc) {
+        usage(argv[0]);
+        return 2;
+      }
+      displayInfos.back().viewpointOffset[0] = std::stof(argv[++i]);
+      displayInfos.back().viewpointOffset[1] = std::stof(argv[++i]);
+      displayInfos.back().viewpointOffset[2] = std::stof(argv[++i]);
     }
     else if (std::string("--fullScreen") == argv[i]) {
       if (++i >= argc) {
@@ -2017,12 +2028,13 @@ int main(int argc, char** argv)
       // Only time the first listed display, to avoid race conditions
       if (displayInfos[i].useOpenXR) {
         displays.push_back(std::make_shared<DisplayOpenXR>(g_composite, displayTexture.get(),
-          client, triggerID, triggerAheadMicroseconds, depthAheadMicroseconds, 2500, 1, handlers, &g_callbackHandlerData,
+          client, triggerID, triggerAheadMicroseconds, depthAheadMicroseconds, displayInfos[i].viewpointOffset,
+          2500, 1, handlers, &g_callbackHandlerData,
           (i == 0) ? (&g_timingInfo) : nullptr, replayStreamID != 0));
       } else if (!displayInfos[i].XSightNIC.empty()) {
         displays.push_back(std::make_shared<DisplayXSight>(displayInfos[i].XSightNIC, g_composite, displayTexture.get(),
           client, triggerID, triggerAheadMicroseconds,
-          depthAheadMicroseconds,
+          depthAheadMicroseconds, displayInfos[i].viewpointOffset,
           2500,
           handlers, nullptr,
           (i == 0) ? (&g_timingInfo) : nullptr, replayStreamID != 0,
@@ -2030,7 +2042,8 @@ int main(int argc, char** argv)
         ));
       } else {
         displays.push_back(std::make_shared<DisplayWindow>("ASDP Render Module " + std::to_string(i),
-          g_composite, client, triggerID, triggerAheadMicroseconds, depthAheadMicroseconds, displayInfos[i].fps, 2500,
+          g_composite, client, triggerID, triggerAheadMicroseconds, depthAheadMicroseconds, displayInfos[i].viewpointOffset,
+          displayInfos[i].fps, 2500,
           displayInfos[i].width, displayInfos[i].height,
           displayInfos[i].hFOV, displayInfos[i].joystick, displayTexture.get(),
           displayInfos[i].fullScreen, displayInfos[i].fullScreenDisplay, false, handlers, &g_callbackHandlerData,
