@@ -27,7 +27,7 @@ using namespace asdp;
 using namespace asdp::render;
 using namespace asdp::render::calibration;
 
-static std::string VERSION = "2.3.0";
+static std::string VERSION = "2.4.0";
 
 void usage(std::string name)
 {
@@ -43,6 +43,7 @@ void usage(std::string name)
   std::cerr << "    --leftMarginPixels <int>      Margin away from left of image (default 10)." << std::endl;
   std::cerr << "    --rightMarginPixels <int>     Margin away from right of image (default 10)." << std::endl;
   std::cerr << "    --densityScaleFactor <float>  Multiplies density moving from outer to next square (default 2.0)." << std::endl;
+  std::cerr << "    --noWFOVScan                  Don't add scans for the wide field of view camera (if present), do capture there." << std::endl;
   std::cerr << "    --help                        Print this information and quit." << std::endl;
   std::cerr << "  Writes poses.csv file." << std::endl;
 };
@@ -103,6 +104,7 @@ int main(int argc, char** argv)
   int leftMarginPixels = 10;
   int rightMarginPixels = 10;
   double densityScaleFactor = 2.0;
+  bool doWFOVScan = true;
   size_t realParams = 0;          ///< The number of non-flag parameters we've seen.
 
   // Parse the command line arguments, with the first non-flag argument being the
@@ -152,6 +154,8 @@ int main(int argc, char** argv)
         return 1;
       }
       densityScaleFactor = std::stod(argv[i]);
+    } else if (std::string("--noWFOVScan") == argv[i]) {
+      doWFOVScan = false;
     } else if (argv[i][0] == '-') {
       usage(argv[0]);
       return 1;
@@ -231,19 +235,28 @@ int main(int argc, char** argv)
     // Write the header line.
     outFile << "FrameIndex,ZRotationDegrees,XRotationDegrees,Camera,NumFrames,TargetID" << std::endl;
 
+    // Figure out how many cameras to operate on. By default, all of them.
+    // if doWFOVScan is false, and there are more than 21 cameras, then we limit to
+    // the first 21.
+    // Note that we still capture images from all cameras that can see the target.
+    size_t numCamerasToScan = cameraRenderInfos.size();
+    if (!doWFOVScan && numCamerasToScan > 21) {
+      numCamerasToScan = 21;
+    }
+
     // For each target, generate a series of poses, writing them to the file.
     // When more than one camera can see the same target, request images from all of them
     // using the same frame index.
     int frameIndex = 0;
-    for (size_t i = 0; i < targetInfos.size(); i++) {
-      const TargetInfo& target = targetInfos[i];
+    for (const auto& target : targetInfos) {
       glm::dvec3 targetPoint = glm::dvec3(target.position[0], target.position[1], target.position[2]);
 
       // For each camera, run along each edge of the camera, asking for images from all cameras that can
       // see the requested point.  Then repeat with ever-smaller rectangles coming towards the center
       // with less-dense points, so that we have more samples near the edges where distortion gradient
       // magnitude is expected to be the largest.
-      for (auto const &cri : cameraRenderInfos) {
+      for (size_t cam = 0; cam < numCamerasToScan; cam++) {
+        const CameraRenderInfo& cri = cameraRenderInfos[cam];
 
         // Compute quantities useful to determine our paths
         int xCenter = cri.m_resolutionPixels[0] / 2;

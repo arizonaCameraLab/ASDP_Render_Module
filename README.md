@@ -375,7 +375,7 @@ and a green rectangle annotation in its upper-left cornet. A frame from the expe
 
 ### Geometric Calibration
 
-Camera calibration is described in **TR-011v3_Geometric_Calibration.docx**, with the steps here
+Camera calibration is described in **TR-011v15_Geometric_Calibration.docx**, with the steps here
 described in Appendix A.
     - **Note:** Because of the order of rotations of the iOptron gimbals, all targets must
       be mainly in the forward direction; if they move too far to one side, there will be no
