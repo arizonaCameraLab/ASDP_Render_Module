@@ -10,7 +10,7 @@
 
 static void usage(const char* progName)
 {
-  std::cerr << "Usage: " << progName << " [--home] [--gimbalConfig <filename>] [--speed <degPerSec>] [--accel <degPerSec2>] [--moveTo <yawDeg> <pitchDeg>] COM_DEVICE" << std::endl;
+  std::cerr << "Usage: " << progName << " [--home] [--gimbalConfig <filename>] [--speed <degPerSec>] [--accel <degPerSec2>] [--moveTo <yawDeg> <pitchDeg>]" << std::endl;
   std::cerr << "       --gimbalConfig <string>: The gimbal configuration file name (default gimbal.json)." << std::endl;
   std::cerr << "       --home: Move to home position." << std::endl;
   std::cerr << "       --moveTo <yawDeg> <pitchDeg>: Move to the specified yaw and pitch angles." << std::endl;
