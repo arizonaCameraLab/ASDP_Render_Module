@@ -37,7 +37,7 @@ using namespace asdp::render;
 using namespace asdp::render::calibration;
 using json = nlohmann::json;
 
-static std::string VERSION = "2.3.1";
+static std::string VERSION = "2.4.0";
 
 void usage(std::string name)
 {
@@ -168,7 +168,8 @@ public:
     }
 
     // Solve for the optimal OpenCV camera information for each camera.
-    std::vector<double> rmsVals;
+    std::vector<double> rmsVals(m_cameraRenderInfos.size(), 0.0);
+#pragma omp parallel for
     for (int camIndex = 0; camIndex < m_cameraRenderInfos.size(); camIndex++) {
       auto& cri = m_cameraRenderInfos[camIndex];
 
@@ -317,8 +318,9 @@ public:
       m_distCoeffs[cri.m_ID] = distCoeffs;
 
       // Increment the error
-      rmsVals.push_back(rmsError);
+      rmsVals[camIndex] = rmsError;
     }
+
     // Compute the average over all cameras of the RMS error.
     double rmsSum = 0.0;
     if (!rmsVals.empty()) {
