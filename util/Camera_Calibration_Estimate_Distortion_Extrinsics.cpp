@@ -37,7 +37,7 @@ using namespace asdp::render;
 using namespace asdp::render::calibration;
 using json = nlohmann::json;
 
-static std::string VERSION = "2.3.0";
+static std::string VERSION = "2.3.1";
 
 void usage(std::string name)
 {
@@ -319,16 +319,17 @@ public:
       // Increment the error
       rmsVals.push_back(rmsError);
     }
-    // Compute the sum over all cameras of the RMS error.
+    // Compute the average over all cameras of the RMS error.
     double rmsSum = 0.0;
     if (!rmsVals.empty()) {
       for (size_t i = 0; i < rmsVals.size(); i++) {
         rmsSum += rmsVals[i];
       }
+      rmsSum /= static_cast<double>(rmsVals.size());
     }
 
     if (m_verbosity > 0) {
-      std::cout << "RMS error sum: " << rmsSum
+      std::cout << "Average RMS error: " << rmsSum
         << " at parameters: " << x[0] << "," << x[1] << "," << x[2] << "," << x[3] << "," << x[4] << "," << x[5]
         << std::endl;
     }
