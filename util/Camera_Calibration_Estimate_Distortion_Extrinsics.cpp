@@ -880,6 +880,7 @@ int main(int argc, char** argv)
         symmetric_spot_tracker_interp symmetrictracker(10);
         symmetrictracker.set_pixel_accuracy(0.01);
         symmetrictracker.optimize_xy(*avg, 0, x, y, x, y);
+        count++;
 
         // If the optimized location is out of bounds, skip this pose with a warning.
         if (x < 10 || x > width - 11 || y < 10 || y > height - 11) {
@@ -908,7 +909,6 @@ int main(int argc, char** argv)
             pose.xRotationDegrees,
             pose.cameraID, pose.targetID);
 
-          count++;
           std::cout << count << " / " << poseInfos.size() << " processed; pose " << pose.frameIndex
             << " for camera " << pose.cameraID << "\n";
           std::cout << "  Target expected at (" << expectedLocation[0] << ", " << expectedLocation[1] << ")" << "\n";
