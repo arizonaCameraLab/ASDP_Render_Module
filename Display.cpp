@@ -2302,11 +2302,11 @@ public:
 
 DisplayOpenXR::DisplayOpenXR(std::shared_ptr<Composite> composite, Display* sharedWindow,
     std::shared_ptr<CoreClient> client, uint8_t triggerID, uint32_t triggerAheadMicroseconds,
-    uint32_t depthAheadMicroseconds,
+    uint32_t depthAheadMicroseconds, std::array<float, 3> viewpointOffset,
     uint32_t renderAheadMicroseconds, int verbosity,
     std::shared_ptr<EventHandlers> handlers, void* userData,
     RenderTimingInfo* timingInfo, bool replaying)
-  : Display(composite, client, triggerID, triggerAheadMicroseconds, depthAheadMicroseconds, handlers, userData)
+  : Display(composite, client, triggerID, triggerAheadMicroseconds, depthAheadMicroseconds, viewpointOffset, handlers, userData)
   , m_timingInfo(timingInfo)
   , m_replaying(replaying)
 {
