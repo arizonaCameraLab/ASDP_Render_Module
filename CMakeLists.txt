@@ -106,7 +106,7 @@ if(OPENMP_FOUND)
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${OpenMP_EXE_LINKER_FLAGS}")
 endif()
 find_package(OpenXR)
-find_package(OpenCV COMPONENTS core imgproc)
+find_package(OpenCV COMPONENTS core imgproc calib3d)
 
 # Needed to enable compiling on Ubuntu 22.04
 find_package(CUDAToolkit REQUIRED)
@@ -326,7 +326,7 @@ if(BUILD_UTILITIES)
     add_executable (${APP} util/${BASE}.cpp)
     set_target_properties(${APP} PROPERTIES FOLDER util/C++)
     target_link_libraries(${APP} PRIVATE
-	    Render_Module
+      Render_Module
       spot_tracker_library
       ASDP_Core_API::ASDP_Core_API
       glfw
@@ -337,7 +337,7 @@ if(BUILD_UTILITIES)
     )
     if(OPENCV_FOUND)
       target_compile_definitions(${APP} PRIVATE USE_OPENCV)
-      target_link_libraries(${APP} PRIVATE opencv_core opencv_imgproc)
+      target_link_libraries(${APP} PRIVATE opencv_calib3d opencv_imgproc opencv_core)
     endif()
     install(TARGETS ${APP} EXPORT ${PROJECT_NAME}
       RUNTIME DESTINATION bin
