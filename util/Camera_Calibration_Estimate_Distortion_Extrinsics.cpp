@@ -962,7 +962,7 @@ int main(int argc, char** argv)
 
       // Create an RMSErrorFunction to use to compute the reprojection error for the optimization of the camera parameters.
       cv::Ptr<RMSErrorFunction> rmsFunction =
-        cv::makePtr<RMSErrorFunction>(cameraRenderInfos, targetInfos, pointEntries, gimbalInfo.pitchFirst, 0);
+        cv::makePtr<RMSErrorFunction>(cameraRenderInfos, targetInfos, pointEntries, gimbalInfo.pitchFirst, 1);
 
       // Optimize the target locations by randomly perturbing them and re-optimizing
       // the camera parameters then checking the overall reprojection error.
