@@ -36,7 +36,7 @@ static void usage(const char* progName)
   std::cerr << "         --removeSpikes <diff>: Remove spikes in the image that differ from their neighbors by more than <diff> (default 0, meaning no removal)." << std::endl;
   std::cerr << "         --median: Apply a 3x3 median filter to the image to reduce noise (default false)." << std::endl;
   std::cerr << "         --readFrom INDIR: Read images from the specified input directory rather than from the camera (for separating reading and adjusting)." << std::endl;
-  std::cerr << "         --waitForTargetChange: Only one target will be turned on at a time, prompt for changing targets between each." << std::endl;
+  std::cerr << "         --target <id>: Only one target will be run, whose ID is specified here." << std::endl;
   std::cerr << "         --help: Print this information and quit." << std::endl;
 }
 
@@ -255,7 +255,7 @@ int main(int argc, char** argv)
   bool autoRange = false;
   int spikeDiff = 0;
   bool median = false;
-  bool waitForTargetChange = false;
+  int targetToDo = -1;
 
   size_t realParams = 0;
   for (int i = 1; i < argc; ++i) {
@@ -319,8 +319,16 @@ int main(int argc, char** argv)
     else if (std::string("--median") == argv[i]) {
       median = true;
     }
-    else if (std::string("--waitForTargetChange") == argv[i]) {
-      waitForTargetChange = true;
+    else if (std::string("--target") == argv[i]) {
+      if (++i >= argc) {
+        std::cerr << "Error: Missing target ID." << std::endl;
+        return 1;
+      }
+      targetToDo = std::atoi(argv[i]);
+      if (targetToDo < 0) {
+        std::cerr << "Error: Invalid target ID." << std::endl;
+        return 1;
+      }
     }
     else if (std::string("--help") == argv[i]) {
       usage(argv[0]);
@@ -592,11 +600,9 @@ int main(int argc, char** argv)
     for (auto const& pose : poseInfos) {
 
       //===================================================================================
-      // If we're waiting for target changes, prompt the user to change targets if we have a new target.
-      if (waitForTargetChange && pose.targetID != lastTarget) {
-        std::cout << "Please change to target " << pose.targetID << " and press Enter to continue..." << std::endl;
-        std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
-        lastTarget = pose.targetID;
+      // If we've been asked to only do one target, skip any poses that don't match.
+      if (targetToDo >= 0 && pose.targetID != targetToDo) {
+        continue;
       }
 
       //===================================================================================

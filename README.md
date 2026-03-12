@@ -484,9 +484,8 @@ The workflow is as follows:
       for the target calibration but reading from poses.csv rather than target_N_poses.csv and saving the
       images into a directory called **camera_images** rather than target_lateral_N_images.  **Warning:** *ensure
       that the power and data cables can reach all orientations of the ball as it scans without binding.* For the
-      safest capture, specify the `--waitForTargetChange` command-line option and then only turn on the first
-      target for the first half of the scan, then switch to turning the other on when prompted and hit return
-      on the console to continue the scan.
+      safest capture, specify the `--target <id>` command-line option and then only turn on the first
+      target for the first run (`--target 1`), then turn only the other on and re-run with `--target 2`.
     - Run the **Camera_Calibration_Estimate_Distortion_Extrinsics** program and give it **cameras_opt.json**
       (**camera.json** for multi-target calibration), **targets_lateral_opt.json** (**targets.json** for
       multi-target calibration) and gimbal configuration files, the poses file, the root directory
@@ -504,7 +503,7 @@ The workflow is as follows:
           parameters, only the distortion parameters. These will be used to construct a bag-of-mappings
           distortion model that will be accurate near the target depth.
         - When run with multiple targets at different depths, this will also estimate the camera extrinsic
-          and intrinsic parameters, which will be accurate over a range of depths. If the `--waitForTargetChange`
+          and intrinsic parameters, which will be accurate over a range of depths. If the `--target <id>`
           command-line option was used during data collection, also add `--offsetThresholdPixels 200000` when
           running the estimation so that it does not ignore any target matches.
 - **Use distortion:**
