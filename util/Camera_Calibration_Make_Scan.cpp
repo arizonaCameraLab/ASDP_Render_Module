@@ -31,7 +31,7 @@ static std::string VERSION = "2.4.0";
 
 void usage(std::string name)
 {
-  std::cerr << "Usage: " << name << " [options] camConfig.json targetConfig.json, gimbalConfigFile" << std::endl;
+  std::cerr << "Usage: " << name << " [options] camConfig.json targetConfig.json gimbalConfigFile" << std::endl;
   std::cerr << "  camConfig.json                  Camera configuration file." << std::endl;
   std::cerr << "  targetConfig.json               Target configuration file." << std::endl;
   std::cerr << "  gimbalConfig.json               Gimbal configuration file." << std::endl;
