@@ -182,7 +182,7 @@ std::string CUDABufferPool::Test()
   // waits for all buffers to be returned to the pool.
   for (bool host : {false, true}) {
     CUDABufferPool*pool = new CUDABufferPool(100, 10, host);
-    std::atomic_int count = 0;
+    std::atomic_int count(0);
     std::atomic_bool running(false);
 
     // Start a thread that will allocate one buffer per tenth of a second, asking for ten buffers
@@ -207,7 +207,7 @@ std::string CUDABufferPool::Test()
   /// Also test that it gets buffers that are returned.
   for (bool host : {false, true}) {
     CUDABufferPool*pool = new CUDABufferPool(100, 10, host);
-    std::atomic_int count = 0;
+    std::atomic_int count(0);
     std::atomic_bool running(false);
 
     // Start a thread that will allocate one buffer per tenth of a second, asking for ten buffers
