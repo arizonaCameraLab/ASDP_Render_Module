@@ -122,8 +122,12 @@ asdp::render::CompositeCameras::Annotation AnalysisReport::ConvertToAnnotation(f
   }
 
   // If we have a rectangle, set the bounding box.
+  // Convert from full-width/height as specified in the Anallysis API to the half-width/half-height
+  // specified by the Annotation by dividing the values by 2.
   if (Rect) {
     annotation.bbox = std::make_shared< std::array<float, 2> >(*Rect);
+    (*annotation.bbox)[0] /= 2.0f;
+    (*annotation.bbox)[1] /= 2.0f;
   }
 
   // Set the label, starting with the base name.
