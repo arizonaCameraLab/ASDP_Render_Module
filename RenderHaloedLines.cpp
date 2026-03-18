@@ -192,10 +192,12 @@ std::string RenderHaloedLines::Impl::Draw(std::vector< std::array< std::array<fl
 
   // Configure our vertex array buffer object.
   glBindBuffer(GL_ARRAY_BUFFER, m_vertexBuffer);
+#if !defined(NDEBUG)
   GLenum err = glGetError();
   if (err != GL_NO_ERROR) {
     return "RenderHaloedLines::Draw(): Error after binding vertex buffer: " + std::to_string(err);
   }
+#endif
   {
     size_t const stride = sizeof(vertexBufferData[0]);
     // VBO

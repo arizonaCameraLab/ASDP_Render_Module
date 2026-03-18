@@ -756,10 +756,12 @@ public:
 
   std::string ComputeDepthEstimate(Time time)
   {
+#if !defined(NDEBUG)
     GLenum err = glGetError();
     if (err != GL_NO_ERROR) {
       return "OpenGL error at start of ComputeDepthEstimate(): " + std::to_string(err);
     }
+#endif
 
     // OpenGL fence objects to let us ensure that we're done with OpenGL rendering before we
     // start to map the buffers to CUDA and do the depth estimation.  There is one entry
@@ -798,22 +800,26 @@ public:
           vri.height = cpi.m_pixelCounts[1];
 
           // Render the composite camera and construct a fence to indicate completion.
+#if !defined(NDEBUG)
           err = glGetError();
           if (err != GL_NO_ERROR) {
             return "OpenGL error before Render() for pair " + std::to_string(c)
               + " depth " + std::to_string(d) + " camera " + std::to_string(b) + ": "
               + std::to_string(err);
           }
+#endif
           cpi.m_perDepths[d].m_composites[b]->Render(time, {vri});
+#if !defined(NDEBUG)
           err = glGetError();
           if (err != GL_NO_ERROR) {
             return "OpenGL error before fence for pair " + std::to_string(c)
               + " depth " + std::to_string(d) + " camera " + std::to_string(b) + ": "
               + std::to_string(err);
           }
+#endif
           dFences[b] = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
           if (dFences[b] == nullptr) {
-            err = glGetError();
+            GLenum err = glGetError();
             return "glFenceSync() failed for pair " + std::to_string(c)
               + " depth " + std::to_string(d) + " camera " + std::to_string(b)
               + ": error " + std::to_string(err);

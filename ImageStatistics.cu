@@ -125,10 +125,12 @@ public:
       return "Constructor failed: " + m_constructorStatus;
     }
 
+#if !defined(NDEBUG)
     GLenum err = glGetError();
     if (err != GL_NO_ERROR) {
       return "OpenGL error at start of Compute(): " + std::to_string(err);
     }
+#endif
 
     // Lock a texture for CUDA to use and then map it to CUDA.
     std::list< std::shared_ptr<ImageData> > images = m_camera->m_imageQueue->LockNewestImages(1);

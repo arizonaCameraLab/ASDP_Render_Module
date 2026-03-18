@@ -298,10 +298,12 @@ std::string RenderText::Impl::Draw(const std::string text, float xLoc, float yLo
 
   // Configure our vertex array buffer object.
   glBindBuffer(GL_ARRAY_BUFFER, m_fontVertexBuffer);
+#if !defined(NDEBUG)
   GLenum err = glGetError();
   if (err != GL_NO_ERROR) {
     return "RenderText::Draw(): Error after binding vertex buffer: " + std::to_string(err);
   }
+#endif
   {
     size_t const stride = sizeof(vertexBufferData[0]);
     // VBO
@@ -386,10 +388,12 @@ std::string RenderText::Impl::Draw(const std::string text, float xLoc, float yLo
 
     // Bind the font as the active texture.
     glBindTexture(GL_TEXTURE_2D, m_font_tex);
+#if !defined(NDEBUG)
     err = glGetError();
     if (err != GL_NO_ERROR) {
       return "RenderText::Draw(): Error binding texture: " + std::to_string(err);
     }
+#endif
 
     // Set the fixed parameters we need to render the text properly.
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -397,10 +401,12 @@ std::string RenderText::Impl::Draw(const std::string text, float xLoc, float yLo
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+#if !defined(NDEBUG)
     err = glGetError();
     if (err != GL_NO_ERROR) {
       return "RenderText::Draw(): Error setting fixed texture params: " + std::to_string(err);
     }
+#endif
 
     // Blend the characters in, so we see them written above the background.
     // We use color for the alpha channel so it appears wherever the character appears.
@@ -413,17 +419,20 @@ std::string RenderText::Impl::Draw(const std::string text, float xLoc, float yLo
 
       // Set the variable parameters we need to render the text properly.
       glPixelStorei(GL_UNPACK_ROW_LENGTH, g->bitmap.width);
+#if !defined(NDEBUG)
       err = glGetError();
       if (err != GL_NO_ERROR) {
         return "RenderText::Draw(): Error setting texture params: " + std::to_string(err);
       }
+#endif
       glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE, g->bitmap.width, g->bitmap.rows,
         0, GL_LUMINANCE, GL_UNSIGNED_BYTE, g->bitmap.buffer);
+#if !defined(NDEBUG)
       err = glGetError();
       if (err != GL_NO_ERROR) {
         return "RenderText::Draw(): Error writing texture: " + std::to_string(err);
       }
-
+#endif
       float x2 = x + g->bitmap_left * sx;
       float y2 = y + g->bitmap_top * sy;
       float w = g->bitmap.width * sx;
@@ -436,10 +445,12 @@ std::string RenderText::Impl::Draw(const std::string text, float xLoc, float yLo
       glBufferData(GL_ARRAY_BUFFER,
         sizeof(vertexBufferData[0]) * vertexBufferData.size(),
         &vertexBufferData[0], GL_STATIC_DRAW);
+#if !defined(NDEBUG)
       err = glGetError();
       if (err != GL_NO_ERROR) {
         return "RenderText::Draw(): Error buffering data: " + std::to_string(err);
       }
+#endif
 
       // Draw the quad.
       {

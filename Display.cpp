@@ -509,10 +509,12 @@ void DisplayWindow::DisplayThread(std::string windowName,
       std::lock_guard<std::mutex> lock(Display::m_impl->m_contextMutex);
       glfwMakeContextCurrent(Display::m_impl->m_window);
 
+#if !defined(NDEBUG)
       GLenum err = glGetError();
       if (err != GL_NO_ERROR) {
         std::cerr << "OpenGL error before checking whether to call ComputeDepth: " << err << std::endl;
       }
+#endif
       m_eventHandlers->ComputeDepth(renderTime, m_userData);
 
       // Release the window's current context in case another Display wants to borrow it.
@@ -2664,10 +2666,12 @@ void DisplayXSight::DisplayThread(
       std::lock_guard<std::mutex> lock(Display::m_impl->m_contextMutex);
       glfwMakeContextCurrent(Display::m_impl->m_window);
 
+#if !defined(NDEBUG)
       GLenum err = glGetError();
       if (err != GL_NO_ERROR) {
         std::cerr << "OpenGL error before checking whether to call ComputeDepth: " << err << std::endl;
       }
+#endif
       m_eventHandlers->ComputeDepth(renderTime, m_userData);
 
       // Release the window's current context in case another Display wants to borrow it.

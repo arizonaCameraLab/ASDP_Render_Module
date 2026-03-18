@@ -314,6 +314,7 @@ static std::vector< std::array<uint16_t, 2> > GetRawPixelValues(
     imagePixels[i].resize(widths[i] * heights[i]);
     glBindTexture(GL_TEXTURE_2D, imageData[i]->texture);
     glGetTexImage(GL_TEXTURE_2D, 0, GL_RED, GL_UNSIGNED_SHORT, imagePixels[i].data());
+#if !defined(NDEBUG)
     ret = glGetError();
     if (ret != GL_NO_ERROR) {
       std::cerr << "GetRawPixelValues(): Error: glGetTexImage() failed for image " << i
@@ -322,6 +323,7 @@ static std::vector< std::array<uint16_t, 2> > GetRawPixelValues(
       g_pointCorrespondenceDisplay->ReturnContext();
       return {};
     }
+#endif
   }
   glBindTexture(GL_TEXTURE_2D, 0);
 
