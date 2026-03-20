@@ -13,6 +13,7 @@
 #include <freetype/freetype.h>
 #include <vector>
 #include <stdexcept>
+#include <unordered_map>
 
 using namespace asdp::render;
 
@@ -114,12 +115,28 @@ public:
 #endif
 
   const int FONT_SIZE = 32;
-  GLuint m_font_tex = 0;
   int m_WINDOW_WIDTH = 1920;
   int m_WINDOW_HEIGHT = 1080;
 
   GLuint m_programId = 0;
   GLuint m_fontVertexBuffer = 0;
+
+  // Glyph cache structures
+  struct Glyph {
+    GLuint tex = 0;         // OpenGL texture for this glyph
+    int width = 0;          // bitmap.width
+    int rows = 0;           // bitmap.rows
+    int left = 0;           // bitmap_left
+    int top = 0;            // bitmap_top
+    FT_Pos advanceX = 0;    // glyph->advance.x
+    FT_Pos advanceY = 0;    // glyph->advance.y
+  };
+
+  // Map from character code (Unicode codepoint) to cached glyph
+  std::unordered_map<FT_ULong, Glyph> m_glyph_cache;
+
+  // Ensure a glyph is loaded and uploaded to GL; returns pointer to stored Glyph (or nullptr on failure)
+  const Glyph* GetGlyph(FT_ULong charcode);
 };
 
 RenderText::Impl::Impl(int windowWidth, int windowHeight)
@@ -127,7 +144,6 @@ RenderText::Impl::Impl(int windowWidth, int windowHeight)
   , m_WINDOW_HEIGHT(windowHeight)
   , m_ft(nullptr)
   , m_face(nullptr)
-  , m_font_tex(0)
 {
   // Initialize GLEW in our context. It is okay to initialize it more than once.
   glewExperimental = true;
@@ -159,9 +175,6 @@ RenderText::Impl::Impl(int windowWidth, int windowHeight)
 
   // Create the vertex buffer object for rendering text
   glGenBuffers(1, &m_fontVertexBuffer);
-
-  // Generate our font texture.
-  glGenTextures(1, &m_font_tex);
 
   // Construct the shader program for rendering text.  It will use texture unit 0 and be a
   // simple texture-mapped shader that uses vertex colors.
@@ -213,6 +226,14 @@ RenderText::Impl::Impl(int windowWidth, int windowHeight)
 
 RenderText::Impl::~Impl()
 {
+  // Free glyph textures created in the cache.
+  for (auto &kv : m_glyph_cache) {
+    if (kv.second.tex) {
+      glDeleteTextures(1, &kv.second.tex);
+    }
+  }
+  m_glyph_cache.clear();
+
   if (m_face) {
     FT_Done_Face(m_face);
     m_face = nullptr;
@@ -220,10 +241,6 @@ RenderText::Impl::~Impl()
   if (m_ft) {
     FT_Done_FreeType(m_ft);
     m_ft = nullptr;
-  }
-  if (m_font_tex) {
-    glDeleteTextures(1, &m_font_tex);
-    m_font_tex = 0;
   }
   if (m_fontVertexBuffer) {
     glDeleteBuffers(1, &m_fontVertexBuffer);
@@ -278,6 +295,58 @@ static void addFontQuad(std::vector<FontVertex>& vertexBufferData,
   vertexBufferData.emplace_back(v);
 }
 
+// Load glyph and create GL texture, store in cache. Returns pointer to cached Glyph or nullptr on error.
+const RenderText::Impl::Glyph* RenderText::Impl::GetGlyph(FT_ULong charcode)
+{
+  {
+    auto it = m_glyph_cache.find(charcode);
+    if (it != m_glyph_cache.end()) {
+      return &it->second;
+    }
+  }
+
+  // Not in cache: load from FreeType
+  if (!m_face) return nullptr;
+  if (FT_Load_Char(m_face, charcode, FT_LOAD_RENDER)) {
+    return nullptr;
+  }
+
+  FT_GlyphSlot g = m_face->glyph;
+
+  Glyph glyph;
+  glyph.width = g->bitmap.width;
+  glyph.rows = g->bitmap.rows;
+  glyph.left = g->bitmap_left;
+  glyph.top = g->bitmap_top;
+  glyph.advanceX = g->advance.x;
+  glyph.advanceY = g->advance.y;
+
+  // Create GL texture for this glyph
+  glGenTextures(1, &glyph.tex);
+  glBindTexture(GL_TEXTURE_2D, glyph.tex);
+  glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+  // Using GL_LUMINANCE to match existing code; modern GL prefers GL_RED with shader swizzle.
+  glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE, glyph.width, glyph.rows,
+    0, GL_LUMINANCE, GL_UNSIGNED_BYTE, g->bitmap.buffer);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+  // Insert into cache under lock and return pointer to stored element
+  {
+    auto res = m_glyph_cache.emplace(charcode, std::move(glyph));
+    if (!res.second) {
+      // insertion failed (shouldn't happen), clean up and return existing element
+      if (res.first->second.tex) {
+        glDeleteTextures(1, &res.first->second.tex);
+      }
+      return &res.first->second;
+    }
+    return &res.first->second;
+  }
+}
+
 std::string RenderText::Impl::Draw(const std::string text, float xLoc, float yLoc,
   float red, float green, float blue, float alpha)
 {
@@ -289,7 +358,6 @@ std::string RenderText::Impl::Draw(const std::string text, float xLoc, float yLo
   glActiveTexture(GL_TEXTURE0);
 
   if (!m_face) { return "RenderText::Draw(): No font face available"; }
-  FT_GlyphSlot g = m_face->glyph;
 
   std::vector<FontVertex> vertexBufferData;
 
@@ -344,18 +412,19 @@ std::string RenderText::Impl::Draw(const std::string text, float xLoc, float yLo
     // and compute the maximum bitmap height across glyphs for a better background box.
     float totalWidth = 0.0f;
     int maxRows = 0;
-    for (const char p : line) {
-      if (FT_Load_Char(m_face, p, FT_LOAD_RENDER))
-        continue;
-      totalWidth += (g->advance.x / 64.0f) * sx; // advance is 26.6 fixed point
-      if (g->bitmap.rows > maxRows) maxRows = g->bitmap.rows;
+    for (const unsigned char p : line) {
+      const Glyph* cg = GetGlyph(p);
+      if (!cg) continue;
+      totalWidth += (cg->advanceX / 64.0f) * sx; // advance is 26.6 fixed point
+      if (cg->rows > maxRows) maxRows = cg->rows;
     }
 
     // If no glyphs were loaded (unlikely), fall back to using '0' width times number of characters.
     if (maxRows == 0) {
-      if (FT_Load_Char(m_face, '0', FT_LOAD_RENDER) == 0) {
-        maxRows = g->bitmap.rows;
-        totalWidth = (line.size() + 1) * (g->bitmap.width * sx);
+      const Glyph* cg = GetGlyph('0');
+      if (cg) {
+        maxRows = cg->rows;
+        totalWidth = (line.size() + 1) * (cg->width * sx);
       } else {
         // absolute fallback
         maxRows = FONT_SIZE;
@@ -368,9 +437,13 @@ std::string RenderText::Impl::Draw(const std::string text, float xLoc, float yLo
     // front facing when it is re-flipped in the addFontQuad() method.
     glBindTexture(GL_TEXTURE_2D, 0);
 
-    float w = g->bitmap.width * sx;
+    float w = 0;
+    if (!line.empty()) {
+      // Use width of last computed glyph to size background margin, or 0 if none.
+      w = (maxRows > 0) ? (static_cast<float>(maxRows) * sx) : 0;
+    }
     // Oversize the height a bit to ensure we cover tall characters.
-    float yMargin = 0.2 * maxRows * sy;
+    float yMargin = 0.2f * maxRows * sy;
     float h = maxRows * sy + 2 * yMargin;
     size_t chars = (text.size() + 1);
     vertexBufferData.clear();
@@ -386,15 +459,7 @@ std::string RenderText::Impl::Draw(const std::string text, float xLoc, float yLo
       glDrawArrays(GL_TRIANGLES, 0, numElements);
     }
 
-    // Bind the font as the active texture.
-    glBindTexture(GL_TEXTURE_2D, m_font_tex);
-#if !defined(NDEBUG)
-    err = glGetError();
-    if (err != GL_NO_ERROR) {
-      return "RenderText::Draw(): Error binding texture: " + std::to_string(err);
-    }
-#endif
-
+    // Bind the font as the active texture (we'll bind per-glyph textures as we draw).
     // Set the fixed parameters we need to render the text properly.
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
@@ -402,7 +467,7 @@ std::string RenderText::Impl::Draw(const std::string text, float xLoc, float yLo
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
 #if !defined(NDEBUG)
-    err = glGetError();
+    GLenum err = glGetError();
     if (err != GL_NO_ERROR) {
       return "RenderText::Draw(): Error setting fixed texture params: " + std::to_string(err);
     }
@@ -411,37 +476,26 @@ std::string RenderText::Impl::Draw(const std::string text, float xLoc, float yLo
     // Blend the characters in, so we see them written above the background.
     // We use color for the alpha channel so it appears wherever the character appears.
     // Go through each character and render it.
-    for (const char p : line) {
+    for (const unsigned char p : line) {
 
-      if (FT_Load_Char(m_face, p, FT_LOAD_RENDER)) {
+      const Glyph* cg = GetGlyph(p);
+      if (!cg) {
         continue;
       }
 
-      // Set the variable parameters we need to render the text properly.
-      glPixelStorei(GL_UNPACK_ROW_LENGTH, g->bitmap.width);
-#if !defined(NDEBUG)
-      err = glGetError();
-      if (err != GL_NO_ERROR) {
-        return "RenderText::Draw(): Error setting texture params: " + std::to_string(err);
-      }
-#endif
-      glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE, g->bitmap.width, g->bitmap.rows,
-        0, GL_LUMINANCE, GL_UNSIGNED_BYTE, g->bitmap.buffer);
-#if !defined(NDEBUG)
-      err = glGetError();
-      if (err != GL_NO_ERROR) {
-        return "RenderText::Draw(): Error writing texture: " + std::to_string(err);
-      }
-#endif
-      float x2 = x + g->bitmap_left * sx;
-      float y2 = y + g->bitmap_top * sy;
-      float w = g->bitmap.width * sx;
-      float h = g->bitmap.rows * sy;
+      // Bind glyph texture
+      glBindTexture(GL_TEXTURE_2D, cg->tex);
+
+      // Because we uploaded the bitmap once when caching, just draw the quad using the cached metrics.
+      float x2 = x + cg->left * sx;
+      float y2 = y + cg->top * sy;
+      float gw = cg->width * sx;
+      float gh = cg->rows * sy;
 
       // Blend in the text
       glBlendFunc(GL_SRC_COLOR, GL_ONE_MINUS_SRC_COLOR);
       vertexBufferData.clear();
-      addFontQuad(vertexBufferData, x2, x2 + w, y2, y2 - h, 0.7f, red*alpha, green*alpha, blue*alpha, 1 - alpha);
+      addFontQuad(vertexBufferData, x2, x2 + gw, y2, y2 - gh, 0.7f, red*alpha, green*alpha, blue*alpha, 1 - alpha);
       glBufferData(GL_ARRAY_BUFFER,
         sizeof(vertexBufferData[0]) * vertexBufferData.size(),
         &vertexBufferData[0], GL_STATIC_DRAW);
@@ -458,8 +512,8 @@ std::string RenderText::Impl::Draw(const std::string text, float xLoc, float yLo
         glDrawArrays(GL_TRIANGLES, 0, numElements);
       }
 
-      x += (g->advance.x / 64) * sx;
-      y += (g->advance.y / 64) * sy;
+      x += (cg->advanceX / 64) * sx;
+      y += (cg->advanceY / 64) * sy;
     } // End of charcter
   } // End of line
 
