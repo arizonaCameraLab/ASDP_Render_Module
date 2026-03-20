@@ -1145,6 +1145,15 @@ void HandleAnalysisThread(std::vector< std::shared_ptr<JSONStringReceiver> > ana
             report.Name = report.Name.substr(5);
           }
 
+          // Remove ASDP_ from the beginning of each type if it's there to make it cleaner for display.
+          for (auto& c : report.Class) {
+            if (c.Type) {
+              if (c.Type->rfind("ASDP_", 0) == 0) {
+                *c.Type = c.Type->substr(5);
+              }
+            }
+          }
+
           // Remove any existing report with the same name (erase-remove idiom).
           rv.erase(std::remove_if(rv.begin(), rv.end(),
             [&report](const AnalysisReport& r) { return r.Name == report.Name; }), rv.end());
