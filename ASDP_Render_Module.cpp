@@ -107,6 +107,8 @@ static std::shared_ptr< std::vector<AnalysisReport> > g_currentReports;
 static float g_analysisFadeTimeSeconds = 1.0f;  ///< Time in seconds for analysis annotations to fade out.
 static float g_analysisChanceThreshold = 0.0f; ///< Minimum chance threshold for analysis annotations to be shown.
 
+static Time g_lastCLOCK_SYNC = { 0 };           ///< The last CLOCK_SYN message time received, used to adjust analysis displays
+
 /// @brief Vector of Annotation objects to hold camera annotations if they are shown.
 static std::vector<CompositeCameras::Annotation> g_cameraAnnotations;
 
@@ -823,6 +825,7 @@ static Status HandleStreamPacket(std::shared_ptr<StreamPacket> packet, std::shar
                 return status;
               }
               clockSync->AddDataPoint(messageTime, std::chrono::steady_clock::now());
+              g_lastCLOCK_SYNC = messageTime;
             }
             break;
 
@@ -1073,11 +1076,7 @@ std::vector<CompositeCameras::Annotation> AnnotationCallbackHandler(void *userDa
   std::vector<CompositeCameras::Annotation> annotations;
   if (analysis) {
     Timer* timer = reinterpret_cast<Timer*>(userData);
-    Time now;
-    if (timer->GetCoreTime(now) != OKAY) {
-      std::cerr << "AnnotationCallbackHandler(): Error getting current core time." << std::endl;
-      return annotations;
-    }
+    Time now = g_lastCLOCK_SYNC;
 
     // Fill in an entry for each report.
     for (const AnalysisReport& report : *analysis) {
@@ -1155,11 +1154,7 @@ void HandleAnalysisThread(std::vector< std::shared_ptr<JSONStringReceiver> > ana
       }
 
       // Remove any reports that are too old.
-      Time now;
-      if (timer->GetCoreTime(now) != OKAY) {
-        std::cerr << "HandleAnalysisThread(): Error getting current core time." << std::endl;
-        return;
-      }
+      Time now = g_lastCLOCK_SYNC;
       rv.erase(std::remove_if(rv.begin(), rv.end(),
         [now](const AnalysisReport& r) {
           Time delta;
