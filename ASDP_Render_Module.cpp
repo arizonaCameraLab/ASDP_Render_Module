@@ -1140,6 +1140,11 @@ void HandleAnalysisThread(std::vector< std::shared_ptr<JSONStringReceiver> > ana
           // Convert this to a report
           AnalysisReport report(jsonString);
 
+          // Remove ASDP_ from the beginning of the name if it's there to make it cleaner for display.
+          if (report.Name.rfind("ASDP_", 0) == 0) {
+            report.Name = report.Name.substr(5);
+          }
+
           // Remove any existing report with the same name (erase-remove idiom).
           rv.erase(std::remove_if(rv.begin(), rv.end(),
             [&report](const AnalysisReport& r) { return r.Name == report.Name; }), rv.end());
