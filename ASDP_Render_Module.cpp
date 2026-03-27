@@ -56,7 +56,7 @@ using namespace asdp::render;
 using namespace asdp::analysis;
 using json = nlohmann::json;
 
-static std::string VERSION = "3.26.1";
+static std::string VERSION = "3.26.2";
 
 /// @brief The path to the configuration file. Defined in the CMakeLists file.
 std::filesystem::path g_dirPath = CONFIG_FILE_PATH;
@@ -107,7 +107,8 @@ static std::shared_ptr< std::vector<AnalysisReport> > g_currentReports;
 static float g_analysisFadeTimeSeconds = 1.0f;  ///< Time in seconds for analysis annotations to fade out.
 static float g_analysisChanceThreshold = 0.0f; ///< Minimum chance threshold for analysis annotations to be shown.
 
-static Time g_lastCLOCK_SYNC = { 0 };           ///< The last CLOCK_SYN message time received, used to adjust analysis displays
+static std::atomic<Time> g_lastCLOCK_SYNC = { 0 };  ///< The last CLOCK_SYN message time received, used to adjust analysis displays
+static_assert(std::is_trivially_copyable<Time>::value, "Time must be trivially copyable to use std::atomic<Time> portably");
 
 /// @brief Vector of Annotation objects to hold camera annotations if they are shown.
 static std::vector<CompositeCameras::Annotation> g_cameraAnnotations;
