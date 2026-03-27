@@ -56,7 +56,7 @@ using namespace asdp::render;
 using namespace asdp::analysis;
 using json = nlohmann::json;
 
-static std::string VERSION = "3.25.0";
+static std::string VERSION = "3.26.0";
 
 /// @brief The path to the configuration file. Defined in the CMakeLists file.
 std::filesystem::path g_dirPath = CONFIG_FILE_PATH;
@@ -1125,17 +1125,19 @@ void HandleAnalysisThread(std::vector< std::shared_ptr<JSONStringReceiver> > ana
   // Vector of vectors of analysis reports, one per receiver.
   std::vector< std::vector<AnalysisReport> > reportVectors(analysisReceivers.size());
 
+  std::string jsonString;
   while (g_runAnalysisThread) {
     std::vector<AnalysisReport> reports;
     for (size_t i = 0; i < analysisReceivers.size(); i++) {
       auto& receiver = analysisReceivers[i];
       auto& rv = reportVectors[i];
 
-      // Read all of the pending reports from this receiver.
-      std::string jsonString;
+      // Read a single pending report from this receiver.  Don't iterate here because we don't
+      // want to starve the other receivers.
       Status status = receiver->Receive(0.0f, jsonString);
-      while (status == OKAY) {
+      if (status == OKAY) {
         // Parse the JSON string into analysis reports.
+        std::cout << "XXX Got analysis report JSON: " << jsonString << std::endl;
         try {
           // Convert this to a report
           AnalysisReport report(jsonString);
@@ -1163,8 +1165,6 @@ void HandleAnalysisThread(std::vector< std::shared_ptr<JSONStringReceiver> > ana
         } catch (const std::exception& e) {
           std::cerr << "Error parsing analysis report JSON: " << e.what() << std::endl;
         }
-        // Get the next report if there is one.
-        status = receiver->Receive(0.0f, jsonString);
       }
 
       // Remove any reports that are too old.
