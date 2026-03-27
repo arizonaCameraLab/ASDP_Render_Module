@@ -56,7 +56,7 @@ using namespace asdp::render;
 using namespace asdp::analysis;
 using json = nlohmann::json;
 
-static std::string VERSION = "3.26.0";
+static std::string VERSION = "3.26.1";
 
 /// @brief The path to the configuration file. Defined in the CMakeLists file.
 std::filesystem::path g_dirPath = CONFIG_FILE_PATH;
@@ -1137,7 +1137,6 @@ void HandleAnalysisThread(std::vector< std::shared_ptr<JSONStringReceiver> > ana
       Status status = receiver->Receive(0.0f, jsonString);
       if (status == OKAY) {
         // Parse the JSON string into analysis reports.
-        std::cout << "XXX Got analysis report JSON: " << jsonString << std::endl;
         try {
           // Convert this to a report
           AnalysisReport report(jsonString);
