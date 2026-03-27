@@ -56,7 +56,7 @@ using namespace asdp::render;
 using namespace asdp::analysis;
 using json = nlohmann::json;
 
-static std::string VERSION = "3.26.2";
+static std::string VERSION = "3.26.3";
 
 /// @brief The path to the configuration file. Defined in the CMakeLists file.
 std::filesystem::path g_dirPath = CONFIG_FILE_PATH;
@@ -1133,10 +1133,10 @@ void HandleAnalysisThread(std::vector< std::shared_ptr<JSONStringReceiver> > ana
       auto& receiver = analysisReceivers[i];
       auto& rv = reportVectors[i];
 
-      // Read a single pending report from this receiver.  Don't iterate here because we don't
-      // want to starve the other receivers.
-      Status status = receiver->Receive(0.0f, jsonString);
-      if (status == OKAY) {
+      // Read up to 10 pending reports from this receiver to avoid starving other receivers
+      // while efficiently processing a backlog of reports from a single receiver.
+      size_t count = 0;
+      while ((receiver->Receive(0.0f, jsonString) == OKAY) && (++count < 10)) {
         // Parse the JSON string into analysis reports.
         try {
           // Convert this to a report
@@ -1191,7 +1191,7 @@ void HandleAnalysisThread(std::vector< std::shared_ptr<JSONStringReceiver> > ana
     std::atomic_store(&g_currentReports, combinedReports);
 
     // Sleep a bit to avoid eating the entire CPU.
-    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    std::this_thread::sleep_for(std::chrono::microseconds(1));
   }
 }
 
