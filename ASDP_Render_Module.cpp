@@ -56,7 +56,7 @@ using namespace asdp::render;
 using namespace asdp::analysis;
 using json = nlohmann::json;
 
-static std::string VERSION = "3.26.3";
+static std::string VERSION = "3.27.0";
 
 /// @brief The path to the configuration file. Defined in the CMakeLists file.
 std::filesystem::path g_dirPath = CONFIG_FILE_PATH;
@@ -100,9 +100,9 @@ static std::vector< std::array<uint32_t, 2> > g_cameraPairs = {
   {2, 3}, {5, 6}, {8, 9}, {11, 12}, {14, 15}, {17, 18}, {20, 21}      // Bottom row
 };
 
-/// @brief Atomic shared pointer to a vector of AnalysisReport objects to hold the current objects.
+/// @brief Atomic shared pointer to a map from name to the current and past history of active objects.
 /// Filled in by the Analysis API reading thread and used by the annotation callback.
-static std::shared_ptr< std::vector<AnalysisReport> > g_currentReports;
+static std::shared_ptr< std::map<std::string, AnalysisObjectOverTime> > g_currentAnalysis;
 
 static float g_analysisFadeTimeSeconds = 1.0f;  ///< Time in seconds for analysis annotations to fade out.
 static float g_analysisChanceThreshold = 0.0f; ///< Minimum chance threshold for analysis annotations to be shown.
@@ -1066,27 +1066,40 @@ std::shared_ptr<NUCInfo> ReadNUCInfoFromDirectory(const std::string& nucInfoDire
 }
 
 /// @brief Callback handler to process annotations requests from the CompositeCameras.
-std::vector<CompositeCameras::Annotation> AnnotationCallbackHandler(void *userData)
+std::vector<CompositeCameras::Annotation> AnnotationCallbackHandler(Time time, void * /* userData */)
 {
-  // Atomically make a copy of the current analysis annotations to add to the camera annotations.
-  std::shared_ptr< std::vector<AnalysisReport> > analysis = std::atomic_load(&g_currentReports);
+  // Atomically make a copy of the current analysis objects to use for generating annotations.
+  std::shared_ptr< std::map<std::string, AnalysisObjectOverTime> > analysis = std::atomic_load(&g_currentAnalysis);
 
-  // Fill in the annotations vector to return. Adjust their poses based on any velocity since analysis time.
+  // Fill in the annotations vector to return. For each named object, select the entry whose time is in the
+  // most-recent past (ignoring future reports). Adjust their poses based on any velocity since analysis time.
   // Adjust their opacity based on the fading factor times the time since analysis time.  Remove any whose
   // opacity is zero or less or whose Chance value is below threshold.
   std::vector<CompositeCameras::Annotation> annotations;
   if (analysis) {
-    Timer* timer = reinterpret_cast<Timer*>(userData);
-    Time now = g_lastCLOCK_SYNC;
 
     // Fill in an entry for each report.
-    for (const AnalysisReport& report : *analysis) {
+    for (const auto& [name, series] : *analysis) {
+      // Find the report (if any) in this series whose time is the most recent past time compared to the render time.
+      AnalysisReport const* report = nullptr;
+      for (auto& entry : series) {
+        if (entry.Timestamp <= time) {
+          report = &entry;
+        } else {
+          break;  // The series is in chronological order, so we can stop looking once we hit a future entry.
+        }
+      }
+      if (report == nullptr) {
+        // No past report for this object, skip it.
+        continue;
+      }
+
       CompositeCameras::Annotation annotation;
 
       // Determine the opacity based on time since analysis and fading factor.
       float dt = 0;
-      if (report.Timestamp < now) {
-        Time delta = now - report.Timestamp;
+      if (report->Timestamp < time) {
+        Time delta = time - report->Timestamp;
         dt = delta.seconds + delta.microseconds * 1e-6;
       }
       float opacity = 1.0f - dt / g_analysisFadeTimeSeconds;
@@ -1096,16 +1109,16 @@ std::vector<CompositeCameras::Annotation> AnnotationCallbackHandler(void *userDa
       }
 
       // Convert to an annotation and verify that the label is not empty.
-      annotation = report.ConvertToAnnotation(g_analysisChanceThreshold, opacity);
+      annotation = report->ConvertToAnnotation(g_analysisChanceThreshold, opacity);
       if (annotation.label.empty()) {
         // No label, skip it.
         continue;
       }
 
       // If there are both position and velocity, update the position based on time since analysis.
-      if (report.Loc && report.Vel) {
-        annotation.uv[0] += (*report.Vel)[0] * dt;
-        annotation.uv[1] += (*report.Vel)[1] * dt;
+      if (report->Loc && report->Vel) {
+        annotation.uv[0] += (*report->Vel)[0] * dt;
+        annotation.uv[1] += (*report->Vel)[1] * dt;
       }
 
       // Add the annotation to the list.
@@ -1123,15 +1136,15 @@ std::vector<CompositeCameras::Annotation> AnnotationCallbackHandler(void *userDa
 /// @brief Thread to handle analysis reports and keep the vector of current reports updated.
 void HandleAnalysisThread(std::vector< std::shared_ptr<JSONStringReceiver> > analysisReceivers, std::shared_ptr<Timer> timer)
 {
-  // Vector of vectors of analysis reports, one per receiver.
-  std::vector< std::vector<AnalysisReport> > reportVectors(analysisReceivers.size());
+  // Vector of maps of analysis objects over time, one per receiver.
+  std::vector< std::map<std::string, AnalysisObjectOverTime> > reportMaps(analysisReceivers.size());
 
   std::string jsonString;
   while (g_runAnalysisThread) {
     std::vector<AnalysisReport> reports;
     for (size_t i = 0; i < analysisReceivers.size(); i++) {
       auto& receiver = analysisReceivers[i];
-      auto& rv = reportVectors[i];
+      auto& rm = reportMaps[i];
 
       // Read up to 10 pending reports from this receiver to avoid starving other receivers
       // while efficiently processing a backlog of reports from a single receiver.
@@ -1156,39 +1169,50 @@ void HandleAnalysisThread(std::vector< std::shared_ptr<JSONStringReceiver> > ana
             }
           }
 
-          // Remove any existing report with the same name (erase-remove idiom).
-          rv.erase(std::remove_if(rv.begin(), rv.end(),
-            [&report](const AnalysisReport& r) { return r.Name == report.Name; }), rv.end());
+          // Add this report to the appropriate map at the back (latest in time) location.
+          rm[report.Name].push_back(report);
 
-          // Push this report onto the vector.
-          rv.push_back(report);
         } catch (const std::exception& e) {
           std::cerr << "Error parsing analysis report JSON: " << e.what() << std::endl;
         }
       }
 
-      // Remove any reports that are too old.
+      // Remove any reports that are too old and then remove any map entries that are empty.
       Time now = g_lastCLOCK_SYNC;
-      rv.erase(std::remove_if(rv.begin(), rv.end(),
-        [now](const AnalysisReport& r) {
-          Time delta;
-          if (now >= r.Timestamp) {
-            delta = now - r.Timestamp;
-            float dt = delta.seconds + delta.microseconds * 1e-6f;
-            return dt > g_analysisFadeTimeSeconds;
-          } else {
-            return false;
-          }
-        }), rv.end());
+      for (auto it = rm.begin(); it != rm.end();) {
+        auto& series = it->second;
+        // Remove old reports from the back of the series.
+        while (!series.empty() && series.back().Timestamp + Time(g_analysisFadeTimeSeconds, 0) < now) {
+          series.pop_back();
+        }
+        if (series.empty()) {
+          // No more reports for this object, remove the entry from the map.
+          it = rm.erase(it);
+        } else {
+          ++it;
+        }
+      }
     }
 
     // Update the current reports atomically.
     // Make a shared pointer to a new vector that combines all of the report vectors into one.
-    std::shared_ptr< std::vector<AnalysisReport> > combinedReports = std::make_shared< std::vector<AnalysisReport> >();
-    for (const auto& rv : reportVectors) {
-      combinedReports->insert(combinedReports->end(), rv.begin(), rv.end());
+    std::shared_ptr< std::map<std::string, AnalysisObjectOverTime> > combinedReports =
+      std::make_shared< std::map<std::string, AnalysisObjectOverTime> >();
+    for (const auto& rm : reportMaps) {
+      for (const auto& kv : rm) {
+        // Insert them in time-sequential order. The existing list for each entry will be in increasing-time order.
+        auto lastInsert = (*combinedReports)[kv.first].begin();
+        for (const auto& report : kv.second) {
+          // Find the first entry in the existing list whose time is greater than this report's time.
+          while (lastInsert != (*combinedReports)[kv.first].end() && lastInsert->Timestamp <= report.Timestamp) {
+            ++lastInsert;
+          }
+          // Insert this report before that entry to maintain increasing-time order.
+          (*combinedReports)[kv.first].insert(lastInsert, report);
+        }
+      }
     }
-    std::atomic_store(&g_currentReports, combinedReports);
+    std::atomic_store(&g_currentAnalysis, combinedReports);
 
     // Sleep a bit to avoid eating the entire CPU.
     std::this_thread::sleep_for(std::chrono::microseconds(1));
@@ -2021,7 +2045,7 @@ int main(int argc, char** argv)
         g_visibleCameras, toneMapTexture, poseAdjuster, Time(1/cameraFPS),
         renderOffsetMicroseconds,
         Time(0, 1000000 / displayInfos[i].fps), (i == 0) ? (&g_timingInfo) : nullptr,
-        rangeEstimator, staticDepth, AnnotationCallbackHandler, timer.get());
+        rangeEstimator, staticDepth, AnnotationCallbackHandler, nullptr);
 
       //======================================
       // Added by Sang Yoon to just pass the status of enabling the cylindrical projection (true or false) from DisplayInfos[i] to composite.

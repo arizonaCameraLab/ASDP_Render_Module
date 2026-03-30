@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2025: Arizona Board of Regents on Behalf of the University of Arizona
+ * Copyright (C) 2025-2026: Arizona Board of Regents on Behalf of the University of Arizona
  */
 
  /**
@@ -17,6 +17,7 @@
 #include <array>
 #include <string>
 #include <cstdint>
+#include <list>
 #include <ASDP_Core_API.h>
 #include <Composite.h>
 
@@ -63,6 +64,10 @@ namespace asdp {
       };
       std::vector<Classification> Class;
     };
+
+    /// Keeps track of a particular named object over time, including its most recent report and a history of past reports.
+    /// The oldest is at the front and the most recent at the back.
+    typedef std::list<AnalysisReport> AnalysisObjectOverTime;
 
   } // namespace analysis
 } // namespace asdp

@@ -1397,6 +1397,7 @@ void CompositeCameras::RenderView(asdp::Time scanOutTime, const float* viewProje
   }
 
   // Draw each camera, using the appropriate texture.
+  Time maxImageCenterTime = {0};
   for (size_t c = 0; c < m_cameraRenderInfos.size(); c++) {
 
     uint16_t cameraID = m_cameraRenderInfos[c]->m_ID;
@@ -1424,7 +1425,12 @@ void CompositeCameras::RenderView(asdp::Time scanOutTime, const float* viewProje
     Time renderOffsetTime(m_renderOffsetMicroseconds / 1000000, m_renderOffsetMicroseconds % 1000000);
     if (scanOutTime > renderOffsetTime) {
       Time imageTime;
-      if (m_images[c] != nullptr) { imageTime = m_images[c]->imageCenterTime; }
+      if (m_images[c] != nullptr) {
+        imageTime = m_images[c]->imageCenterTime;
+        if (imageTime > maxImageCenterTime) {
+          maxImageCenterTime = imageTime;
+        }
+      }
       shiftPoints = m_poseAdjuster->GetTransform(scanOutTime - renderOffsetTime, imageTime);
     }
     const double* data = glm::value_ptr(shiftPoints);
@@ -1517,7 +1523,10 @@ void CompositeCameras::RenderView(asdp::Time scanOutTime, const float* viewProje
     float topHalfVOVRad = glm::radians(vri.topHalfFOV);
     float bottomHalfVOVRad = glm::radians(vri.bottomHalfFOV);
 
-    std::vector<Annotation> annotations = m_annotationCallback(m_annotationUserData);
+    // Get the annotations based on the latest center time of the images we returned.  This will
+    // tie them to the latest image time, which is consistent with the images we rendered.  We pick
+    // the largest because we want don't want to miss a report.
+    std::vector<Annotation> annotations = m_annotationCallback(maxImageCenterTime, m_annotationUserData);
     for (const auto& annotation : annotations) {
       // Render each annotation at position of the center of its camera.  First look up the
       // camera render info with the corresponding ID and then get its position.

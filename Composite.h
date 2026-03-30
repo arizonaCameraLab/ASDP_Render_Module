@@ -240,7 +240,12 @@ namespace asdp {
       } Annotation;
 
       /// @brief Description of callback handler function that returns a vector of Annotation objects.
-      typedef std::function< std::vector<Annotation>(void* userData) > AnnotationCallbackFunction;
+      /// @param time The time for which to retrieve annotations, in ASDP Core time.  This is the time of
+      ///        the frames being rendered, which will be slightly in the past.  The annotations are in
+      ///        image location and our prediction handles adjusting this into the future for the annotations
+      ///        the same way it does for the images, so they should continue to line up.
+      /// @param userData User data passed back to the callback function.
+      typedef std::function< std::vector<Annotation>(Time time, void* userData) > AnnotationCallbackFunction;
 
       /// @brief Constructor
       /// @param cameraRenderInfo The configuration of the cameras needed to generate textured geometry.
