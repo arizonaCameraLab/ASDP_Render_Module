@@ -453,11 +453,12 @@ The workflow is as follows:
               capture the frames for each target, providing it the IP address of the NIC to talk with
               the camera on, the camera serial number, and target_N_poses.csv file name and a
               subdirectory of the configuration directory named **target_lateral_N_images** (where N is
-              the target number).
+              the target number). For the safest capture, turn only target N on for the Nth run.
+              Turn off or cover any other spurious sources that might capture the target estimation.
                 - For visible-light cameras, add `--shift 6` to the command line
                   to left-justify its bits in the 16-bit value, making it easier to view the images
                   for debugging.
-                - For infrared cameras, use the `--autoRange 1.5 1.5` option to automatically
+                - For infrared cameras, use the `--autoRange` option to automatically
                   stretch the contrast for each image to the full range of pixel values and use the
                   `--removeSpikes 200` to remove single stuck pixels whose values are more than 200
                   counts away from all of their neighbors.
@@ -474,8 +475,7 @@ The workflow is as follows:
       or another light in the environment.** Find the pixel location of the center using an image display
       program and ensure that its location matches the optimized target location (it is important to check
       an image from each camera to ensure that the threshold is reliably skipping other locations because
-      if this gets off then the entire calibration procedure will fail). Turn off or cover any
-      other spurious sources that are capturing the target estimation.  **Note:** It may be necessary to
+      if this gets off then the entire calibration procedure will fail).  **Note:** It may be necessary to
       loop back to the *Target_Calibration_Make_Scan* step, using the optimized file as the new input file,
       to produce a better estimate of the target lateral positions using new scan data.
 - **Estimate camera parameters and distortion:**

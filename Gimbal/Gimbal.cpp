@@ -661,7 +661,7 @@ Gimbal_iOptron::Gimbal_iOptron(std::string comPortName, std::string mountInfoRes
     throw std::runtime_error("Unable to send SlewRate command");
   }
 
-  // Set the altitude limit to as low a possible.
+  // Set the altitude limit to as low as possible.
   if (!m_impl->sendCommandCheckReponseAndFail(":SAL-89#", "1")) {
     throw std::runtime_error("Unable to send altitude limit command");
   }
@@ -780,7 +780,7 @@ void Gimbal_iOptron::MoveAbsolute(double yawDegrees, double pitchDegrees)
 
   // Set the declination to be slewed to.  This value is in units of 0.01 arc-seconds, so we
   // convert from degrees to arc-seconds and then multiply by 100.  We then put this into
-  // an 8-character (padded with 0 to the left) string.
+  // an 8-character (sign then digits padded with 0 to the left to 7) string.
   int yawArcSeconds = static_cast<size_t>(yawDegrees * 3600.0);
   int yawTicks = yawArcSeconds * 100;
   std::string yawString = std::to_string(std::abs(yawTicks));
@@ -798,7 +798,7 @@ void Gimbal_iOptron::MoveAbsolute(double yawDegrees, double pitchDegrees)
 
   // Set the right ascension to be slewed to.  This value is in units of 0.01 arc-seconds, so we
   // convert from degrees to arc-seconds and then multiply by 100.  We then put this into
-  // an 8-character (padded with 0 to the left) string.
+  // an 9-character (padded with 0 to the left) string.
   // The range is 0-360, so negative values have 360 added to them
   if (pitchDegrees < 0) {
     pitchDegrees += 360;
