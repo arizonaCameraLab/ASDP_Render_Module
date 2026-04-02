@@ -387,6 +387,9 @@ described in Appendix A.
       not recognize the target due to camera distortion and if it is made too large, then it will
       recognize the incorrect target when the actual target moves out of the image due to
       incorrect initial position estimates.
+    - **Note:** When there are two targets, the further target should be listed first in the configuration
+      file. It will be used for camera orientation estimation, both targets will have their lateral positions
+      optimized.
 
 The workflow is as follows:
 - **Prepare configuration files:**
@@ -420,7 +423,7 @@ The workflow is as follows:
       to be zero (the offset is added to each camera's position before calibration and subtracted afterwards).
     - Copy the calibration files to a new calibration directory on the data drive that will hold our calibration
       artifacts.
-- **Estimate target lateral location:** (only used for single-target calibration)
+- **Estimate target lateral location:**
     - Run **Target_Calibration_Make_Scan** and give it the camera, target, and gimbal
       configuration files.  This will produce a CSV file for each target with the gimbal poses and
       the number of frames for each FrameIndex value.  This will write **target_1_poses.csv** (and
@@ -446,17 +449,18 @@ The workflow is as follows:
               a run, causing the program to fail. Unplugging the USB cable, power-cycling the mount,
               and then plugging the USB cable into a different port has helped. Only the four ports
               on the top back of the server are available under Linux.
-            - **Note:** For visible-light cameras, add `--shift 16` to the command line
-              to left-justify its bits in the 16-bit value, making it easier to view the images
-              for debugging. For infrared cameras, use the `--autoRange` option to automatically
-              stretch the contrast for each image to the full range of pixel values and use the
-              `--removeSpikes 200` to remove single stuck pixels whose values are more than 200
-              counts away from all of their neighbors.
             - Run the **Collect_Calibration_Data** program from the **ASDP_Render_Module** repository to
               capture the frames for each target, providing it the IP address of the NIC to talk with
               the camera on, the camera serial number, and target_N_poses.csv file name and a
               subdirectory of the configuration directory named **target_lateral_N_images** (where N is
               the target number).
+                - For visible-light cameras, add `--shift 6` to the command line
+                  to left-justify its bits in the 16-bit value, making it easier to view the images
+                  for debugging.
+                - For infrared cameras, use the `--autoRange 1.5 1.5` option to automatically
+                  stretch the contrast for each image to the full range of pixel values and use the
+                  `--removeSpikes 200` to remove single stuck pixels whose values are more than 200
+                  counts away from all of their neighbors.
     - Run the **Target_Calibration_Estimate_Lateral** program and give it the camera, target and
       gimbal configuration files, the threshold value for the target center, and the root directory
       where the simulation or measurement data was stored (where the target_lateral_N_images directories
@@ -476,9 +480,7 @@ The workflow is as follows:
       to produce a better estimate of the target lateral positions using new scan data.
 - **Estimate camera parameters and distortion:**
     - Run the **Camera_Calibration_Make_Scan** program. It will produce a **poses.csv** file for all cameras.
-      - For single-target calibration, give it **cameras_opt.json**, **targets_lateral_opt.json**, and
-        the gimbal configuration files.
-      - For multi-target calibration, give it **cameras.json**, **targets.json**, and the gimbal configuration files.
+      Give it **cameras_opt.json**, **targets_lateral_opt.json**, and the gimbal configuration files.
     - Copy the poses.csv file into the calibration directory.
     - Capture or simulate the frames for the cameras and save them, using the same approach described above
       for the target calibration but reading from poses.csv rather than target_N_poses.csv and saving the
@@ -486,26 +488,26 @@ The workflow is as follows:
       that the power and data cables can reach all orientations of the ball as it scans without binding.* For the
       safest capture, specify the `--target <id>` command-line option and then only turn on the first
       target for the first run (`--target 1`), then turn only the other on and re-run with `--target 2`.
-    - Run the **Camera_Calibration_Estimate_Distortion_Extrinsics** program and give it **cameras_opt.json**
-      (**camera.json** for multi-target calibration), **targets_lateral_opt.json** (**targets.json** for
-      multi-target calibration) and gimbal configuration files, the poses file, the root directory
+    - Run the **Camera_Calibration_Estimate_Distortion_Extrinsics** program and give it **cameras_opt.json**,
+      **targets_lateral_opt.json** and gimbal configuration files, the poses file, the root directory
       where the simulation or measurement data was stored (camera_images directory), the threshold in
       pixel counts above which the target brightness will be found, and an output
       file name. (If using a cool IR target, use the `--invert` command-line
       option to invert the images before testing and use a threshold that is 65535 - threshold.)
-      This will produce a JSON configuraion file with the estimated extrinsics and
-      distortion parameters updated based on the image data. When using automatic edge brightness
-      adjustment, add the `--writeMap` command-line option to write out the map from ideal to distorted
-      locations in each camera for later examination.  This file can be copied into the Render Module's
-      *ASDP_Render_Module_Configs* directory named as `#.map.csv` (where # is the camera serial number) for
-      use during rendering.
+      Then give it the name of an optimized output JSON configuration file with the estimated extrinsics and
+      distortion parameters updated based on the image data (perhaps `cameras_final.json`). When using automatic
+      edge brightness adjustment, add the `--writeMap` command-line option to write out the map from ideal
+      to distorted locations in each camera for later examination.  This file can be copied into the
+      Render Module's *ASDP_Render_Module_Configs* directory named as `#.map.csv` (where # is the camera
+      serial number) for use during rendering.
         - When run with a single target, this will not estimate the camera extrinsic or instrinsic
           parameters, only the distortion parameters. These will be used to construct a bag-of-mappings
           distortion model that will be accurate near the target depth.
-        - When run with multiple targets at different depths, this will also estimate the camera extrinsic
-          and intrinsic parameters, which will be accurate over a range of depths. If the `--target <id>`
-          command-line option was used during data collection, also add `--offsetThresholdPixels 200000` when
-          running the estimation so that it does not ignore any target matches.
+        - When run with multiple targets (which must be at different depths), this will also estimate the
+          camera extrinsic and intrinsic parameters, which will be accurate over a range of depths.
+          If the `--target <id>` command-line option was used during data collection, also add
+          `--offsetThresholdPixels 200000` when running the estimation so that it does not ignore
+          any target matches due to initial parameter errors.
 - **Use distortion:**
     - Copy the optimized camera configuration file to the Render Module's configuration directory
       as #.json (where # is the camera serial number).

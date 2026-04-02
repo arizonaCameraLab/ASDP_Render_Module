@@ -183,8 +183,8 @@ int main(int argc, char** argv)
       // The specified transforms are applied in the order rotation around Z followed by
       // rotation around X.
 
-      // For each camera that was the closest in part of one of the sweeps, take an image using that
-      // camera with the gimbal rotated to point its center at the target.
+      // For each camera, take an image using that camera with the gimbal rotated to point its center at the target.
+
       int frameIndex = 0;
       for (auto const &cri : cameraRenderInfos) {
 
