@@ -753,27 +753,56 @@ void Gimbal_iOptron::MoveAbsolute(double yawDegrees, double pitchDegrees)
     throw std::runtime_error("No connection");
   }
 
+  double yawAdjusted = yawDegrees;
+  double pitchAdjusted = pitchDegrees;
+
   // Ensure that we don't try to hit the rails.
-  if (yawDegrees > 175) {
-    throw std::runtime_error("Yaw too large; limit is 175, value is " + std::to_string(yawDegrees));
+  if (yawAdjusted > 175) {
+    throw std::runtime_error("Yaw too large; limit is 175, value is " + std::to_string(yawAdjusted));
   }
-  if (yawDegrees < -175) {
-    throw std::runtime_error("Yaw too small; limit is -175, value is " + std::to_string(yawDegrees));
+  if (yawAdjusted < -175) {
+    throw std::runtime_error("Yaw too small; limit is -175, value is " + std::to_string(yawAdjusted));
   }
 
   // When we're in the Northern hemisphere, the home yaw is +90 degrees and negative moves
   // to the right.  When in the Southern, the home is -90 degrees and negative moves to the left.
   // Determine which hemisphere we want to be in by checking the sign of the yaw.
   std::string hemisphere;
-  if (yawDegrees >= 0) {
+  if (yawAdjusted >= 0) {
     hemisphere = "0"; // Southern
-    yawDegrees = -90 + yawDegrees;
+    yawAdjusted = -90 + yawAdjusted;
     // Pitch is backwards in this hemisphere, so we invert it here.
-    pitchDegrees = -pitchDegrees;
-  } else {
-    hemisphere = "1"; // Northern
-    yawDegrees = 90 + yawDegrees;
+    pitchAdjusted = -pitchAdjusted;
   }
+  else {
+    hemisphere = "1"; // Northern
+    yawAdjusted = 90 + yawAdjusted;
+  }
+
+  // The pitch range is 0-360, so negative values have 360 added to them
+  if (pitchAdjusted < 0) {
+    pitchAdjusted += 360;
+  }
+
+  // If our adjusted yaw (declination) and the previous are both at or above 80 degrees in magnitude, first
+  // command a move to the same sign but at 70 degrees magnitude to avoid instability in the
+  // iOptron mount's shortest-path algorithm that can make it take the long way around,
+  // crashing the ball into the tripod.
+  if (fabs(yawAdjusted) >= 80 && fabs(m_lastYawDegrees) >= 80) {
+    double clampedYaw = yawAdjusted * (70 / fabs(yawAdjusted));
+    MoveAbsoluteRaw(clampedYaw, pitchAdjusted, hemisphere);
+  }
+
+  // Perform the move to the final state.
+  MoveAbsoluteRaw(yawAdjusted, pitchAdjusted, hemisphere);
+
+  // Remember our last commanded move.
+  m_lastYawDegrees = yawAdjusted;
+  m_lastPitchDegrees = pitchAdjusted;
+}
+
+void Gimbal_iOptron::MoveAbsoluteRaw(double yawAdjusted, double pitchAdjusted, std::string hemisphere)
+{
   if (!m_impl->sendCommandCheckReponseAndFail(":SHE"+hemisphere+"#", "1")) {
     throw std::runtime_error("Unable to send hemisphere command");
   }
@@ -781,14 +810,14 @@ void Gimbal_iOptron::MoveAbsolute(double yawDegrees, double pitchDegrees)
   // Set the declination to be slewed to.  This value is in units of 0.01 arc-seconds, so we
   // convert from degrees to arc-seconds and then multiply by 100.  We then put this into
   // an 8-character (sign then digits padded with 0 to the left to 8 digits long) string.
-  int yawArcSeconds = static_cast<size_t>(yawDegrees * 3600.0);
+  int yawArcSeconds = static_cast<size_t>(yawAdjusted * 3600.0);
   int yawTicks = yawArcSeconds * 100;
   std::string yawString = std::to_string(std::abs(yawTicks));
   while (yawString.length() < 8) {
     yawString = "0" + yawString;
   }
   std::string sign = "+";
-  if (yawDegrees < 0) {
+  if (yawAdjusted < 0) {
     sign = "-";
   }
   std::string cmd = ":Sd" + sign + yawString + "#";
@@ -799,11 +828,7 @@ void Gimbal_iOptron::MoveAbsolute(double yawDegrees, double pitchDegrees)
   // Set the right ascension to be slewed to.  This value is in units of 0.01 arc-seconds, so we
   // convert from degrees to arc-seconds and then multiply by 100.  We then put this into
   // an 9-character (padded with 0 to the left) string.
-  // The range is 0-360, so negative values have 360 added to them
-  if (pitchDegrees < 0) {
-    pitchDegrees += 360;
-  }
-  int pitchArcSeconds = static_cast<size_t>((pitchDegrees) * 3600.0);
+  int pitchArcSeconds = static_cast<size_t>((pitchAdjusted) * 3600.0);
   int pitchTicks = pitchArcSeconds * 100;
   std::string pitchString = std::to_string(std::abs(pitchTicks));
   while (pitchString.length() < 9) {
@@ -820,7 +845,7 @@ void Gimbal_iOptron::MoveAbsolute(double yawDegrees, double pitchDegrees)
     throw std::runtime_error("Unable to reset time: " + ret);
   }
 
-  // Slew to the requested location, in the "counterweight up" configuration.
+  // Slew to the requested location, in the normal (counterweight down) configuration.
   if (!m_impl->sendCommandCheckReponseAndFail(":MS1#", "1")) {
     throw std::runtime_error("Unable to send slew command");
   }

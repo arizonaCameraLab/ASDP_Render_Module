@@ -98,6 +98,12 @@ protected:
 
   class Gimbal_iOptron_Impl;
   std::shared_ptr<Gimbal_iOptron_Impl> m_impl;
+
+  /// Move to a specified absolute orientation at the speeds defined at construction, without
+  /// checking the last commanded position to avoid long moves.  This is used internally.
+  void MoveAbsoluteRaw(double yawAdjusted, double pitchAdjusted, std::string hemisphere);
+  double m_lastYawDegrees = 0;   ///< The last commanded yaw angle in degrees, used to avoid long moves.
+  double m_lastPitchDegrees = 0; ///< The last commanded pitch angle in degrees, used to avoid long moves.
 };
 
 class Gimbal_iOptron_CEM40 : public Gimbal_iOptron
