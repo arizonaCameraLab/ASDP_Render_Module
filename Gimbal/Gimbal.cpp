@@ -780,11 +780,11 @@ void Gimbal_iOptron::MoveAbsolute(double yawDegrees, double pitchDegrees)
 
   // Set the declination to be slewed to.  This value is in units of 0.01 arc-seconds, so we
   // convert from degrees to arc-seconds and then multiply by 100.  We then put this into
-  // an 8-character (sign then digits padded with 0 to the left to 7) string.
+  // an 8-character (sign then digits padded with 0 to the left to 8 digits long) string.
   int yawArcSeconds = static_cast<size_t>(yawDegrees * 3600.0);
   int yawTicks = yawArcSeconds * 100;
   std::string yawString = std::to_string(std::abs(yawTicks));
-  while (yawString.length() < 7) {
+  while (yawString.length() < 8) {
     yawString = "0" + yawString;
   }
   std::string sign = "+";
