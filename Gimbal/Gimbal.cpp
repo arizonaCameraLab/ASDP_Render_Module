@@ -672,7 +672,7 @@ Gimbal_iOptron::Gimbal_iOptron(std::string comPortName, std::string mountInfoRes
   }
 
   // Send a command to set the meridian treatment; flip at 15 degrees past.
-  if (!m_impl->sendCommandCheckReponseAndFail(":SM115#", "1")) {
+  if (!m_impl->sendCommandCheckReponseAndFail(":SMT115#", "1")) {
     throw std::runtime_error("Unable to send meridian-treatment command");
   }
 
