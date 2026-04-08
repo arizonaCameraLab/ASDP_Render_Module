@@ -598,10 +598,25 @@ std::string Gimbal_iOptron::Gimbal_iOptron_Impl::waitForSlewStop(std::chrono::mi
       // while it is homing or slewing; ignore this.
       continue;
     }
+
+    // See if slewing has stopped.  The 19th character is '2' if slewing is in progress, and '0' if it is not.
     if (resp[18] != '2') {
       // The gimbal is no longer slewing, so we can return.
       return "";
     }
+
+    // Get the right ascension and declination. Make sure that we're not tipping over 90 degrees up
+    // or down to avoid crashing the ball into the tripod.
+    if (!sendCommand(":GEP#")) {
+      return "Could not send position request";
+    }
+
+    example = "sTTTTTTTTTTTTTTTTTTT#";
+    tv = { 0, 100000 };
+    resp = getResponse(&tv, example.size());
+    std::cout << "XXX Current position: " << resp << std::endl;
+
+    /// @todo
   }
   return "Timed out waiting for gimbal to stop slewing.";
 }
@@ -672,6 +687,8 @@ Gimbal_iOptron::Gimbal_iOptron(std::string comPortName, std::string mountInfoRes
   }
 
   // Send a command to set the meridian treatment; flip at 15 degrees past.
+  // This avoids a situation where the mount tries to take the long way around
+  // when crossing the meridian, which can cause it to crash into the tripod.
   if (!m_impl->sendCommandCheckReponseAndFail(":SMT115#", "1")) {
     throw std::runtime_error("Unable to send meridian-treatment command");
   }
