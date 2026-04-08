@@ -636,8 +636,8 @@ std::string Gimbal_iOptron::Gimbal_iOptron_Impl::waitForSlewStop(double maxRADeg
             return "Could not send stop command after bypassing limits -- expect crash!";
           }
         }
+        return "Gimbal is slewing to an unsafe position: " + std::to_string(RAdeg) + " degrees, stopped it from moving further.";
       }
-      return "Gimbal is slewing to an unsafe position: " + std::to_string(RAdeg) + " degrees, stopped it from moving further.";
     }
   }
   return "Timed out waiting for gimbal to stop slewing.";
