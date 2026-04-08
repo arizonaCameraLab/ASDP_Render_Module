@@ -671,6 +671,11 @@ Gimbal_iOptron::Gimbal_iOptron(std::string comPortName, std::string mountInfoRes
     throw std::runtime_error("Unable to send request azimuth limit command");
   }
 
+  // Send a command to set the meridian treatment; flip at 15 degrees past.
+  if (!m_impl->sendCommandCheckReponseAndFail(":SM115#", "1")) {
+    throw std::runtime_error("Unable to send meridian-treatment command");
+  }
+
   // Disable tracking.
   if (!m_impl->sendCommandCheckReponseAndFail(":ST0#", "1")) {
     throw std::runtime_error("Unable to send stop-tracking command");
