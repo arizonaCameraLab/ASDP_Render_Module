@@ -605,16 +605,16 @@ std::string Gimbal_iOptron::Gimbal_iOptron_Impl::waitForSlewStop(std::chrono::mi
       return "";
     }
 
-    // Get the right ascension and declination. Make sure that we're not tipping over 90 degrees up
+    // Get the alitude and azimuth. Make sure that we're not tipping over 90 degrees up
     // or down to avoid crashing the ball into the tripod.
-    if (!sendCommand(":GEP#")) {
+    if (!sendCommand(":GAC#")) {
       return "Could not send position request";
     }
 
-    example = "sTTTTTTTTTTTTTTTTTTT#";
+    example = "sTTTTTTTTTTTTTTTTT#";
     tv = { 0, 100000 };
     resp = getResponse(&tv, example.size());
-    std::cout << "XXX Current position: " << resp << ", declination: " << resp.substr(0, 9) << ", right ascension: " << resp.substr(9, 9) << std::endl;
+    std::cout << "XXX Current position: " << resp << ", altitude: " << resp.substr(0, 9) << ", azimuth: " << resp.substr(9, 9) << std::endl;
 
     /// @todo
   }
