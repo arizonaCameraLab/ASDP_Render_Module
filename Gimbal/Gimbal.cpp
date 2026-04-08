@@ -509,7 +509,8 @@ public:
 
   /// @brief Wait until the gimbal stops slewing.
   /// @param maxTiltDegrees The maximum tilt in degrees to allow before stopping the gimbal to avoid crashing.
-  /// Normal range should be around 88 degrees, but the home command can allow unlimited.
+  /// Normal range should be around 88 degrees, but the home command can allow unlimited.  This must be
+  /// less than 90 degrees for actual motion cases because the tests will otherwise overlap and it will never stop.
   /// @param timeout The maximum amount of time to wait for a response.
   /// @return Empty string on succes, error message on failure.
   std::string waitForSlewStop(double maxTiltDegrees, std::chrono::milliseconds timeout = std::chrono::milliseconds(60000));
@@ -627,9 +628,13 @@ std::string Gimbal_iOptron::Gimbal_iOptron_Impl::waitForSlewStop(double maxRADeg
     int RA = std::stoi(resp.substr(9, 9));
     double RAdeg = RA / (3600.0 * 100);
     if (RAdeg > maxRADegrees && RAdeg < 360 - maxRADegrees) {
-      if (!sendCommandCheckReponseAndFail(":Q#", "1")) {
+      // If we're within the specified range of 180 degrees, then that is okay for some situations.
+      /// @todo Determine under what conditions this is acceptable so we avoid false positives and false negatives.
+      if (RAdeg < 180 - maxRADegrees || RAdeg > 180 + maxRADegrees) {
         if (!sendCommandCheckReponseAndFail(":Q#", "1")) {
-          return "Could not send stop command after bypassing limits -- expect crash!";
+          if (!sendCommandCheckReponseAndFail(":Q#", "1")) {
+            return "Could not send stop command after bypassing limits -- expect crash!";
+          }
         }
       }
       return "Gimbal is slewing to an unsafe position: " + std::to_string(RAdeg) + " degrees, stopped it from moving further.";
