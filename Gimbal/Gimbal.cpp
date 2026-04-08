@@ -508,9 +508,12 @@ public:
   bool sendCommandCheckReponseAndFail(std::string cmd, std::string response);
 
   /// @brief Wait until the gimbal stops slewing.
+  /// @param maxTiltDegrees The maximum tilt in degrees to allow before stopping the gimbal to avoid crashing.
+  /// Normal range should be around 88 degrees, but the home command can allow unlimited.  This must be
+  /// less than 90 degrees for actual motion cases because the tests will otherwise overlap and it will never stop.
   /// @param timeout The maximum amount of time to wait for a response.
   /// @return Empty string on succes, error message on failure.
-  std::string waitForSlewStop(std::chrono::milliseconds timeout = std::chrono::milliseconds(60000));
+  std::string waitForSlewStop(double maxTiltDegrees, std::chrono::milliseconds timeout = std::chrono::milliseconds(60000));
 
   /// @brief Reset the time on the gimbal to one that has the Earth aligned with Celestial coordinates.
   /// @details This selects a time when RA is 0, which is not the beginning of the epoch (because the
@@ -572,7 +575,7 @@ bool Gimbal_iOptron::Gimbal_iOptron_Impl::sendCommandCheckReponseAndFail(
   return true;
 }
 
-std::string Gimbal_iOptron::Gimbal_iOptron_Impl::waitForSlewStop(std::chrono::milliseconds timeout)
+std::string Gimbal_iOptron::Gimbal_iOptron_Impl::waitForSlewStop(double maxRADegrees, std::chrono::milliseconds timeout)
 {
   if (commPort == -1) {
     return "commPort not initialized";
@@ -598,9 +601,42 @@ std::string Gimbal_iOptron::Gimbal_iOptron_Impl::waitForSlewStop(std::chrono::mi
       // while it is homing or slewing; ignore this.
       continue;
     }
+
+    // See if slewing has stopped.  The 19th character is '2' if slewing is in progress, and '0' if it is not.
     if (resp[18] != '2') {
       // The gimbal is no longer slewing, so we can return.
       return "";
+    }
+
+    // Get the right ascension and declination. Make sure that we're not tipping over 88 degrees up
+    // or down to avoid crashing the ball into the tripod.
+    if (!sendCommand(":GEP#")) {
+      return "Could not send position request";
+    }
+
+    example = "sTTTTTTTTTTTTTTTTTTT#";
+    tv = { 0, 100000 };
+    resp = getResponse(&tv, example.size());
+    if (resp.size() != example.size()) {
+      // The unit sometimes sends a response that is shorter than expected or no response
+      // while it is homing or slewing; ignore this.
+      continue;
+    }
+
+    // The valid range in degrees is from 0 to 88 and then from 360 down to 360-88 = 272.
+    int RA = std::stoi(resp.substr(9, 9));
+    double RAdeg = RA / (3600.0 * 100);
+    if ((RAdeg > maxRADegrees) && (RAdeg < 360 - maxRADegrees)) {
+      // If we're within the specified range of 180 degrees, then that is okay for some situations.
+      /// @todo Determine under what conditions this is acceptable so we avoid false positives and false negatives.
+      if ((RAdeg < 180 - maxRADegrees) || (RAdeg > 180 + maxRADegrees)) {
+        if (!sendCommandCheckReponseAndFail(":Q#", "1")) {
+          if (!sendCommandCheckReponseAndFail(":Q#", "1")) {
+            return "Could not send stop command after bypassing limits -- expect crash!";
+          }
+        }
+        return "Gimbal is slewing to an unsafe position: " + std::to_string(RAdeg) + " degrees, stopped it from moving further.";
+      }
     }
   }
   return "Timed out waiting for gimbal to stop slewing.";
@@ -669,6 +705,13 @@ Gimbal_iOptron::Gimbal_iOptron(std::string comPortName, std::string mountInfoRes
   // Send a command to get the azimuth limit to be sure it worked.
   if (!m_impl->sendCommandCheckReponseAndFail(":GAL#", "-89#")) {
     throw std::runtime_error("Unable to send request azimuth limit command");
+  }
+
+  // Send a command to set the meridian treatment; flip at 15 degrees past.
+  // This avoids a situation where the mount tries to take the long way around
+  // when crossing the meridian, which can cause it to crash into the tripod.
+  if (!m_impl->sendCommandCheckReponseAndFail(":SMT115#", "1")) {
+    throw std::runtime_error("Unable to send meridian-treatment command");
   }
 
   // Disable tracking.
@@ -741,7 +784,7 @@ void Gimbal_iOptron::Home()
   }
 
   // Wait for the gimbal to finish moving.
-  ret = m_impl->waitForSlewStop(std::chrono::milliseconds(60000));
+  ret = m_impl->waitForSlewStop(1000, std::chrono::milliseconds(60000));
   if (ret != "") {
     throw std::runtime_error("Timed out waiting for gimbal to finish moving: " + ret);
   }
@@ -753,42 +796,71 @@ void Gimbal_iOptron::MoveAbsolute(double yawDegrees, double pitchDegrees)
     throw std::runtime_error("No connection");
   }
 
+  double yawAdjusted = yawDegrees;
+  double pitchAdjusted = pitchDegrees;
+
   // Ensure that we don't try to hit the rails.
-  if (yawDegrees > 175) {
-    throw std::runtime_error("Yaw too large; limit is 175, value is " + std::to_string(yawDegrees));
+  if (yawAdjusted > 175) {
+    throw std::runtime_error("Yaw too large; limit is 175, value is " + std::to_string(yawAdjusted));
   }
-  if (yawDegrees < -175) {
-    throw std::runtime_error("Yaw too small; limit is -175, value is " + std::to_string(yawDegrees));
+  if (yawAdjusted < -175) {
+    throw std::runtime_error("Yaw too small; limit is -175, value is " + std::to_string(yawAdjusted));
   }
 
   // When we're in the Northern hemisphere, the home yaw is +90 degrees and negative moves
   // to the right.  When in the Southern, the home is -90 degrees and negative moves to the left.
   // Determine which hemisphere we want to be in by checking the sign of the yaw.
   std::string hemisphere;
-  if (yawDegrees >= 0) {
+  if (yawAdjusted >= 0) {
     hemisphere = "0"; // Southern
-    yawDegrees = -90 + yawDegrees;
+    yawAdjusted = -90 + yawAdjusted;
     // Pitch is backwards in this hemisphere, so we invert it here.
-    pitchDegrees = -pitchDegrees;
-  } else {
-    hemisphere = "1"; // Northern
-    yawDegrees = 90 + yawDegrees;
+    pitchAdjusted = -pitchAdjusted;
   }
+  else {
+    hemisphere = "1"; // Northern
+    yawAdjusted = 90 + yawAdjusted;
+  }
+
+  // The pitch range is 0-360, so negative values have 360 added to them
+  if (pitchAdjusted < 0) {
+    pitchAdjusted += 360;
+  }
+
+  // If our adjusted yaw (declination) and the previous are both at or above 80 degrees in magnitude, first
+  // command a move to the same sign but at 70 degrees magnitude to avoid instability in the
+  // iOptron mount's shortest-path algorithm that can make it take the long way around,
+  // crashing the ball into the tripod.
+  if (fabs(yawAdjusted) >= 80 && fabs(m_lastYawDegrees) >= 80) {
+    double clampedYaw = yawAdjusted * (70 / fabs(yawAdjusted));
+    MoveAbsoluteRaw(clampedYaw, pitchAdjusted, hemisphere);
+  }
+
+  // Perform the move to the final state.
+  MoveAbsoluteRaw(yawAdjusted, pitchAdjusted, hemisphere);
+
+  // Remember our last commanded move.
+  m_lastYawDegrees = yawAdjusted;
+  m_lastPitchDegrees = pitchAdjusted;
+}
+
+void Gimbal_iOptron::MoveAbsoluteRaw(double yawAdjusted, double pitchAdjusted, std::string hemisphere)
+{
   if (!m_impl->sendCommandCheckReponseAndFail(":SHE"+hemisphere+"#", "1")) {
     throw std::runtime_error("Unable to send hemisphere command");
   }
 
   // Set the declination to be slewed to.  This value is in units of 0.01 arc-seconds, so we
   // convert from degrees to arc-seconds and then multiply by 100.  We then put this into
-  // an 8-character (sign then digits padded with 0 to the left to 7) string.
-  int yawArcSeconds = static_cast<size_t>(yawDegrees * 3600.0);
+  // an 8-character (sign then digits padded with 0 to the left to 8 digits long) string.
+  int yawArcSeconds = static_cast<size_t>(yawAdjusted * 3600.0);
   int yawTicks = yawArcSeconds * 100;
   std::string yawString = std::to_string(std::abs(yawTicks));
-  while (yawString.length() < 7) {
+  while (yawString.length() < 8) {
     yawString = "0" + yawString;
   }
   std::string sign = "+";
-  if (yawDegrees < 0) {
+  if (yawAdjusted < 0) {
     sign = "-";
   }
   std::string cmd = ":Sd" + sign + yawString + "#";
@@ -799,11 +871,7 @@ void Gimbal_iOptron::MoveAbsolute(double yawDegrees, double pitchDegrees)
   // Set the right ascension to be slewed to.  This value is in units of 0.01 arc-seconds, so we
   // convert from degrees to arc-seconds and then multiply by 100.  We then put this into
   // an 9-character (padded with 0 to the left) string.
-  // The range is 0-360, so negative values have 360 added to them
-  if (pitchDegrees < 0) {
-    pitchDegrees += 360;
-  }
-  int pitchArcSeconds = static_cast<size_t>((pitchDegrees) * 3600.0);
+  int pitchArcSeconds = static_cast<size_t>((pitchAdjusted) * 3600.0);
   int pitchTicks = pitchArcSeconds * 100;
   std::string pitchString = std::to_string(std::abs(pitchTicks));
   while (pitchString.length() < 9) {
@@ -820,14 +888,14 @@ void Gimbal_iOptron::MoveAbsolute(double yawDegrees, double pitchDegrees)
     throw std::runtime_error("Unable to reset time: " + ret);
   }
 
-  // Slew to the requested location, in the "counterweight up" configuration.
+  // Slew to the requested location, in the normal (counterweight down) configuration.
   if (!m_impl->sendCommandCheckReponseAndFail(":MS1#", "1")) {
     throw std::runtime_error("Unable to send slew command");
   }
 
   // Wait for the gimbal to finish moving.
   std::this_thread::sleep_for(std::chrono::milliseconds(100));
-  ret = m_impl->waitForSlewStop(std::chrono::milliseconds(60000));
+  ret = m_impl->waitForSlewStop(88, std::chrono::milliseconds(60000));
   if (ret != "") {
     throw std::runtime_error("Timed out waiting for gimbal to finish moving: " + ret);
   }
