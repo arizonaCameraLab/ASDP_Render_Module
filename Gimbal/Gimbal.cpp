@@ -508,9 +508,11 @@ public:
   bool sendCommandCheckReponseAndFail(std::string cmd, std::string response);
 
   /// @brief Wait until the gimbal stops slewing.
+  /// @param maxTiltDegrees The maximum tilt in degrees to allow before stopping the gimbal to avoid crashing.
+  /// Normal range should be around 88 degrees, but the home command can allow unlimited.
   /// @param timeout The maximum amount of time to wait for a response.
   /// @return Empty string on succes, error message on failure.
-  std::string waitForSlewStop(std::chrono::milliseconds timeout = std::chrono::milliseconds(60000));
+  std::string waitForSlewStop(double maxTiltDegrees, std::chrono::milliseconds timeout = std::chrono::milliseconds(60000));
 
   /// @brief Reset the time on the gimbal to one that has the Earth aligned with Celestial coordinates.
   /// @details This selects a time when RA is 0, which is not the beginning of the epoch (because the
@@ -572,7 +574,7 @@ bool Gimbal_iOptron::Gimbal_iOptron_Impl::sendCommandCheckReponseAndFail(
   return true;
 }
 
-std::string Gimbal_iOptron::Gimbal_iOptron_Impl::waitForSlewStop(std::chrono::milliseconds timeout)
+std::string Gimbal_iOptron::Gimbal_iOptron_Impl::waitForSlewStop(double maxRADegrees, std::chrono::milliseconds timeout)
 {
   if (commPort == -1) {
     return "commPort not initialized";
@@ -619,12 +621,12 @@ std::string Gimbal_iOptron::Gimbal_iOptron_Impl::waitForSlewStop(std::chrono::mi
       // while it is homing or slewing; ignore this.
       continue;
     }
+    std::cout << "XXX Current position: " << resp << ", declination: " << resp.substr(0, 9) << ", right ascension: " << resp.substr(9, 9) << std::endl;
 
     // The valid range in degrees is from 0 to 88 and then from 360 down to 360-88 = 272.
     int RA = std::stoi(resp.substr(9, 9));
     double RAdeg = RA / (3600.0 * 100);
-    constexpr double maxRA = 88.0;
-    if (RAdeg > maxRA && RAdeg < 360 - maxRA) {
+    if (RAdeg > maxRADegrees && RAdeg < 360 - maxRADegrees) {
       if (!sendCommandCheckReponseAndFail(":Q#", "1")) {
         if (!sendCommandCheckReponseAndFail(":Q#", "1")) {
           return "Could not send stop command after bypassing limits -- expect crash!";
@@ -778,7 +780,7 @@ void Gimbal_iOptron::Home()
   }
 
   // Wait for the gimbal to finish moving.
-  ret = m_impl->waitForSlewStop(std::chrono::milliseconds(60000));
+  ret = m_impl->waitForSlewStop(1000, std::chrono::milliseconds(60000));
   if (ret != "") {
     throw std::runtime_error("Timed out waiting for gimbal to finish moving: " + ret);
   }
@@ -889,7 +891,7 @@ void Gimbal_iOptron::MoveAbsoluteRaw(double yawAdjusted, double pitchAdjusted, s
 
   // Wait for the gimbal to finish moving.
   std::this_thread::sleep_for(std::chrono::milliseconds(100));
-  ret = m_impl->waitForSlewStop(std::chrono::milliseconds(60000));
+  ret = m_impl->waitForSlewStop(88, std::chrono::milliseconds(60000));
   if (ret != "") {
     throw std::runtime_error("Timed out waiting for gimbal to finish moving: " + ret);
   }
