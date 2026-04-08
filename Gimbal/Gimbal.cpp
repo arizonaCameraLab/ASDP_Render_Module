@@ -621,7 +621,7 @@ std::string Gimbal_iOptron::Gimbal_iOptron_Impl::waitForSlewStop(double maxRADeg
       // while it is homing or slewing; ignore this.
       continue;
     }
-    std::cout << "XXX Current position: " << resp << ", declination: " << resp.substr(0, 9) << ", right ascension: " << resp.substr(9, 9) << std::endl;
+    std::cout << "XXX Current position: " << resp << ", declination: " << std::stoi(resp.substr(0, 9)) / (3600.0 * 100) << ", right ascension: " << std::stoi(resp.substr(9, 9)) / (3600.0 * 100) << std::endl;
 
     // The valid range in degrees is from 0 to 88 and then from 360 down to 360-88 = 272.
     int RA = std::stoi(resp.substr(9, 9));
