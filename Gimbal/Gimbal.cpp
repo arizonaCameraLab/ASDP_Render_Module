@@ -509,8 +509,10 @@ public:
 
   /// @brief Wait until the gimbal stops slewing.
   /// @param maxTiltDegrees The maximum tilt in degrees to allow before stopping the gimbal to avoid crashing.
-  /// Normal range should be around 88 degrees, but the home command can allow unlimited.  This must be
+  /// Normal range should be around 80 degrees, but the home command can allow unlimited.  This must be
   /// less than 90 degrees for actual motion cases because the tests will otherwise overlap and it will never stop.
+  /// When it was 88 degrees, we sometimes moved over the full 4-degree range without detecting it because of slow
+  /// responses from the unit.
   /// @param timeout The maximum amount of time to wait for a response.
   /// @return Empty string on succes, error message on failure.
   std::string waitForSlewStop(double maxTiltDegrees, std::chrono::milliseconds timeout = std::chrono::milliseconds(60000));
@@ -608,7 +610,7 @@ std::string Gimbal_iOptron::Gimbal_iOptron_Impl::waitForSlewStop(double maxRADeg
       return "";
     }
 
-    // Get the right ascension and declination. Make sure that we're not tipping over 88 degrees up
+    // Get the right ascension and declination. Make sure that we're not tipping over 80 degrees up
     // or down to avoid crashing the ball into the tripod.
     if (!sendCommand(":GEP#")) {
       return "Could not send position request";
@@ -622,8 +624,9 @@ std::string Gimbal_iOptron::Gimbal_iOptron_Impl::waitForSlewStop(double maxRADeg
       // while it is homing or slewing; ignore this.
       continue;
     }
+    std::cout << "XXX Received position response: " << resp << std::endl;
 
-    // The valid range in degrees is from 0 to 88 and then from 360 down to 360-88 = 272.
+    // The valid range in degrees is from 0 to maxRADegrees and then from 360 down to 360-maxRADegrees.
     int RA = std::stoi(resp.substr(9, 9));
     double RAdeg = RA / (3600.0 * 100);
     if ((RAdeg > maxRADegrees) && (RAdeg < 360 - maxRADegrees)) {
@@ -895,7 +898,7 @@ void Gimbal_iOptron::MoveAbsoluteRaw(double yawAdjusted, double pitchAdjusted, s
 
   // Wait for the gimbal to finish moving.
   std::this_thread::sleep_for(std::chrono::milliseconds(100));
-  ret = m_impl->waitForSlewStop(88, std::chrono::milliseconds(60000));
+  ret = m_impl->waitForSlewStop(80, std::chrono::milliseconds(60000));
   if (ret != "") {
     throw std::runtime_error("Timed out waiting for gimbal to finish moving: " + ret);
   }
