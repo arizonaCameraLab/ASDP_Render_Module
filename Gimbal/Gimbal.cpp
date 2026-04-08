@@ -605,7 +605,7 @@ std::string Gimbal_iOptron::Gimbal_iOptron_Impl::waitForSlewStop(std::chrono::mi
       return "";
     }
 
-    // Get the right ascension and declination. Make sure that we're not tipping over 90 degrees up
+    // Get the right ascension and declination. Make sure that we're not tipping over 88 degrees up
     // or down to avoid crashing the ball into the tripod.
     if (!sendCommand(":GEP#")) {
       return "Could not send position request";
@@ -614,9 +614,24 @@ std::string Gimbal_iOptron::Gimbal_iOptron_Impl::waitForSlewStop(std::chrono::mi
     example = "sTTTTTTTTTTTTTTTTTTT#";
     tv = { 0, 100000 };
     resp = getResponse(&tv, example.size());
-    std::cout << "XXX Current position: " << resp << ", declination: " << resp.substr(0, 9) << ", right ascension: " << resp.substr(9, 9) << std::endl;
+    if (resp.size() != example.size()) {
+      // The unit sometimes sends a response that is shorter than expected or no response
+      // while it is homing or slewing; ignore this.
+      continue;
+    }
 
-    /// @todo
+    // The valid range in degrees is from 0 to 88 and then from 360 down to 360-88 = 272.
+    int RA = std::stoi(resp.substr(9, 9));
+    double RAdeg = RA / (3600.0 * 100);
+    constexpr double maxRA = 88.0;
+    if (RAdeg > maxRA && RAdeg < 360 - maxRA) {
+      if (!sendCommandCheckReponseAndFail(":Q#", "1")) {
+        if (!sendCommandCheckReponseAndFail(":Q#", "1")) {
+          return "Could not send stop command after bypassing limits -- expect crash!";
+        }
+      }
+      return "Gimbal is slewing to an unsafe position: " + std::to_string(RAdeg) + " degrees, stopped it from moving further.";
+    }
   }
   return "Timed out waiting for gimbal to stop slewing.";
 }
