@@ -614,7 +614,7 @@ std::string Gimbal_iOptron::Gimbal_iOptron_Impl::waitForSlewStop(std::chrono::mi
     example = "sTTTTTTTTTTTTTTTTTTT#";
     tv = { 0, 100000 };
     resp = getResponse(&tv, example.size());
-    std::cout << "XXX Current position: " << resp << std::endl;
+    std::cout << "XXX Current position: " << resp << ", declination: " << resp.substr(0, 9) << ", right ascension: " << resp.substr(9, 9) << std::endl;
 
     /// @todo
   }
