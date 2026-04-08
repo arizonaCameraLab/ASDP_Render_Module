@@ -627,10 +627,10 @@ std::string Gimbal_iOptron::Gimbal_iOptron_Impl::waitForSlewStop(double maxRADeg
     // The valid range in degrees is from 0 to 88 and then from 360 down to 360-88 = 272.
     int RA = std::stoi(resp.substr(9, 9));
     double RAdeg = RA / (3600.0 * 100);
-    if (RAdeg > maxRADegrees && RAdeg < 360 - maxRADegrees) {
+    if ((RAdeg > maxRADegrees) && (RAdeg < 360 - maxRADegrees)) {
       // If we're within the specified range of 180 degrees, then that is okay for some situations.
       /// @todo Determine under what conditions this is acceptable so we avoid false positives and false negatives.
-      if (RAdeg < 180 - maxRADegrees || RAdeg > 180 + maxRADegrees) {
+      if ((RAdeg < 180 - maxRADegrees) || (RAdeg > 180 + maxRADegrees)) {
         if (!sendCommandCheckReponseAndFail(":Q#", "1")) {
           if (!sendCommandCheckReponseAndFail(":Q#", "1")) {
             return "Could not send stop command after bypassing limits -- expect crash!";
