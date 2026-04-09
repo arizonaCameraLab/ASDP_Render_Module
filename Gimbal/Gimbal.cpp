@@ -834,18 +834,18 @@ void Gimbal_iOptron::MoveAbsolute(double yawDegrees, double pitchDegrees)
   // crashing the ball into the tripod.
   if (fabs(yawAdjusted) >= 80 && fabs(m_lastYawDegrees) >= 80) {
     double clampedYaw = yawAdjusted * (70 / fabs(yawAdjusted));
-    MoveAbsoluteRaw(clampedYaw, pitchAdjusted, hemisphere);
+    MoveAbsoluteRaw(clampedYaw, pitchAdjusted, hemisphere, true);
   }
 
   // Perform the move to the final state.
-  MoveAbsoluteRaw(yawAdjusted, pitchAdjusted, hemisphere);
+  MoveAbsoluteRaw(yawAdjusted, pitchAdjusted, hemisphere, true);
 
   // Remember our last commanded move.
   m_lastYawDegrees = yawAdjusted;
   m_lastPitchDegrees = pitchAdjusted;
 }
 
-void Gimbal_iOptron::MoveAbsoluteRaw(double yawAdjusted, double pitchAdjusted, std::string hemisphere)
+void Gimbal_iOptron::MoveAbsoluteRaw(double yawAdjusted, double pitchAdjusted, std::string hemisphere, bool fixBadSlew)
 {
   if (!m_impl->sendCommandCheckReponseAndFail(":SHE" + hemisphere + "#", "1")) {
     throw std::runtime_error("Unable to send hemisphere command");
@@ -902,6 +902,10 @@ void Gimbal_iOptron::MoveAbsoluteRaw(double yawAdjusted, double pitchAdjusted, s
     if (ret.rfind("Gimbal is slewing to an unsafe position", 0) == 0) {
       // This caused a slew to an unsafe position, find out which side of the pier we are on and issue
       // a direct-motion command to move RA towards making the counterweight down.
+
+      if (!fixBadSlew) {
+        throw std::runtime_error("Slew to unsafe position detected, but fixBadSlew is false, so not attempting to fix it: " + ret);
+      }
 
       // Set the butto-motion rate to maximum.
       cmd = ":SR9#";
@@ -966,8 +970,8 @@ void Gimbal_iOptron::MoveAbsoluteRaw(double yawAdjusted, double pitchAdjusted, s
 
       // Make a move to (0,0) and then to the original request location
       try {
-        MoveAbsoluteRaw(0, 0, hemisphere);
-        MoveAbsoluteRaw(yawAdjusted, pitchAdjusted, hemisphere);
+        MoveAbsoluteRaw(0, 0, hemisphere, false);
+        MoveAbsoluteRaw(yawAdjusted, pitchAdjusted, hemisphere, false);
       } catch (const std::exception& e) {
         throw std::runtime_error(std::string("Error during adjustment move after slew to unsafe location: ") + e.what());
       }
