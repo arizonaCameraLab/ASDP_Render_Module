@@ -713,7 +713,7 @@ Gimbal_iOptron::Gimbal_iOptron(std::string comPortName, std::string mountInfoRes
   // Send a command to set the meridian treatment; flip at 15 degrees past.
   // This avoids a situation where the mount tries to take the long way around
   // when crossing the meridian, which can cause it to crash into the tripod.
-  if (!m_impl->sendCommandCheckReponseAndFail(":SMT115#", "1")) {
+  if (!m_impl->sendCommandCheckReponseAndFail(":SMT130#", "1")) {
     throw std::runtime_error("Unable to send meridian-treatment command");
   }
 
