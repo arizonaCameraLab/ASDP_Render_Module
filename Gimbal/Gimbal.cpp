@@ -920,12 +920,11 @@ void Gimbal_iOptron::MoveAbsoluteRaw(double yawAdjusted, double pitchAdjusted, s
         throw std::runtime_error("Bad response to pose request when slewed into an unsafe position, got: " + resp);
       }
       bool pierWest = (resp[18] != '0');
-      std::string cmd = pierWest ? ":Me#" : ":Mw#";
+      std::string cmd = pierWest ? ":me#" : ":mw#";
       // This motion command gets no response
       if (!m_impl->sendCommand(cmd)) {
         throw std::runtime_error("When slewed into an unsafe position, could not send command " + cmd);
       }
-      std::cout << "XXX Sent motion command " << cmd << " to move away from unsafe position, now waiting for slew to stop" << std::endl;
 
       // Wait one second and then see if we're out of the danger zone.
       std::this_thread::sleep_for(std::chrono::seconds(1));
@@ -936,7 +935,6 @@ void Gimbal_iOptron::MoveAbsoluteRaw(double yawAdjusted, double pitchAdjusted, s
           throw std::runtime_error("Unable to send stop command when slewed into an unsafe position -- expect crash!");
         }
       }
-      std::cout << "XXX Sent stop command " << cmd << std::endl;
 
       size_t retries = 0;
       do {
@@ -956,7 +954,6 @@ void Gimbal_iOptron::MoveAbsoluteRaw(double yawAdjusted, double pitchAdjusted, s
         // The valid range in degrees is within maxRADegrees of 0, 180, or 360.
         int RA = std::stoi(resp.substr(9, 9));
         double RAdeg = RA / (3600.0 * 100);
-        std::cout << "XXX RA: " << RAdeg << std::endl;
         if ( (std::abs(RAdeg - 0) < maxTiltDegrees) || (std::abs(RAdeg - 180) < maxTiltDegrees) ||
              (std::abs(RAdeg - 360) < maxTiltDegrees)) {
           break;
