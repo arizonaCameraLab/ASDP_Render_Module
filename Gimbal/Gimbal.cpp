@@ -900,8 +900,14 @@ void Gimbal_iOptron::MoveAbsoluteRaw(double yawAdjusted, double pitchAdjusted, s
   ret = m_impl->waitForSlewStop(maxTiltDegrees, std::chrono::milliseconds(60000));
   if (ret != "") {
     if (ret.rfind("Gimbal is slewing to an unsafe position", 0) == 0) {
-      // If this caused a slew to an unsafe position, find out which side of the pier we are on and issue
+      // This caused a slew to an unsafe position, find out which side of the pier we are on and issue
       // a direct-motion command to move RA towards making the counterweight down.
+
+      // Set the butto-motion rate to maximum.
+      cmd = ":SR9#";
+      if (!m_impl->sendCommandCheckReponseAndFail(cmd, "1")) {
+        throw std::runtime_error("Unable to send set rate command when slewed into an unsafe position");
+      }
 
       std::string r2;
       if (!m_impl->sendCommand(":GEP#")) {
