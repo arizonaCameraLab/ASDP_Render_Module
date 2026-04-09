@@ -909,12 +909,6 @@ void Gimbal_iOptron::MoveAbsoluteRaw(double yawAdjusted, double pitchAdjusted, s
         throw std::runtime_error("Unable to send set rate command when slewed into an unsafe position");
       }
 
-      // Choose the motion speed to be the maximum.
-      cmd = ":Z4#";
-      if (!m_impl->sendCommandCheckReponseAndFail(cmd, "1")) {
-        throw std::runtime_error("Unable to send set motion speed command when slewed into an unsafe position");
-      }
-
       std::string r2;
       if (!m_impl->sendCommand(":GEP#")) {
         throw std::runtime_error("Could not send pose request when slewed into an unsafe position");
