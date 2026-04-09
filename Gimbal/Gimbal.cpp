@@ -907,13 +907,13 @@ void Gimbal_iOptron::MoveAbsoluteRaw(double yawAdjusted, double pitchAdjusted, s
       if (!m_impl->sendCommand(":GEP#")) {
         throw std::runtime_error("Could not send pose request when slewed into an unsafe position");
       }
-      std::string example = "sTTTTTTTTTTTTTTTTnnnnnn#";
+      std::string example = "sTTTTTTTTTTTTTTTTTTT#";
       struct timeval tv = { 0, 100000 };
       std::string resp = m_impl->getResponse(&tv, example.size());
       if (resp.size() != example.size()) {
         // The unit sometimes sends a response that is shorter than expected or no response
         // while it is homing or slewing; ignore this.
-        throw std::runtime_error("Could not get response to pose request when slewed into an unsafe position");
+        throw std::runtime_error("Bad response to pose request when slewed into an unsafe position, got: " + resp);
       }
       bool pierWest = (resp[18] != '0');
       std::string cmd = pierWest ? ":Me99999#" : ":Mw99999#";
