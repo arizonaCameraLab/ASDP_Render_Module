@@ -909,6 +909,12 @@ void Gimbal_iOptron::MoveAbsoluteRaw(double yawAdjusted, double pitchAdjusted, s
         throw std::runtime_error("Unable to send set rate command when slewed into an unsafe position");
       }
 
+      // Choose the motion speed to be the maximum.
+      cmd = ":Z4#";
+      if (!m_impl->sendCommandCheckReponseAndFail(cmd, "1")) {
+        throw std::runtime_error("Unable to send set motion speed command when slewed into an unsafe position");
+      }
+
       std::string r2;
       if (!m_impl->sendCommand(":GEP#")) {
         throw std::runtime_error("Could not send pose request when slewed into an unsafe position");
@@ -917,20 +923,26 @@ void Gimbal_iOptron::MoveAbsoluteRaw(double yawAdjusted, double pitchAdjusted, s
       struct timeval tv = { 0, 100000 };
       std::string resp = m_impl->getResponse(&tv, example.size());
       if (resp.size() != example.size()) {
-        // The unit sometimes sends a response that is shorter than expected or no response
-        // while it is homing or slewing; ignore this.
         throw std::runtime_error("Bad response to pose request when slewed into an unsafe position, got: " + resp);
       }
       bool pierWest = (resp[18] != '0');
-      std::string cmd = pierWest ? ":ZQ99999#" : ":ZS99999#";
+      std::string cmd = pierWest ? ":Me#" : ":Mw#";
       // This motion command gets no response
       if (!m_impl->sendCommand(cmd)) {
         throw std::runtime_error("When slewed into an unsafe position, could not send command " + cmd);
       }
       std::cout << "XXX Sent motion command " << cmd << " to move away from unsafe position, now waiting for slew to stop" << std::endl;
 
-      // Wait ten seconds and then see if we're out of the danger zone.
-      std::this_thread::sleep_for(std::chrono::seconds(10));
+      // Wait one second and then see if we're out of the danger zone.
+      std::this_thread::sleep_for(std::chrono::seconds(1));
+
+      cmd = ":qR#";
+      if (!m_impl->sendCommandCheckReponseAndFail(cmd, "1")) {
+        if (!m_impl->sendCommandCheckReponseAndFail(cmd, "1")) {
+          throw std::runtime_error("Unable to send stop command when slewed into an unsafe position -- expect crash!");
+        }
+      }
+      std::cout << "XXX Sent stop command " << cmd << std::endl;
 
       size_t retries = 0;
       do {
