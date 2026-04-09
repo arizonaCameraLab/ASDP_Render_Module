@@ -916,7 +916,7 @@ void Gimbal_iOptron::MoveAbsoluteRaw(double yawAdjusted, double pitchAdjusted, s
         throw std::runtime_error("Bad response to pose request when slewed into an unsafe position, got: " + resp);
       }
       bool pierWest = (resp[18] != '0');
-      std::string cmd = pierWest ? ":Me99999#" : ":Mw99999#";
+      std::string cmd = pierWest ? ":ZQ99999#" : ":ZS99999#";
       // This motion command gets no response
       if (!m_impl->sendCommand(cmd)) {
         throw std::runtime_error("When slewed into an unsafe position, could not send command " + cmd);
@@ -941,6 +941,7 @@ void Gimbal_iOptron::MoveAbsoluteRaw(double yawAdjusted, double pitchAdjusted, s
         // The valid range in degrees is within maxRADegrees of 0, 180, or 360.
         int RA = std::stoi(resp.substr(9, 9));
         double RAdeg = RA / (3600.0 * 100);
+        std::cout << "XXX RA: " << RAdeg << std::endl;
         if ( (std::abs(RAdeg - 0) < maxTiltDegrees) || (std::abs(RAdeg - 180) < maxTiltDegrees) ||
              (std::abs(RAdeg - 360) < maxTiltDegrees)) {
           // Send a stop command
@@ -953,7 +954,8 @@ void Gimbal_iOptron::MoveAbsoluteRaw(double yawAdjusted, double pitchAdjusted, s
         }
 
         auto now = std::chrono::steady_clock::now();
-        if ((now - start) >= std::chrono::seconds(20)) {
+        // Check if it has been more than ten seconds, which is the duration of the requested move.
+        if ((now - start) >= std::chrono::seconds(10)) {
           // Send a stop command
           if (!m_impl->sendCommandCheckReponseAndFail(":Q#", "1")) {
             if (!m_impl->sendCommandCheckReponseAndFail(":Q#", "1")) {
