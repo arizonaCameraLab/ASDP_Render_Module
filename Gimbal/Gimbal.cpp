@@ -920,7 +920,8 @@ void Gimbal_iOptron::MoveAbsoluteRaw(double yawAdjusted, double pitchAdjusted, s
         throw std::runtime_error("Bad response to pose request when slewed into an unsafe position, got: " + resp);
       }
       bool pierWest = (resp[18] != '0');
-      std::string cmd = pierWest ? ":me#" : ":mw#";
+      std::string cmd = pierWest ? ":mw#" : ":me#";
+      std::cout << "XXX pierWest: " << pierWest << ", cmd: " << cmd << std::endl;
       // This motion command gets no response
       if (!m_impl->sendCommand(cmd)) {
         throw std::runtime_error("When slewed into an unsafe position, could not send command " + cmd);
