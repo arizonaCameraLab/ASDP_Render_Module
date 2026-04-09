@@ -922,8 +922,10 @@ void Gimbal_iOptron::MoveAbsoluteRaw(double yawAdjusted, double pitchAdjusted, s
         throw std::runtime_error("When slewed into an unsafe position, could not send command " + cmd);
       }
 
-      // Keep moving until we get into the safe zone or we time out.
-      auto start = std::chrono::steady_clock::now();
+      // Wait ten seconds and then see if we're out of the danger zone.
+      std::this_thread::sleep_for(std::chrono::seconds(10));
+
+      size_t retries = 0;
       do {
         // Get the right ascension and declination. See if we've escaped the danger zone.
         if (!m_impl->sendCommand(":GEP#")) {
@@ -952,19 +954,7 @@ void Gimbal_iOptron::MoveAbsoluteRaw(double yawAdjusted, double pitchAdjusted, s
           }
           break;
         }
-
-        auto now = std::chrono::steady_clock::now();
-        // Check if it has been more than ten seconds, which is the duration of the requested move.
-        if ((now - start) >= std::chrono::seconds(10)) {
-          // Send a stop command
-          if (!m_impl->sendCommandCheckReponseAndFail(":Q#", "1")) {
-            if (!m_impl->sendCommandCheckReponseAndFail(":Q#", "1")) {
-              throw std::runtime_error("When slewed into an unsafe position, could not send stop command after bypassing limits -- expect crash!");
-            }
-          }
-          throw std::runtime_error("When slewed into an unsafe position, timed out trying to escape");
-        }
-      } while (true);
+      } while (++retries < 10);
 
       // Make a move to (0,0) and then to the original request location
       try {
