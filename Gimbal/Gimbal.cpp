@@ -926,8 +926,8 @@ void Gimbal_iOptron::MoveAbsoluteRaw(double yawAdjusted, double pitchAdjusted, s
         throw std::runtime_error("When slewed into an unsafe position, could not send command " + cmd);
       }
 
-      // Wait one second and then see if we're out of the danger zone.
-      std::this_thread::sleep_for(std::chrono::seconds(1));
+      // Wait two seconds and then see if we're out of the danger zone.
+      std::this_thread::sleep_for(std::chrono::seconds(2));
 
       cmd = ":qR#";
       if (!m_impl->sendCommandCheckReponseAndFail(cmd, "1")) {
