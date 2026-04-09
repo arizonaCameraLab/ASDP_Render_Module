@@ -630,7 +630,6 @@ std::string Gimbal_iOptron::Gimbal_iOptron_Impl::waitForSlewStop(double maxRADeg
     double RAdeg = RA / (3600.0 * 100);
     if ((RAdeg > maxRADegrees) && (RAdeg < 360 - maxRADegrees)) {
       // If we're within the specified range of 180 degrees, then that is okay for some situations.
-      /// @todo Determine under what conditions this is acceptable so we avoid false positives and false negatives.
       if ((RAdeg < 180 - maxRADegrees) || (RAdeg > 180 + maxRADegrees)) {
         if (!sendCommandCheckReponseAndFail(":Q#", "1")) {
           if (!sendCommandCheckReponseAndFail(":Q#", "1")) {
@@ -709,10 +708,10 @@ Gimbal_iOptron::Gimbal_iOptron(std::string comPortName, std::string mountInfoRes
     throw std::runtime_error("Unable to send request azimuth limit command");
   }
 
-  // Send a command to set the meridian treatment; flip at 99 degrees past (basically disabling it).
+  // Send a command to set the meridian treatment; flip at 15 degrees past.
   // This avoids a situation where the mount tries to take the long way around
   // when crossing the meridian, which can cause it to crash into the tripod.
-  if (!m_impl->sendCommandCheckReponseAndFail(":SMT199#", "1")) {
+  if (!m_impl->sendCommandCheckReponseAndFail(":SMT115#", "1")) {
     throw std::runtime_error("Unable to send meridian-treatment command");
   }
 
@@ -897,9 +896,79 @@ void Gimbal_iOptron::MoveAbsoluteRaw(double yawAdjusted, double pitchAdjusted, s
 
   // Wait for the gimbal to finish moving.
   std::this_thread::sleep_for(std::chrono::milliseconds(100));
-  ret = m_impl->waitForSlewStop(80, std::chrono::milliseconds(60000));
+  constexpr double maxTiltDegrees = 80;
+  ret = m_impl->waitForSlewStop(maxTiltDegrees, std::chrono::milliseconds(60000));
   if (ret != "") {
-    throw std::runtime_error("Timed out waiting for gimbal to finish moving: " + ret);
+    // If this caused a slew to an unsafe position, read the current RA and Dec and move to a point
+    // that is towards the nearest of 0, 180, or 360 degrees from our current position but within
+    // maxTiltDegrees of the nearest of those.  Then try a move to the origin and then back to the
+    // original requested position to see if we can get back on track.  If we can't, then report the error.
+    if (ret.rfind("Gimbal is slewing to an unsafe position", 0) == 0) {
+
+      // Find out where we are now.
+      if (!m_impl->sendCommandCheckReponseAndFail(":GEP#", "1")) {
+        throw std::runtime_error("Gimbal_iOptron::MoveAbsoluteRaw: Could not send position request during unsafe slew");
+      }
+      std::string example = "sTTTTTTTTTTTTTTTTTTT#";
+      struct timeval tv = { 0, 100000 };
+      std::string resp = m_impl->getResponse(&tv, example.size());
+      if (resp.size() != example.size()) {
+        throw std::runtime_error("Gimbal_iOptron::MoveAbsoluteRaw: Bad response to position request during unsafe slew: " + resp);
+      }
+      int RA = std::stoi(resp.substr(9, 9));
+      double RAdeg = RA / (3600.0 * 100);
+
+      // Find the closest of 0, 180, or 360 degrees to our current position.
+      double targetRAdeg;
+      if (RAdeg < 90) {
+        targetRAdeg = 0;
+      } else if (RAdeg < 270) {
+        targetRAdeg = 180;
+      } else {
+        targetRAdeg = 360;
+      }
+
+      // Find the closest point to our current position that is within maxTiltDegrees of the target and move there.
+      double delta = RAdeg - targetRAdeg;
+      double deltaSign = (delta > 0) ? 1 : -1;
+      double clampedRAdeg = targetRAdeg + std::min(fabs(delta), maxTiltDegrees - 0.5) * deltaSign;
+
+      // Move to the clamped position, keeping the same declination and hemisphere.
+      int pitchArcseconds = static_cast<size_t>((clampedRAdeg) * 3600.0);
+      int pitchTicks = pitchArcseconds * 100;
+      std::string pitchString = std::to_string(std::abs(pitchTicks));
+      while (pitchString.length() < 9) {
+        pitchString = "0" + pitchString;
+      }
+      std::string cmd = ":SRA" + pitchString + "#";
+      if (!m_impl->sendCommandCheckReponseAndFail(cmd, "1")) {
+        throw std::runtime_error("Unable to send right ascension command during unsafe slew");
+      }
+      if (!m_impl->sendCommandCheckReponseAndFail(":MS1#", "1")) {
+        throw std::runtime_error("Unable to send slew command during unsafe slew");
+      }
+      std::string r2 = m_impl->waitForSlewStop(1000, std::chrono::milliseconds(60000));
+      if (r2 != "") {
+         throw std::runtime_error("Unable to slew to safe position during unsafe slew: " + r2);
+      }
+
+      // Now try to move to (0,0).
+      try {
+        MoveAbsolute(0, 0);
+      } catch (const std::runtime_error& e) {
+        throw std::runtime_error("Unable to move to origin after slewing to safe position during unsafe slew: " + std::string(e.what()));
+      }
+
+      // Now try to move back to the original requested position.
+      try {
+        MoveAbsoluteRaw(yawAdjusted, pitchAdjusted, hemisphere);
+      } catch (const std::runtime_error& e) {
+        throw std::runtime_error("Unable to move back to original position after slewing to safe position during unsafe slew: " + std::string(e.what()));
+      }
+
+    } else {
+      throw std::runtime_error("Error waiting for gimbal to finish moving: " + ret);
+    }
   }
 
   // Disable tracking, which the slew command re-enables every time.
