@@ -624,7 +624,6 @@ std::string Gimbal_iOptron::Gimbal_iOptron_Impl::waitForSlewStop(double maxRADeg
       // while it is homing or slewing; ignore this.
       continue;
     }
-    std::cout << "XXX Received position response: " << resp << std::endl;
 
     // The valid range in degrees is from 0 to maxRADegrees and then from 360 down to 360-maxRADegrees.
     int RA = std::stoi(resp.substr(9, 9));
@@ -710,10 +709,10 @@ Gimbal_iOptron::Gimbal_iOptron(std::string comPortName, std::string mountInfoRes
     throw std::runtime_error("Unable to send request azimuth limit command");
   }
 
-  // Send a command to set the meridian treatment; flip at 80 degrees past (basically turning it off).
+  // Send a command to set the meridian treatment; flip at 30 degrees past.
   // This avoids a situation where the mount tries to take the long way around
   // when crossing the meridian, which can cause it to crash into the tripod.
-  if (!m_impl->sendCommandCheckReponseAndFail(":SMT180#", "1")) {
+  if (!m_impl->sendCommandCheckReponseAndFail(":SMT130#", "1")) {
     throw std::runtime_error("Unable to send meridian-treatment command");
   }
 
