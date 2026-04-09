@@ -906,6 +906,7 @@ void Gimbal_iOptron::MoveAbsoluteRaw(double yawAdjusted, double pitchAdjusted, s
       if (!fixBadSlew) {
         throw std::runtime_error("Slew to unsafe position detected, but fixBadSlew is false, so not attempting to fix it: " + ret);
       }
+      std::cerr << "Warning: Motion to unsafe position detected, attempting to fix it: " << ret << std::endl;
 
       // Set the butto-motion rate to maximum.
       cmd = ":SR9#";
@@ -925,7 +926,6 @@ void Gimbal_iOptron::MoveAbsoluteRaw(double yawAdjusted, double pitchAdjusted, s
       }
       bool pierWest = (resp[18] != '0');
       std::string cmd = pierWest ? ":mw#" : ":me#";
-      std::cout << "XXX pierWest: " << pierWest << ", cmd: " << cmd << std::endl;
       // This motion command gets no response
       if (!m_impl->sendCommand(cmd)) {
         throw std::runtime_error("When slewed into an unsafe position, could not send command " + cmd);
