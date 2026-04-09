@@ -610,7 +610,7 @@ std::string Gimbal_iOptron::Gimbal_iOptron_Impl::waitForSlewStop(double maxRADeg
       return "";
     }
 
-    // Get the right ascension and declination. Make sure that we're not tipping over 80 degrees up
+    // Get the right ascension and declination. Make sure that we're not tipping over maxRADegrees degrees up
     // or down to avoid crashing the ball into the tripod.
     if (!sendCommand(":GEP#")) {
       return "Could not send position request";
@@ -847,7 +847,7 @@ void Gimbal_iOptron::MoveAbsolute(double yawDegrees, double pitchDegrees)
 
 void Gimbal_iOptron::MoveAbsoluteRaw(double yawAdjusted, double pitchAdjusted, std::string hemisphere)
 {
-  if (!m_impl->sendCommandCheckReponseAndFail(":SHE"+hemisphere+"#", "1")) {
+  if (!m_impl->sendCommandCheckReponseAndFail(":SHE" + hemisphere + "#", "1")) {
     throw std::runtime_error("Unable to send hemisphere command");
   }
 
@@ -899,71 +899,77 @@ void Gimbal_iOptron::MoveAbsoluteRaw(double yawAdjusted, double pitchAdjusted, s
   constexpr double maxTiltDegrees = 80;
   ret = m_impl->waitForSlewStop(maxTiltDegrees, std::chrono::milliseconds(60000));
   if (ret != "") {
-    // If this caused a slew to an unsafe position, read the current RA and Dec and move to a point
-    // that is towards the nearest of 0, 180, or 360 degrees from our current position but within
-    // maxTiltDegrees of the nearest of those.  Then try a move to the origin and then back to the
-    // original requested position to see if we can get back on track.  If we can't, then report the error.
     if (ret.rfind("Gimbal is slewing to an unsafe position", 0) == 0) {
+      // If this caused a slew to an unsafe position, find out which side of the pier we are on and issue
+      // a direct-motion command to move RA towards making the counterweight down.
 
-      // Find out where we are now.
-      if (!m_impl->sendCommandCheckReponseAndFail(":GEP#", "1")) {
-        throw std::runtime_error("Gimbal_iOptron::MoveAbsoluteRaw: Could not send position request during unsafe slew");
+      std::string r2;
+      if (!m_impl->sendCommand(":GEP#")) {
+        throw std::runtime_error("Could not send pose request when slewed into an unsafe position");
       }
-      std::string example = "sTTTTTTTTTTTTTTTTTTT#";
+      std::string example = "sTTTTTTTTTTTTTTTTnnnnnn#";
       struct timeval tv = { 0, 100000 };
       std::string resp = m_impl->getResponse(&tv, example.size());
       if (resp.size() != example.size()) {
-        throw std::runtime_error("Gimbal_iOptron::MoveAbsoluteRaw: Bad response to position request during unsafe slew: " + resp);
+        // The unit sometimes sends a response that is shorter than expected or no response
+        // while it is homing or slewing; ignore this.
+        throw std::runtime_error("Could not get response to pose request when slewed into an unsafe position");
       }
-      int RA = std::stoi(resp.substr(9, 9));
-      double RAdeg = RA / (3600.0 * 100);
-
-      // Find the closest of 0, 180, or 360 degrees to our current position.
-      double targetRAdeg;
-      if (RAdeg < 90) {
-        targetRAdeg = 0;
-      } else if (RAdeg < 270) {
-        targetRAdeg = 180;
-      } else {
-        targetRAdeg = 360;
+      bool pierWest = (resp[18] != '0');
+      std::string cmd = pierWest ? ":Me99999#" : ":Mw99999#";
+      // This motion command gets no response
+      if (!m_impl->sendCommand(cmd)) {
+        throw std::runtime_error("When slewed into an unsafe position, could not send command " + cmd);
       }
 
-      // Find the closest point to our current position that is within maxTiltDegrees of the target and move there.
-      double delta = RAdeg - targetRAdeg;
-      double deltaSign = (delta > 0) ? 1 : -1;
-      double clampedRAdeg = targetRAdeg + std::min(fabs(delta), maxTiltDegrees - 0.5) * deltaSign;
+      // Keep moving until we get into the safe zone or we time out.
+      auto start = std::chrono::steady_clock::now();
+      do {
+        // Get the right ascension and declination. See if we've escaped the danger zone.
+        if (!m_impl->sendCommand(":GEP#")) {
+          throw std::runtime_error("When slewed into an unsafe position, could not send read position command");
+        }
+        example = "sTTTTTTTTTTTTTTTTTTT#";
+        tv = { 0, 100000 };
+        resp = m_impl->getResponse(&tv, example.size());
+        if (resp.size() != example.size()) {
+          // The unit sometimes sends a response that is shorter than expected or no response
+          // while it is homing or slewing; ignore this.
+          continue;
+        }
 
-      // Move to the clamped position, keeping the same declination and hemisphere.
-      int pitchArcseconds = static_cast<size_t>((clampedRAdeg) * 3600.0);
-      int pitchTicks = pitchArcseconds * 100;
-      std::string pitchString = std::to_string(std::abs(pitchTicks));
-      while (pitchString.length() < 9) {
-        pitchString = "0" + pitchString;
-      }
-      std::string cmd = ":SRA" + pitchString + "#";
-      if (!m_impl->sendCommandCheckReponseAndFail(cmd, "1")) {
-        throw std::runtime_error("Unable to send right ascension command during unsafe slew");
-      }
-      if (!m_impl->sendCommandCheckReponseAndFail(":MS1#", "1")) {
-        throw std::runtime_error("Unable to send slew command during unsafe slew");
-      }
-      std::string r2 = m_impl->waitForSlewStop(1000, std::chrono::milliseconds(60000));
-      if (r2 != "") {
-         throw std::runtime_error("Unable to slew to safe position during unsafe slew: " + r2);
-      }
+        // The valid range in degrees is within maxRADegrees of 0, 180, or 360.
+        int RA = std::stoi(resp.substr(9, 9));
+        double RAdeg = RA / (3600.0 * 100);
+        if ( (std::abs(RAdeg - 0) < maxTiltDegrees) || (std::abs(RAdeg - 180) < maxTiltDegrees) ||
+             (std::abs(RAdeg - 360) < maxTiltDegrees)) {
+          // Send a stop command
+          if (!m_impl->sendCommandCheckReponseAndFail(":Q#", "1")) {
+            if (!m_impl->sendCommandCheckReponseAndFail(":Q#", "1")) {
+              throw std::runtime_error("When slewed into an unsafe position, could not send stop command after bypassing limits -- expect crash!");
+            }
+          }
+          break;
+        }
 
-      // Now try to move to (0,0).
+        auto now = std::chrono::steady_clock::now();
+        if ((now - start) >= std::chrono::seconds(20)) {
+          // Send a stop command
+          if (!m_impl->sendCommandCheckReponseAndFail(":Q#", "1")) {
+            if (!m_impl->sendCommandCheckReponseAndFail(":Q#", "1")) {
+              throw std::runtime_error("When slewed into an unsafe position, could not send stop command after bypassing limits -- expect crash!");
+            }
+          }
+          throw std::runtime_error("When slewed into an unsafe position, timed out trying to escape");
+        }
+      } while (true);
+
+      // Make a move to (0,0) and then to the original request location
       try {
-        MoveAbsolute(0, 0);
-      } catch (const std::runtime_error& e) {
-        throw std::runtime_error("Unable to move to origin after slewing to safe position during unsafe slew: " + std::string(e.what()));
-      }
-
-      // Now try to move back to the original requested position.
-      try {
+        MoveAbsoluteRaw(0, 0, hemisphere);
         MoveAbsoluteRaw(yawAdjusted, pitchAdjusted, hemisphere);
-      } catch (const std::runtime_error& e) {
-        throw std::runtime_error("Unable to move back to original position after slewing to safe position during unsafe slew: " + std::string(e.what()));
+      } catch (const std::exception& e) {
+        throw std::runtime_error(std::string("Error during adjustment move after slew to unsafe location: ") + e.what());
       }
 
     } else {
