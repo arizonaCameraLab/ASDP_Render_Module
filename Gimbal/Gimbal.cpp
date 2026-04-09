@@ -921,6 +921,7 @@ void Gimbal_iOptron::MoveAbsoluteRaw(double yawAdjusted, double pitchAdjusted, s
       if (!m_impl->sendCommand(cmd)) {
         throw std::runtime_error("When slewed into an unsafe position, could not send command " + cmd);
       }
+      std::cout << "XXX Sent motion command " << cmd << " to move away from unsafe position, now waiting for slew to stop" << std::endl;
 
       // Wait ten seconds and then see if we're out of the danger zone.
       std::this_thread::sleep_for(std::chrono::seconds(10));
@@ -946,13 +947,10 @@ void Gimbal_iOptron::MoveAbsoluteRaw(double yawAdjusted, double pitchAdjusted, s
         std::cout << "XXX RA: " << RAdeg << std::endl;
         if ( (std::abs(RAdeg - 0) < maxTiltDegrees) || (std::abs(RAdeg - 180) < maxTiltDegrees) ||
              (std::abs(RAdeg - 360) < maxTiltDegrees)) {
-          // Send a stop command
-          if (!m_impl->sendCommandCheckReponseAndFail(":Q#", "1")) {
-            if (!m_impl->sendCommandCheckReponseAndFail(":Q#", "1")) {
-              throw std::runtime_error("When slewed into an unsafe position, could not send stop command after bypassing limits -- expect crash!");
-            }
-          }
           break;
+        } else {
+          throw std::runtime_error("When slewed into an unsafe position, still in an unsafe position after bypassing limits and waiting: " +
+            std::to_string(RAdeg) + " degrees");
         }
       } while (++retries < 10);
 
