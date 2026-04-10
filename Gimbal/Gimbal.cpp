@@ -828,12 +828,12 @@ void Gimbal_iOptron::MoveAbsolute(double yawDegrees, double pitchDegrees)
     pitchAdjusted += 360;
   }
 
-  // If our adjusted yaw (declination) and the previous are both at or above 80 degrees in magnitude, first
-  // command a move to the same sign but at 70 degrees magnitude to avoid instability in the
+  // If our adjusted yaw (declination) and the previous are both at or above 88 degrees in magnitude, first
+  // command a move to the same sign but at 85 degrees magnitude to avoid instability in the
   // iOptron mount's shortest-path algorithm that can make it take the long way around,
   // crashing the ball into the tripod.
-  if (fabs(yawAdjusted) >= 80 && fabs(m_lastYawDegrees) >= 80) {
-    double clampedYaw = yawAdjusted * (70 / fabs(yawAdjusted));
+  if (fabs(yawAdjusted) >= 88 && fabs(m_lastYawDegrees) >= 88) {
+    double clampedYaw = yawAdjusted * (85 / fabs(yawAdjusted));
     MoveAbsoluteRaw(clampedYaw, pitchAdjusted, hemisphere, true);
   }
 
