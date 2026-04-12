@@ -37,7 +37,7 @@ using namespace asdp::render;
 using namespace asdp::render::calibration;
 using json = nlohmann::json;
 
-static std::string VERSION = "2.4.0";
+static std::string VERSION = "2.5.0";
 
 void usage(std::string name)
 {
@@ -56,6 +56,7 @@ void usage(std::string name)
   std::cerr << "    --writeMaps <filename.csv>    Write the expected to as-seen mappings to the specified CSV file." << std::endl;
   std::cerr << "    --readMaps <filename.csv>     Read the expected to as-seen mappings from the specified CSV file, don't compute." << std::endl;
   std::cerr << "    --invert                      Invert each image (useful for dark targets)." << std::endl;
+  std::cerr << "    --noWFOV                      Don't optimize wide FOV cameras for the optimization in multi-target runs." << std::endl;
 };
 
 /// @brief Structure to hold a point entry for a camera, describing its 3D location in space and its 2D projection.
@@ -515,7 +516,8 @@ int main(int argc, char** argv)
   std::string writeMapsFile, readMapsFile;
   int offsetThresholdPixels = -1;
   int targetBrightnessThreshold = 35767;
-  bool invert = false; ///< Whether to invert the images (useful for dark targets).
+  bool invert = false;  ///< Whether to invert the images (useful for dark targets).
+  bool wFOV = true;     ///< Whether to optimize wide-FOV cameras.
   size_t realParams = 0;          ///< The number of non-flag parameters we've seen.
 
   // Parse the command line arguments, with the first non-flag argument being the
@@ -541,8 +543,12 @@ int main(int argc, char** argv)
         return 1;
       }
       offsetThresholdPixels = std::stoi(argv[++i]);
-    } else if (std::string("--invert") == argv[i]) {
+    }
+    else if (std::string("--invert") == argv[i]) {
       invert = true;
+    }
+    else if (std::string("--noWFOV") == argv[i]) {
+      wFOV = false;
     } else if (argv[i][0] == '-') {
       usage(argv[0]);
       return 1;
@@ -597,6 +603,18 @@ int main(int argc, char** argv)
       return 10;
     }
     std::cout << "Read camera configuration from " << camConfigFile << std::endl;
+
+    // Determine which cameras we will be optimizing based on the command line arguments and the camera configuration file.
+    std::vector<asdp::render::CameraRenderInfo> camerasToOptimize = cameraRenderInfos;
+    if (!wFOV) {
+      camerasToOptimize.clear();
+      for (const auto& cri : cameraRenderInfos) {
+        if (cri.m_ID < 22) {
+          camerasToOptimize.push_back(cri);
+        }
+      }
+      std::cout << "Optimizing " << camerasToOptimize.size() << " non-wide-FOV cameras based on --noWFOV flag." << std::endl;
+    }
 
     std::vector<TargetInfo> targetInfos;
     try {
@@ -962,7 +980,7 @@ int main(int argc, char** argv)
 
       // Create an RMSErrorFunction to use to compute the reprojection error for the optimization of the camera parameters.
       cv::Ptr<RMSErrorFunction> rmsFunction =
-        cv::makePtr<RMSErrorFunction>(cameraRenderInfos, targetInfos, pointEntries, gimbalInfo.pitchFirst, 1);
+        cv::makePtr<RMSErrorFunction>(camerasToOptimize, targetInfos, pointEntries, gimbalInfo.pitchFirst, 1);
 
       // Optimize the target locations by randomly perturbing them and re-optimizing
       // the camera parameters then checking the overall reprojection error.
@@ -996,8 +1014,8 @@ int main(int argc, char** argv)
       std::cout << "Total RMS reprojection error after optimization: " << rmsError << std::endl;
 
       // Modify the CRI information in place and set the bags distortion for each camera.
-      for (int camIndex = 0; camIndex < cameraRenderInfos.size(); camIndex++) {
-        auto& cri = cameraRenderInfos[camIndex];
+      for (int camIndex = 0; camIndex < camerasToOptimize.size(); camIndex++) {
+        auto& cri = camerasToOptimize[camIndex];
         cv::Size imageSize(cri.m_resolutionPixels[0], cri.m_resolutionPixels[1]);
 
         // Get the updated camera information for this camera from the solver.
