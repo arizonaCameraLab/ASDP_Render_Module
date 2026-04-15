@@ -1087,10 +1087,12 @@ int main(int argc, char** argv)
           continue;
         }
 
-        // Use a 100x100 grid of (fractional location) pixels across the image.
+        // Use a 20x20 grid of (fractional location) pixels across the image.
+        // Any more than this greatly slows down the construction of the rendering mesh.
+        // We set our steps to get to just slightly under the last pixel index to avoid rounding past the boundary.
         bags[cri.m_ID] = DistortionBagOfMappings::Bag();
-        double stepX = static_cast<double>(cri.m_resolutionPixels[0]) / 100.0;
-        double stepY = static_cast<double>(cri.m_resolutionPixels[1]) / 100.0;
+        double stepX = static_cast<double>(cri.m_resolutionPixels[0]-1.00001) / 20.0;
+        double stepY = static_cast<double>(cri.m_resolutionPixels[1]-1.00001) / 20.0;
         for (double yf = 0.0; yf < cri.m_resolutionPixels[1]; yf += stepY) {
           int y = static_cast<int>(yf);
           for (double xf = 0.0; xf < cri.m_resolutionPixels[0]; xf += stepX) {
