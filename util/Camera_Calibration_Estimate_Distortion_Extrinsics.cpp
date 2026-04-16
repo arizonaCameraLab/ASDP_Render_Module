@@ -37,7 +37,7 @@ using namespace asdp::render;
 using namespace asdp::render::calibration;
 using json = nlohmann::json;
 
-static std::string VERSION = "2.5.0";
+static std::string VERSION = "2.6.0";
 
 void usage(std::string name)
 {
@@ -88,7 +88,7 @@ class RMSErrorFunction : public cv::MinProblemSolver::Function
 {
 public:
 
-  RMSErrorFunction(std::vector<CameraRenderInfo> const& cameraRenderInfos, std::vector<TargetInfo> targetInfos,
+  RMSErrorFunction(std::vector<CameraRenderInfo*> const& cameraRenderInfos, std::vector<TargetInfo> targetInfos,
     std::map<int, std::vector<PointEntry> > pointEntries, bool pitchFirst, int verbosity = 1)
     : m_cameraRenderInfos(cameraRenderInfos)
     , m_targetInfos(targetInfos)
@@ -127,7 +127,7 @@ public:
     // Make maps for CameraRenderInfo and TargetInfo by ID for easy lookup.
     std::map<uint16_t, const CameraRenderInfo*> cameraRenderInfoByID;
     for (const auto& cri : m_cameraRenderInfos) {
-      cameraRenderInfoByID[cri.m_ID] = &cri;
+      cameraRenderInfoByID[cri->m_ID] = cri;
     }
     std::map<int, const TargetInfo*> targetInfoByID;
     for (const auto& target : targetInfos) {
@@ -175,13 +175,13 @@ public:
       auto& cri = m_cameraRenderInfos[camIndex];
 
       // Fill in OpenCV matrix and distortion estimates for this camera ID.
-      cv::Size imageSize(cri.m_resolutionPixels[0], cri.m_resolutionPixels[1]);
+      cv::Size imageSize(cri->m_resolutionPixels[0], cri->m_resolutionPixels[1]);
       cv::Mat distCoeffs = cv::Mat::zeros(8, 1, CV_64F);
-      double cx = (cri.m_resolutionPixels[0] - 1) / 2.0;
-      double cy = (cri.m_resolutionPixels[1] - 1) / 2.0;
-      double fx = (cri.m_resolutionPixels[0] / 2.0) / tan((cri.m_fovDegrees[0] / 2.0) * M_PI / 180.0);
+      double cx = (cri->m_resolutionPixels[0] - 1) / 2.0;
+      double cy = (cri->m_resolutionPixels[1] - 1) / 2.0;
+      double fx = (cri->m_resolutionPixels[0] / 2.0) / tan((cri->m_fovDegrees[0] / 2.0) * M_PI / 180.0);
       double fy = fx;   ///< Assume square pixels
-      //double fy = (cri.m_resolutionPixels[1] / 2.0) / tan((cri.m_fovDegrees[1] / 2.0) * M_PI / 180.0);
+      //double fy = (cri->m_resolutionPixels[1] / 2.0) / tan((cri->m_fovDegrees[1] / 2.0) * M_PI / 180.0);
       cv::Mat cameraMatrix = cv::Mat::eye(3, 3, CV_64F);
       cameraMatrix.at<double>(0, 0) = fx;
       cameraMatrix.at<double>(1, 1) = fy;
@@ -201,11 +201,11 @@ public:
       std::ofstream cvPtsFile("openCVPoints_cam" + std::to_string(cri.m_ID) + ".csv");
       cvPtsFile << "objectX,objectY,objectZ,imageX,imageY" << std::endl;
 #endif
-      for (auto const& entry : pointEntries[cri.m_ID]) {
+      for (auto const& entry : pointEntries[cri->m_ID]) {
         // Rotate the 3D point based on the gimbal angles.
         std::array<double, 3> rotatedPoint = HelicopterToRotatedBall(entry.point3D,
           m_pitchFirst, entry.zRotationDegrees, entry.xRotationDegrees);
-        std::array<double, 3> cameraPoint = RotatedBallToCamera(rotatedPoint, cri);
+        std::array<double, 3> cameraPoint = RotatedBallToCamera(rotatedPoint, *cri);
         std::array<double, 3> ocvPoint = CameraToOpenCV(cameraPoint);
         // Add to the object points and image points (use float types expected by OpenCV helpers).
         objectPoints.back().emplace_back(
@@ -226,7 +226,7 @@ public:
 
       // Validate that objectPoints/imagePoints are non-empty and correspond
       if (objectPoints.empty() || imagePoints.empty() || objectPoints.size() != imagePoints.size()) {
-        std::cerr << "Warning: insufficient or mismatched calibration views for camera " << cri.m_ID << "; skipping calibration for this camera." << std::endl;
+        std::cerr << "Warning: insufficient or mismatched calibration views for camera " << cri->m_ID << "; skipping calibration for this camera." << std::endl;
         continue;
       }
       bool hasAnyPoints = false;
@@ -237,7 +237,7 @@ public:
         }
       }
       if (!hasAnyPoints) {
-        std::cerr << "Warning: no valid correspondence points for camera " << cri.m_ID << "; skipping calibration for this camera." << std::endl;
+        std::cerr << "Warning: no valid correspondence points for camera " << cri->m_ID << "; skipping calibration for this camera." << std::endl;
         continue;
       }
 
@@ -282,19 +282,19 @@ public:
         }
       }
       catch (const cv::Exception& e) {
-        std::cerr << "Error: OpenCV exception during calibrateCamera for camera " << cri.m_ID
+        std::cerr << "Error: OpenCV exception during calibrateCamera for camera " << cri->m_ID
           << ": " << e.what() << "; skipping calibration for this camera." << std::endl;
         continue;
       }
 
       if (m_verbosity > 0) {
-        std::cout << "Camera ID " << cri.m_ID << "  RMS error: " << rmsError << std::endl;
+        std::cout << "Camera ID " << cri->m_ID << "  RMS error: " << rmsError << std::endl;
         //std::cout << "  Camera matrix: " << cameraMatrix << std::endl;
       }
 
       // Guard against empty outputs (calibration may fail and not populate rvecs/tvecs)
       if (rvecs.empty() || tvecs.empty()) {
-        std::cerr << "Error: calibrateCamera did not produce rotation/translation vectors for camera " << cri.m_ID << "; skipping extrinsics update." << std::endl;
+        std::cerr << "Error: calibrateCamera did not produce rotation/translation vectors for camera " << cri->m_ID << "; skipping extrinsics update." << std::endl;
         std::cerr << "  rvecs.size()=" << rvecs.size() << " tvecs.size()=" << tvecs.size() << std::endl;
         std::cerr << "  Ensure there are sufficient, matching object/image point sets (and OpenCV built with required modules)." << std::endl;
         continue;
@@ -302,7 +302,7 @@ public:
 
       // Use the first view's rvec/tvec safely (check element shapes)
       if (rvecs[0].total() < 3 || (tvecs[0].rows * tvecs[0].cols) < 3) {
-        std::cerr << "Error: rvecs[0] or tvecs[0] has unexpected size for camera " << cri.m_ID << "; skipping." << std::endl;
+        std::cerr << "Error: rvecs[0] or tvecs[0] has unexpected size for camera " << cri->m_ID << "; skipping." << std::endl;
         continue;
       }
 
@@ -313,10 +313,10 @@ public:
       */
 
       // Save the updated camera information for this camera ID to be looked up by the GetUpdate* functions.
-      m_rvecs[cri.m_ID] = rvecs;
-      m_tvecs[cri.m_ID] = tvecs;
-      m_cameraMatrices[cri.m_ID] = cameraMatrix;
-      m_distCoeffs[cri.m_ID] = distCoeffs;
+      m_rvecs[cri->m_ID] = rvecs;
+      m_tvecs[cri->m_ID] = tvecs;
+      m_cameraMatrices[cri->m_ID] = cameraMatrix;
+      m_distCoeffs[cri->m_ID] = distCoeffs;
 
       // Increment the error
       rmsVals[camIndex] = rmsError;
@@ -376,7 +376,7 @@ public:
 
 protected:
   /// Saved from constructor parameters.
-  std::vector<CameraRenderInfo> const& m_cameraRenderInfos;
+  std::vector<CameraRenderInfo*> const& m_cameraRenderInfos;
   std::vector<TargetInfo> m_targetInfos;
   std::map<int, std::vector<PointEntry> > m_pointEntriesInitial;
   bool m_pitchFirst;
@@ -605,12 +605,16 @@ int main(int argc, char** argv)
     std::cout << "Read camera configuration from " << camConfigFile << std::endl;
 
     // Determine which cameras we will be optimizing based on the command line arguments and the camera configuration file.
-    std::vector<asdp::render::CameraRenderInfo> camerasToOptimize = cameraRenderInfos;
+    // We store pointers to them so that we will optimized them in place.
+    std::vector<asdp::render::CameraRenderInfo*> camerasToOptimize;
+    for (auto& cri : cameraRenderInfos) {
+      camerasToOptimize.push_back(&cri);
+    }
     if (!wFOV) {
       camerasToOptimize.clear();
-      for (const auto& cri : cameraRenderInfos) {
+      for (auto& cri : cameraRenderInfos) {
         if (cri.m_ID < 22) {
-          camerasToOptimize.push_back(cri);
+          camerasToOptimize.push_back(&cri);
         }
       }
       std::cout << "Optimizing " << camerasToOptimize.size() << " non-wide-FOV cameras based on --noWFOV flag." << std::endl;
@@ -1016,13 +1020,13 @@ int main(int argc, char** argv)
       // Modify the CRI information in place and set the bags distortion for each camera.
       for (int camIndex = 0; camIndex < camerasToOptimize.size(); camIndex++) {
         auto& cri = camerasToOptimize[camIndex];
-        cv::Size imageSize(cri.m_resolutionPixels[0], cri.m_resolutionPixels[1]);
+        cv::Size imageSize(cri->m_resolutionPixels[0], cri->m_resolutionPixels[1]);
 
         // Get the updated camera information for this camera from the solver.
-        auto rvecs = rmsFunction->GetUpdatedRvecs(cri.m_ID);
-        auto tvecs = rmsFunction->GetUpdatedTvecs(cri.m_ID);
-        auto cameraMatrix = rmsFunction->GetUpdatedCameraMatrix(cri.m_ID);
-        auto distCoeffs = rmsFunction->GetUpdatedDistCoeffs(cri.m_ID);
+        auto rvecs = rmsFunction->GetUpdatedRvecs(cri->m_ID);
+        auto tvecs = rmsFunction->GetUpdatedTvecs(cri->m_ID);
+        auto cameraMatrix = rmsFunction->GetUpdatedCameraMatrix(cri->m_ID);
+        auto distCoeffs = rmsFunction->GetUpdatedDistCoeffs(cri->m_ID);
 
         //======================
         // Fill in the camera intrinsic and extrinsic parameters in the cri structure. Note that we need the inverse of
@@ -1036,12 +1040,15 @@ int main(int argc, char** argv)
         // the middle of the sensor. Use an alpha of 1 so that we provide mapping coordinates for all pixels in
         // the original image (we'll provide warps for non-existent pixels, but that's okay).
         cv::Mat targetCameraMatrix = cv::getOptimalNewCameraMatrix(cameraMatrix, distCoeffs,
-          cv::Size(cri.m_resolutionPixels[0], cri.m_resolutionPixels[1]), 1, cv::Size(), nullptr, true);
+          cv::Size(cri->m_resolutionPixels[0], cri->m_resolutionPixels[1]), 1, cv::Size(), nullptr, true);
 
         // Compute the fields of view.
-        cri.m_fovDegrees[0] = 2.0 * atan2(cri.m_resolutionPixels[0] / 2.0, targetCameraMatrix.at<double>(0, 0)) * 180.0 / M_PI;
-        cri.m_fovDegrees[1] = 2.0 * atan2(cri.m_resolutionPixels[1] / 2.0, targetCameraMatrix.at<double>(1, 1)) * 180.0 / M_PI;
-
+        cri->m_fovDegrees[0] = 2.0 * atan2(cri->m_resolutionPixels[0] / 2.0, targetCameraMatrix.at<double>(0, 0)) * 180.0 / M_PI;
+        cri->m_fovDegrees[1] = 2.0 * atan2(cri->m_resolutionPixels[1] / 2.0, targetCameraMatrix.at<double>(1, 1)) * 180.0 / M_PI;
+        std::cout << "XXX Camera " << cri->m_ID << " optimized parameters:\n";
+        std::cout << "  Camera matrix:\n" << cameraMatrix << "\n";
+        std::cout << "  Updated camera matrix:\n" << targetCameraMatrix << "\n";
+        std::cout << "  FOV: (" << cri->m_fovDegrees[0] << ", " << cri->m_fovDegrees[1] << ")\n";
         // Find the offset in local camera space, which is the converted negative translation.
         std::array<double, 3> offsetLocal = OpenCVToCamera({ -tvecs[0].at<double>(0), -tvecs[0].at<double>(1), -tvecs[0].at<double>(2) });
 
@@ -1063,11 +1070,11 @@ int main(int argc, char** argv)
         // Apply the global differential rotation to the global orientation.
         // Convert the Quaternion to Euler angles in degrees.
         /// @todo Consider whether we need to adjust the position based on the rotation.
-        cri.m_positionMeters = CameraToRotatedBall(offsetLocal, cri);
-        glm::dquat dq = CameraToRotatedBall(qLocal, cri);
-        glm::dquat q = ApplyDifferentialRotation(dq, cri);
+        cri->m_positionMeters = CameraToRotatedBall(offsetLocal, *cri);
+        glm::dquat dq = CameraToRotatedBall(qLocal, *cri);
+        glm::dquat q = ApplyDifferentialRotation(dq, *cri);
         glm::dvec3 eulerDegrees = asdp::render::calibration::QuaternionToEulerXYZDegrees(q);
-        cri.m_orientationDegrees = { eulerDegrees.x, eulerDegrees.y, eulerDegrees.z };
+        cri->m_orientationDegrees = { eulerDegrees.x, eulerDegrees.y, eulerDegrees.z };
 
         //======================
         // Fill in the bags for this camera ID's distortion mapping by converting a range of actual points
@@ -1082,7 +1089,7 @@ int main(int argc, char** argv)
         try {
           cv::initUndistortRectifyMap(cameraMatrix, distCoeffs, cv::Mat(), targetCameraMatrix, imageSize, CV_32FC1, map1, map2);
         } catch (const cv::Exception& e) {
-          std::cerr << "Error: OpenCV exception during initUndistortRectifyMap for camera " << cri.m_ID
+          std::cerr << "Error: OpenCV exception during initUndistortRectifyMap for camera " << cri->m_ID
             << ": " << e.what() << "; skipping distortion mapping for this camera." << std::endl;
           continue;
         }
@@ -1090,12 +1097,12 @@ int main(int argc, char** argv)
         // Use a 20x20 grid of (fractional location) pixels across the image.
         // Any more than this greatly slows down the construction of the rendering mesh.
         // We set our steps to get to just slightly under the last pixel index to avoid rounding past the boundary.
-        bags[cri.m_ID] = DistortionBagOfMappings::Bag();
-        double stepX = static_cast<double>(cri.m_resolutionPixels[0]-1.00001) / 20.0;
-        double stepY = static_cast<double>(cri.m_resolutionPixels[1]-1.00001) / 20.0;
-        for (double yf = 0.0; yf < cri.m_resolutionPixels[1]; yf += stepY) {
+        bags[cri->m_ID] = DistortionBagOfMappings::Bag();
+        double stepX = static_cast<double>(cri->m_resolutionPixels[0]-1.00001) / 20.0;
+        double stepY = static_cast<double>(cri->m_resolutionPixels[1]-1.00001) / 20.0;
+        for (double yf = 0.0; yf < cri->m_resolutionPixels[1]; yf += stepY) {
           int y = static_cast<int>(yf);
-          for (double xf = 0.0; xf < cri.m_resolutionPixels[0]; xf += stepX) {
+          for (double xf = 0.0; xf < cri->m_resolutionPixels[0]; xf += stepX) {
             int x = static_cast<int>(xf);
 
             // Find the expected location by looking up in the undistortion maps.
@@ -1103,10 +1110,10 @@ int main(int argc, char** argv)
             double actualY = map2.at<float>(y, x);
 
             // Add the mapping from expected to actual location.
-            DistortionBagOfMappings::Point2D expected = PlaneIntersectionForPixelNoDistortion(cri, { float(x), float(y) });
-            DistortionBagOfMappings::Point2D actual = PlaneIntersectionForPixelNoDistortion(cri, { actualX, actualY });
+            DistortionBagOfMappings::Point2D expected = PlaneIntersectionForPixelNoDistortion(*cri, { float(x), float(y) });
+            DistortionBagOfMappings::Point2D actual = PlaneIntersectionForPixelNoDistortion(*cri, { actualX, actualY });
             DistortionBagOfMappings::Mapping mapping = { actual, expected };
-            bags[cri.m_ID].push_back(mapping);
+            bags[cri->m_ID].push_back(mapping);
           }
         }
       }
