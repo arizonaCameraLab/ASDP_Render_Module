@@ -68,6 +68,9 @@ namespace asdp {
 
       /// Turn on or off annotations showing the camera names.
       void (*ShowCameraNames)(bool showNames, void* userData) = nullptr;
+
+      /// Reset analysis connections, clearing any accumulated annotations.
+      void (*ResetAnalysis)(void* userData) = nullptr;
     };
 
     /// @brief Display base class that defines the interface that all Displays use.

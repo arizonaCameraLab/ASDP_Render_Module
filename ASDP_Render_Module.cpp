@@ -64,6 +64,7 @@ std::filesystem::path g_dirPath = CONFIG_FILE_PATH;
 /// @brief Structure storing information needed by the callback handlers, a pointer is passeed in userData.
 typedef struct {
   std::string cameraConfigFileName; ///< The name of the configuration file that was read and parsed.
+  std::atomic_int analysisEpoch{ 0 }; ///< The current epoch of the analysis data, incremented to reset analysis.
 } CallbackHandlerData;
 static CallbackHandlerData g_callbackHandlerData;
 
@@ -1133,6 +1134,18 @@ std::vector<CompositeCameras::Annotation> AnnotationCallbackHandler(Time time, v
   return annotations;
 }
 
+
+/// @brief Callback handler to reset the analysis.
+static void ResetAnalysis(void* userdata)
+{
+  if (!userdata) {
+    std::cerr << "Error: No user data provided for ResetAnalysis() callback handler." << std::endl;
+    return;
+  }
+  CallbackHandlerData* data = static_cast<CallbackHandlerData*>(userdata);
+  ++data->analysisEpoch;
+}
+
 /// @brief Thread to handle analysis reports and keep the vector of current reports updated.
 void HandleAnalysisThread(std::vector<std::string> analysisModuleURLs, std::shared_ptr<Timer> timer)
 {
@@ -1146,9 +1159,23 @@ void HandleAnalysisThread(std::vector<std::string> analysisModuleURLs, std::shar
   // Vector of maps of analysis objects over time, one per receiver.
   std::vector< std::map<std::string, AnalysisObjectOverTime> > reportMaps(analysisReceivers.size());
 
-  std::cout << "XXX Starting analysis thread with " << analysisModuleURLs.size() << " analysis module URLs." << std::endl;
+  int currentEpoch = g_callbackHandlerData.analysisEpoch;  // Local copy of the current epoch to detect changes.
+
   std::string jsonString;
   while (g_runAnalysisThread) {
+
+    // If the epoch has changed, clear all of the receivers and report maps to reset the analysis.
+    if (g_callbackHandlerData.analysisEpoch != currentEpoch) {
+      std::cout << "Resetting analysis connections." << std::endl;
+      currentEpoch = g_callbackHandlerData.analysisEpoch;
+      for (auto& receiver : analysisReceivers) {
+        receiver.reset();
+      }
+      for (auto& rm : reportMaps) {
+        rm.clear();
+      }
+    }
+
     std::vector<AnalysisReport> reports;
     for (size_t i = 0; i < analysisReceivers.size(); i++) {
       auto& receiver = analysisReceivers[i];
@@ -1997,6 +2024,7 @@ int main(int argc, char** argv)
     handlers->AutoUpdateColorOffsetsAndGains = AutoUpdateColorOffsetsAndGains;
     handlers->SaveCameraConfig = SaveCameraConfig;
     handlers->ShowCameraNames = ShowCameraNames;
+    handlers->ResetAnalysis = ResetAnalysis;
     g_callbackHandlerData.cameraConfigFileName = configPath.string();
 
     // Construct a Display for use by the point correspondence object, if any.

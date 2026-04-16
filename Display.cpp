@@ -264,6 +264,9 @@ public:
   /// Whether or not the 'c' key was pressed during the last loop, used to toggle camera names display.
   bool m_cPressed = false;
 
+  /// Whether or not the 'a' key was pressed during the last loop, used to toggle annotations display.
+  bool m_aPressed = false;
+
   /// Index of the joystick to use, or -1 if no joystick is to be used.
   int m_glfwJoystickIndex = -1;
 
@@ -836,6 +839,15 @@ void DisplayWindow::HandleKeyboard()
     }
   }
   m_impl->m_cPressed = cPressed;
+
+  // If the 'a' key is pressed, reset the analysis connections.
+  bool aPressed = (glfwGetKey(Display::m_impl->m_window, GLFW_KEY_A) == GLFW_PRESS);
+  if (aPressed && !m_impl->m_aPressed) {
+    if (m_eventHandlers && m_eventHandlers->ResetAnalysis) {
+      m_eventHandlers->ResetAnalysis(m_userData);
+    }
+  }
+  m_impl->m_aPressed = aPressed;
 }
 
 void DisplayWindow::HandleMouse()
