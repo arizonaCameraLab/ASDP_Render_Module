@@ -1134,11 +1134,19 @@ std::vector<CompositeCameras::Annotation> AnnotationCallbackHandler(Time time, v
 }
 
 /// @brief Thread to handle analysis reports and keep the vector of current reports updated.
-void HandleAnalysisThread(std::vector< std::shared_ptr<JSONStringReceiver> > analysisReceivers, std::shared_ptr<Timer> timer)
+void HandleAnalysisThread(std::vector<std::string> analysisModuleURLs, std::shared_ptr<Timer> timer)
 {
+  // Make a receiver for each analysis module URL.  They start out disconnected.
+  std::vector< std::shared_ptr<JSONStringReceiver> > analysisReceivers(analysisModuleURLs.size());
+
+  // Vector of times at which we last tried to connect to each receiver, so that we can avoid trying to connect too frequently.
+  std::vector< std::chrono::steady_clock::time_point > lastConnectAttemptTimes(analysisReceivers.size(),
+    std::chrono::steady_clock::now() - std::chrono::seconds(1));
+
   // Vector of maps of analysis objects over time, one per receiver.
   std::vector< std::map<std::string, AnalysisObjectOverTime> > reportMaps(analysisReceivers.size());
 
+  std::cout << "XXX Starting analysis thread with " << analysisModuleURLs.size() << " analysis module URLs." << std::endl;
   std::string jsonString;
   while (g_runAnalysisThread) {
     std::vector<AnalysisReport> reports;
@@ -1146,10 +1154,40 @@ void HandleAnalysisThread(std::vector< std::shared_ptr<JSONStringReceiver> > ana
       auto& receiver = analysisReceivers[i];
       auto& rm = reportMaps[i];
 
+      if (!receiver) {
+        if (std::chrono::steady_clock::now() - lastConnectAttemptTimes[i] > std::chrono::seconds(1)) {
+          // It's been a while since we last tried to connect, try again.
+          const std::string& url = analysisModuleURLs[i];
+          std::shared_ptr<JSONStringReceiver> analysisModule;
+          Status status = JSONStringReceiver::Create(url, analysisModule);
+          if (status != OKAY) {
+            lastConnectAttemptTimes[i] = std::chrono::steady_clock::now();
+            std::cout << "Failed to create analysis receiver for URL: " << url << std::endl;
+            continue;
+          }
+          analysisReceivers[i] = analysisModule;
+          std::cout << "Added analysis receiver for URL: " << url << std::endl;
+        }
+        continue;
+      }
+
       // Read up to 10 pending reports from this receiver to avoid starving other receivers
       // while efficiently processing a backlog of reports from a single receiver.
       size_t count = 0;
-      while ((receiver->Receive(0.0f, jsonString) == OKAY) && (++count < 10)) {
+      Status status = OKAY;
+      do {
+        status = receiver->Receive(0.0f, jsonString);
+        if (status == TIMEOUT) {
+          // No more reports to read right now, stop looking for new ones.
+          break;
+        }
+        if (status != OKAY) {
+          // An error occurred, drop this receiver and try to reconnect later.
+          std::cout << "Error receiving from analysis receiver, dropping receiver: " << ErrorMessage(status) << std::endl;
+          receiver.reset();
+          rm.clear();
+          break;
+        }
         // Parse the JSON string into analysis reports.
         try {
           // Convert this to a report
@@ -1175,7 +1213,7 @@ void HandleAnalysisThread(std::vector< std::shared_ptr<JSONStringReceiver> > ana
         } catch (const std::exception& e) {
           std::cerr << "Error parsing analysis report JSON: " << e.what() << std::endl;
         }
-      }
+      } while (++count < 10);
 
       // Remove any reports that are too old and then remove any map entries that are empty.
       Time now = g_lastCLOCK_SYNC;
@@ -1562,20 +1600,6 @@ int main(int argc, char** argv)
   {
     std::cout << "ASDP Render Module version " << VERSION + "-" + BUILD_TYPE << " using Core API "
       << asdp::Core::GetVersion() << std::endl;
-
-    //=================================================================
-    // Open any analysis modules receivers specified on the command line.  Make a vector of shared_ptr to them.
-    std::vector< std::shared_ptr<JSONStringReceiver> > analysisModules;
-    for (const std::string& url : analysisModuleURLs) {
-      std::shared_ptr<JSONStringReceiver> analysisModule;
-      Status status = JSONStringReceiver::Create(url, analysisModule);
-      if (status != OKAY) {
-        std::cerr << "Failed to create analysis module from URL " << url << ": "
-          << ErrorMessage(status) << std::endl;
-        return 2;
-      }
-      analysisModules.push_back(analysisModule);
-    }
 
     //=================================================================
     // Create a PoseAdjuster to handle helicopter motion.
@@ -2340,11 +2364,11 @@ int main(int argc, char** argv)
     // Keeps track of when we were paused so we can adjust our clock synchronization when resumed.
     Time pausedTime = {};
 
-    // If there are any analysis modules, launch a thread to service all of them, passing it the vector of modules.
+    // If there are any analysis modules, launch a thread to service all of them, passing it the vector of module URLs.
     std::thread analysisThread;
-    if (!analysisModules.empty()) {
+    if (!analysisModuleURLs.empty()) {
       g_runAnalysisThread = true;
-      analysisThread = std::thread(HandleAnalysisThread, analysisModules, timer);
+      analysisThread = std::thread(HandleAnalysisThread, analysisModuleURLs, timer);
     }
 
     // Render frames until someone has marked us to be done.
