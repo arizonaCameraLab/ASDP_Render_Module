@@ -37,7 +37,7 @@ using namespace asdp::render;
 using namespace asdp::render::calibration;
 using json = nlohmann::json;
 
-static std::string VERSION = "2.6.0";
+static std::string VERSION = "2.7.0";
 
 void usage(std::string name)
 {
@@ -246,11 +246,8 @@ public:
       std::vector<cv::Mat> tvecs;
       cv::TermCriteria termCrit(cv::TermCriteria::COUNT + cv::TermCriteria::EPS, 3000, 1e-7);   ///< @todo Adjust as needed
 
-      // Make a series of flag combinations for runs (every run re-solves for intrinsic and extrinsics along with the others,
-      // and every run keeps the aspect ratio fixed):
-      //  The first will solve only for the principal point.
-      //  The second will refine only radial distortion.
-      //  The third will refine only tangential distortion.
+      // This vector describes a protocol where we solve for a subset of the parameters in each iteration.
+      // Here are some of the flags we can use:
       //int flags = cv::CALIB_USE_INTRINSIC_GUESS;  ///< CALIB_USE_INTRINSIC_GUESS is required for non-planar points
       //flags |= cv::CALIB_FIX_ASPECT_RATIO;        ///< Fixes the pixel aspect ratio (fx/fy) to the initial estimate (square pixels)
       // The flag below removes tangential distortion correction.
@@ -260,7 +257,8 @@ public:
       // The below flag fixes the principal point at the center of the image.
       //flags |= cv::CALIB_FIX_PRINCIPAL_POINT;
       std::vector<int> protocol = {
-        cv::CALIB_USE_INTRINSIC_GUESS | cv::CALIB_FIX_ASPECT_RATIO | cv::CALIB_FIX_PRINCIPAL_POINT
+        cv::CALIB_USE_INTRINSIC_GUESS
+        //cv::CALIB_USE_INTRINSIC_GUESS | cv::CALIB_FIX_ASPECT_RATIO | cv::CALIB_FIX_PRINCIPAL_POINT
         /*
         cv::CALIB_USE_INTRINSIC_GUESS | cv::CALIB_FIX_ASPECT_RATIO | cv::CALIB_ZERO_TANGENT_DIST |
           cv::CALIB_FIX_K1 | cv::CALIB_FIX_K2 | cv::CALIB_FIX_K3 | cv::CALIB_FIX_K4 | cv::CALIB_FIX_K5 | cv::CALIB_FIX_K6,
@@ -1045,10 +1043,6 @@ int main(int argc, char** argv)
         // Compute the fields of view.
         cri->m_fovDegrees[0] = 2.0 * atan2(cri->m_resolutionPixels[0] / 2.0, targetCameraMatrix.at<double>(0, 0)) * 180.0 / M_PI;
         cri->m_fovDegrees[1] = 2.0 * atan2(cri->m_resolutionPixels[1] / 2.0, targetCameraMatrix.at<double>(1, 1)) * 180.0 / M_PI;
-        std::cout << "XXX Camera " << cri->m_ID << " optimized parameters:\n";
-        std::cout << "  Camera matrix:\n" << cameraMatrix << "\n";
-        std::cout << "  Updated camera matrix:\n" << targetCameraMatrix << "\n";
-        std::cout << "  FOV: (" << cri->m_fovDegrees[0] << ", " << cri->m_fovDegrees[1] << ")\n";
         // Find the offset in local camera space, which is the converted negative translation.
         std::array<double, 3> offsetLocal = OpenCVToCamera({ -tvecs[0].at<double>(0), -tvecs[0].at<double>(1), -tvecs[0].at<double>(2) });
 
