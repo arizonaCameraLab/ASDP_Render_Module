@@ -27,7 +27,7 @@ using namespace asdp;
 using namespace asdp::render;
 using namespace asdp::render::calibration;
 
-static std::string VERSION = "2.4.0";
+static std::string VERSION = "2.5.0";
 
 void usage(std::string name)
 {
@@ -238,11 +238,15 @@ int main(int argc, char** argv)
     // Figure out how many cameras to operate on. By default, all of them.
     // if doWFOVScan is false, and there are more than 21 cameras, then we limit to
     // the first 21.
-    // Note that we still capture images from all cameras that can see the target.
+    // Note that we still capture images from all cameras that can see the target when we have a singlet target.
     size_t numCamerasToScan = cameraRenderInfos.size();
     if (!doWFOVScan && numCamerasToScan > 21) {
       numCamerasToScan = 21;
     }
+
+    // Make a list of cameras to look for images in for each pose.  When we only have one target, this will be
+    // all of the cameras.
+    auto camerasToImage = cameraRenderInfos;
 
     // For each target, generate a series of poses, writing them to the file.
     // When more than one camera can see the same target, request images from all of them
@@ -267,6 +271,14 @@ int main(int argc, char** argv)
         int yMax = cri.m_resolutionPixels[1] - bottomMarginPixels - 1;
         double curStep = stepPixels;
 
+        // If we have more than one target, then we don't need to view points from neighboring cameras
+        // so we only put the current camera into the vector of cameras to look for images from.
+        // This way we minimize the number of images we need to capture and compute.
+        if (targetInfos.size() > 1) {
+          camerasToImage.clear();
+          camerasToImage.push_back(cri);
+        }
+
         constexpr int numRects = 8;
         for (int i = 0; i < numRects; i++) {
 
@@ -277,22 +289,22 @@ int main(int argc, char** argv)
           int numYSteps = 1 + (yMax - yMin) / curStep;
 
           // Go smoothly around the edges so we minimize motion.
-          RunAlongLine(outFile, frameIndex, cameraRenderInfos, frames, cri, targetPoint, target.id,
+          RunAlongLine(outFile, frameIndex, camerasToImage, frames, cri, targetPoint, target.id,
             gimbalInfo,
             topMarginPixels, bottomMarginPixels,
             leftMarginPixels, rightMarginPixels,
             xMin, yMin, curStep, 0, numXSteps);
-          RunAlongLine(outFile, frameIndex, cameraRenderInfos, frames, cri, targetPoint, target.id,
+          RunAlongLine(outFile, frameIndex, camerasToImage, frames, cri, targetPoint, target.id,
             gimbalInfo,
             topMarginPixels, bottomMarginPixels,
             leftMarginPixels, rightMarginPixels,
             xMax, yMin, 0, curStep, numYSteps);
-          RunAlongLine(outFile, frameIndex, cameraRenderInfos, frames, cri, targetPoint, target.id,
+          RunAlongLine(outFile, frameIndex, camerasToImage, frames, cri, targetPoint, target.id,
             gimbalInfo,
             topMarginPixels, bottomMarginPixels,
             leftMarginPixels, rightMarginPixels,
             xMax, yMax, -curStep, 0, numXSteps);
-          RunAlongLine(outFile, frameIndex, cameraRenderInfos, frames, cri, targetPoint, target.id,
+          RunAlongLine(outFile, frameIndex, camerasToImage, frames, cri, targetPoint, target.id,
             gimbalInfo,
             topMarginPixels, bottomMarginPixels,
             leftMarginPixels, rightMarginPixels,
