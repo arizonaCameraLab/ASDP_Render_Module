@@ -256,8 +256,19 @@ public:
       //flags |= cv::CALIB_FIX_K1 | cv::CALIB_FIX_K2 | cv::CALIB_FIX_K3 | cv::CALIB_FIX_K4 | cv::CALIB_FIX_K5 | cv::CALIB_FIX_K6;
       // The below flag fixes the principal point at the center of the image.
       //flags |= cv::CALIB_FIX_PRINCIPAL_POINT;
+      // The below enables the rational distortion model, which supports k4-k6 coefficients.
+      //flags |= cv::CALIB_RATIONAL_MODEL;
       std::vector<int> protocol = {
-        cv::CALIB_USE_INTRINSIC_GUESS
+        cv::CALIB_USE_INTRINSIC_GUESS | cv::CALIB_RATIONAL_MODEL
+        /*
+        cv::CALIB_USE_INTRINSIC_GUESS | cv::CALIB_USE_EXTRINSIC_GUESS | cv::CALIB_FIX_K1 | cv::CALIB_FIX_K2 | cv::CALIB_FIX_K3
+          | cv::CALIB_FIX_K4 | cv::CALIB_FIX_K5 | cv::CALIB_FIX_K6,
+        cv::CALIB_USE_INTRINSIC_GUESS | cv::CALIB_USE_EXTRINSIC_GUESS | cv::CALIB_FIX_K3 | cv::CALIB_FIX_K4 | cv::CALIB_FIX_K5 | cv::CALIB_FIX_K6,
+        cv::CALIB_USE_INTRINSIC_GUESS | cv::CALIB_USE_EXTRINSIC_GUESS | cv::CALIB_FIX_K4 | cv::CALIB_FIX_K5 | cv::CALIB_FIX_K6,
+        cv::CALIB_USE_INTRINSIC_GUESS | cv::CALIB_USE_EXTRINSIC_GUESS | cv::CALIB_FIX_K4 | cv::CALIB_FIX_K5 | cv::CALIB_FIX_K6 | cv::CALIB_RATIONAL_MODEL,
+        cv::CALIB_USE_INTRINSIC_GUESS | cv::CALIB_USE_EXTRINSIC_GUESS | cv::CALIB_RATIONAL_MODEL,
+        cv::CALIB_USE_INTRINSIC_GUESS | cv::CALIB_RATIONAL_MODEL
+        */
         //cv::CALIB_USE_INTRINSIC_GUESS | cv::CALIB_FIX_ASPECT_RATIO | cv::CALIB_FIX_PRINCIPAL_POINT
         /*
         cv::CALIB_USE_INTRINSIC_GUESS | cv::CALIB_FIX_ASPECT_RATIO | cv::CALIB_ZERO_TANGENT_DIST |
@@ -1025,6 +1036,14 @@ int main(int argc, char** argv)
         auto tvecs = rmsFunction->GetUpdatedTvecs(cri->m_ID);
         auto cameraMatrix = rmsFunction->GetUpdatedCameraMatrix(cri->m_ID);
         auto distCoeffs = rmsFunction->GetUpdatedDistCoeffs(cri->m_ID);
+        std::cout << "distCoeffs for camera " << cri->m_ID << ": ";
+        for (int i = 0; i < distCoeffs.total(); ++i) {
+          std::cout << distCoeffs.at<double>(i);
+          if (i < distCoeffs.total() - 1) {
+            std::cout << ", ";
+          }
+        }
+        std::cout << std::endl;
 
         //======================
         // Fill in the camera intrinsic and extrinsic parameters in the cri structure. Note that we need the inverse of
