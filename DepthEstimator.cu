@@ -678,12 +678,12 @@ public:
       glm::quat rotx = glm::angleAxis(glm::radians(cameras[i][0]->m_orientationDegrees[0]), glm::dvec3(1, 0, 0));
       glm::quat roty = glm::angleAxis(glm::radians(cameras[i][0]->m_orientationDegrees[1]), glm::dvec3(0, 1, 0));
       glm::quat rotz = glm::angleAxis(glm::radians(cameras[i][0]->m_orientationDegrees[2]), glm::dvec3(0, 0, 1));
-      glm::quat rot1 = rotz * roty * rotx;
+      glm::quat rot1 = rotx * roty * rotz;
 
       rotx = glm::angleAxis(glm::radians(cameras[i][1]->m_orientationDegrees[0]), glm::dvec3(1, 0, 0));
       roty = glm::angleAxis(glm::radians(cameras[i][1]->m_orientationDegrees[1]), glm::dvec3(0, 1, 0));
       rotz = glm::angleAxis(glm::radians(cameras[i][1]->m_orientationDegrees[2]), glm::dvec3(0, 0, 1));
-      glm::quat rot2 = rotz * roty * rotx;
+      glm::quat rot2 = rotx * roty * rotz;
 
       orientation = glm::slerp(rot1, rot2, 0.5f);
 
