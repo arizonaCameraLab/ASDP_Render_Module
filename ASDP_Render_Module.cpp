@@ -1935,6 +1935,12 @@ int main(int argc, char** argv)
       }
     }
 
+    // If we have no remaining visible cameras, we cannot continue because there would be nothing to display.
+    if (g_visibleCameras.size() == 0) {
+      std::cerr << "No visible cameras remain after skipping." << std::endl;
+      return 20;
+    }
+
     // If we've been asked to do standard-deviation-based auto-ranging, set that up.
     std::shared_ptr<asdp::render::imageStatistics::MeanStdGroup> meanStdGroup;
     std::shared_ptr<RangeEstimator> rangeEstimator = std::make_shared<RangeEstimatorFixed>();
