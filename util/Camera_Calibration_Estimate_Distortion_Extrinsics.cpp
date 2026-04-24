@@ -37,7 +37,7 @@ using namespace asdp::render;
 using namespace asdp::render::calibration;
 using json = nlohmann::json;
 
-static std::string VERSION = "2.7.0";
+static std::string VERSION = "2.8.0";
 
 void usage(std::string name)
 {
@@ -1054,10 +1054,12 @@ int main(int argc, char** argv)
         /// @todo Full coordinate transformation here for orientation and position differences
 
         // Target a camera matrix whose fields of view match the optimized ones above but whose center is at
-        // the middle of the sensor. Use an alpha of 1 so that we provide mapping coordinates for all pixels in
-        // the original image (we'll provide warps for non-existent pixels, but that's okay).
+        // the middle of the sensor. Use an alpha of 0 so that we provide mapping coordinates for only pixels in
+        // the original image (this will crop some regions, but make the overall mapping smooth all the way to
+        // the corners).
+        double alpha = 0.0;
         cv::Mat targetCameraMatrix = cv::getOptimalNewCameraMatrix(cameraMatrix, distCoeffs,
-          cv::Size(cri->m_resolutionPixels[0], cri->m_resolutionPixels[1]), 1, cv::Size(), nullptr, true);
+          cv::Size(cri->m_resolutionPixels[0], cri->m_resolutionPixels[1]), alpha, cv::Size(), nullptr, true);
 
         // Compute the fields of view.
         cri->m_fovDegrees[0] = 2.0 * atan2(cri->m_resolutionPixels[0] / 2.0, targetCameraMatrix.at<double>(0, 0)) * 180.0 / M_PI;
@@ -1121,6 +1123,14 @@ int main(int argc, char** argv)
             // Find the expected location by looking up in the undistortion maps.
             double actualX = map1.at<float>(y, x);
             double actualY = map2.at<float>(y, x);
+
+            // Check to see if the X axis went to the other half of the image
+            double centerX = cri->m_resolutionPixels[0] / 2.0;
+            if ((xf < centerX && actualX > centerX) || (xf > centerX && actualX < centerX)) {
+              std::cout << "XXX Mapping for camera " << cri->m_ID << " at expected pixel (" << xf << ", " << yf
+                << ") maps to actual pixel (" << actualX << ", " << actualY
+                << ") which is on the other half of the image; skipping this mapping point." << std::endl;
+            }
 
             // Add the mapping from expected to actual location.
             DistortionBagOfMappings::Point2D expected = PlaneIntersectionForPixelNoDistortion(*cri, { float(x), float(y) });
