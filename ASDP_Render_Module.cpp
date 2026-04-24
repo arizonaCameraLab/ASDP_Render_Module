@@ -1827,16 +1827,14 @@ int main(int argc, char** argv)
     // the first one.
     int NUM_TEXTURE_THREADS = 2;
     if (cameras.size() > 21) {
-#ifdef _WIN32
-      // On Windows, we need larger batches of lines to keep up with more than 21 cameras. The jump from
+      // We need larger batches of lines to keep up with more than 21 cameras. The jump from
       // default 110 to 330 has both cases ending at 990, which is just below the 1024 limit so will make
-      // a small final batch, reducing the latency from the end of the frame receipt to texture upload.
+      // a small final batch, reducing the latency from the end of the frame receipt to texture upload.s
+      // NOTE: Originally, we could keep up on Linux by bumping our number of threads to 3 and leaving
+      // the line batches the same. As of 4/24, this no longer works -- but depth estimation is now
+      // taking much longer than it used to.  We collapsed to a common solution of more batches because
+      // it keeps a small final batch, still reducing the latency with fewer threads.
       lineBatchesPerGPUSend *= 3;
-#else
-      // On Linux, we need an extra thread to keep up with the data rate when we get more than 21 cameras.
-      // It may be that we could increase the lineBatchesPerGPUSend and get by with two threads.
-      NUM_TEXTURE_THREADS = 3;
-#endif
     }
 
     std::vector< std::shared_ptr<DisplayTexture> > displayTextures = { displayTexture };
