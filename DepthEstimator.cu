@@ -690,7 +690,7 @@ public:
       // Determine the FOVs of the frame buffer that will be used to render the manifolds.
       // It should cover the range of the manifolds, including their distortion.  Then determine the
       // pixel count, which should be an even multiple of the number of samples in each dimension
-      // and its ratio should be similar to the aspect ration of the frame buffer and it should have
+      // and its ratio should be similar to the aspect ratio of the frame buffer and it should have
       // at least as many pixels as the camera images in each dimension.  Start by determining the
       // distorted location of a point at the upper-right corner of the camera image on a plane at
       // Z = -1 and computing its fields of view.
