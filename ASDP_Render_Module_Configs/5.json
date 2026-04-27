@@ -2,7 +2,7 @@
   "cameras": [
     {
       "color": {
-        "gain": 1.0,
+        "gain": 64.0,
         "offset": 0.0
       },
       "cropPixels": {
@@ -4462,7 +4462,7 @@
     },
     {
       "color": {
-        "gain": 1.0,
+        "gain": 64.0,
         "offset": 0.0
       },
       "cropPixels": {
@@ -8922,7 +8922,7 @@
     },
     {
       "color": {
-        "gain": 1.0,
+        "gain": 64.0,
         "offset": 0.0
       },
       "cropPixels": {
@@ -13382,7 +13382,7 @@
     },
     {
       "color": {
-        "gain": 1.0,
+        "gain": 64.0,
         "offset": 0.0
       },
       "cropPixels": {
@@ -17842,7 +17842,7 @@
     },
     {
       "color": {
-        "gain": 1.0,
+        "gain": 64.0,
         "offset": 0.0
       },
       "cropPixels": {
@@ -22302,7 +22302,7 @@
     },
     {
       "color": {
-        "gain": 1.0,
+        "gain": 64.0,
         "offset": 0.0
       },
       "cropPixels": {
@@ -26762,7 +26762,7 @@
     },
     {
       "color": {
-        "gain": 1.0,
+        "gain": 64.0,
         "offset": 0.0
       },
       "cropPixels": {
@@ -31222,7 +31222,7 @@
     },
     {
       "color": {
-        "gain": 1.0,
+        "gain": 64.0,
         "offset": 0.0
       },
       "cropPixels": {
@@ -35682,7 +35682,7 @@
     },
     {
       "color": {
-        "gain": 1.0,
+        "gain": 64.0,
         "offset": 0.0
       },
       "cropPixels": {
@@ -40142,7 +40142,7 @@
     },
     {
       "color": {
-        "gain": 1.0,
+        "gain": 64.0,
         "offset": 0.0
       },
       "cropPixels": {
@@ -44602,7 +44602,7 @@
     },
     {
       "color": {
-        "gain": 1.0,
+        "gain": 64.0,
         "offset": 0.0
       },
       "cropPixels": {
@@ -49062,7 +49062,7 @@
     },
     {
       "color": {
-        "gain": 1.0,
+        "gain": 64.0,
         "offset": 0.0
       },
       "cropPixels": {
@@ -53522,7 +53522,7 @@
     },
     {
       "color": {
-        "gain": 1.0,
+        "gain": 64.0,
         "offset": 0.0
       },
       "cropPixels": {
@@ -57982,7 +57982,7 @@
     },
     {
       "color": {
-        "gain": 1.0,
+        "gain": 64.0,
         "offset": 0.0
       },
       "cropPixels": {
@@ -62442,7 +62442,7 @@
     },
     {
       "color": {
-        "gain": 1.0,
+        "gain": 64.0,
         "offset": 0.0
       },
       "cropPixels": {
@@ -66902,7 +66902,7 @@
     },
     {
       "color": {
-        "gain": 1.0,
+        "gain": 64.0,
         "offset": 0.0
       },
       "cropPixels": {
@@ -71362,7 +71362,7 @@
     },
     {
       "color": {
-        "gain": 1.0,
+        "gain": 64.0,
         "offset": 0.0
       },
       "cropPixels": {
@@ -75822,7 +75822,7 @@
     },
     {
       "color": {
-        "gain": 1.0,
+        "gain": 64.0,
         "offset": 0.0
       },
       "cropPixels": {
@@ -80282,7 +80282,7 @@
     },
     {
       "color": {
-        "gain": 1.0,
+        "gain": 64.0,
         "offset": 0.0
       },
       "cropPixels": {
@@ -84742,7 +84742,7 @@
     },
     {
       "color": {
-        "gain": 1.0,
+        "gain": 64.0,
         "offset": 0.0
       },
       "cropPixels": {
@@ -89202,7 +89202,7 @@
     },
     {
       "color": {
-        "gain": 1.0,
+        "gain": 64.0,
         "offset": 0.0
       },
       "cropPixels": {
@@ -93662,7 +93662,7 @@
     },
     {
       "color": {
-        "gain": 1.0,
+        "gain": 64.0,
         "offset": 0.0
       },
       "cropPixels": {
@@ -98122,7 +98122,7 @@
     },
     {
       "color": {
-        "gain": 1.0,
+        "gain": 64.0,
         "offset": 0.0
       },
       "cropPixels": {
@@ -102582,7 +102582,7 @@
     },
     {
       "color": {
-        "gain": 1.0,
+        "gain": 64.0,
         "offset": 0.0
       },
       "cropPixels": {
@@ -107042,7 +107042,7 @@
     },
     {
       "color": {
-        "gain": 1.0,
+        "gain": 64.0,
         "offset": 0.0
       },
       "cropPixels": {
