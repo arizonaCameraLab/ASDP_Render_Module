@@ -56,7 +56,7 @@ using namespace asdp::render;
 using namespace asdp::analysis;
 using json = nlohmann::json;
 
-static std::string VERSION = "3.29.0";
+static std::string VERSION = "3.30.0";
 
 /// @brief The path to the configuration file. Defined in the CMakeLists file.
 std::filesystem::path g_dirPath = CONFIG_FILE_PATH;
@@ -1304,8 +1304,9 @@ static void usage(std::string name)
   std::cerr << "  --dumpTiming <file name base>       Write timing on quit to CSV files with the specified base name." << std::endl;
   std::cerr << "  --addAnalysis <URL>                 Add an analysis module from the specified URL (can be used multiple times)." << std::endl;
   std::cerr << "  --addDisplay                        Add another display with defaults that can be overridden" << std::endl;
-  std::cerr << "  --triggerAheadMicroseconds <int>    Microseconds ahead of render to trigger camera (default 22000)." << std::endl;
-  std::cerr << "  --depthAheadMicroseconds <int>      Microseconds ahead of render to compute depth (default 15000)." << std::endl;
+  std::cerr << "  --renderAheadMicroseconds <int>     Microseconds ahead of vertical retrace to start rendering next frame (default 2500)." << std::endl;
+  std::cerr << "  --triggerAheadMicroseconds <int>    Microseconds ahead of render start to trigger camera (default 22000)." << std::endl;
+  std::cerr << "  --depthAheadMicroseconds <int>      Microseconds ahead of render start to compute depth (default 15000)." << std::endl;
   std::cerr << "  --lockRotation                      Lock the rotation of the viewer to the initial helicopter pose." << std::endl;
   std::cerr << "  --disableLatencyCompensation        Disable latency compensation." << std::endl;
   std::cerr << "  --autoRangeStd <below> <above>      Adjust color range to specified standard deviations above and below the mean." << std::endl;
@@ -1347,8 +1348,9 @@ int main(int argc, char** argv)
 #endif
   bool doStreamPoses = true;      ///< Stream poses from the server, so we can adjust for latency.
   std::string dumpTimingFileName; ///< The base name for the timing files.
-  unsigned triggerAheadMicroseconds = 22000; ///< Microseconds ahead of render to trigger camera.
+  unsigned triggerAheadMicroseconds = 22000;  ///< Microseconds ahead of render to trigger camera.
   unsigned depthAheadMicroseconds = 15000;    ///< Microseconds ahead of render to compute depth.
+  unsigned renderAheadMicroseconds = 2500;    ///< Microseconds ahead of vertical retrace to start rendering the frame.
   bool lockRotation = false;      ///< Lock the rotation of the viewer to the initial helicopter pose.
   bool disableLatencyCompensation = false; ///< Disable latency compensation.
   double cameraFPS = 0.0;         ///< The frames per second to run the camera at, 0 defaults to camera-specified maximum.
@@ -1509,6 +1511,12 @@ int main(int argc, char** argv)
         return 2;
       }
       dumpTimingFileName = argv[i];
+    } else if (std::string("--renderAheadMicroseconds") == argv[i]) {
+      if (++i >= argc) {
+        usage(argv[0]);
+        return 2;
+      }
+      renderAheadMicroseconds = std::stoi(argv[i]);
     } else if (std::string("--triggerAheadMicroseconds") == argv[i]) {
       if (++i >= argc) {
         usage(argv[0]);
@@ -1621,6 +1629,12 @@ int main(int argc, char** argv)
   if (realParams != 1) {
     usage(argv[0]);
     return 2;
+  }
+
+  // If we are connected to one or more analysis modules, increment the rendering start time by 1ms.
+  if (!analysisModuleURLs.empty()) {
+    std::cout << "Moving rendering forwards by 1ms to allow time for analysis display." << std::endl;
+    renderAheadMicroseconds += 1000;
   }
 
   // Run inside a block so that the destructors will be called for all objects before we exit.
@@ -2120,13 +2134,13 @@ int main(int argc, char** argv)
       if (displayInfos[i].useOpenXR) {
         displays.push_back(std::make_shared<DisplayOpenXR>(g_composite, displayTexture.get(),
           client, triggerID, triggerAheadMicroseconds, depthAheadMicroseconds, displayInfos[i].viewpointOffset,
-          2500, 1, handlers, &g_callbackHandlerData,
+          renderAheadMicroseconds, 1, handlers, &g_callbackHandlerData,
           (i == 0) ? (&g_timingInfo) : nullptr, replayStreamID != 0));
       } else if (!displayInfos[i].XSightNIC.empty()) {
         displays.push_back(std::make_shared<DisplayXSight>(displayInfos[i].XSightNIC, g_composite, displayTexture.get(),
           client, triggerID, triggerAheadMicroseconds,
           depthAheadMicroseconds, displayInfos[i].viewpointOffset,
-          2500,
+          renderAheadMicroseconds,
           handlers, nullptr,
           (i == 0) ? (&g_timingInfo) : nullptr, replayStreamID != 0,
           displayInfos[i].XSightDisplay
@@ -2134,7 +2148,7 @@ int main(int argc, char** argv)
       } else {
         displays.push_back(std::make_shared<DisplayWindow>("ASDP Render Module " + std::to_string(i),
           g_composite, client, triggerID, triggerAheadMicroseconds, depthAheadMicroseconds, displayInfos[i].viewpointOffset,
-          displayInfos[i].fps, 2500,
+          displayInfos[i].fps, renderAheadMicroseconds,
           displayInfos[i].width, displayInfos[i].height,
           displayInfos[i].hFOV, displayInfos[i].joystick, displayTexture.get(),
           displayInfos[i].fullScreen, displayInfos[i].fullScreenDisplay, false, handlers, &g_callbackHandlerData,
