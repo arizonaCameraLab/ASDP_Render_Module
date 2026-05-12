@@ -62,10 +62,10 @@ static std::string VERSION = "3.30.0";
 std::filesystem::path g_dirPath = CONFIG_FILE_PATH;
 
 /// @brief Structure storing information needed by the callback handlers, a pointer is passeed in userData.
-typedef struct {
+struct CallbackHandlerData {
   std::string cameraConfigFileName; ///< The name of the configuration file that was read and parsed.
   std::atomic_int analysisEpoch{ 0 }; ///< The current epoch of the analysis data, incremented to reset analysis.
-} CallbackHandlerData;
+};
 static CallbackHandlerData g_callbackHandlerData;
 
 /// @brief Global variable set by callback handlers to tell when we're playing and pausing.
@@ -119,6 +119,12 @@ static std::atomic_bool g_runAnalysisThread;
 
 /// @brief Mutex to protect access to the current annotations.
 static std::mutex g_annotationMutex;
+
+/// @brief Atomic boolean to control the depth thread.
+static std::atomic_bool g_runDepthThread;
+
+/// @brief Thread for running depth estimation.
+static std::thread g_depthThread;
 
 /// @brief Callback handler to increment the active camera index.
 static void IncrementActiveCamera(void* /* unused */)
@@ -650,25 +656,52 @@ static void SaveCameraConfig(const std::string& filename, void* userdata)
   }
 }
 
+
+/// @brief Thread to compute the depth information for the cameras and update the meshes.
+/// @details The ComputeDepth callback handler transfers the vertex buffers from the
+/// @param timer Timer to use for getting the current time for depth estimation.
+/// @param depthContext DisplayTexture to use for borrowing an OpenGL context to update the meshes.
+/// CameraRenderInfo inline during rendering.
+static void DepthThreadFunction(std::shared_ptr<Timer> timer, std::shared_ptr<DisplayTexture> depthContext)
+{
+  if (!depthContext->BorrowContext()) {
+    std::cerr << "DepthThreadFunction(): Error: Could not borrow OpenGL context." << std::endl;
+    return;
+  }
+  while (g_runDepthThread) {
+    // Make a snapshot of the images from all cameras at the same time and store it into
+    // a custom ImageQueue that has a single entry from the same time for all of them.
+    /// @todo
+
+    Time now;
+    Status status = timer->GetCoreTime(now);
+    if (status != OKAY) {
+      std::cerr << "Failed to get time: " << ErrorMessage(status) << std::endl;
+      return;
+    }
+    /// @todo Consider another approach to finding the time.
+    std::string ret = g_depthEstimator->ComputeDepthEstimate(now);
+    if (ret != "") {
+      std::cerr << "Error computing depth estimate: " << ret << std::endl;
+      return;
+    } else {
+      g_depthEstimator->UpdateMeshesGPU(g_visibleCameras);
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));  // Sleep a bit to avoid eating a whole CPU.
+  }
+  depthContext->ReturnContext();
+}
+
 /// @brief Callback handler to compute depth information for the cameras.
 static void ComputeDepth(Time renderTime, void* /* unused */)
 {
   g_timingInfo.depthStartTimes.push_back(std::chrono::steady_clock::now());
 
-  // Make a snapshot of the images from all cameras at the same time and store it into
-  // a custom ImageQueue that has a single entry from the same time for all of them.
-  /// @todo
-
-  // Compute the depth and then use it to adjust the mesh for all rendered cameras and
-  // then update the vertex buffer for the camera on the Composite.
-  std::string ret = g_depthEstimator->ComputeDepthEstimate(renderTime);
-  if (ret != "") {
-    std::cerr << "Error computing depth estimate: " << ret << std::endl;
-  } else {
-    g_depthEstimator->UpdateMeshesGPU(g_visibleCameras);
-    for (std::shared_ptr<asdp::render::CameraRenderInfo> cri : g_visibleCameras) {
-      g_composite->UpdateVertexBuffer(*cri);
-    }
+  // Update the vertex buffers for all of the visible cameras with the new depth information.
+  // The depth updates are computed by DepthThreadFunction, which runs in a separate thread
+  // and updates the vertex buffers in the CameraRenderInfo objects inline.
+  for (std::shared_ptr<asdp::render::CameraRenderInfo> cri : g_visibleCameras) {
+    g_composite->UpdateVertexBuffer(*cri);
   }
 
   g_timingInfo.depthEndTimes.push_back(std::chrono::steady_clock::now());
@@ -1967,9 +2000,18 @@ int main(int argc, char** argv)
         autoRangeStdBelow, autoRangeStdAbove);
     }
 
+    std::shared_ptr<Timer> timer;
+    status = client->GetTimer(timer);
+    if (status != OKAY) {
+      std::cerr << "Failed to get timer: " << ErrorMessage(status) << std::endl;
+      return 300;
+    }
+
     // Construct a depth-estimation object if there are any depth-estimation cameras.
     // There must be sets of two camera pairs for depth estimation.
+    std::shared_ptr<DisplayTexture> depthContext;
     if (g_depthCameras.size() > 0) {
+      std::shared_ptr<DisplayTexture> depthContext = std::make_shared<DisplayTexture>(displayTexture.get());
       bool enablingCP = false; // Whether cylindrical projection is enabled for any of the displays.
       for (const auto& displayInfo : displayInfos) {
         if (displayInfo.enableCP) {
@@ -1992,8 +2034,8 @@ int main(int argc, char** argv)
         cameras.push_back(pair);
       }
 
-      if (!displayTexture->BorrowContext()) {
-        std::cerr << "Error borrowing context from displayTexture for DepthEstimator." << std::endl;
+      if (!depthContext->BorrowContext()) {
+        std::cerr << "Error borrowing context from depthContext for DepthEstimator." << std::endl;
         return 102;
       }
 
@@ -2021,10 +2063,14 @@ int main(int argc, char** argv)
       // Compute a depth estimate to get all of the machinery set up and GLEW initialized on this thread.
       g_depthEstimator->ComputeDepthEstimate(0);
 
-      if (!displayTexture->ReturnContext()) {
-        std::cerr << "Error returning context to displayTexture for DepthEstimator." << std::endl;
+      if (!depthContext->ReturnContext()) {
+        std::cerr << "Error returning context to depthContext for DepthEstimator." << std::endl;
         return 104;
       }
+
+      // Start the depth estimation thread.
+      g_runDepthThread = true;
+      g_depthThread = std::thread(DepthThreadFunction, timer, depthContext);
     }
 
     // Configure an event structure to handle callbacks for the display windows.
@@ -2103,12 +2149,6 @@ int main(int argc, char** argv)
       // Construct a Composite object to render the visible cameras.  We need a separate Composite per Display so that each
       // can cache consistent camera images for the whole frame while views are being rendered.
       // Two displays cannot share a SetupRenderFrame() call because they may have different frame rates.
-      std::shared_ptr<Timer> timer;
-      status = client->GetTimer(timer);
-      if (status != OKAY) {
-        std::cerr << "Failed to get timer: " << ErrorMessage(status) << std::endl;
-        return 24;
-      }
       // Rendering offset based on how many frames we want to render ahead.
       uint32_t renderOffsetMicroseconds = renderAheadFrames * (1000000 / cameraFPS);
       g_composite = std::make_shared<CompositeCameras>(
@@ -2395,15 +2435,6 @@ int main(int argc, char** argv)
       }
     }
 
-    // Get a shared pointer to the timer so that we can use it to convert times, and can adjust
-    // it based on sync events from the server.
-    std::shared_ptr<Timer> timer;
-    status = client->GetTimer(timer);
-    if (status != OKAY) {
-      std::cerr << "Failed to get timer: " << ErrorMessage(status) << std::endl;
-      return 35;
-    }
-
     // Create a ClockSynchronizer that will manage adjusting the timer based on clock-sync messages.
     std::shared_ptr<ClockSynchronizer> clockSync = std::make_shared<ClockSynchronizer>(timer);
 
@@ -2494,6 +2525,15 @@ int main(int argc, char** argv)
     g_runAnalysisThread = false;
     if (analysisThread.joinable()) {
       analysisThread.join();
+    }
+
+    // If we have a depth thread, shut it down and then join it.
+    if (depthContext) {
+      g_runDepthThread = false;
+      if (g_depthThread.joinable()) {
+        g_depthThread.join();
+      }
+      depthContext.reset();
     }
 
     // Destroy our client

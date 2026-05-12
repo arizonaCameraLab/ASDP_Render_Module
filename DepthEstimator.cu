@@ -1497,21 +1497,23 @@ void DepthEstimator::UpdateMeshesGPU(std::vector<std::shared_ptr<CameraRenderInf
     }
 
     // Start to copy the computed depths back to CPU memory.  We'll finish the copy when we're done queueing all cameras.
+    std::lock_guard<std::mutex> lock(c->m_meshMutex);
     m_impl->m_cameraDepthInfoKernelData[c.get()]->CopyDataFromGPU(*m_impl->m_cameraStreams[c.get()]);
   }
 
   // Finish copying data back from all cameras to ensure completion.  It awaits stream completion and then
   // copies back.
   for (std::shared_ptr<CameraRenderInfo> c : cams) {
+    std::lock_guard<std::mutex> lock(c->m_meshMutex);
     m_impl->m_cameraDepthInfoKernelData[c.get()]->FillDepthsBackToCameraRenderInfos(*m_impl->m_cameraStreams[c.get()]);
   }
 
   // Apply offsets to the mesh depth values for each camera.
   for (std::shared_ptr<CameraRenderInfo> c : cams) {
-    CameraRenderInfo& cam = *c;
-
     // Lock the mutex to protect the mesh data.
-    std::lock_guard<std::mutex> lock(cam.m_meshMutex);
+    std::lock_guard<std::mutex> lock(c->m_meshMutex);
+
+    CameraRenderInfo& cam = *c;
 
     // We add a small offset based on how far the mesh point is from the center of the camera
     // so that the visible triangle at a location is from the camera whose center of projection
