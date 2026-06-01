@@ -8,10 +8,10 @@ for the Apache Strap-Down Pilotage program.
 This Render module must be cloned recursively so that it pulls in all of its submodules:
 `git clone --recursive https://github.com/arizonaCameraLab/ASDP_Render_Module`
 
-**Summary:** Quick instructions to get set up on Linux for Storage and Render Server systems
+**Summary:** Quick instructions to get set up on Linux for Camera Simulator and Render Server systems
 (replace X with the serial number of the systems being used [1-4] in the IP addresses):
 
-- Storage Server:
+- Simulated Camera Server:
     - Build and install ASDP_Core_API, ASDP_Core_Module, and ASDP_Camera_Simulator (in that order).
     - ASDP_Core_Module 10.10.10.X1 --verbosity 100
 - Render Server:
@@ -41,6 +41,31 @@ This can be installed on Windows from
 (install into C:\Program Files\opencv for the CMakeLists.txt to find it by default, change the
 CMAKE_PREFIX_PATH to include it vc16/lib directory if it is placed elsewhere) and on Linux
 with `sudo apt install libopencv-dev`.
+
+If you want to build the OpenXR support on Linux to use Monado to drive an HMD, you need:
+- libopenxr-dev
+- libopenxr-loader1
+- libopenxr-monado
+- monado-cli
+- monado-gui
+- xr-hardware
+- python3-dev
+- libusb-1.0.0-dev
+
+You then need to build libsurvive to be able to read the base station:
+- git clone https://github.com/cntools/libsurvive.git
+-	cd libsurvive
+-	cmake -B build -DCMAKE_BUILD_TYPE=Release
+-	cmake --build build -- -j$(nproc)
+-	sudo cmake --install build
+-	export LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH
+- Turn on the Vive and point it at the base station and then run `sensors-readout` to verify that it is working.
+
+You then need to configure monado to use the survive library to read the base station:
+- Edit /etc/monado/monado.conf and add the following lines to the end of the file:
+  `{ "drivers": [ { "name": "survive" } ] }`
+- Add this to .bashrc: `XR_RUNTIME_JSON=/usr/share/openxr/1/openxr_monado.json`
+- Reboot so that all of the environment variables take effect.
 
 To upgrade a server-only Mint distribution (with added nVidia drivers) on a Render Server to a
 desktop environment that uses the light-weight XFCE desktop but does not include the printer daemon,
