@@ -42,7 +42,8 @@ This can be installed on Windows from
 CMAKE_PREFIX_PATH to include it vc16/lib directory if it is placed elsewhere) and on Linux
 with `sudo apt install libopencv-dev`.
 
-If you want to build the OpenXR support on Linux to use Monado to drive an HMD, you need:
+If you want to build the OpenXR support on Linux to use Monado to drive an HMD (currently not
+completely implemented as of 6/2/2026), you need:
 - libopenxr-dev
 - libopenxr-loader1
 - libopenxr-monado
