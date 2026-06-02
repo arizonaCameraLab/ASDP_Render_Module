@@ -30,19 +30,19 @@ The following packages are required (apt install) to build on Linux:
 - libglew-dev
 - nvidia-cuda-toolkit
 
-If you want to build the Storage Manager application, it also requires Qt5:
+**Storage Manager:** If you want to build the Storage Manager application, it also requires Qt5:
 - qtbase5-dev
 - qtdeclarative5-dev
 - libqt5svg5-dev
 
-If you want to use the Phase-2 multi-depth camera calibration, it also requires OpenCV.
+**Multi-depth calibration:** If you want to use the Phase-2 multi-depth camera calibration, it also requires OpenCV.
 This can be installed on Windows from
 `https://sourceforge.net/projects/opencvlibrary/files/4.12.0/opencv-4.12.0-windows.exe/download`
 (install into C:\Program Files\opencv for the CMakeLists.txt to find it by default, change the
 CMAKE_PREFIX_PATH to include it vc16/lib directory if it is placed elsewhere) and on Linux
 with `sudo apt install libopencv-dev`.
 
-If you want to build the OpenXR support on Linux to use Monado to drive an HMD (currently not
+**OpenXR Linux:** If you want to build the OpenXR support on Linux to use Monado to drive an HMD (currently not
 completely implemented as of 6/2/2026), you need:
 - libopenxr-dev
 - libopenxr-loader1
@@ -68,7 +68,7 @@ You then need to configure monado to use the survive library to read the base st
 - Add this to .bashrc: `XR_RUNTIME_JSON=/usr/share/openxr/1/openxr_monado.json`
 - Reboot so that all of the environment variables take effect.
 
-To upgrade a server-only Mint distribution (with added nVidia drivers) on a Render Server to a
+**Linux Mint:** To upgrade a server-only Mint distribution (with added nVidia drivers) on a Render Server to a
 desktop environment that uses the light-weight XFCE desktop but does not include the printer daemon,
 use the following commands:
 
