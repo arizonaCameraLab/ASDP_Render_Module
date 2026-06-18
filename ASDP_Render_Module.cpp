@@ -679,7 +679,7 @@ static void DepthThreadFunction(std::shared_ptr<Timer> timer, std::shared_ptr<Di
       std::cerr << "Failed to get time: " << ErrorMessage(status) << std::endl;
       return;
     }
-    /// @todo Consider another approach to finding the time.
+    /// @todo Consider another approach to finding the time for the estimate.
     try {
       std::string ret = g_depthEstimator->ComputeDepthEstimate(now);
       if (ret != "") {
@@ -1344,7 +1344,7 @@ static void usage(std::string name)
   std::cerr << "  --addDisplay                        Add another display with defaults that can be overridden" << std::endl;
   std::cerr << "  --renderAheadMicroseconds <int>     Microseconds ahead of vertical retrace to start rendering next frame (default 2500)." << std::endl;
   std::cerr << "  --triggerAheadMicroseconds <int>    Microseconds ahead of render start to trigger camera (default 22000)." << std::endl;
-  std::cerr << "  --depthAheadMicroseconds <int>      Microseconds ahead of render start to compute depth (default 15000)." << std::endl;
+  std::cerr << "  --depthAheadMicroseconds <int>      Microseconds ahead of render start to copy depth info (default 4000)." << std::endl;
   std::cerr << "  --lockRotation                      Lock the rotation of the viewer to the initial helicopter pose." << std::endl;
   std::cerr << "  --disableLatencyCompensation        Disable latency compensation." << std::endl;
   std::cerr << "  --autoRangeStd <below> <above>      Adjust color range to specified standard deviations above and below the mean." << std::endl;
@@ -1387,7 +1387,7 @@ int main(int argc, char** argv)
   bool doStreamPoses = true;      ///< Stream poses from the server, so we can adjust for latency.
   std::string dumpTimingFileName; ///< The base name for the timing files.
   unsigned triggerAheadMicroseconds = 22000;  ///< Microseconds ahead of render to trigger camera.
-  unsigned depthAheadMicroseconds = 15000;    ///< Microseconds ahead of render to compute depth.
+  unsigned depthAheadMicroseconds = 4000;     ///< Microseconds ahead of render to copy depth info.
   unsigned renderAheadMicroseconds = 2500;    ///< Microseconds ahead of vertical retrace to start rendering the frame.
   bool lockRotation = false;      ///< Lock the rotation of the viewer to the initial helicopter pose.
   bool disableLatencyCompensation = false; ///< Disable latency compensation.
