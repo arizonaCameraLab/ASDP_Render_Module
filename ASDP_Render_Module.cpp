@@ -62,10 +62,10 @@ static std::string VERSION = "3.30.0";
 std::filesystem::path g_dirPath = CONFIG_FILE_PATH;
 
 /// @brief Structure storing information needed by the callback handlers, a pointer is passeed in userData.
-typedef struct {
+struct CallbackHandlerData {
   std::string cameraConfigFileName; ///< The name of the configuration file that was read and parsed.
   std::atomic_int analysisEpoch{ 0 }; ///< The current epoch of the analysis data, incremented to reset analysis.
-} CallbackHandlerData;
+};
 static CallbackHandlerData g_callbackHandlerData;
 
 /// @brief Global variable set by callback handlers to tell when we're playing and pausing.
@@ -119,6 +119,12 @@ static std::atomic_bool g_runAnalysisThread;
 
 /// @brief Mutex to protect access to the current annotations.
 static std::mutex g_annotationMutex;
+
+/// @brief Atomic boolean to control the depth thread.
+static std::atomic_bool g_runDepthThread;
+
+/// @brief Thread for running depth estimation.
+static std::thread g_depthThread;
 
 /// @brief Callback handler to increment the active camera index.
 static void IncrementActiveCamera(void* /* unused */)
@@ -650,25 +656,60 @@ static void SaveCameraConfig(const std::string& filename, void* userdata)
   }
 }
 
+
+/// @brief Thread to compute the depth information for the cameras and update the meshes.
+/// @details The CopyDepthInfo callback handler transfers the vertex buffers from the
+/// @param timer Timer to use for getting the current time for depth estimation.
+/// @param depthContext DisplayTexture to use for borrowing an OpenGL context to update the meshes.
+/// CameraRenderInfo inline during rendering.
+static void DepthThreadFunction(std::shared_ptr<Timer> timer, std::shared_ptr<DisplayTexture> depthContext)
+{
+  if (!depthContext->BorrowContext()) {
+    std::cerr << "DepthThreadFunction(): Error: Could not borrow OpenGL context." << std::endl;
+    return;
+  }
+  while (g_runDepthThread) {
+    g_timingInfo.depthComputeStartTimes.push_back(std::chrono::steady_clock::now());
+    // Make a snapshot of the images from all cameras at the same time and store it into
+    // a custom ImageQueue that has a single entry from the same time for all of them.
+    /// @todo
+
+    Time now;
+    Status status = timer->GetCoreTime(now);
+    if (status != OKAY) {
+      std::cerr << "Failed to get time: " << ErrorMessage(status) << std::endl;
+      return;
+    }
+    /// @todo Consider another approach to finding the time for the estimate.
+    try {
+      std::string ret = g_depthEstimator->ComputeDepthEstimate(now);
+      if (ret != "") {
+        std::cerr << "Error computing depth estimate: " << ret << std::endl;
+        return;
+      } else {
+        g_depthEstimator->UpdateMeshesGPU(g_visibleCameras);
+      }
+    } catch (const std::exception& e) {
+      std::cerr << "Exception while computing depth estimate: " << e.what() << std::endl;
+      return;
+    }
+    g_timingInfo.depthComputeEndTimes.push_back(std::chrono::steady_clock::now());
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));  // Sleep a bit to avoid eating a whole CPU.
+  }
+  depthContext->ReturnContext();
+}
+
 /// @brief Callback handler to compute depth information for the cameras.
-static void ComputeDepth(Time renderTime, void* /* unused */)
+static void CopyDepthInfo(Time renderTime, void* /* unused */)
 {
   g_timingInfo.depthStartTimes.push_back(std::chrono::steady_clock::now());
 
-  // Make a snapshot of the images from all cameras at the same time and store it into
-  // a custom ImageQueue that has a single entry from the same time for all of them.
-  /// @todo
-
-  // Compute the depth and then use it to adjust the mesh for all rendered cameras and
-  // then update the vertex buffer for the camera on the Composite.
-  std::string ret = g_depthEstimator->ComputeDepthEstimate(renderTime);
-  if (ret != "") {
-    std::cerr << "Error computing depth estimate: " << ret << std::endl;
-  } else {
-    g_depthEstimator->UpdateMeshesGPU(g_visibleCameras);
-    for (std::shared_ptr<asdp::render::CameraRenderInfo> cri : g_visibleCameras) {
-      g_composite->UpdateVertexBuffer(*cri);
-    }
+  // Update the vertex buffers for all of the visible cameras with the new depth information.
+  // The depth updates are computed by DepthThreadFunction, which runs in a separate thread
+  // and updates the vertex buffers in the CameraRenderInfo objects inline.
+  for (std::shared_ptr<asdp::render::CameraRenderInfo> cri : g_visibleCameras) {
+    g_composite->UpdateVertexBuffer(*cri);
   }
 
   g_timingInfo.depthEndTimes.push_back(std::chrono::steady_clock::now());
@@ -1306,7 +1347,7 @@ static void usage(std::string name)
   std::cerr << "  --addDisplay                        Add another display with defaults that can be overridden" << std::endl;
   std::cerr << "  --renderAheadMicroseconds <int>     Microseconds ahead of vertical retrace to start rendering next frame (default 2500)." << std::endl;
   std::cerr << "  --triggerAheadMicroseconds <int>    Microseconds ahead of render start to trigger camera (default 22000)." << std::endl;
-  std::cerr << "  --depthAheadMicroseconds <int>      Microseconds ahead of render start to compute depth (default 15000)." << std::endl;
+  std::cerr << "  --depthAheadMicroseconds <int>      Microseconds ahead of render start to copy depth info (default 4000)." << std::endl;
   std::cerr << "  --lockRotation                      Lock the rotation of the viewer to the initial helicopter pose." << std::endl;
   std::cerr << "  --disableLatencyCompensation        Disable latency compensation." << std::endl;
   std::cerr << "  --autoRangeStd <below> <above>      Adjust color range to specified standard deviations above and below the mean." << std::endl;
@@ -1349,7 +1390,7 @@ int main(int argc, char** argv)
   bool doStreamPoses = true;      ///< Stream poses from the server, so we can adjust for latency.
   std::string dumpTimingFileName; ///< The base name for the timing files.
   unsigned triggerAheadMicroseconds = 22000;  ///< Microseconds ahead of render to trigger camera.
-  unsigned depthAheadMicroseconds = 15000;    ///< Microseconds ahead of render to compute depth.
+  unsigned depthAheadMicroseconds = 4000;     ///< Microseconds ahead of render to copy depth info.
   unsigned renderAheadMicroseconds = 2500;    ///< Microseconds ahead of vertical retrace to start rendering the frame.
   bool lockRotation = false;      ///< Lock the rotation of the viewer to the initial helicopter pose.
   bool disableLatencyCompensation = false; ///< Disable latency compensation.
@@ -1967,9 +2008,18 @@ int main(int argc, char** argv)
         autoRangeStdBelow, autoRangeStdAbove);
     }
 
+    std::shared_ptr<Timer> timer;
+    status = client->GetTimer(timer);
+    if (status != OKAY) {
+      std::cerr << "Failed to get timer: " << ErrorMessage(status) << std::endl;
+      return 300;
+    }
+
     // Construct a depth-estimation object if there are any depth-estimation cameras.
     // There must be sets of two camera pairs for depth estimation.
+    std::shared_ptr<DisplayTexture> depthContext;
     if (g_depthCameras.size() > 0) {
+      depthContext = std::make_shared<DisplayTexture>(displayTexture.get());
       bool enablingCP = false; // Whether cylindrical projection is enabled for any of the displays.
       for (const auto& displayInfo : displayInfos) {
         if (displayInfo.enableCP) {
@@ -1992,8 +2042,8 @@ int main(int argc, char** argv)
         cameras.push_back(pair);
       }
 
-      if (!displayTexture->BorrowContext()) {
-        std::cerr << "Error borrowing context from displayTexture for DepthEstimator." << std::endl;
+      if (!depthContext->BorrowContext()) {
+        std::cerr << "Error borrowing context from depthContext for DepthEstimator." << std::endl;
         return 102;
       }
 
@@ -2021,17 +2071,21 @@ int main(int argc, char** argv)
       // Compute a depth estimate to get all of the machinery set up and GLEW initialized on this thread.
       g_depthEstimator->ComputeDepthEstimate(0);
 
-      if (!displayTexture->ReturnContext()) {
-        std::cerr << "Error returning context to displayTexture for DepthEstimator." << std::endl;
+      if (!depthContext->ReturnContext()) {
+        std::cerr << "Error returning context to depthContext for DepthEstimator." << std::endl;
         return 104;
       }
+
+      // Start the depth estimation thread.
+      g_runDepthThread = true;
+      g_depthThread = std::thread(DepthThreadFunction, timer, depthContext);
     }
 
     // Configure an event structure to handle callbacks for the display windows.
     std::shared_ptr<EventHandlers> handlers = std::make_shared<EventHandlers>();
     handlers->ChangePlayPause = ChangePlayPause;
     if (g_depthEstimator) {
-      handlers->ComputeDepth = ComputeDepth;
+      handlers->CopyDepthInfo = CopyDepthInfo;
     }
     handlers->SetToRenderDepth = SetDepthRendering;
     handlers->IncrementActiveCamera = IncrementActiveCamera;
@@ -2103,12 +2157,6 @@ int main(int argc, char** argv)
       // Construct a Composite object to render the visible cameras.  We need a separate Composite per Display so that each
       // can cache consistent camera images for the whole frame while views are being rendered.
       // Two displays cannot share a SetupRenderFrame() call because they may have different frame rates.
-      std::shared_ptr<Timer> timer;
-      status = client->GetTimer(timer);
-      if (status != OKAY) {
-        std::cerr << "Failed to get timer: " << ErrorMessage(status) << std::endl;
-        return 24;
-      }
       // Rendering offset based on how many frames we want to render ahead.
       uint32_t renderOffsetMicroseconds = renderAheadFrames * (1000000 / cameraFPS);
       g_composite = std::make_shared<CompositeCameras>(
@@ -2395,15 +2443,6 @@ int main(int argc, char** argv)
       }
     }
 
-    // Get a shared pointer to the timer so that we can use it to convert times, and can adjust
-    // it based on sync events from the server.
-    std::shared_ptr<Timer> timer;
-    status = client->GetTimer(timer);
-    if (status != OKAY) {
-      std::cerr << "Failed to get timer: " << ErrorMessage(status) << std::endl;
-      return 35;
-    }
-
     // Create a ClockSynchronizer that will manage adjusting the timer based on clock-sync messages.
     std::shared_ptr<ClockSynchronizer> clockSync = std::make_shared<ClockSynchronizer>(timer);
 
@@ -2482,6 +2521,15 @@ int main(int argc, char** argv)
       }
     }
 
+    // If we have a depth thread, shut it down and then join it.
+    if (depthContext) {
+      g_runDepthThread = false;
+      if (g_depthThread.joinable()) {
+        g_depthThread.join();
+      }
+      depthContext.reset();
+    }
+
     // Set done and wait for all of our GPU data threads to join.
     done = true;
     for (auto& thread : copyDataToGPUThread) {
@@ -2537,6 +2585,12 @@ int main(int argc, char** argv)
       if (g_timingInfo.renderSubmitTimes.size() > maxEntries) {
         maxEntries = g_timingInfo.renderSubmitTimes.size();
       }
+      if (g_timingInfo.depthComputeStartTimes.size() > maxEntries) {
+        maxEntries = g_timingInfo.depthComputeStartTimes.size();
+      }
+      if (g_timingInfo.depthComputeEndTimes.size() > maxEntries) {
+        maxEntries = g_timingInfo.depthComputeEndTimes.size();
+      }
       if (g_timingInfo.depthStartTimes.size() > maxEntries) {
         maxEntries = g_timingInfo.depthStartTimes.size();
       }
@@ -2560,7 +2614,7 @@ int main(int argc, char** argv)
       std::string rawTimingFileName = dumpTimingFileName + ".csv";
       std::ofstream dumpTimingFile(rawTimingFileName);
       std::cout << "Dumping " << maxEntries << " raw timing information to " << rawTimingFileName << std::endl;
-      dumpTimingFile << "Depth Start,Depth End,Render start,Render submit";
+      dumpTimingFile << "Depth Compute Start,Depth Compute End,Depth Copy Start,Depth Copy End,Render start,Render submit";
       for (size_t i = 0; i < g_timingInfo.cameras.size(); i++) {
         dumpTimingFile << ",Camera " << i+1 << " frame begin,Camera " << i+1
           << " frame end,Camera " << i+1 << " texture complete,Camera " << i+1
@@ -2569,6 +2623,14 @@ int main(int argc, char** argv)
       dumpTimingFile << std::endl;
       dumpTimingFile << std::setprecision(20);
       for (size_t i = 0; i < maxEntries; i++) {
+        if (i < g_timingInfo.depthComputeStartTimes.size()) {
+          dumpTimingFile << TimeIntervalToStringMilliseconds(g_timingInfo.depthComputeStartTimes[i] - g_timingInfo.startTime);
+        }
+        dumpTimingFile << ",";
+        if (i < g_timingInfo.depthComputeEndTimes.size()) {
+          dumpTimingFile << TimeIntervalToStringMilliseconds(g_timingInfo.depthComputeEndTimes[i] - g_timingInfo.startTime);
+        }
+        dumpTimingFile << ",";
         if (i < g_timingInfo.depthStartTimes.size()) {
           dumpTimingFile << TimeIntervalToStringMilliseconds(g_timingInfo.depthStartTimes[i] - g_timingInfo.startTime);
         }
@@ -2616,7 +2678,7 @@ int main(int argc, char** argv)
       std::string intervalTimingFileName = dumpTimingFileName + "_intervals.csv";
       std::ofstream intervalTimingFile(intervalTimingFileName);
       std::cout << "Dumping " << maxEntries-1 << " interval timing information to " << intervalTimingFileName << std::endl;
-      intervalTimingFile << "Depth start interval,Depth end interval,Render start interval,Render submit interval";
+      intervalTimingFile << "Depth compute start,Depth compute end,Depth copy start interval,Depth copy end interval,Render start interval,Render submit interval";
       for (size_t i = 0; i < g_timingInfo.cameras.size(); i++) {
         intervalTimingFile << ",Camera " << i+1 << " frame begin interval, " << i+1 << " frame end interval,Camera"
           << i+1 << " texture complete interval,Camera " << i+1 << " center time interval";
@@ -2624,6 +2686,14 @@ int main(int argc, char** argv)
       intervalTimingFile << std::endl;
       intervalTimingFile << std::setprecision(20);
       for (size_t i = 1; i < maxEntries; i++) {
+        if (i < g_timingInfo.depthComputeStartTimes.size()) {
+          intervalTimingFile << TimeIntervalToStringMilliseconds(g_timingInfo.depthComputeStartTimes[i] - g_timingInfo.depthComputeStartTimes[i - 1]);
+        }
+        intervalTimingFile << ",";
+        if (i < g_timingInfo.depthComputeEndTimes.size()) {
+          intervalTimingFile << TimeIntervalToStringMilliseconds(g_timingInfo.depthComputeEndTimes[i] - g_timingInfo.depthComputeEndTimes[i - 1]);
+        }
+        intervalTimingFile << ",";
         if (i < g_timingInfo.depthStartTimes.size()) {
           intervalTimingFile << TimeIntervalToStringMilliseconds(g_timingInfo.depthStartTimes[i] - g_timingInfo.depthStartTimes[i - 1]);
         }
@@ -2669,11 +2739,28 @@ int main(int argc, char** argv)
       std::string summaryTimingFileName = dumpTimingFileName + "_summary.csv";
       std::ofstream summaryTimingFile(summaryTimingFileName);
       std::cout << "Dumping summary timing information to " << summaryTimingFileName << std::endl;
-      summaryTimingFile << "Depth start to depth end,Depth end to render start,Render start to submit,Render start interval,Min camera end to render"
+      summaryTimingFile << "Depth compute start to end,Depth copy start to end,Depth copy end to render start,Render start to submit,Render start interval,Min camera end to render"
         << ",Max camera end to render, Min camera texture to render, Max camera texture to render"
         << ",Min center interval,Max center interval" << std::endl;
       summaryTimingFile << std::setprecision(20);
       for (size_t i = 1; i < g_timingInfo.renderStartTimes.size(); i++) {
+        // Find the entry in compute end times that finishes must closely before the render start time.
+        // If there is one, compute the difference between the associated start time and end time and record
+        // it. Otherwise, don't put anything.
+        if (i < g_timingInfo.renderSubmitTimes.size()) {
+          auto t = g_timingInfo.renderSubmitTimes[i];
+          int index = g_timingInfo.depthComputeEndTimes.size();
+          for (int j = g_timingInfo.depthComputeEndTimes.size() - 1; j >= 0; j--) {
+            if (g_timingInfo.depthComputeEndTimes[j] < t) {
+              index = j;
+              break;
+            }
+          }
+          if (index < g_timingInfo.depthComputeEndTimes.size()) {
+            summaryTimingFile << TimeIntervalToStringMilliseconds(g_timingInfo.depthComputeEndTimes[index] - g_timingInfo.depthComputeStartTimes[index]);
+          }
+        }
+        summaryTimingFile << ",";
         if (i < g_timingInfo.depthStartTimes.size() && i < g_timingInfo.depthEndTimes.size()) {
           summaryTimingFile << TimeIntervalToStringMilliseconds(g_timingInfo.depthEndTimes[i] - g_timingInfo.depthStartTimes[i]);
         }

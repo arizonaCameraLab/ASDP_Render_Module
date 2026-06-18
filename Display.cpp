@@ -504,7 +504,7 @@ void DisplayWindow::DisplayThread(std::string windowName,
     // thread swapped out for longer than we want.
     while (std::chrono::steady_clock::now() < m_impl->m_nextDepthTime) {
     }
-    if (m_eventHandlers && m_eventHandlers->ComputeDepth) {
+    if (m_eventHandlers && m_eventHandlers->CopyDepthInfo) {
       // Grab the context mutex for the duration of the depth calculations.  Once we have it, we know
       // that the context is not active in another thread.
       // Make the window's context current.
@@ -515,10 +515,10 @@ void DisplayWindow::DisplayThread(std::string windowName,
 #if !defined(NDEBUG)
       GLenum err = glGetError();
       if (err != GL_NO_ERROR) {
-        std::cerr << "OpenGL error before checking whether to call ComputeDepth: " << err << std::endl;
+        std::cerr << "OpenGL error before checking whether to call CopyDepthInfo: " << err << std::endl;
       }
 #endif
-      m_eventHandlers->ComputeDepth(renderTime, m_userData);
+      m_eventHandlers->CopyDepthInfo(renderTime, m_userData);
 
       // Release the window's current context in case another Display wants to borrow it.
       glfwMakeContextCurrent(nullptr);
@@ -2080,7 +2080,7 @@ void asdp::render::DisplayOpenXR::DisplayOpenXRImpl::OpenXRRenderFrame()
   /// @todo We don't have an easy way to do that, so we compute it right away.
 
   // Call the depth handler if we have one.
-  if (m_display->m_eventHandlers && m_display->m_eventHandlers->ComputeDepth) {
+  if (m_display->m_eventHandlers && m_display->m_eventHandlers->CopyDepthInfo) {
     // Compute the time of the middle of next frame and pass it to the handler.
     // We estimate this by taking the current time and adding the time to the middle of next frame.
     std::chrono::steady_clock::time_point renderTime = std::chrono::steady_clock::now();
@@ -2090,7 +2090,7 @@ void asdp::render::DisplayOpenXR::DisplayOpenXRImpl::OpenXRRenderFrame()
     if (m_pauseTime) {
       coreTime = *m_pauseTime;
     }
-    m_display->m_eventHandlers->ComputeDepth(coreTime, m_display->m_userData);
+    m_display->m_eventHandlers->CopyDepthInfo(coreTime, m_display->m_userData);
   }
 
   // Wait for the time to render the next frame
@@ -2673,7 +2673,7 @@ void DisplayXSight::DisplayThread(
     // thread swapped out for longer than we want.
     while (std::chrono::steady_clock::now() < m_impl->m_nextDepthTime) {
     }
-    if (m_eventHandlers && m_eventHandlers->ComputeDepth) {
+    if (m_eventHandlers && m_eventHandlers->CopyDepthInfo) {
       // Make the window's context current during depth calculations
       std::lock_guard<std::mutex> lock(Display::m_impl->m_contextMutex);
       glfwMakeContextCurrent(Display::m_impl->m_window);
@@ -2681,10 +2681,10 @@ void DisplayXSight::DisplayThread(
 #if !defined(NDEBUG)
       GLenum err = glGetError();
       if (err != GL_NO_ERROR) {
-        std::cerr << "OpenGL error before checking whether to call ComputeDepth: " << err << std::endl;
+        std::cerr << "OpenGL error before checking whether to call CopyDepthInfo: " << err << std::endl;
       }
 #endif
-      m_eventHandlers->ComputeDepth(renderTime, m_userData);
+      m_eventHandlers->CopyDepthInfo(renderTime, m_userData);
 
       // Release the window's current context in case another Display wants to borrow it.
       glfwMakeContextCurrent(nullptr);
