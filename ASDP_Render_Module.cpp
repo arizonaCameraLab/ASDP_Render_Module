@@ -680,12 +680,17 @@ static void DepthThreadFunction(std::shared_ptr<Timer> timer, std::shared_ptr<Di
       return;
     }
     /// @todo Consider another approach to finding the time.
-    std::string ret = g_depthEstimator->ComputeDepthEstimate(now);
-    if (ret != "") {
-      std::cerr << "Error computing depth estimate: " << ret << std::endl;
+    try {
+      std::string ret = g_depthEstimator->ComputeDepthEstimate(now);
+      if (ret != "") {
+        std::cerr << "Error computing depth estimate: " << ret << std::endl;
+        return;
+      } else {
+        g_depthEstimator->UpdateMeshesGPU(g_visibleCameras);
+      }
+    } catch (const std::exception& e) {
+      std::cerr << "Exception while computing depth estimate: " << e.what() << std::endl;
       return;
-    } else {
-      g_depthEstimator->UpdateMeshesGPU(g_visibleCameras);
     }
     std::this_thread::sleep_for(std::chrono::milliseconds(1));  // Sleep a bit to avoid eating a whole CPU.
   }
@@ -2011,7 +2016,7 @@ int main(int argc, char** argv)
     // There must be sets of two camera pairs for depth estimation.
     std::shared_ptr<DisplayTexture> depthContext;
     if (g_depthCameras.size() > 0) {
-      std::shared_ptr<DisplayTexture> depthContext = std::make_shared<DisplayTexture>(displayTexture.get());
+      depthContext = std::make_shared<DisplayTexture>(displayTexture.get());
       bool enablingCP = false; // Whether cylindrical projection is enabled for any of the displays.
       for (const auto& displayInfo : displayInfos) {
         if (displayInfo.enableCP) {
@@ -2513,6 +2518,15 @@ int main(int argc, char** argv)
       }
     }
 
+    // If we have a depth thread, shut it down and then join it.
+    if (depthContext) {
+      g_runDepthThread = false;
+      if (g_depthThread.joinable()) {
+        g_depthThread.join();
+      }
+      depthContext.reset();
+    }
+
     // Set done and wait for all of our GPU data threads to join.
     done = true;
     for (auto& thread : copyDataToGPUThread) {
@@ -2525,15 +2539,6 @@ int main(int argc, char** argv)
     g_runAnalysisThread = false;
     if (analysisThread.joinable()) {
       analysisThread.join();
-    }
-
-    // If we have a depth thread, shut it down and then join it.
-    if (depthContext) {
-      g_runDepthThread = false;
-      if (g_depthThread.joinable()) {
-        g_depthThread.join();
-      }
-      depthContext.reset();
     }
 
     // Destroy our client
