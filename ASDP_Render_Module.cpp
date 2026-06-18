@@ -658,7 +658,7 @@ static void SaveCameraConfig(const std::string& filename, void* userdata)
 
 
 /// @brief Thread to compute the depth information for the cameras and update the meshes.
-/// @details The ComputeDepth callback handler transfers the vertex buffers from the
+/// @details The CopyDepthInfo callback handler transfers the vertex buffers from the
 /// @param timer Timer to use for getting the current time for depth estimation.
 /// @param depthContext DisplayTexture to use for borrowing an OpenGL context to update the meshes.
 /// CameraRenderInfo inline during rendering.
@@ -669,6 +669,7 @@ static void DepthThreadFunction(std::shared_ptr<Timer> timer, std::shared_ptr<Di
     return;
   }
   while (g_runDepthThread) {
+    g_timingInfo.depthComputeStartTimes.push_back(std::chrono::steady_clock::now());
     // Make a snapshot of the images from all cameras at the same time and store it into
     // a custom ImageQueue that has a single entry from the same time for all of them.
     /// @todo
@@ -692,13 +693,15 @@ static void DepthThreadFunction(std::shared_ptr<Timer> timer, std::shared_ptr<Di
       std::cerr << "Exception while computing depth estimate: " << e.what() << std::endl;
       return;
     }
+    g_timingInfo.depthComputeEndTimes.push_back(std::chrono::steady_clock::now());
+
     std::this_thread::sleep_for(std::chrono::milliseconds(1));  // Sleep a bit to avoid eating a whole CPU.
   }
   depthContext->ReturnContext();
 }
 
 /// @brief Callback handler to compute depth information for the cameras.
-static void ComputeDepth(Time renderTime, void* /* unused */)
+static void CopyDepthInfo(Time renderTime, void* /* unused */)
 {
   g_timingInfo.depthStartTimes.push_back(std::chrono::steady_clock::now());
 
@@ -2082,7 +2085,7 @@ int main(int argc, char** argv)
     std::shared_ptr<EventHandlers> handlers = std::make_shared<EventHandlers>();
     handlers->ChangePlayPause = ChangePlayPause;
     if (g_depthEstimator) {
-      handlers->ComputeDepth = ComputeDepth;
+      handlers->CopyDepthInfo = CopyDepthInfo;
     }
     handlers->SetToRenderDepth = SetDepthRendering;
     handlers->IncrementActiveCamera = IncrementActiveCamera;
@@ -2582,6 +2585,12 @@ int main(int argc, char** argv)
       if (g_timingInfo.renderSubmitTimes.size() > maxEntries) {
         maxEntries = g_timingInfo.renderSubmitTimes.size();
       }
+      if (g_timingInfo.depthComputeStartTimes.size() > maxEntries) {
+        maxEntries = g_timingInfo.depthComputeStartTimes.size();
+      }
+      if (g_timingInfo.depthComputeEndTimes.size() > maxEntries) {
+        maxEntries = g_timingInfo.depthComputeEndTimes.size();
+      }
       if (g_timingInfo.depthStartTimes.size() > maxEntries) {
         maxEntries = g_timingInfo.depthStartTimes.size();
       }
@@ -2605,7 +2614,7 @@ int main(int argc, char** argv)
       std::string rawTimingFileName = dumpTimingFileName + ".csv";
       std::ofstream dumpTimingFile(rawTimingFileName);
       std::cout << "Dumping " << maxEntries << " raw timing information to " << rawTimingFileName << std::endl;
-      dumpTimingFile << "Depth Start,Depth End,Render start,Render submit";
+      dumpTimingFile << "Depth Compute Start,Depth Compute End,Depth Copy Start,Depth Copy End,Render start,Render submit";
       for (size_t i = 0; i < g_timingInfo.cameras.size(); i++) {
         dumpTimingFile << ",Camera " << i+1 << " frame begin,Camera " << i+1
           << " frame end,Camera " << i+1 << " texture complete,Camera " << i+1
@@ -2614,6 +2623,14 @@ int main(int argc, char** argv)
       dumpTimingFile << std::endl;
       dumpTimingFile << std::setprecision(20);
       for (size_t i = 0; i < maxEntries; i++) {
+        if (i < g_timingInfo.depthComputeStartTimes.size()) {
+          dumpTimingFile << TimeIntervalToStringMilliseconds(g_timingInfo.depthComputeStartTimes[i] - g_timingInfo.startTime);
+        }
+        dumpTimingFile << ",";
+        if (i < g_timingInfo.depthComputeEndTimes.size()) {
+          dumpTimingFile << TimeIntervalToStringMilliseconds(g_timingInfo.depthComputeEndTimes[i] - g_timingInfo.startTime);
+        }
+        dumpTimingFile << ",";
         if (i < g_timingInfo.depthStartTimes.size()) {
           dumpTimingFile << TimeIntervalToStringMilliseconds(g_timingInfo.depthStartTimes[i] - g_timingInfo.startTime);
         }
@@ -2661,7 +2678,7 @@ int main(int argc, char** argv)
       std::string intervalTimingFileName = dumpTimingFileName + "_intervals.csv";
       std::ofstream intervalTimingFile(intervalTimingFileName);
       std::cout << "Dumping " << maxEntries-1 << " interval timing information to " << intervalTimingFileName << std::endl;
-      intervalTimingFile << "Depth start interval,Depth end interval,Render start interval,Render submit interval";
+      intervalTimingFile << "Depth compute start,Depth compute end,Depth copy start interval,Depth copy end interval,Render start interval,Render submit interval";
       for (size_t i = 0; i < g_timingInfo.cameras.size(); i++) {
         intervalTimingFile << ",Camera " << i+1 << " frame begin interval, " << i+1 << " frame end interval,Camera"
           << i+1 << " texture complete interval,Camera " << i+1 << " center time interval";
@@ -2669,6 +2686,14 @@ int main(int argc, char** argv)
       intervalTimingFile << std::endl;
       intervalTimingFile << std::setprecision(20);
       for (size_t i = 1; i < maxEntries; i++) {
+        if (i < g_timingInfo.depthComputeStartTimes.size()) {
+          intervalTimingFile << TimeIntervalToStringMilliseconds(g_timingInfo.depthComputeStartTimes[i] - g_timingInfo.depthComputeStartTimes[i - 1]);
+        }
+        intervalTimingFile << ",";
+        if (i < g_timingInfo.depthComputeEndTimes.size()) {
+          intervalTimingFile << TimeIntervalToStringMilliseconds(g_timingInfo.depthComputeEndTimes[i] - g_timingInfo.depthComputeEndTimes[i - 1]);
+        }
+        intervalTimingFile << ",";
         if (i < g_timingInfo.depthStartTimes.size()) {
           intervalTimingFile << TimeIntervalToStringMilliseconds(g_timingInfo.depthStartTimes[i] - g_timingInfo.depthStartTimes[i - 1]);
         }
@@ -2714,11 +2739,28 @@ int main(int argc, char** argv)
       std::string summaryTimingFileName = dumpTimingFileName + "_summary.csv";
       std::ofstream summaryTimingFile(summaryTimingFileName);
       std::cout << "Dumping summary timing information to " << summaryTimingFileName << std::endl;
-      summaryTimingFile << "Depth start to depth end,Depth end to render start,Render start to submit,Render start interval,Min camera end to render"
+      summaryTimingFile << "Depth compute start to end,Depth copy start to end,Depth copy end to render start,Render start to submit,Render start interval,Min camera end to render"
         << ",Max camera end to render, Min camera texture to render, Max camera texture to render"
         << ",Min center interval,Max center interval" << std::endl;
       summaryTimingFile << std::setprecision(20);
       for (size_t i = 1; i < g_timingInfo.renderStartTimes.size(); i++) {
+        // Find the entry in compute end times that finishes must closely before the render start time.
+        // If there is one, compute the difference between the associated start time and end time and record
+        // it. Otherwise, don't put anything.
+        if (i < g_timingInfo.renderSubmitTimes.size()) {
+          auto t = g_timingInfo.renderSubmitTimes[i];
+          int index = g_timingInfo.depthComputeEndTimes.size();
+          for (int j = g_timingInfo.depthComputeEndTimes.size() - 1; j >= 0; j--) {
+            if (g_timingInfo.depthComputeEndTimes[j] < t) {
+              index = j;
+              break;
+            }
+          }
+          if (index < g_timingInfo.depthComputeEndTimes.size()) {
+            summaryTimingFile << TimeIntervalToStringMilliseconds(g_timingInfo.depthComputeEndTimes[index] - g_timingInfo.depthComputeStartTimes[index]);
+          }
+        }
+        summaryTimingFile << ",";
         if (i < g_timingInfo.depthStartTimes.size() && i < g_timingInfo.depthEndTimes.size()) {
           summaryTimingFile << TimeIntervalToStringMilliseconds(g_timingInfo.depthEndTimes[i] - g_timingInfo.depthStartTimes[i]);
         }

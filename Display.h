@@ -33,10 +33,10 @@ namespace asdp {
       /// @param nowPlaying True to play/resume, false to pause.
       void (*ChangePlayPause)(bool nowPlaying, void *userData) = nullptr;
 
-      /// Compute the depth maps for the cameras given the next frame time (center pixel time).
+      /// Copy the depth maps for the cameras given the next frame time (center pixel time).
       /// (Only used with CompositeCameras when we have a DepthEstimator.)
       /// @param nextFrameTime The time of the next frame to be rendered (center pixel time).
-      void (*ComputeDepth)(Time nextFrameTime, void *userData) = nullptr;
+      void (*CopyDepthInfo)(Time nextFrameTime, void *userData) = nullptr;
 
       /// Set the depth scale for the cameras to be rendered so that they show depth.
       /// (Only used with CompositeCameras when we have a DepthEstimator.)
