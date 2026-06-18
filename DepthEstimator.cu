@@ -1503,30 +1503,25 @@ void DepthEstimator::UpdateMeshesGPU(std::vector<std::shared_ptr<CameraRenderInf
 
   // Finish copying data back from all cameras to ensure completion.  It awaits stream completion and then
   // copies back.
-  for (std::shared_ptr<CameraRenderInfo> c : cams) {
-    std::lock_guard<std::mutex> lock(c->m_meshMutex);
-    m_impl->m_cameraDepthInfoKernelData[c.get()]->FillDepthsBackToCameraRenderInfos(*m_impl->m_cameraStreams[c.get()]);
-  }
-
   // Apply offsets to the mesh depth values for each camera.
   for (std::shared_ptr<CameraRenderInfo> c : cams) {
-    // Lock the mutex to protect the mesh data.
     std::lock_guard<std::mutex> lock(c->m_meshMutex);
+    CameraRenderInfo* cPtr = c.get();
+    m_impl->m_cameraDepthInfoKernelData[cPtr]->FillDepthsBackToCameraRenderInfos(*m_impl->m_cameraStreams[cPtr]);
 
-    CameraRenderInfo& cam = *c;
-
+    // We must continue to hold the lock during this adjustment.
     // We add a small offset based on how far the mesh point is from the center of the camera
     // so that the visible triangle at a location is from the camera whose center of projection
     // is closest.
     // Remember that we have one more row and column of vertices than nx and ny.
-    const double offsetScale = 0.01;
-    double xCenter = cam.m_mesh.nx / 2.0;
-    double yCenter = cam.m_mesh.ny / 2.0;
-    for (int y = 0; y <= cam.m_mesh.ny; y++) {
+    const double offsetScale = 0.001;
+    double xCenter = cPtr->m_mesh.nx / 2.0;
+    double yCenter = cPtr->m_mesh.ny / 2.0;
+    for (int y = 0; y <= cPtr->m_mesh.ny; y++) {
       double yOff = y - yCenter;
-      for (int x = 0; x <= cam.m_mesh.nx; x++) {
+      for (int x = 0; x <= cPtr->m_mesh.nx; x++) {
         double xOff = x - xCenter;
-        VertexInfo& v = cam.m_mesh.vertexInfo[y * (cam.m_mesh.nx + 1) + x];
+        VertexInfo& v = cPtr->m_mesh.vertexInfo[y * (cPtr->m_mesh.nx + 1) + x];
         double offsetFactor = 1.0 + offsetScale * sqrt(xOff * xOff + yOff * yOff);
         v.depth *= offsetFactor;
       }
