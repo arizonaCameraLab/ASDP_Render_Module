@@ -2371,6 +2371,9 @@ public:
   /// Depth buffer that we will render the full-sized image into.
   GLuint m_depthBuffer{ 0 };
 
+  /// Whether we should encode a monochrome image into 2 pixels per color pixel
+  bool m_encodeMonochrome = true;
+
   //======================================
   // For the X-sight helmet display, added by Sang Yoon to add key mappings
 
@@ -2391,7 +2394,8 @@ DisplayXSight::DisplayXSight(std::string NICName, std::shared_ptr<Composite> com
   RenderTimingInfo* timingInfo, bool replaying,
   int desiredDisplay,
   int desiredWidth, int desiredHeight, float fps,
-  float horizontalFOVDegrees
+  float horizontalFOVDegrees,
+  bool encodeMonochrome
   )
   : Display(composite, client, triggerID, triggerAheadMicroseconds, depthAheadMicroseconds, viewpointOffset, handlers, userData)
   , m_NICName(NICName)
@@ -2407,6 +2411,7 @@ DisplayXSight::DisplayXSight(std::string NICName, std::shared_ptr<Composite> com
 
   // Store info from the constructor.
   m_impl->m_horizontalFOVDegrees = horizontalFOVDegrees;
+  m_impl->m_encodeMonochrome = encodeMonochrome;
 
   // Construct a single view to be used.  We base is on the requested window size and we compute a
   // field of view that is the requested horizontal and the correct aspect ratio vertical.
@@ -2637,9 +2642,10 @@ void DisplayXSight::DisplayThread(
   Display::m_impl->m_contextMutex.unlock();
 
   // Construct a CompositeLineRawData to render frame metadata into the first line, using the whole first line.
-  // Note that this is an encoded first line, so is half as long as the requested width.
+  // Note that when this is an encoded first line it is half as long as the requested width.
+  int lineWidth = m_impl->m_encodeMonochrome ? desiredWidth / 2 : desiredWidth;
   Display::m_impl->m_contextMutex.lock();
-  std::vector<uint8_t> lineData(desiredWidth/2 * 3);
+  std::vector<uint8_t> lineData(lineWidth * 3);
   glfwMakeContextCurrent(Display::m_impl->m_window);
   CompositeLineRawData lineComposite(-1, 1, 1, 1, lineData);
   glfwMakeContextCurrent(nullptr);
@@ -2808,10 +2814,13 @@ void DisplayXSight::DisplayThread(
     // Handle any window resizing
     SetViewportSizeAndFOVs(m_impl->m_views[0]);
 
-    // Set the viewport to use the frame buffer and its associated color and depth buffers.
-    m_impl->m_views[0].frameBuffer = m_impl->m_framebuffer;
-    m_impl->m_views[0].colorBuffer = m_impl->m_colorBuffer;
-    m_impl->m_views[0].depthBuffer = m_impl->m_depthBuffer;
+    if (m_impl->m_encodeMonochrome) {
+      // We're going to do 2-pass rendering, first into a full-sized color buffer.
+      // Set the viewport to use the frame buffer and its associated color and depth buffers.
+      m_impl->m_views[0].frameBuffer = m_impl->m_framebuffer;
+      m_impl->m_views[0].colorBuffer = m_impl->m_colorBuffer;
+      m_impl->m_views[0].depthBuffer = m_impl->m_depthBuffer;
+    }
 
     // Trigger the cameras, saying that we need the data now. The base class will handle offsetting
     // by the specified transmission/processing time as passed to its constructor by the client.
@@ -2825,7 +2834,7 @@ void DisplayXSight::DisplayThread(
     // Grab the context mutex for the duration of the loop.  Once we have it, we know
     // that the context is not active in another thread.
     // Make the window's context current.
-    // DO NOT do any GLFW calls while holding the context -- it causes rare hangs on Linux.
+    // DO NOT do any GLFW keyboard/event calls while holding the context -- it causes rare hangs on Linux.
     std::lock_guard<std::mutex> lock(Display::m_impl->m_contextMutex);
     glfwMakeContextCurrent(Display::m_impl->m_window);
 
@@ -2848,17 +2857,20 @@ void DisplayXSight::DisplayThread(
       m_status = "glClientWaitSync() failed for xSight: code " + std::to_string(fenceWait);
     }
 
-    // Set the viewport to use the default frame buffer and to render to half the width, as we're converting
-    // from 2x wide color to mono and then embedding in 1x wide color.
-    m_impl->m_views[0].frameBuffer = 0;
-    m_impl->m_views[0].colorBuffer = 0;
-    m_impl->m_views[0].depthBuffer = 0;
-    m_impl->m_views[0].width /= 2;
+    if (m_impl->m_encodeMonochrome) {
+      // Second rendering pass, into a half-width color buffer.
+      // Set the viewport back to the default frame buffer and to render to half the width, as we're converting
+      // from 2x wide color to mono and then embedding in 1x wide color.
+      m_impl->m_views[0].frameBuffer = 0;
+      m_impl->m_views[0].colorBuffer = 0;
+      m_impl->m_views[0].depthBuffer = 0;
+      m_impl->m_views[0].width /= 2;
 
-    // Do a second rendering pass where we read from the double-width color buffer and write to the output
-    // buffer, packing two horizontal pixels into one.  This uses a custom compositor that does the pixel
-    // packing.
-    packComposite.Render(renderTime, m_impl->m_views);
+      // Do a second rendering pass where we read from the double-width color buffer and write to the output
+      // buffer, packing two horizontal pixels into one.  This uses a custom compositor that does the pixel
+      // packing.
+      packComposite.Render(renderTime, m_impl->m_views);
+    }
 
     // Render the frame metadata into the first line.
     lineComposite.Render(renderTime, m_impl->m_views);
