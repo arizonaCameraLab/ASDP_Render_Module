@@ -56,7 +56,7 @@ using namespace asdp::render;
 using namespace asdp::analysis;
 using json = nlohmann::json;
 
-static std::string VERSION = "3.31.0";
+static std::string VERSION = "3.32.0";
 
 /// @brief The path to the configuration file. Defined in the CMakeLists file.
 std::filesystem::path g_dirPath = CONFIG_FILE_PATH;
@@ -956,6 +956,8 @@ struct DisplayInfo
   bool useOpenXR = false;       ///< Use OpenXR for rendering? If so, overrides all of the following.
   std::string XSightNIC = "";   ///< NIC to listen to XSight on for rendering. If not empty, overrides all of the following.
   int XSightDisplay = 1;        ///< The display to use for XSight rendering.
+  std::string XSight2NIC = "";  ///< NIC to listen to XSight2 on for rendering. If not empty, overrides all of the following.
+  int XSight2Display = 1;       ///< The display to use for XSight2 rendering.
   int width = 1280;             ///< The width of the display.
   int height = 1024;            ///< The height of the display.
   float hFOV = 40.0f;           ///< The horizontal field of view in degrees.
@@ -1360,6 +1362,7 @@ static void usage(std::string name)
   std::cerr << "  --enableOD                          Enable the display interface of overview plus detail view." << std::endl; // Added by Sang Yoon
   std::cerr << "  --openXR                            Use OpenXR for rendering. If set, overrides the following and sets lineBatchesPerGPUSend to 10000." << std::endl;
   std::cerr << "  --xSight <ip of NIC to listen on> <display>   Render to XSight on specified NIC. If set, overrides the following." << std::endl;
+  std::cerr << "  --xSight2 <ip of NIC to listen on> <display>  Render to a color, smaller XSight on specified NIC. If set, overrides the following." << std::endl;
   std::cerr << "  --width <width>                     The width of the window (default 1280)." << std::endl;
   std::cerr << "  --height <height>                   The height of the window (default 1024)." << std::endl;
   std::cerr << "  --hFOV <horizontal field of view>   The horizontal field of view in degrees (default 40)." << std::endl;
@@ -1456,6 +1459,18 @@ int main(int argc, char** argv)
         return 2;
       }
       displayInfos.back().XSightDisplay = std::stoi(argv[i]);
+    }
+    else if (std::string("--xSight2") == argv[i]) {
+      if (++i >= argc) {
+        usage(argv[0]);
+        return 2;
+      }
+      displayInfos.back().XSight2NIC = argv[i];
+      if (++i >= argc) {
+        usage(argv[0]);
+        return 2;
+      }
+      displayInfos.back().XSight2Display = std::stoi(argv[i]);
     }
     else if (std::string("--viewpointOffset") == argv[i]) {
       if (i + 3 >= argc) {
@@ -2192,6 +2207,17 @@ int main(int argc, char** argv)
           handlers, nullptr,
           (i == 0) ? (&g_timingInfo) : nullptr, replayStreamID != 0,
           displayInfos[i].XSightDisplay
+        ));
+      } else if (!displayInfos[i].XSight2NIC.empty()) {
+        displays.push_back(std::make_shared<DisplayXSight>(displayInfos[i].XSight2NIC, g_composite, displayTexture.get(),
+          client, triggerID, triggerAheadMicroseconds,
+          depthAheadMicroseconds, displayInfos[i].viewpointOffset,
+          renderAheadMicroseconds,
+          handlers, nullptr,
+          (i == 0) ? (&g_timingInfo) : nullptr, replayStreamID != 0,
+          displayInfos[i].XSight2Display,
+          1920, 1200, 50, 70.0f,
+          false
         ));
       } else {
         displays.push_back(std::make_shared<DisplayWindow>("ASDP Render Module " + std::to_string(i),
