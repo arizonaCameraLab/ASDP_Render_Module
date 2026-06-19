@@ -2508,6 +2508,9 @@ void DisplayXSight::DisplayThread(
   int desiredDisplay)
 {
   {
+    // When we are encoding a monochrome image into color, This window will be half the desired
+    // width because it will encode two monochrome pixels into a single color pixel.
+    int width = m_impl->m_encodeMonochrome ? desiredWidth / 2 : desiredWidth;
     {
       // Hold the window mutex so that only one window can be created at a time.
       std::lock_guard<std::mutex> windowLock(m_windowMutex);
@@ -2521,8 +2524,7 @@ void DisplayXSight::DisplayThread(
       // Tell it not to iconify full-screen windows that lose focus.
       glfwWindowHint(GLFW_AUTO_ICONIFY, GLFW_FALSE);
 
-      // Create a windowed mode window and its OpenGL context. This window will be half the desired
-      // height because it will encode two monochrome pixels into a single color pixel.
+      // Create a windowed mode window and its OpenGL context.
       // This must be done in the same thread that will do the rendering so that the window events will
       // be handled properly on all architectures.
       // We must make the OpenGL context of the window we want to share current on this thread
@@ -2536,7 +2538,7 @@ void DisplayXSight::DisplayThread(
           return;
         }
       }
-      Display::m_impl->m_window = glfwCreateWindow(desiredWidth/2, desiredHeight, "XSight", nullptr,
+      Display::m_impl->m_window = glfwCreateWindow(width, desiredHeight, "XSight", nullptr,
         windowToShare);
       if (sharedWindow) {
         if (!sharedWindow->ReturnContext()) {
@@ -2567,7 +2569,7 @@ void DisplayXSight::DisplayThread(
 
     // Engage full screen here along with specifying the refresh rate.  The width is half of that specified
     // because the final render pass will encode two monochrome pixels into each color pixel.
-    glfwSetWindowMonitor(Display::m_impl->m_window, fullScreenMonitor, 0, 0, desiredWidth/2, desiredHeight, fps);
+    glfwSetWindowMonitor(Display::m_impl->m_window, fullScreenMonitor, 0, 0, width, desiredHeight, fps);
 
     // Grab the context mutex for the duration of the setup.  Once we have it, we know
     // that the context is not active in another thread.
