@@ -930,6 +930,22 @@ void DisplayWindow::ComputeAndClampViewOrientation()
   glm::quat orientation;
   glm::decompose(combinedRotation, scale, orientation, translation, skew, perspective);
 
+  // Compute the quaternion that represents the rotation of the camera as mounted on the
+  // helicopter.  This uses the m_viewpointRotation member variable, which is set by the user of this class to
+  // describe how the camera is mounted on the helicopter relative to helicopter space.  It is rotated first
+  // around X, then Y, then Z.
+  glm::quat xRotation = glm::angleAxis(glm::radians(
+    static_cast<double>(m_viewpointRotation[0])), glm::dvec3(1.0, 0.0, 0.0));
+  glm::quat yRotation = glm::angleAxis(glm::radians(
+    static_cast<double>(m_viewpointRotation[1])), glm::dvec3(0.0, 1.0, 0.0));
+  glm::quat zRotation = glm::angleAxis(glm::radians(
+    static_cast<double>(m_viewpointRotation[2])), glm::dvec3(0.0, 0.0, 1.0));
+  glm::quat viewpointRotation = zRotation * yRotation * xRotation;
+
+  // Apply a change of coordinate system to that described by the m_viewpointRotation, which
+  // describes how the camera is mounted on the helicopter relative to helicopter space.
+  orientation = orientation * viewpointRotation;
+
   // Store the quaternion.
   m_impl->m_views[0].orientation[0] = orientation.w;
   m_impl->m_views[0].orientation[1] = orientation.x;
