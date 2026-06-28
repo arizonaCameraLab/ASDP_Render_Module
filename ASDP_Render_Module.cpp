@@ -56,7 +56,7 @@ using namespace asdp::render;
 using namespace asdp::analysis;
 using json = nlohmann::json;
 
-static std::string VERSION = "3.32.0";
+static std::string VERSION = "3.33.0";
 
 /// @brief The path to the configuration file. Defined in the CMakeLists file.
 std::filesystem::path g_dirPath = CONFIG_FILE_PATH;
@@ -966,6 +966,7 @@ struct DisplayInfo
   bool fullScreen = false;      ///< Run in full screen mode.
   int fullScreenDisplay = 0;    ///< The display to run in full screen mode on.
   std::array<float, 3> viewpointOffset = { 0.0f, 0.0f, 0.0f };  ///< The offset to apply to the viewpoint for this display, in meters.
+  std::array<float, 3> viewpointRotation = { 0.0f, 0.0f, 0.0f }; ///< The rotation to apply to the viewpoint for this display, in degrees.
 
   //======================================
   // Added by Sang Yoon to add a flag for enabling the cylindrical projection.
@@ -1370,6 +1371,7 @@ static void usage(std::string name)
   std::cerr << "  --fps <frames per second>           The frames per second to run at (default 60)." << std::endl;
   std::cerr << "  --fullScreen <display>              Run in full screen mode on the specified display (0+)." << std::endl;
   std::cerr << "  --viewpointOffset <x> <y> <z>       The viewpoint offset to apply to all cameras in meters." << std::endl;
+  std::cerr << "  --viewpointRotation <x> <y> <z>     The viewpoint rotation to apply to all cameras in degrees." << std::endl;
 };
 
 int main(int argc, char** argv)
@@ -1480,6 +1482,15 @@ int main(int argc, char** argv)
       displayInfos.back().viewpointOffset[0] = std::stof(argv[++i]);
       displayInfos.back().viewpointOffset[1] = std::stof(argv[++i]);
       displayInfos.back().viewpointOffset[2] = std::stof(argv[++i]);
+    }
+    else if (std::string("--viewpointRotation") == argv[i]) {
+      if (i + 3 >= argc) {
+        usage(argv[0]);
+        return 2;
+      }
+      displayInfos.back().viewpointRotation[0] = std::stof(argv[++i]);
+      displayInfos.back().viewpointRotation[1] = std::stof(argv[++i]);
+      displayInfos.back().viewpointRotation[2] = std::stof(argv[++i]);
     }
     else if (std::string("--fullScreen") == argv[i]) {
       if (++i >= argc) {
@@ -2196,13 +2207,14 @@ int main(int argc, char** argv)
       // Only time the first listed display, to avoid race conditions
       if (displayInfos[i].useOpenXR) {
         displays.push_back(std::make_shared<DisplayOpenXR>(g_composite, displayTexture.get(),
-          client, triggerID, triggerAheadMicroseconds, depthAheadMicroseconds, displayInfos[i].viewpointOffset,
+          client, triggerID, triggerAheadMicroseconds, depthAheadMicroseconds,
+          displayInfos[i].viewpointOffset, displayInfos[i].viewpointRotation,
           renderAheadMicroseconds, 1, handlers, &g_callbackHandlerData,
           (i == 0) ? (&g_timingInfo) : nullptr, replayStreamID != 0));
       } else if (!displayInfos[i].XSightNIC.empty()) {
         displays.push_back(std::make_shared<DisplayXSight>(displayInfos[i].XSightNIC, g_composite, displayTexture.get(),
           client, triggerID, triggerAheadMicroseconds,
-          depthAheadMicroseconds, displayInfos[i].viewpointOffset,
+          depthAheadMicroseconds, displayInfos[i].viewpointOffset, displayInfos[i].viewpointRotation,
           renderAheadMicroseconds,
           handlers, nullptr,
           (i == 0) ? (&g_timingInfo) : nullptr, replayStreamID != 0,
@@ -2211,7 +2223,7 @@ int main(int argc, char** argv)
       } else if (!displayInfos[i].XSight2NIC.empty()) {
         displays.push_back(std::make_shared<DisplayXSight>(displayInfos[i].XSight2NIC, g_composite, displayTexture.get(),
           client, triggerID, triggerAheadMicroseconds,
-          depthAheadMicroseconds, displayInfos[i].viewpointOffset,
+          depthAheadMicroseconds, displayInfos[i].viewpointOffset, displayInfos[i].viewpointRotation,
           renderAheadMicroseconds,
           handlers, nullptr,
           (i == 0) ? (&g_timingInfo) : nullptr, replayStreamID != 0,
@@ -2221,7 +2233,8 @@ int main(int argc, char** argv)
         ));
       } else {
         displays.push_back(std::make_shared<DisplayWindow>("ASDP Render Module " + std::to_string(i),
-          g_composite, client, triggerID, triggerAheadMicroseconds, depthAheadMicroseconds, displayInfos[i].viewpointOffset,
+          g_composite, client, triggerID, triggerAheadMicroseconds, depthAheadMicroseconds,
+          displayInfos[i].viewpointOffset, displayInfos[i].viewpointRotation,
           displayInfos[i].fps, renderAheadMicroseconds,
           displayInfos[i].width, displayInfos[i].height,
           displayInfos[i].hFOV, displayInfos[i].joystick, displayTexture.get(),
