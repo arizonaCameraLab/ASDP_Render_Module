@@ -79,8 +79,10 @@ public:
 Display::Display(std::shared_ptr<Composite> composite,
   std::shared_ptr<CoreClient> client, uint8_t triggerID, uint32_t triggerAheadMicroseconds,
   uint32_t depthAheadMicroseconds, std::array<float, 3> viewpointOffset,
+  std::array<float, 3> viewpointRotation,
   std::shared_ptr<EventHandlers> handlers, void* userData)
   : m_viewpointOffset(viewpointOffset)
+  , m_viewpointRotation(viewpointRotation)
   , m_composite(composite)
   , m_eventHandlers(handlers)
   , m_userData(userData)
@@ -294,13 +296,15 @@ public:
 DisplayWindow::DisplayWindow(std::string windowName, std::shared_ptr<Composite> composite,
     std::shared_ptr<CoreClient> client, uint8_t triggerID, uint32_t triggerAheadMicroseconds,
     uint32_t depthAheadMicroseconds, std::array<float, 3> viewpointOffset,
+    std::array<float, 3> viewpointRotation,
     float fps, uint32_t renderAheadMicroseconds,
     int desiredWidth, int desiredHeight, float horizontalFOVDegrees,
     std::string joystick, Display* sharedWindow,
     bool fullScreen, int desiredDisplay, bool hidden,
     std::shared_ptr<EventHandlers> handlers, void* userData,
     RenderTimingInfo* timingInfo, bool replaying)
-  : Display(composite, client, triggerID, triggerAheadMicroseconds, depthAheadMicroseconds, viewpointOffset, handlers, userData)
+  : Display(composite, client, triggerID, triggerAheadMicroseconds, depthAheadMicroseconds,
+    viewpointOffset, viewpointRotation, handlers, userData)
   , m_timingInfo(timingInfo)
   , m_replaying(replaying)
   , m_impl(new DisplayWindowImpl)
@@ -2253,10 +2257,12 @@ void asdp::render::DisplayOpenXR::DisplayOpenXRImpl::OpenXRTearDown()
 DisplayOpenXR::DisplayOpenXR(std::shared_ptr<Composite> composite, Display* sharedWindow,
     std::shared_ptr<CoreClient> client, uint8_t triggerID, uint32_t triggerAheadMicroseconds,
     uint32_t depthAheadMicroseconds, std::array<float, 3> viewpointOffset,
+    std::array<float, 3> viewpointRotation,
     uint32_t renderAheadMicroseconds, int verbosity,
     std::shared_ptr<EventHandlers> handlers, void* userData,
     RenderTimingInfo* timingInfo, bool replaying)
-  : Display(composite, client, triggerID, triggerAheadMicroseconds, depthAheadMicroseconds, viewpointOffset, handlers, userData)
+  : Display(composite, client, triggerID, triggerAheadMicroseconds, depthAheadMicroseconds,
+    viewpointOffset, viewpointRotation, handlers, userData)
   , m_timingInfo(timingInfo)
   , m_replaying(replaying)
 {
@@ -2365,10 +2371,12 @@ public:
 DisplayOpenXR::DisplayOpenXR(std::shared_ptr<Composite> composite, Display* sharedWindow,
     std::shared_ptr<CoreClient> client, uint8_t triggerID, uint32_t triggerAheadMicroseconds,
     uint32_t depthAheadMicroseconds, std::array<float, 3> viewpointOffset,
+    std::array<float, 3> viewpointRotation,
     uint32_t renderAheadMicroseconds, int verbosity,
     std::shared_ptr<EventHandlers> handlers, void* userData,
     RenderTimingInfo* timingInfo, bool replaying)
-  : Display(composite, client, triggerID, triggerAheadMicroseconds, depthAheadMicroseconds, viewpointOffset, handlers, userData)
+  : Display(composite, client, triggerID, triggerAheadMicroseconds, depthAheadMicroseconds,
+    viewpointOffset, viewpointRotation, handlers, userData)
   , m_timingInfo(timingInfo)
   , m_replaying(replaying)
 {
@@ -2437,6 +2445,7 @@ public:
 DisplayXSight::DisplayXSight(std::string NICName, std::shared_ptr<Composite> composite, Display* sharedWindow,
   std::shared_ptr<CoreClient> client, uint8_t triggerID, uint32_t triggerAheadMicroseconds,
   uint32_t depthAheadMicroseconds, std::array<float, 3> viewpointOffset,
+  std::array<float, 3> viewpointRotation,
   uint32_t renderAheadMicroseconds,
   std::shared_ptr<EventHandlers> handlers, void* userData,
   RenderTimingInfo* timingInfo, bool replaying,
@@ -2446,7 +2455,8 @@ DisplayXSight::DisplayXSight(std::string NICName, std::shared_ptr<Composite> com
   bool encodeMonochrome,
   uint16_t port
   )
-  : Display(composite, client, triggerID, triggerAheadMicroseconds, depthAheadMicroseconds, viewpointOffset, handlers, userData)
+  : Display(composite, client, triggerID, triggerAheadMicroseconds, depthAheadMicroseconds,
+    viewpointOffset, viewpointRotation, handlers, userData)
   , m_NICName(NICName)
   , m_port(port)
   , m_timingInfo(timingInfo)
@@ -2897,7 +2907,7 @@ void DisplayXSight::DisplayThread(
 
     // Update the transformation for the view.  We first rotate around roll, then pitch, then yaw.
     // Empirically, the azimuth is backwards from what we expect, so we negate it.
-    // Empirically, the root and pitch are swapped, so we swap them.
+    // Empirically, the roll and pitch are swapped, so we swap them.
     // Empirically, this order of rotation works.
     glm::quat rotationX = glm::angleAxis(glm::radians(elevation), glm::vec3(1.0f, 0.0f, 0.0f));
     glm::quat rotationY = glm::angleAxis(glm::radians(roll), glm::vec3(0.0f, 1.0f, 0.0f));
