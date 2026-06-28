@@ -146,13 +146,14 @@ int main(int argc, char** argv)
 
     // Create the appropriate Display object(s) based on the command-line arguments.
     std::array<float, 3> viewpointOffset = { 0.0f, 0.0f, 0.0f };
+    std::array<float, 3> viewpointRotation = { 0.0f, 0.0f, 0.0f };
     if (useOpenXR) {
       displays.push_back(std::make_shared<asdp::render::DisplayOpenXR>(composite, &texWindow, client,
-        0, 0, 0, viewpointOffset, 2500, 0, nullptr, nullptr, nullptr, false));
+        0, 0, 0, viewpointOffset, viewpointRotation, 2500, 0, nullptr, nullptr, nullptr, false));
     } else if (xSightNICName != "") {
       // XSight configuration
       displays.push_back(std::make_shared<asdp::render::DisplayXSight>(xSightNICName, composite, &texWindow, client,
-        0, 0, 0, viewpointOffset,
+        0, 0, 0, viewpointOffset, viewpointRotation,
         2500, nullptr, nullptr, nullptr, false, xSightDisplay,
         width, height, xSightFPS, xSightHorizontalFOV,
         xSightMonochrome, xSightPort));
@@ -160,7 +161,7 @@ int main(int argc, char** argv)
       // Create a Display window to show the CompositeCube object that shares objects with the texWindow.
       // Control it using joystick 0.
       displays.push_back(std::make_shared<asdp::render::DisplayWindow>("Display_Test", composite, client,
-        0, 0, 0, viewpointOffset, 60.0f, 2500, width, height, 90, "GLFW::0", &texWindow));
+        0, 0, 0, viewpointOffset, viewpointRotation, 60.0f, 2500, width, height, 90, "GLFW::0", &texWindow));
       if (displays.back()->GetStatus() != "") {
         std::cerr << "Error opening first display: " << displays.back()->GetStatus() << std::endl;
         return 1;
@@ -172,7 +173,7 @@ int main(int argc, char** argv)
       // Control it using joystick 1.
       std::shared_ptr<asdp::render::CompositeCube> composite2 = std::make_shared<asdp::render::CompositeCube>(10);
       displays.push_back(std::make_shared<asdp::render::DisplayWindow>("Display_Test2", composite2, client,
-        0, 0, 0, viewpointOffset, 60.0f, 2500, width, height,
+        0, 0, 0, viewpointOffset, viewpointRotation, 60.0f, 2500, width, height,
         90, "GLFW::1", &texWindow));
       if (displays.back()->GetStatus() != "") {
         std::cerr << "Error opening second display: " << displays.back()->GetStatus() << std::endl;
