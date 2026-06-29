@@ -2761,35 +2761,79 @@ void DisplayXSight::DisplayThread(
         break;
       }
 
-      // If we don't get opcode 7, then we ignore it -- this is the first byte in the message.
-      if (buffer[0] == 7) {
-        // Verify that the packet length is as expected and then parse it.
-        constexpr uint32_t expectedLength = 1 + 3 * 4 + 3 * 4 + 2 + 3 * 4 + 4 + 4 + 3 * 4 + 1 + 3 * 4;
-        if (length != expectedLength) {
-          m_status = "Received packet of unexpected length (" + std::to_string(length) +
-            " received, " + std::to_string(expectedLength) + " expected)";
-          break;
-        }
+      // If we don't get opcode 7 or 55, then we ignore it -- opcode is the first byte in the message.
+      uint8_t& opcode = buffer[0];
+      switch (opcode) {
+      case 7:
+        {
+          // Verify that the packet length is as expected and then parse it.
+          constexpr uint32_t expectedLength = 1 + 3 * 4 + 3 * 4 + 2 + 3 * 4 + 4 + 4 + 3 * 4 + 1 + 3 * 4;
+          if (length != expectedLength) {
+            m_status = "Received packet of unexpected length (" + std::to_string(length) +
+              " received, " + std::to_string(expectedLength) + " expected)";
+            break;
+          }
 
-        // Pull each of the fields out of the packet into a buffer, then perform byte order conversion,
-        // then copy into the result. We do the two copies because the bytes are not always aligned in the
-        // packet.  We first check to see if the packet is valid and leave things alone if it is not.
-        //bool valid = buffer[1 + 6 * 4 + 2 + 3 * 4 + 4 + 4 + 3 * 4] != 0;
-        if (true) { // Do not need to check for the validity of the packet -- that refers to degraded tracking
+          // Pull each of the fields out of the packet into a buffer, then perform byte order conversion,
+          // then copy into the result. We do the two copies because the bytes are not always aligned in the
+          // packet.  We first check to see if the packet is valid and leave things alone if it is not.
+          //bool valid = buffer[1 + 6 * 4 + 2 + 3 * 4 + 4 + 4 + 3 * 4] != 0;
+          // Do not need to check for the validity of the packet -- that refers to degraded tracking
           uint32_t temp;
           memcpy(&temp, &(buffer[1 + 5 * 4]), sizeof(temp));
           temp = ntohl(temp);
           memcpy(&azimuth, &temp, sizeof(azimuth));
+
           memcpy(&temp, &(buffer[1 + 4 * 4]), sizeof(temp));
           temp = ntohl(temp);
           memcpy(&elevation, &temp, sizeof(elevation));
+
           memcpy(&temp, &(buffer[1 + 3 * 4]), sizeof(temp));
           temp = ntohl(temp);
           memcpy(&roll, &temp, sizeof(roll));
+
           memcpy(&temp, &(buffer[1 + 6 * 4 + 2 + 3 * 4]), sizeof(temp));
           temp = ntohl(temp);
           memcpy(&time, &temp, sizeof(time));
         }
+        break;
+
+      case 55:
+        {
+          // The description of this packet format was in a table on the second slide of a Powerpoint
+          // sent by Jacqueline Shortridge on 6/29/2026.
+          constexpr uint32_t expectedLength = 77;
+          if (length != expectedLength) {
+            m_status = "Received packet of unexpected length (" + std::to_string(length) +
+              " received, " + std::to_string(expectedLength) + " expected)";
+            break;
+          }
+
+          // Pull each of the fields out of the packet into a buffer, then perform byte order conversion,
+          // then copy into the result. We do the two copies because the bytes are not always aligned in the
+          // packet.
+          uint32_t temp;
+          memcpy(&temp, &(buffer[73]), sizeof(temp));
+          temp = ntohl(temp);
+          memcpy(&azimuth, &temp, sizeof(azimuth));
+
+          memcpy(&temp, &(buffer[69]), sizeof(temp));
+          temp = ntohl(temp);
+          memcpy(&elevation, &temp, sizeof(elevation));
+
+          memcpy(&temp, &(buffer[65]), sizeof(temp));
+          temp = ntohl(temp);
+          memcpy(&roll, &temp, sizeof(roll));
+
+          memcpy(&temp, &(buffer[5]), sizeof(temp));
+          temp = ntohl(temp);
+          memcpy(&time, &temp, sizeof(time));
+        }
+        break;
+
+      default:
+        // Ignore unrecognized opcodes.
+        break;
       }
 
       // Check for another packet, so we gobble up any that are waiting.
