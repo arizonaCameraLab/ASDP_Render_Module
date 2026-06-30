@@ -1,10 +1,10 @@
 cmake_minimum_required(VERSION 3.16.0)
 
 if(UNIX)
-# @todo Add 120 once we've upgraded to a newer version of Linux that has CUDA 13.0 available
+# @todo Add 90 once we've upgraded to a newer version of Linux that has CUDA 13.0 available
 set(CMAKE_CUDA_ARCHITECTURES "75;80;89")
 else(UNIX)
-set(CMAKE_CUDA_ARCHITECTURES "75;80;89;120")
+set(CMAKE_CUDA_ARCHITECTURES "75;80;89;90")
 endif(UNIX)
 project(ASDP_Render_Module LANGUAGES CUDA CXX C)
 
