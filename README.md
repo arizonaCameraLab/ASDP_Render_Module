@@ -492,7 +492,8 @@ The workflow is as follows:
       gimbal configuration files, the threshold value for the target center, and the root directory
       where the simulation or measurement data was stored (where the target_lateral_N_images directories
       and the target_*_poses.csv files are). (If using a cool IR target, use the `--invert` command-line
-      option to invert the images before testing.)
+      option to invert the images. Then select an appropriate threshold; perhaps 65535-threshold if
+      not using the `--autoRange` option, perhaps 60000 if using it.)
       This will produce a **targets_lateral_opt.json**
       file in the root directory with the estimated lateral positions of the targets updated based on the
       image data. It will also produce a **cameras_opt.json** file with the optimized camera orientations.
@@ -519,7 +520,8 @@ The workflow is as follows:
       where the simulation or measurement data was stored (camera_images directory), the threshold in
       pixel counts above which the target brightness will be found, and an output
       file name. (If using a cool IR target, use the `--invert` command-line
-      option to invert the images before testing.)
+      option to invert the images. Then select an appropriate threshold; perhaps 65535-threshold if
+      not using the `--autoRange` option, perhaps 60000 if using it.)
       Then give it the name of an optimized output JSON configuration file with the estimated extrinsics and
       distortion parameters updated based on the image data (perhaps `cameras_final.json`). When using automatic
       edge brightness adjustment, add the `--writeMap` command-line option to write out the map from ideal
