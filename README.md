@@ -508,6 +508,7 @@ The workflow is as follows:
 - **Estimate camera parameters and distortion:**
     - Run the **Camera_Calibration_Make_Scan** program. It will produce a **poses.csv** file for all cameras.
       Give it **cameras_opt.json**, **targets_lateral_opt.json**, and the gimbal configuration files.
+      If you want to skip the wide-FOV cameras, add the `--noWFOVScan` command-line option.
     - Copy the poses.csv file into the calibration directory.
     - Capture or simulate the frames for the cameras and save them, using the same approach described above
       for the target calibration but reading from poses.csv rather than target_N_poses.csv and saving the
@@ -521,7 +522,8 @@ The workflow is as follows:
       pixel counts above which the target brightness will be found, and an output
       file name. (If using a cool IR target, use the `--invert` command-line
       option to invert the images. Then select an appropriate threshold; perhaps 65535-threshold if
-      not using the `--autoRange` option, perhaps 60000 if using it.)
+      not using the `--autoRange` option, perhaps 60000 if using it.) If you skipped the wide-FOV
+      cameras above, give the `--noWFOV` command-line option to skip them here as well.
       Then give it the name of an optimized output JSON configuration file with the estimated extrinsics and
       distortion parameters updated based on the image data (perhaps `cameras_final.json`). When using automatic
       edge brightness adjustment, add the `--writeMap` command-line option to write out the map from ideal
