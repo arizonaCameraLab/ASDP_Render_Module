@@ -12,7 +12,7 @@
 
 static void usage(const char* progName)
 {
-  std::cerr << "Usage: " << progName << " [--openXR] [--xSight <NIC name> <display>]" << std::endl;
+  std::cerr << "Usage: " << progName << " [--openXR] [--xSight <NIC name> <display>] [--xSight2 <NIC name> <display>]" << std::endl;
 }
 
 int main(int argc, char** argv)
@@ -22,7 +22,9 @@ int main(int argc, char** argv)
 
   bool useOpenXR = false;
   std::string xSightNICName = "";
+  std::string xSight2NICName = "";
   int xSightDisplay = 0;
+  int xSight2Display = 0;
   for (int i = 1; i < argc; ++i) {
     if (std::string("--openXR") == argv[i]) {
       useOpenXR = true;
@@ -38,6 +40,18 @@ int main(int argc, char** argv)
         return 1;
       }
       xSightDisplay = std::stoi(argv[i]);
+    }
+    else if (std::string("--xSight2") == argv[i]) {
+      if (++i >= argc) {
+        usage(argv[0]);
+        return 1;
+      }
+      xSight2NICName = argv[i];
+      if (++i >= argc) {
+        usage(argv[0]);
+        return 1;
+      }
+      xSight2Display = std::stoi(argv[i]);
     }
     else {
       usage(argv[0]);
@@ -75,9 +89,17 @@ int main(int argc, char** argv)
       displays.push_back(std::make_shared<asdp::render::DisplayOpenXR>(composite, &texWindow, client,
         0, 0, 0, viewpointOffset, 2500, 0, nullptr, nullptr, nullptr, false));
     } else if (xSightNICName != "") {
+      // First XSight configuration the project encountered
       displays.push_back(std::make_shared<asdp::render::DisplayXSight>(xSightNICName, composite, &texWindow, client,
         0, 0, 0, viewpointOffset,
         2500, nullptr, nullptr, nullptr, false, xSightDisplay));
+    } else if (xSight2NICName != "") {
+      // Second XSight configuration the project encountered
+      displays.push_back(std::make_shared<asdp::render::DisplayXSight>(xSight2NICName, composite, &texWindow, client,
+        0, 0, 0, viewpointOffset,
+        2500, nullptr, nullptr, nullptr, false, xSight2Display,
+        1920, 1200, 50, 70.0f,
+        false));
     } else {
       // Create a Display window to show the CompositeCube object that shares objects with the texWindow.
       // Control it using joystick 0.
