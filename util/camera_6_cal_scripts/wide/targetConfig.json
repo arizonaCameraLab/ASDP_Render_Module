@@ -1,0 +1,6 @@
+{
+  "targets": [
+    { "id": 1, "positionMeters": [ -1.0, 5.0, 0.0 ] },
+    { "id": 2, "positionMeters": [ 1.0, 20.0, 0.0 ] }
+  ]
+}
