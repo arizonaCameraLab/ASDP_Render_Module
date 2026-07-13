@@ -435,7 +435,7 @@ static void AutoUpdateColorOffsets(void* /* unused */)
       continue;
     }
 
-    // Find the indices of the entries in g_visibleCameras whose camIS fields match the two cameras in the pair.
+    // Find the indices of the entries in g_visibleCameras whose camID fields match the two cameras in the pair.
     size_t index1 = SIZE_MAX, index2 = SIZE_MAX;
     for (size_t i = 0; i < g_visibleCameras.size(); i++) {
       if (g_visibleCameras[i]->m_ID == cameraPair[0]) {
@@ -516,10 +516,11 @@ static std::array<float, 2> ComputeNewColorOffsetGain(
 
   // Compute the factor to adjust the slope by to make it 1.0 (i.e., y = x).
   // This is the amount by which we'll multiply the gain of the second camera to bring it into alignment.
-  // If the slope is either negative or very close to zero, just leave the gain unchanged because this is
+  // If the slope is very different, just leave the gain unchanged because this is
   // probably due to numerical instability.
   /// @todo Consider a more robust way to determine numerical instability.
-  float gainAdjustment = 1.0f / (slope < 1e-3f ? 1.0f : slope);
+  float gainAdjustment = 1.0f / slope;
+  if (slope < 0.5 || slope > 2) { gainAdjustment = 1.0f; }
   float newGain2 = gain2 * gainAdjustment;
 
   // Compute the new point values with the adjusted gain for the second camera to find the new offset needed.
