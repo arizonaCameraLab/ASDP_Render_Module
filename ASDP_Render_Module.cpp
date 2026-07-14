@@ -56,7 +56,7 @@ using namespace asdp::render;
 using namespace asdp::analysis;
 using json = nlohmann::json;
 
-static std::string VERSION = "3.33.0";
+static std::string VERSION = "3.34.0";
 
 /// @brief The path to the configuration file. Defined in the CMakeLists file.
 std::filesystem::path g_dirPath = CONFIG_FILE_PATH;
@@ -1346,6 +1346,7 @@ static void usage(std::string name)
   std::cerr << "  --lineBatchesPerGPUSend <int>       The number of batches of lines to group (default 16 Linux, 110 Windows)" << std::endl;
   std::cerr << "  --noPoses                           Do not stream poses from the server, so no latency adjustment." << std::endl;
   std::cerr << "  --dumpTiming <file name base>       Write timing on quit to CSV files with the specified base name." << std::endl;
+  std::cerr << "  --duration <seconds>                The duration to run before quitting (default 0 means run until user quits)." << std::endl;
   std::cerr << "  --addAnalysis <URL>                 Add an analysis module from the specified URL (can be used multiple times)." << std::endl;
   std::cerr << "  --addDisplay                        Add another display with defaults that can be overridden" << std::endl;
   std::cerr << "  --renderAheadMicroseconds <int>     Microseconds ahead of vertical retrace to start rendering next frame (default 2500)." << std::endl;
@@ -1405,6 +1406,7 @@ int main(int argc, char** argv)
   float maxDepth = 200.0f;        ///< Maximum depth to test for in meters.
   float depthThreshold = 10.0f;   ///< Depth threshold in squared pixel value differences.
   double staticDepth = 900.0;     ///< The static depth to use for cameras without depth information.
+  int durationSeconds = 0;        ///< The duration to run before quitting, 0 means run until user quits.
   std::vector<NUCInfo> nucInfos;  ///< All instances of NUC information for all cameras.
   std::vector<std::string> analysisModuleURLs; ///< The URLs of analysis modules to load.
   //======================================
@@ -1568,6 +1570,12 @@ int main(int argc, char** argv)
         return 2;
       }
       dumpTimingFileName = argv[i];
+    } else if (std::string("--duration") == argv[i]) {
+      if (++i >= argc) {
+        usage(argv[0]);
+        return 2;
+      }
+      durationSeconds = std::stoi(argv[i]);
     } else if (std::string("--renderAheadMicroseconds") == argv[i]) {
       if (++i >= argc) {
         usage(argv[0]);
@@ -2544,6 +2552,16 @@ int main(int argc, char** argv)
             status = client->SendCommandPacket(CommandPacketResumeReplay());
           }
           nowPaused = g_paused;
+        }
+      }
+
+      // See if we have been running for longer than the requested time, and if so, mark done.
+      if (durationSeconds > 0) {
+        auto now = std::chrono::steady_clock::now();
+        auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - start).count();
+        if (elapsed >= durationSeconds) {
+          std::cout << "Run time of " << durationSeconds << " seconds has elapsed, exiting." << std::endl;
+          done = true;
         }
       }
     }
