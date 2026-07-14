@@ -56,7 +56,7 @@ using namespace asdp::render;
 using namespace asdp::analysis;
 using json = nlohmann::json;
 
-static std::string VERSION = "3.34.0";
+static std::string VERSION = "3.35.0";
 
 /// @brief The path to the configuration file. Defined in the CMakeLists file.
 std::filesystem::path g_dirPath = CONFIG_FILE_PATH;
@@ -2581,6 +2581,11 @@ int main(int argc, char** argv)
       if (thread.joinable()) {
         thread.join();
       }
+    }
+
+    // Delete our display devices.
+    for (auto& display : displays) {
+      display.reset();
     }
 
     // Shut down any analysis thread.

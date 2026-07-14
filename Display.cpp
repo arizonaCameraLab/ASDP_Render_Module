@@ -2270,7 +2270,7 @@ void DisplayOpenXR::DisplayThread(Display* sharedWindow, uint32_t renderAheadMic
     glFinish();
     Display::m_impl->m_contextAvailable = true;
 
-    while (m_status.empty()) {
+    while (m_status.empty() && !m_done) {
       bool exitRenderLoop = false;
       try {
         m_impl->OpenXRPollEvents(&exitRenderLoop, &requestRestart);
@@ -2304,7 +2304,7 @@ void DisplayOpenXR::DisplayThread(Display* sharedWindow, uint32_t renderAheadMic
       m_status = "DisplayOpenXR::DisplayThread(): " + std::string(e.what());
     }
 
-  } while (m_status.empty() && requestRestart);
+  } while (m_status.empty() && requestRestart && !m_done);
 }
 
 #else // USE_OPENXR
