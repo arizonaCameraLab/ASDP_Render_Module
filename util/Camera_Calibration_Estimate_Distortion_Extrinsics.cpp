@@ -1124,14 +1124,6 @@ int main(int argc, char** argv)
             double actualX = map1.at<float>(y, x);
             double actualY = map2.at<float>(y, x);
 
-            // Check to see if the X axis went to the other half of the image
-            double centerX = cri->m_resolutionPixels[0] / 2.0;
-            if ((xf < centerX && actualX > centerX) || (xf > centerX && actualX < centerX)) {
-              std::cout << "XXX Mapping for camera " << cri->m_ID << " at expected pixel (" << xf << ", " << yf
-                << ") maps to actual pixel (" << actualX << ", " << actualY
-                << ") which is on the other half of the image; skipping this mapping point." << std::endl;
-            }
-
             // Add the mapping from expected to actual location.
             DistortionBagOfMappings::Point2D expected = PlaneIntersectionForPixelNoDistortion(*cri, { float(x), float(y) });
             DistortionBagOfMappings::Point2D actual = PlaneIntersectionForPixelNoDistortion(*cri, { actualX, actualY });
