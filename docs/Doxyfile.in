@@ -4,6 +4,10 @@ OUTPUT_DIRECTORY       = "@CMAKE_CURRENT_BINARY_DIR@/doc_doxygen/"
 INPUT                  = "@CMAKE_CURRENT_SOURCE_DIR@/" "@CMAKE_CURRENT_SOURCE_DIR@/docs"
 #EXAMPLE_PATH           = "@CMAKE_CURRENT_SOURCE_DIR@/examples" "@CMAKE_CURRENT_SOURCE_DIR@/tests_cpp"
 IMAGE_PATH             = "@CMAKE_CURRENT_SOURCE_DIR@"
+HTML_EXTRA_FILES       = "@CMAKE_CURRENT_SOURCE_DIR@/docs/TR-010_Render_Implementation.pdf"\
+                         "@CMAKE_CURRENT_SOURCE_DIR@/docs/TR-011_Geometric_Calibration.pdf"\
+                         "@CMAKE_CURRENT_SOURCE_DIR@/docs/TR-015_IR_Tone_Mapping.pdf"\
+                         "@CMAKE_CURRENT_SOURCE_DIR@/docs/TR-022_Interfacing_With_Render_Module.pdf"
 GENERATE_HTML          = YES
 GENERATE_LATEX         = NO
 RECURSIVE              = YES

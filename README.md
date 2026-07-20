@@ -1,7 +1,11 @@
 # ASDP_Render_Module
 
-This repository contains the source code for a Render Module 
-for the Apache Strap-Down Pilotage program.
+This repository contains the source code for a Render Module for the Apache Strap-Down Pilotage program.
+The following additional documentation is available in the docs/ directory:
+- [ASDP Render Module implementation](./TR-010_Render_Implementation.pdf)
+- [Geometric calibration](./TR-011_Geometric_Calibration.pdf)
+- [IR Tone mapping](./TR-015_IR_Tone_Mapping.pdf)
+- [Interfacing with Render Module](./TR-022_Interfacing_With_Render_Module.pdf)
 
 ## Getting Started
 
