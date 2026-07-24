@@ -434,7 +434,7 @@ int vrpn_unbuffer(const char **buffer, char *string, vrpn_int32 length)
 // threads has the same epoch.
 ///////////////////////////////////////////////////////////////
 
-static std::atomic_bool hr_offset_determined = false;
+static std::atomic_bool hr_offset_determined{false};
 static std::mutex hr_offset_semaphore;
 static struct timeval hr_offset;
 

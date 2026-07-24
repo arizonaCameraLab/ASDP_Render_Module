@@ -127,7 +127,7 @@ namespace asdp {
 
       /// @brief Depth scale to use for this view, -1 disables and > 0 sets color based on scaled depth.
       /// @details This is used for debugging purposes to show the depth of the scene in the camera view.
-      std::atomic<float> m_depthScale = -1.0;
+      std::atomic<float> m_depthScale{-1.0};
 
       /// @brief Compute the values needed to create the vertices for the render mesh for a camera.
       /// @details This function computes the vertices for a quadrilateral that will be used to display
