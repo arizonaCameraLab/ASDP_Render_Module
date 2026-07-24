@@ -397,6 +397,7 @@ if(BUILD_TESTS)
     ImageStatistics_Test
     RangeEstimator_Test
     XSight_Simulator
+    XSight_Monitor
     Spot_Tracker_Test
     Calibration_Helpers_Test
     Gimbal_Test
