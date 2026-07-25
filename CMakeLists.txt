@@ -73,17 +73,17 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(Geogram)
 
 # Geogram built GLFW3 for us as part of its build so we just need to find it.
-find_package(glfw3 REQUIRED)
+#find_package(glfw3 REQUIRED)
 
 # Before we used Geogram, we built GLFW3 ourselves on Windows and used a system library
 # on Linux.
 #if(WIN32)
-#FetchContent_Declare(
-#  glfw3
-#  GIT_REPOSITORY https://github.com/arizonaCameraLab/glfw.git
-#  GIT_TAG        b35641f4a3c62aa86a0b3c983d163bc0fe36026d # Master as of 4/26/2024
-#)
-#FetchContent_MakeAvailable(glfw3)
+FetchContent_Declare(
+  glfw3
+  GIT_REPOSITORY https://github.com/arizonaCameraLab/glfw.git
+  GIT_TAG        b35641f4a3c62aa86a0b3c983d163bc0fe36026d # Master as of 4/26/2024
+)
+FetchContent_MakeAvailable(glfw3)
 #else(WIN32)
 #find_package(glfw3 REQUIRED)
 #endif(WIN32)
@@ -196,7 +196,7 @@ target_include_directories(Render_Module PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/dependencies/glm"
 )
 target_link_libraries(Render_Module PUBLIC
-  ASDP_Core_API::ASDP_Core_API glfw GLEW::glew OpenGL::GL geogram freetype nlohmann_json::nlohmann_json
+  ASDP_Core_API::ASDP_Core_API glfw GLEW::GLEW OpenGL::GL geogram freetype nlohmann_json::nlohmann_json
 )
 if(OPENXR_FOUND)
   target_compile_definitions(Render_Module PRIVATE XR_USE_GRAPHICS_API_OPENGL)
@@ -283,10 +283,10 @@ if(WIN32)
       set(${result} "${found_element}" PARENT_SCOPE)
   endfunction()
 
-  # Assuming GLEW::glew is the imported target from find_package(GLEW REQUIRED)
+  # Assuming GLEW::GLEW is the imported target from find_package(GLEW REQUIRED)
   # Use that to find all of the glew32.dll files in neighboring directories and then pick the one
   # that has "x64" in the path.
-  get_target_property(GLEW_INCLUDE_DIRS GLEW::glew INTERFACE_INCLUDE_DIRECTORIES)
+  get_target_property(GLEW_INCLUDE_DIRS GLEW::GLEW INTERFACE_INCLUDE_DIRECTORIES)
   file(GLOB_RECURSE GLEW_DLL "${GLEW_INCLUDE_DIRS}/../*glew32.dll")
   find_element_with_substring(GLEW_DLL2 "${GLEW_DLL}" "x64")
 
@@ -332,7 +332,7 @@ if(BUILD_UTILITIES)
       spot_tracker_library
       ASDP_Core_API::ASDP_Core_API
       glfw
-      GLEW::glew
+      GLEW::GLEW
       OpenGL::GL
       Calibration_Helpers
       Gimbal
