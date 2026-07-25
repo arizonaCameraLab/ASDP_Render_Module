@@ -1107,8 +1107,8 @@ DepthEstimator::DepthEstimator(std::vector< std::array<std::shared_ptr<CameraRen
   }
 
   // Create the implementation.
-  m_impl = std::make_unique<DepthEstimatorImpl>(this, cameras, rangeEstimator,
-    poseAdjuster, cameraFrameInterval, nx, ny, depths, fitnessThreshold);
+  m_impl = std::unique_ptr<DepthEstimatorImpl>(new DepthEstimatorImpl(this, cameras, rangeEstimator,
+    poseAdjuster, cameraFrameInterval, nx, ny, depths, fitnessThreshold));
   m_constructorStatus = m_impl->m_constructorStatus;
 }
 

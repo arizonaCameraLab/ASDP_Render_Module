@@ -21,7 +21,6 @@
 #include <mutex>
 #include <thread>
 #include <string>
-#include <filesystem>
 #include <vector>
 #include <list>
 #include <atomic>
@@ -44,12 +43,14 @@
 #include <DepthEstimator.h>
 #include <ImageStatistics.h>
 #include <RangeEstimator.h>
-#include <Calibration_Helpers.h>
+//#include <Calibration_Helpers.h>
 #include <PointCorrespondences.h>
 #include <Analysis.h>
 #include <cuda.h>
 #include <cuda_runtime.h>
 #include <cuda_gl_interop.h>
+/// @todo Note, only on Linux
+#include <sys/stat.h>
 
 using namespace asdp;
 using namespace asdp::render;
@@ -59,7 +60,7 @@ using json = nlohmann::json;
 static std::string VERSION = "3.35.0";
 
 /// @brief The path to the configuration file. Defined in the CMakeLists file.
-std::filesystem::path g_dirPath = CONFIG_FILE_PATH;
+std::string g_dirPath = CONFIG_FILE_PATH;
 
 /// @brief Structure storing information needed by the callback handlers, a pointer is passeed in userData.
 struct CallbackHandlerData {
@@ -108,8 +109,9 @@ static std::shared_ptr< std::map<std::string, AnalysisObjectOverTime> > g_curren
 static float g_analysisFadeTimeSeconds = 1.0f;  ///< Time in seconds for analysis annotations to fade out.
 static float g_analysisChanceThreshold = 0.0f; ///< Minimum chance threshold for analysis annotations to be shown.
 
-static std::atomic<Time> g_lastCLOCK_SYNC = { 0 };  ///< The last CLOCK_SYN message time received, used to adjust analysis displays
-static_assert(std::is_trivially_copyable<Time>::value, "Time must be trivially copyable to use std::atomic<Time> portably");
+/// @todo This must be atomic, but cannot be in C++11
+static Time g_lastCLOCK_SYNC { };  ///< The last CLOCK_SYN message time received, used to adjust analysis displays
+//static_assert(std::is_trivially_copyable<Time>::value, "Time must be trivially copyable to use std::atomic<Time> portably");
 
 /// @brief Vector of Annotation objects to hold camera annotations if they are shown.
 static std::vector<CompositeCameras::Annotation> g_cameraAnnotations;
@@ -318,7 +320,7 @@ static std::vector< std::array<uint16_t, 2> > GetRawPixelValues(
 
   // Read back both images from texture memory to CPU memory.  These have already been adjusted by
   // the offset and gain on the way to being written to the texture.
-  std::array<std::vector<uint16_t>, imageData.size()> imagePixels;
+  std::vector<std::vector<uint16_t>> imagePixels(imageData.size());
   GLenum ret;
   for (int i = 0; i < imagePixels.size(); i++) {
     imagePixels[i].resize(widths[i] * heights[i]);
@@ -345,9 +347,9 @@ static std::vector< std::array<uint16_t, 2> > GetRawPixelValues(
 
   // Construct the vector of pixel value pairs, rounding each pixel location to the nearest pixel
   // location and clamping to ensure we don't read out of bounds.
-  std::vector< std::array<uint16_t, imageData.size()> > rawPixels;
+  std::vector<std::array<uint16_t, 2>> rawPixels;
   for (const auto& pair : correspondences) {
-    std::array<uint16_t, imageData.size()> pixelValues;
+    std::array<uint16_t, 2> pixelValues;
     for (int i = 0; i < imageData.size(); i++) {
       // Compute the pixel location, rounding to nearest integer and clamping to image bounds.
       int x = static_cast<int>(std::round(pair[i][0]));
@@ -966,7 +968,7 @@ struct DisplayInfo
   float fps = 60.0f;            ///< The frames per second to run at.
   bool fullScreen = false;      ///< Run in full screen mode.
   int fullScreenDisplay = 0;    ///< The display to run in full screen mode on.
-  std::array<float, 3> viewpointOffset = { 0.0f, 0.0f, 0.0f };  ///< The offset to apply to the viewpoint for this display, in meters.
+  std::array<float, 3> viewpointOffset = {{0.0f, 0.0f, 0.0f}};  ///< The offset to apply to the viewpoint for this display, in meters.
 
   //======================================
   // Added by Sang Yoon to add a flag for enabling the cylindrical projection.
@@ -1114,7 +1116,8 @@ std::shared_ptr<NUCInfo> ReadNUCInfoFromDirectory(const std::string& nucInfoDire
 std::vector<CompositeCameras::Annotation> AnnotationCallbackHandler(Time time, void * /* userData */)
 {
   // Atomically make a copy of the current analysis objects to use for generating annotations.
-  std::shared_ptr< std::map<std::string, AnalysisObjectOverTime> > analysis = std::atomic_load(&g_currentAnalysis);
+  /// @todo Must be atomic but cannot be on C++-11
+  std::shared_ptr< std::map<std::string, AnalysisObjectOverTime> > analysis = g_currentAnalysis;
 
   // Fill in the annotations vector to return. For each named object, select the entry whose time is in the
   // most-recent past (ignoring future reports). Adjust their poses based on any velocity since analysis time.
@@ -1124,7 +1127,9 @@ std::vector<CompositeCameras::Annotation> AnnotationCallbackHandler(Time time, v
   if (analysis) {
 
     // Fill in an entry for each report.
-    for (const auto& [name, series] : *analysis) {
+    for (const auto& kv : *analysis) {
+      const std::string& name = kv.first;
+      const auto& series = kv.second;
       // Find the report (if any) in this series whose time is the most recent past time compared to the render time.
       AnalysisReport const* report = nullptr;
       for (auto& entry : series) {
@@ -1321,7 +1326,8 @@ void HandleAnalysisThread(std::vector<std::string> analysisModuleURLs, std::shar
         }
       }
     }
-    std::atomic_store(&g_currentAnalysis, combinedReports);
+    /// @todo Must be atomic, but cannot be on C++-11
+    g_currentAnalysis = combinedReports;
 
     // Sleep a bit to avoid eating the entire CPU.
     std::this_thread::sleep_for(std::chrono::microseconds(1));
@@ -1837,19 +1843,21 @@ int main(int argc, char** argv)
 
     // If there is a map CSV file associated with this camera, read it into the point correspondence.
     {
-      std::filesystem::path mapCSVPath = g_dirPath / (std::to_string(sn) + ".map.csv");
-      if (std::filesystem::exists(mapCSVPath)) {
+      std::string mapCSVPath = g_dirPath + "/" + (std::to_string(sn) + ".map.csv");
+      struct stat buffer;
+      if (stat(mapCSVPath.c_str(), &buffer) == 0) {
         std::cout << "Reading map CSV file: " << mapCSVPath << std::endl;
-        g_pointCorrespondences = std::make_shared<PointCorrespondences>(mapCSVPath.string());
+        g_pointCorrespondences = std::make_shared<PointCorrespondences>(mapCSVPath);
       }
     }
 
     // Read the configuration file associated with the serial number for the server. Verify that
     // it has a matching serial number and number of cameras.
-    std::filesystem::path configPath = g_dirPath / (std::to_string(sn) + ".json");
+    std::string configPath = g_dirPath + "/" + (std::to_string(sn) + ".json");
     std::vector<CameraRenderInfo> rawCameraRenderInfos;
     try {
-      rawCameraRenderInfos = asdp::render::calibration::GetCameraRenderInfos(configPath.string());
+      /// @todo Removed because we don't have the calibration compiled in for C++-11
+      //rawCameraRenderInfos = asdp::render::calibration::GetCameraRenderInfos(configPath);
     }
     catch (const std::exception& e) {
       std::cerr << "Error reading configuration file: " << e.what() << std::endl;
@@ -2121,7 +2129,7 @@ int main(int argc, char** argv)
     handlers->SaveCameraConfig = SaveCameraConfig;
     handlers->ShowCameraNames = ShowCameraNames;
     handlers->ResetAnalysis = ResetAnalysis;
-    g_callbackHandlerData.cameraConfigFileName = configPath.string();
+    g_callbackHandlerData.cameraConfigFileName = configPath;
 
     // Construct a Display for use by the point correspondence object, if any.
     if (g_pointCorrespondences != nullptr) {

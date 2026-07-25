@@ -231,7 +231,7 @@ public:
 MeanStd::MeanStd(std::shared_ptr<CameraRenderInfo> camera)
 {
   // Create the implementation.
-  m_impl = std::make_unique<MeanStdImpl>(this, camera);
+  m_impl = std::unique_ptr<MeanStdImpl>(new MeanStdImpl(this, camera));
   m_constructorStatus = m_impl->m_constructorStatus;
 }
 

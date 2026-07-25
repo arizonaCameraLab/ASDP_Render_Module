@@ -437,6 +437,7 @@ void DisplayWindow::DisplayThread(std::string windowName,
     // "GLFW::#".  The # is the number of the joystick to open, starting with 0.  GLFW
     // joysticks are alwasy open, so we just need to record which one to use if it is
     // present.
+/*
     if (!joystick.empty() && (joystick.substr(0, 6) == "GLFW::")) {
       int joyNum = std::stoi(joystick.substr(6));
       if (glfwJoystickPresent(joyNum)) {
@@ -449,6 +450,7 @@ void DisplayWindow::DisplayThread(std::string windowName,
         }
       }
     }
+*/
 
     // Grab the context mutex for the duration of the setup.  Once we have it, we know
     // that the context is not active in another thread.
@@ -699,7 +701,7 @@ void DisplayWindow::SetNowPlaying(bool nowPlaying)
   // Set the pause time based on whether we are now playing so that
   // we don't extrapolate forward in time while paused.
   if (!m_nowPlaying) {
-    m_pauseTime = std::make_unique<Time>();
+    m_pauseTime = std::unique_ptr<Time>(new Time());
     m_timer->GetCoreTime(*m_pauseTime, std::chrono::steady_clock::now());
   } else {
     m_pauseTime.reset();
@@ -2215,7 +2217,7 @@ DisplayOpenXR::DisplayOpenXR(std::shared_ptr<Composite> composite, Display* shar
   , m_timingInfo(timingInfo)
   , m_replaying(replaying)
 {
-  m_impl = std::make_unique<DisplayOpenXRImpl>(this);
+  m_impl = std::uniqut_ptr<DisplayOpenXRImpl>(this);
   m_impl->m_verbosity = verbosity;
 
   // Start the rendering thread.
@@ -2236,7 +2238,7 @@ void DisplayOpenXR::SetNowPlaying(bool nowPlaying)
   // Set the pause time based on whether we are now playing so that
   // we don't extrapolate forward in time while paused.
   if (!m_nowPlaying) {
-    m_impl->m_pauseTime = std::make_unique<Time>();
+    m_impl->m_pauseTime = std::unique_ptr<Time>(new Time());
     m_timer->GetCoreTime(*m_impl->m_pauseTime, std::chrono::steady_clock::now());
   } else {
     m_impl->m_pauseTime.reset();
@@ -2966,7 +2968,7 @@ void DisplayXSight::SetNowPlaying(bool nowPlaying)
   // Set the pause time based on whether we are now playing so that
   // we don't extrapolate forward in time while paused.
   if (!m_nowPlaying) {
-    m_pauseTime = std::make_unique<Time>();
+    m_pauseTime = std::unique_ptr<Time>(new Time());
     m_timer->GetCoreTime(*m_pauseTime, std::chrono::steady_clock::now());
   }
   else {

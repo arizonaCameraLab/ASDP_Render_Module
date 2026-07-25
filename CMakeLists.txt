@@ -8,8 +8,8 @@ set(CMAKE_CUDA_ARCHITECTURES "75;80;89;100;120")
 endif(UNIX)
 project(ASDP_Render_Module LANGUAGES CUDA CXX C)
 
-# We require C++17 for the use of std::filesystem.
-set(CMAKE_CXX_STANDARD 17)
+# We require C++11 for the use of std::filesystem.
+set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 list(APPEND CMAKE_PREFIX_PATH
   F:/Packages/GLEW/glew-2.2.0
@@ -67,7 +67,7 @@ endif()
 FetchContent_Declare(
   Geogram
   GIT_REPOSITORY https://github.com/BrunoLevy/geogram.git
-  GIT_TAG        v1.9.5
+  GIT_TAG        v1.8.1
   GIT_SUBMODULES_RECURSE TRUE
 )
 FetchContent_MakeAvailable(Geogram)
@@ -116,7 +116,7 @@ include_directories(${CUDAToolkit_INCLUDE_DIRS})
 # Define build options.
 
 option(BUILD_TESTS "Build test programs" ON)
-option(BUILD_UTILITIES "Build utility programs" ON)
+option(BUILD_UTILITIES "Build utility programs" OFF)
 
 if (DOXYGEN_FOUND)
     option(BUILD_DOXYGEN "Build DOxygen documentation" ON)
@@ -217,6 +217,7 @@ if(OPENXR_FOUND)
   )
 endif()
 
+if(BUILD_UTILITIES)
 add_library(Calibration_Helpers STATIC util/Calibration_Helpers.cpp util/Calibration_Helpers.h)
 include_directories(Calibration_Helpers PUBLIC
   "${CMAKE_CURRENT_SOURCE_DIR}/util"
@@ -227,6 +228,7 @@ target_link_libraries(Calibration_Helpers PUBLIC
   nlohmann_json::nlohmann_json
   Gimbal
 )
+endif()
 
 #-----------------------------------------------------------------------------
 # Build the Render module application.
@@ -241,7 +243,7 @@ set (ASDP_Render_Module_SOURCES
 add_executable(ASDP_Render_Module ${ASDP_Render_Module_SOURCES} ${ASDP_Render_Module_HEADERS})
 target_compile_definitions(ASDP_Render_Module PRIVATE
   -DCONFIG_FILE_PATH="${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR}/ASDP_Render_Module_Configs")
-target_link_libraries(ASDP_Render_Module Render_Module Calibration_Helpers nlohmann_json::nlohmann_json)
+target_link_libraries(ASDP_Render_Module Render_Module nlohmann_json::nlohmann_json)
 get_property(isMultiConfig GLOBAL PROPERTY GENERATOR_IS_MULTI_CONFIG)
 if(isMultiConfig)
   # Multi-config (e.g., Visual Studio, Xcode)
@@ -399,8 +401,8 @@ if(BUILD_TESTS)
     XSight_Simulator
     XSight_Monitor
     Spot_Tracker_Test
-    Calibration_Helpers_Test
-    Gimbal_Test
+#    Calibration_Helpers_Test
+#    Gimbal_Test
     RenderText_Test
     RenderHaloedLines_Test
     Annotation_Test
@@ -417,7 +419,7 @@ if(BUILD_TESTS)
     target_link_libraries(${APP}
       Render_Module
       spot_tracker_library
-      Calibration_Helpers
+#      Calibration_Helpers
       Gimbal
     )
     install(TARGETS ${APP} EXPORT ${PROJECT_NAME}

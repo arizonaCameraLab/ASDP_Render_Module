@@ -54,7 +54,7 @@ namespace asdp {
       /// helicopter frame of reference and then rotated around its new center.
       /// The camera is looking out the front of the helicopter (along the +Y axis) with its "up" vector
       /// pointing above the helicopter (along the +Z axis) when the orientation is (1,0,0,0).
-      std::array<float, 4> orientation = {1, 0, 0, 0};
+      std::array<float, 4> orientation = {{1, 0, 0, 0}};
       /// @brief Left edge of the view in degrees from the principal ray (this will be half the horizontal FOV).
       /// @details Left and right are different for off-center projection.
       float leftHalfFOV = -45;

@@ -86,8 +86,8 @@ namespace asdp {
 
       /// @brief Class to hold the result of velocity and rotational velocity estimation.
       struct VelocityEstimate {
-        std::array<float, 3> vel = { 0, 0, 0 };  ///< The estimated velocity of the helicopter.
-        std::array<float, 3> axis = { 1, 0, 0 }; ///< The estimated angle the helicopter is rotating around.
+        std::array<float, 3> vel = {{0, 0, 0}};  ///< The estimated velocity of the helicopter.
+        std::array<float, 3> axis = {{1, 0, 0}}; ///< The estimated angle the helicopter is rotating around.
         float angleRad = 0;                      ///< The estimated angular velocity of the helicopter in radians/sec.
       };
 
