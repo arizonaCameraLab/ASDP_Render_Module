@@ -92,6 +92,9 @@ static std::shared_ptr<Display> g_pointCorrespondenceDisplay;
 /// @brief Global variable to hold the point correspondences object.
 static std::shared_ptr<PointCorrespondences> g_pointCorrespondences;
 
+/// @brief Global variable to hold the display used to handle kiosk commands.
+static std::shared_ptr<Display> g_kioskDisplay;
+
 /// @brief Vector of camera pairs to use for auto-updating color offsets.
 /// @todo Eventually, this should be determined from the geometry of the camera configuration.
 static std::vector< std::array<uint32_t, 2> > g_cameraPairs = {
@@ -1328,6 +1331,8 @@ void HandleAnalysisThread(std::vector<std::string> analysisModuleURLs, std::shar
   }
 }
 
+//=================================================================
+
 static void usage(std::string name)
 {
   std::cerr << "Usage: " << name << " [options] <ip_address>" << std::endl;
@@ -1347,6 +1352,7 @@ static void usage(std::string name)
   std::cerr << "  --noPoses                           Do not stream poses from the server, so no latency adjustment." << std::endl;
   std::cerr << "  --dumpTiming <file name base>       Write timing on quit to CSV files with the specified base name." << std::endl;
   std::cerr << "  --duration <seconds>                The duration to run before quitting (default 0 means run until user quits)." << std::endl;
+  std::cerr << "  --kiosk <JSON filename>             Run in kiosk mode with the specified configuration file." << std::endl;
   std::cerr << "  --addAnalysis <URL>                 Add an analysis module from the specified URL (can be used multiple times)." << std::endl;
   std::cerr << "  --addDisplay                        Add another display with defaults that can be overridden" << std::endl;
   std::cerr << "  --renderAheadMicroseconds <int>     Microseconds ahead of vertical retrace to start rendering next frame (default 2500)." << std::endl;
@@ -1407,6 +1413,7 @@ int main(int argc, char** argv)
   float depthThreshold = 10.0f;   ///< Depth threshold in squared pixel value differences.
   double staticDepth = 900.0;     ///< The static depth to use for cameras without depth information.
   int durationSeconds = 0;        ///< The duration to run before quitting, 0 means run until user quits.
+  std::string kioskConfigFile;    ///< The name of the kiosk configuration file to use, if any.
   std::vector<NUCInfo> nucInfos;  ///< All instances of NUC information for all cameras.
   std::vector<std::string> analysisModuleURLs; ///< The URLs of analysis modules to load.
   //======================================
@@ -1576,6 +1583,12 @@ int main(int argc, char** argv)
         return 2;
       }
       durationSeconds = std::stoi(argv[i]);
+    } else if (std::string("--kiosk") == argv[i]) {
+      if (++i >= argc) {
+        usage(argv[0]);
+        return 2;
+      }
+      kioskConfigFile = argv[i];
     } else if (std::string("--renderAheadMicroseconds") == argv[i]) {
       if (++i >= argc) {
         usage(argv[0]);
@@ -1649,27 +1662,23 @@ int main(int argc, char** argv)
 
     //======================================
     // Added by Sang Yoon to add a command line argument to enable the display interface of overview plus detail view.
-    }
-    else if (std::string("--enableOD") == argv[i]) {
+    } else if (std::string("--enableOD") == argv[i]) {
         enableOD = true;
     //======================================
-    }
-    else if (std::string("--maxCameras") == argv[i]) {
+    } else if (std::string("--maxCameras") == argv[i]) {
       if (++i >= argc) {
         usage(argv[0]);
         return 2;
       }
       maxCameras = std::stoi(argv[i]);
-    }
-    else if (std::string("--skipCamera") == argv[i]) {
+    } else if (std::string("--skipCamera") == argv[i]) {
       if (++i >= argc) {
         std::cerr << "--skipCamera requires a camera ID" << std::endl;
         usage(argv[0]);
         return 2;
       }
       skipCameras.insert(std::stoi(argv[i]));
-    }
-    else if (std::string("--serial") == argv[i]) {
+    } else if (std::string("--serial") == argv[i]) {
       if (++i >= argc) {
         usage(argv[0]);
         return 2;
@@ -1678,8 +1687,7 @@ int main(int argc, char** argv)
     } else if (std::string("--version") == argv[i]) {
       std::cout << "ASDP Render Module version " << VERSION + "-" + BUILD_TYPE << std::endl;
       return 0;
-    }
-    else if (argv[i][0] == '-') {
+    } else if (argv[i][0] == '-') {
       usage(argv[0]);
       return 1;
     } else switch (realParams++) {
@@ -1901,6 +1909,47 @@ int main(int argc, char** argv)
     // Construct a DisplayTexture object to handle textures.  It will be the base object that all others will use
     // to share contexts.
     std::shared_ptr<DisplayTexture> displayTexture = std::make_shared<DisplayTexture>();
+
+    //=================================================================
+    // If we are running in kiosk mode, parse the configuration file.
+    json kioskInfo;
+    if (!kioskConfigFile.empty()) {
+      std::cout << "Running in kiosk mode with configuration file: " << kioskConfigFile << std::endl;
+      std::ifstream kioskFile(kioskConfigFile);
+      if (!kioskFile.is_open()) {
+        std::cerr << "Failed to open kiosk configuration file: " << kioskConfigFile << std::endl;
+        return 2;
+      }
+      try {
+        kioskFile >> kioskInfo;
+      }
+      catch (const std::exception& e) {
+        std::cerr << "Failed to parse kiosk configuration file: " << e.what() << std::endl;
+        return 2;
+      }
+
+      // Make sure the kiosk contains an array
+      if (!kioskInfo.is_array()) {
+        std::cerr << "Kiosk configuration file does not contain an array." << std::endl;
+        return 2;
+      }
+
+      // Make sure every entry contains a "afterSeconds", "command", and "parameters" field
+      // and that "afterSeconds" is a number, "command" is a string, and "parameters" is an array.
+      for (const auto& entry : kioskInfo) {
+        if (!entry.contains("afterSeconds") || !entry.contains("command") || !entry.contains("parameters")) {
+          std::cerr << "Kiosk configuration file entry does not contain required fields." << std::endl;
+          return 2;
+        }
+        if (!entry["afterSeconds"].is_number() || !entry["command"].is_string() || !entry["parameters"].is_array()) {
+          std::cerr << "Kiosk configuration file entry has incorrect field types." << std::endl;
+          return 2;
+        }
+      }
+
+      // Make the display for the kiosk
+      g_kioskDisplay = std::make_shared<DisplayTexture>(displayTexture.get());
+    }
 
     // Make additional OpenGL contexts for all but the first texture thread -- re-use the original for
     // the first one.
@@ -2130,7 +2179,7 @@ int main(int argc, char** argv)
 
     // Construct one or more Display objects to render the cameras.  They all share objects with the texture Display.
     std::vector<std::shared_ptr<Display>> displays;
-    std::vector<GLuint> toneMapTextures;  ///< Stores these for later deletion.
+    std::vector<GLuint> toneMapTextures;  ///< Stores these for later deletion or replacement.
 
     //======================================
     // Added by Sang Yoon to enable the display interface of overview plus detail view.
@@ -2495,7 +2544,70 @@ int main(int argc, char** argv)
     bool nowPaused = false;
     bool replayDone = false;
     start = std::chrono::steady_clock::now();
+    auto kioskStart = start;
+    size_t kioskIndex = 0; // The index of the current kiosk entry to check.
     while (!done) {
+
+      // See if it is time to switch to the next kiosk entry, if any.
+      if (kioskIndex < kioskInfo.size()) {
+        auto now = std::chrono::steady_clock::now();
+        auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - kioskStart).count();
+        if (elapsed >= kioskInfo[kioskIndex]["afterSeconds"]) {
+          kioskStart = now;
+          std::cout << "Activating next kiosk entry: " << kioskInfo[kioskIndex]["command"];
+          for (const auto& param : kioskInfo[kioskIndex]["parameters"]) {
+            std::cout << " " << param;
+          }
+          std::cout << std::endl;
+
+          // Handle the command for this kiosk entry.
+          std::string command = kioskInfo[kioskIndex]["command"];
+          if (command == "pause") {
+            g_paused = true;
+          } else if (command == "resume") {
+            g_paused = false;
+          } else if (command == "toneMap") {
+            if (kioskInfo[kioskIndex]["parameters"].size() != 1) {
+              std::cerr << "Error: toneMap command requires one parameter." << std::endl;
+            }
+            std::string toneMapName = kioskInfo[kioskIndex]["parameters"][0];
+            auto toneMap = ToneMap();
+            if (toneMapName == "10bit") {
+              float maxFraction = 1023.0f / 65535; // 10-bit max value as fraction of 16-bit max value.
+              toneMap = ToneMap({ {0.0, 0.0,0.0,0.0}, {maxFraction, 1.0,1.0,1.0} });
+            } else if (toneMapName == "blackbody") {
+              toneMap = ToneMapBlackbody();
+            } else if (toneMapName == "bluesky") {
+              toneMap = ToneMapBlueSky();
+            } else if (toneMapName == "balcony") {
+              toneMap = ToneMap({ {0.0, 0.0,0.0,0.0}, {0.5, 0.0,0.0,0.0},{1.0, 1.0,1.0,1.0} });
+            } else {
+              std::cerr << "Error: Unknown tone map name: " << toneMapName << ", setting to linear" << std::endl;
+            }
+            // Fill all of the existing tonemap textures with this one.
+            if (!g_kioskDisplay->BorrowContext()) {
+              std::cerr << "Error borrowing context from g_kioskDisplay for ToneMap." << std::endl;
+            }
+            for (size_t i = 0; i < toneMapTextures.size(); i++) {
+              if (!toneMap.FillTexture(toneMapTextures[i])) {
+                std::cerr << "Error filling tone map texture." << std::endl;
+              }
+            }
+            if (!g_kioskDisplay->ReturnContext()) {
+              std::cerr << "Error returning context to g_kioskDisplay for ToneMap." << std::endl;
+            }
+          } else {
+            std::cerr << "Error: Unknown kiosk command." << std::endl;
+          }
+
+          // Go to the next (or back to the first) kiosk entry.
+          kioskIndex++;
+          if (kioskIndex >= kioskInfo.size()) {
+            std::cout << "Kiosk entries completed, resetting." << std::endl;
+            kioskIndex = 0;
+          }
+        }
+      }
 
       // Receive and handle any message from the server, waiting at most 100ms for a
       // new packet before looping back around.
@@ -2883,6 +2995,7 @@ int main(int argc, char** argv)
   } // End of block that causes destruction of all objects before returning.
 
   // Clean up the global objects.
+  g_kioskDisplay.reset();
   g_pointCorrespondenceDisplay.reset();
   g_visibleCameras.clear();
   g_depthCameras.clear();
