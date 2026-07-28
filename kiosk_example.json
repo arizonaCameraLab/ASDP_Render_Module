@@ -1,0 +1,27 @@
+[
+  {
+    "afterSeconds": 3,
+    "command": "pause",
+    "parameters": []
+  },
+  {
+    "afterSeconds": 10,
+    "command": "toneMap",
+    "parameters": [ "blackbody" ]
+  },
+  {
+    "afterSeconds": 10,
+    "command": "toneMap",
+    "parameters": [ "bluesky" ]
+  },
+  {
+    "afterSeconds": 10,
+    "command": "toneMap",
+    "parameters": [ "linear" ]
+  },
+  {
+    "afterSeconds": 1,
+    "command": "resume",
+    "parameters": []
+  }
+]
