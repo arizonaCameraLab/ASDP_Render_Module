@@ -1983,8 +1983,11 @@ bool asdp::render::DisplayOpenXR::DisplayOpenXRImpl::OpenXRRenderLayer(XrTime pr
   // subtracting the current time.
   Time time;
   std::shared_ptr<Timer> timer;
-  Status status = m_display->m_client->GetTimer(timer);
-  status = timer->GetCoreTime(time);
+  if (!m_display->m_timer) {
+    std::cerr << "OpenXRRenderLayer(): No timer available" << std::endl;
+    return false;
+  }
+  Status status = m_display->m_timer->GetCoreTime(time);
   if (status != OKAY) {
     return false;
   }
