@@ -83,8 +83,8 @@ static std::vector< std::shared_ptr<asdp::render::CameraRenderInfo> > g_visibleC
 /// @brief Global variable to hold the index of the active camera.
 static std::atomic<size_t> g_activeCameraIndex(0);
 
-/// @brief Global variable to hold the composite cameras.
-static std::shared_ptr<CompositeCameras> g_composite;
+/// @brief Global variable to hold the composite camera used by each display.
+static std::vector< std::shared_ptr<CompositeCameras> > g_composites;
 
 /// @brief Global variable to hold the display used to provide a context for point correspondences.
 static std::shared_ptr<Display> g_pointCorrespondenceDisplay;
@@ -713,7 +713,9 @@ static void CopyDepthInfo(Time renderTime, void* /* unused */)
   // The depth updates are computed by DepthThreadFunction, which runs in a separate thread
   // and updates the vertex buffers in the CameraRenderInfo objects inline.
   for (std::shared_ptr<asdp::render::CameraRenderInfo> cri : g_visibleCameras) {
-    g_composite->UpdateVertexBuffer(*cri);
+    for (auto& composite: g_composites) {
+      composite->UpdateVertexBuffer(*cri);
+    }
   }
 
   g_timingInfo.depthEndTimes.push_back(std::chrono::steady_clock::now());
@@ -2232,33 +2234,33 @@ int main(int argc, char** argv)
       // Two displays cannot share a SetupRenderFrame() call because they may have different frame rates.
       // Rendering offset based on how many frames we want to render ahead.
       uint32_t renderOffsetMicroseconds = renderAheadFrames * (1000000 / cameraFPS);
-      g_composite = std::make_shared<CompositeCameras>(
+      g_composites.push_back(std::make_shared<CompositeCameras>(
         g_visibleCameras, toneMapTexture, poseAdjuster, Time(1/cameraFPS),
         renderOffsetMicroseconds,
         Time(0, 1000000 / displayInfos[i].fps), (i == 0) ? (&g_timingInfo) : nullptr,
-        rangeEstimator, staticDepth, AnnotationCallbackHandler, nullptr);
+        rangeEstimator, staticDepth, AnnotationCallbackHandler, nullptr));
 
       //======================================
       // Added by Sang Yoon to just pass the status of enabling the cylindrical projection (true or false) from DisplayInfos[i] to composite.
       // Note that the cylinderical projection is processed in Composite Submodule.
-      g_composite->m_CP_enabled = displayInfos[i].enableCP;
+      g_composites.back()->m_CP_enabled = displayInfos[i].enableCP;
       //======================================
 
       //======================================
       // Added by Sang Yoon to just pass the status of overview and detailed view for the current display to composite.
       // Note that the overview and detailed view are handled in Composite Submodule.
-      g_composite->m_overview = displayInfos[i].overview;
-      g_composite->m_detailed_view = displayInfos[i].detailed_view;
+      g_composites.back()->m_overview = displayInfos[i].overview;
+      g_composites.back()->m_detailed_view = displayInfos[i].detailed_view;
       //======================================
 
       // Only time the first listed display, to avoid race conditions
       if (displayInfos[i].useOpenXR) {
-        displays.push_back(std::make_shared<DisplayOpenXR>(g_composite, displayTexture.get(),
+        displays.push_back(std::make_shared<DisplayOpenXR>(g_composites.back(), displayTexture.get(),
           client, triggerID, triggerAheadMicroseconds, depthAheadMicroseconds, displayInfos[i].viewpointOffset,
           renderAheadMicroseconds, 1, handlers, &g_callbackHandlerData,
           (i == 0) ? (&g_timingInfo) : nullptr, replayStreamID != 0));
       } else if (!displayInfos[i].XSightNIC.empty()) {
-        displays.push_back(std::make_shared<DisplayXSight>(displayInfos[i].XSightNIC, g_composite, displayTexture.get(),
+        displays.push_back(std::make_shared<DisplayXSight>(displayInfos[i].XSightNIC, g_composites.back(), displayTexture.get(),
           client, triggerID, triggerAheadMicroseconds,
           depthAheadMicroseconds, displayInfos[i].viewpointOffset,
           renderAheadMicroseconds,
@@ -2267,7 +2269,7 @@ int main(int argc, char** argv)
           displayInfos[i].XSightDisplay
         ));
       } else if (!displayInfos[i].XSight2NIC.empty()) {
-        displays.push_back(std::make_shared<DisplayXSight>(displayInfos[i].XSight2NIC, g_composite, displayTexture.get(),
+        displays.push_back(std::make_shared<DisplayXSight>(displayInfos[i].XSight2NIC, g_composites.back(), displayTexture.get(),
           client, triggerID, triggerAheadMicroseconds,
           depthAheadMicroseconds, displayInfos[i].viewpointOffset,
           renderAheadMicroseconds,
@@ -2279,7 +2281,7 @@ int main(int argc, char** argv)
         ));
       } else {
         displays.push_back(std::make_shared<DisplayWindow>("ASDP Render Module " + std::to_string(i),
-          g_composite, client, triggerID, triggerAheadMicroseconds, depthAheadMicroseconds, displayInfos[i].viewpointOffset,
+          g_composites.back(), client, triggerID, triggerAheadMicroseconds, depthAheadMicroseconds, displayInfos[i].viewpointOffset,
           displayInfos[i].fps, renderAheadMicroseconds,
           displayInfos[i].width, displayInfos[i].height,
           displayInfos[i].hFOV, displayInfos[i].joystick, displayTexture.get(),
@@ -2611,7 +2613,9 @@ int main(int argc, char** argv)
             } else {
               rangeEstimator = std::make_shared<RangeEstimatorStdRanges>(meanStdGroup, stdBelow, stdAbove);
             }
-            g_composite->UpdateRangeEstimator(rangeEstimator);
+            for (auto& composite : g_composites) {
+              composite->UpdateRangeEstimator(rangeEstimator);
+            }
           } else {
             std::cerr << "Error: Unknown kiosk command." << std::endl;
           }
@@ -2732,11 +2736,6 @@ int main(int argc, char** argv)
       }
     }
 
-    // Delete our display devices.
-    for (auto& display : displays) {
-      display.reset();
-    }
-
     // Shut down any analysis thread.
     g_runAnalysisThread = false;
     if (analysisThread.joinable()) {
@@ -2771,6 +2770,11 @@ int main(int argc, char** argv)
     if (!displayTexture->ReturnContext()) {
       std::cerr << "Error returning context to displayTexture." << std::endl;
       return 37;
+    }
+
+    // Delete our display devices.
+    for (auto& display : displays) {
+      display.reset();
     }
 
     // If we've been asked to dump the timing information, do so.
@@ -3037,7 +3041,7 @@ int main(int argc, char** argv)
   g_visibleCameras.clear();
   g_depthCameras.clear();
   g_depthEstimator.reset();
-  g_composite.reset();
+  g_composites.clear();
 
   return 0;
 }
