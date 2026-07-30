@@ -2596,6 +2596,22 @@ int main(int argc, char** argv)
             if (!g_kioskDisplay->ReturnContext()) {
               std::cerr << "Error returning context to g_kioskDisplay for ToneMap." << std::endl;
             }
+          } else if (command == "autoRangeStd") {
+            if (kioskInfo[kioskIndex]["parameters"].size() != 2) {
+              std::cerr << "Error: autoRangeStd command requires two parameters." << std::endl;
+            }
+            if (!kioskInfo[kioskIndex]["parameters"][0].is_number() ||
+                !kioskInfo[kioskIndex]["parameters"][1].is_number()) {
+              std::cerr << "Error: autoRangeStd command parameters must be numbers." << std::endl;
+            }
+            float stdBelow = kioskInfo[kioskIndex]["parameters"][0].get<float>();
+            float stdAbove = kioskInfo[kioskIndex]["parameters"][1].get<float>();
+            if (stdBelow == 0 && stdAbove == 0) {
+              rangeEstimator = nullptr;
+            } else {
+              rangeEstimator = std::make_shared<RangeEstimatorStdRanges>(meanStdGroup, stdBelow, stdAbove);
+            }
+            g_composite->UpdateRangeEstimator(rangeEstimator);
           } else {
             std::cerr << "Error: Unknown kiosk command." << std::endl;
           }
