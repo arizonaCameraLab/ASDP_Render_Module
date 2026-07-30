@@ -1779,7 +1779,7 @@ int main(int argc, char** argv)
       std::cout << "  " << server.second << " (serial #" << server.first << ")" << std::endl;
     }
 
-    // Connect to the first server found.
+    // Connect to the first matching server found.
     std::cout << "Connecting to " << servers.begin()->second << std::endl;
     uint16_t major, minor, patch;
     status = client->ConnectToServer(servers.begin()->second, major, minor, patch);
@@ -2675,6 +2675,27 @@ int main(int argc, char** argv)
           std::cout << "Run time of " << durationSeconds << " seconds has elapsed, exiting." << std::endl;
           done = true;
         }
+      }
+    }
+
+    // Stopping streaming on the cameras
+    std::cout << "Stop streaming from " << cameraIDs.size() << " cameras" << std::endl;
+    for (size_t i = 0; i < cameras.size(); i++) {
+      uint32_t camID = cameraIDs[i];
+      CameraInfo& camera = cameras[i];
+
+      // Request the camera to cancel streaming.
+      uint16_t port;
+      status = UDPReceivers[i]->GetPort(port);
+      if (status != OKAY) {
+        std::cerr << "Failed to get port: " << ErrorMessage(status) << std::endl;
+        return 31;
+      }
+      StreamEndpoint endpoint(ip_address, port);
+      status = client->SendCommandPacket(CommandPacketCancelSubregion(camID, endpoint));
+      if (status != OKAY) {
+        std::cerr << "Failed to stop streaming images: " << ErrorMessage(status) << std::endl;
+        return 32;
       }
     }
 
