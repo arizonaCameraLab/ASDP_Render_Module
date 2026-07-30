@@ -1144,6 +1144,12 @@ void CompositeCameras::UpdateVertexBuffer(CameraRenderInfo const& cameraRenderIn
   glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(vertices[0]) * vertices.size(), vertices.data());
 }
 
+void CompositeCameras::UpdateRangeEstimator(std::shared_ptr<asdp::render::RangeEstimator> rangeEstimator)
+{
+  std::lock_guard<std::mutex> lock(m_rangeEstimatorMutex);
+  m_rangeEstimator = rangeEstimator;
+}
+
 static double TimeDiffMagnitude(asdp::Time t1, asdp::Time t2) {
   asdp::Time diff;
   if (t1 > t2) {
@@ -1382,7 +1388,12 @@ void CompositeCameras::RenderView(asdp::Time scanOutTime, const float* viewProje
   // When we are using the range estimator, we need to adjust the gain and offset to fit into the
   // specified range. When these are both 0, we should not do this adjustment.
   double minVal = 0, maxVal = 0;
-  if (m_rangeEstimator) {
+  std::shared_ptr<asdp::render::RangeEstimator> re;
+  {
+    std::lock_guard<std::mutex> lock(m_rangeEstimatorMutex);
+    re = m_rangeEstimator;
+  }
+  if (re) {
     // Get the min and max intensity values and determine the gain and offset to apply to map
     // the specified minVal and maxVal to 0 and 1.
     // The current offset is added to the value and then the gain is applied.

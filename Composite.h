@@ -280,6 +280,10 @@ namespace asdp {
       /// NOTE: This does not call glFinish() to ensure that that data has been written before returning.
       void UpdateVertexBuffer(const CameraRenderInfo& cameraRenderInfo);
 
+      /// @brief Update the RangeEstimator being used by this object.  This is used by kiosk mode.
+      /// @param rangeEstimator A shared pointer to the new RangeEstimator to use.
+      void UpdateRangeEstimator(std::shared_ptr<asdp::render::RangeEstimator> rangeEstimator);
+
       /// @brief Destructor
       ~CompositeCameras();
 
@@ -296,6 +300,7 @@ namespace asdp {
       RenderTimingInfo *m_renderTimingInfo; ///< A pointer to the render timing information to fill in.
 
       std::shared_ptr<asdp::render::RangeEstimator> m_rangeEstimator;  ///< The range estimator to use for tone-map range determination.
+      std::mutex m_rangeEstimatorMutex;     ///< Mutex to protect access to the range estimator.
       double m_defaultStaticDepth;          ///< The default static depth to use for cameras without depth information.
 
       AnnotationCallbackFunction m_annotationCallback; ///< A callback function to retrieve annotations for the rendered frames.
