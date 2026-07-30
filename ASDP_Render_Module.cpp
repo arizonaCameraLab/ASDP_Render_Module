@@ -2772,6 +2772,14 @@ int main(int argc, char** argv)
       return 37;
     }
 
+    // Clean up the global objects.
+    g_pointCorrespondenceDisplay.reset();
+    g_visibleCameras.clear();
+    g_depthCameras.clear();
+    g_depthEstimator.reset();
+    g_composites.clear();
+    g_kioskDisplay.reset();
+
     // Delete our display devices.
     for (auto& display : displays) {
       display.reset();
@@ -3034,14 +3042,6 @@ int main(int argc, char** argv)
     }
 
   } // End of block that causes destruction of all objects before returning.
-
-  // Clean up the global objects.
-  g_kioskDisplay.reset();
-  g_pointCorrespondenceDisplay.reset();
-  g_visibleCameras.clear();
-  g_depthCameras.clear();
-  g_depthEstimator.reset();
-  g_composites.clear();
 
   return 0;
 }
