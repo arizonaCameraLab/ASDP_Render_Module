@@ -1755,19 +1755,13 @@ int main(int argc, char** argv)
         std::cerr << "Failed to get identified servers: " << ErrorMessage(status) << std::endl;
         return 6;
       }
-      // If we have been asked for a specific serial number, remove all others.
+      // If we have been asked for a specific serial number, break when we have found it.
+      // Otherwise, break when we have found any server.
       if (serialNumber >= 0) {
-        std::map<uint32_t, std::string> filteredServers;
-        for (const auto& server : servers) {
-          uint32_t serverSerialNumber = server.first;
-          if (serverSerialNumber == static_cast<uint32_t>(serialNumber)) {
-            filteredServers[server.first] = server.second;
-          }
-        }
-        servers = filteredServers;
+        if (servers.find(serialNumber) != servers.end()) { break; }
+      } else {
+        if (!servers.empty()) { break; }
       }
-
-      if (!servers.empty()) { break; }
 
       std::this_thread::sleep_for(std::chrono::milliseconds(100));
     } while (std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count() <= 2.0);
@@ -1782,14 +1776,22 @@ int main(int argc, char** argv)
     }
 
     // Connect to the first matching server found.
-    std::cout << "Connecting to " << servers.begin()->second << std::endl;
+    auto serverIt = servers.begin();
+    if (serialNumber >= 0) {
+      serverIt = servers.find(serialNumber);
+      if (serverIt == servers.end()) {
+        std::cerr << "Server with serial number " << serialNumber << " not found." << std::endl;
+        return 9;
+      }
+    }
+    std::cout << "Connecting to " << serverIt->second << std::endl;
     uint16_t major, minor, patch;
-    status = client->ConnectToServer(servers.begin()->second, major, minor, patch);
+    status = client->ConnectToServer(serverIt->second, major, minor, patch);
     if (status != OKAY) {
       std::cerr << "Failed to connect to server: " << ErrorMessage(status) << std::endl;
       return 8;
     }
-    uint32_t sn = servers.begin()->first;
+    uint32_t sn = serverIt->first;
     std::cout << "  Connected to server version " << major << "." << minor << "." << patch
       << " with serial number " << sn << std::endl;
 
