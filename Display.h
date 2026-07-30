@@ -107,7 +107,7 @@ namespace asdp {
 
       /// @brief Pause or resume replay.
       /// @details The play/pause mechanism is fairly involved.  When a Display class wants to pause
-      /// or resume replay, it calls teh ChangePlayPause() event handler, if any, to notify the caller.
+      /// or resume replay, it calls the ChangePlayPause() event handler, if any, to notify the caller.
       /// The caller than tells a connected Storage Server (if any) to pause or resume the replay.
       /// The Storage Server then sends a message to the Core to pause or resume the replay.  The
       /// caller then calls this function, SetNowPlaying(), to let all Displays know their new state.
@@ -133,6 +133,13 @@ namespace asdp {
       /// @return True on success, false on failure.
       bool ReturnContext();
 
+      /// @brief Update the CoreClient and Composite pointers used by this Display object.
+      /// @details This is used when the CoreClient and Composite objects are being replaced by new
+      /// objects, which is used by kiosk mode to change them out without restarting the Display object.
+      /// @param client The new CoreClient to use, or nullptr to not remove it.
+      /// @param composite The new Composite to use, or nullptr to not remove it.
+      void UpdateClientAndComposite(std::shared_ptr<CoreClient> client, std::shared_ptr<Composite> composite);
+
 protected:
 
       /// Viewpoint offset from the camera to the pilot head location in the helicopter frame of reference, in meters.
@@ -140,7 +147,8 @@ protected:
       /// Filled in by the constructor, but can be changed by derived classes if needed.
       std::array<float, 3> m_viewpointOffset;
 
-      /// Compositor to use, filled in by the constructor.
+      /// Compositor to use, filled in by the constructor. Ensure atomic access, as it
+      /// may be updated by UpdateClientAndComposite() while the display thread is running..
       std::shared_ptr<Composite> m_composite;
 
       /// Event handlers, if any.
@@ -153,14 +161,17 @@ protected:
       /// @brief Flag to indicate whether we are rendering camera names.
       bool m_showCameraNames;
 
-      std::shared_ptr<CoreClient> m_client; ///< CoreClient to use, filled in by the constructor.
+      /// CoreClient to use, filled in by the constructor. Ensure atomic access, as it
+      /// may be updated by UpdateClientAndComposite() while the display thread is running.
+      std::shared_ptr<CoreClient> m_client;
       uint8_t m_triggerID; ///< Trigger ID to use, filled in by the constructor.
       uint32_t m_offsetMicroseconds; ///< Offset in microseconds to subtract from the time of render start.
 
       /// Offset in microseconds to subtract from the time of render start.
       uint32_t m_depthAheadMicroseconds;
 
-      /// Timer from the client object, filled in by the constructor
+      /// Timer from the client object, filled in by the constructor. Ensure atomic access, as it
+      /// may be updated by UpdateClientAndComposite() while the display thread is running.
       std::shared_ptr<Timer> m_timer;
 
       /// Thread to do the rendering.  Started by subclass constructor.  Stopped by Quit() function.

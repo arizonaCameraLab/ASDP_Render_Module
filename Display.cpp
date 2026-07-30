@@ -108,6 +108,25 @@ Display::~Display()
   m_impl.reset();
 }
 
+void Display::UpdateClientAndComposite(std::shared_ptr<CoreClient> client,
+  std::shared_ptr<Composite> composite)
+{
+  // Update these pointers atomically.
+  std::atomic_store(&m_client, client);
+  std::atomic_store(&m_composite, composite);
+
+  // Update the timer pointer atomically, if we have a client.
+  // First find the pointer to replace it with, then atomicly store it in m_timer.
+  std::shared_ptr<Timer> newTimer;
+  if (client) {
+    Status status = client->GetTimer(newTimer);
+    if (status != OKAY) {
+      newTimer.reset();
+    }
+  }
+  std::atomic_store(&m_timer, newTimer);
+}
+
 bool Display::Quit()
 {
   // Stop the display thread, if it is running.
@@ -118,9 +137,9 @@ bool Display::Quit()
   m_status = "Done";
 
   // Clean up all resources, including those kept in shared pointers.
-  m_timer.reset();
-  m_composite.reset();
-  m_client.reset();
+  std::atomic_store(&m_timer, std::shared_ptr<Timer>());
+  std::atomic_store(&m_composite, std::shared_ptr<Composite>());
+  std::atomic_store(&m_client, std::shared_ptr<CoreClient>());
 
   return true;
 }
@@ -137,7 +156,9 @@ std::string Display::GetStatus() const
 
 bool Display::TriggerCameras(std::chrono::steady_clock::time_point when)
 {
-  if ((m_client == nullptr) || (m_timer == nullptr) || (m_triggerID == 0)) {
+  auto client = std::atomic_load(&m_client);
+  auto timer = std::atomic_load(&m_timer);
+  if ((client == nullptr) || (timer == nullptr) || (m_triggerID == 0)) {
     // No client or timer, so we can't trigger the cameras.
     return true;
   }
@@ -146,7 +167,7 @@ bool Display::TriggerCameras(std::chrono::steady_clock::time_point when)
   // offset from the time to trigger the cameras and then converting to Core time.
   std::chrono::steady_clock::time_point sysTime = when - std::chrono::microseconds(m_offsetMicroseconds);
   Time coreTime;
-  Status status = m_timer->GetCoreTime(coreTime, sysTime);
+  Status status = timer->GetCoreTime(coreTime, sysTime);
   if (status != OKAY) {
     return false;
   }
@@ -156,7 +177,7 @@ bool Display::TriggerCameras(std::chrono::steady_clock::time_point when)
   if (packet.GetConstructorStatus() != OKAY) {
     return false;
   }
-  status = m_client->SendCommandPacket(packet);
+  status = client->SendCommandPacket(packet);
   if (status != OKAY) {
     return false;
   }
@@ -356,7 +377,8 @@ void DisplayWindow::SetViewportSizeAndFOVs(ViewRenderInfo& viewInfo, int width, 
 
   //======================================
   // Added by Sang Yoon to calculate a vertical FOV for cylindrical projection
-  if (this->m_composite->m_CP_enabled)
+  auto composite = std::atomic_load(&m_composite);
+  if (composite->m_CP_enabled)
       halfAngle = m_impl->m_horizontalFOVDegrees / 2.0 * aspectRatio;
   //======================================
 
@@ -485,8 +507,9 @@ void DisplayWindow::DisplayThread(std::string windowName,
     glfwPollEvents();
 
     // Determine the scan-out time of the frame (center of the image).
+    auto timer = std::atomic_load(&m_timer);
     Time renderTime;
-    m_timer->GetCoreTime(renderTime, std::chrono::steady_clock::now());
+    timer->GetCoreTime(renderTime, std::chrono::steady_clock::now());
     if (!m_replaying) {
       double frameTime = 1.0 / fps;
       double middleOfNextFrameOffset = frameTime / 2.0 + renderAheadMicroseconds / 1e6;
@@ -531,7 +554,7 @@ void DisplayWindow::DisplayThread(std::string windowName,
 
     // Quit when our window closes.
     if (glfwWindowShouldClose(Display::m_impl->m_window)) {
-      m_composite.reset();
+      std::atomic_store(&m_composite, std::shared_ptr<Composite>());
       m_status = "Done";
       break;
     }
@@ -546,15 +569,15 @@ void DisplayWindow::DisplayThread(std::string windowName,
     // Adding key mappings for closing windows
     if (glfwGetKey(Display::m_impl->m_window, GLFW_KEY_Q) == GLFW_PRESS
         || glfwGetKey(Display::m_impl->m_window, GLFW_KEY_ESCAPE) == GLFW_PRESS) {
-        m_composite.reset();
-        m_status = "Done";
-        break;
+      std::atomic_store(&m_composite, std::shared_ptr<Composite>());
+      m_status = "Done";
+      break;
     }
 
     // Adding key mapping for resetting viewer orientation
     if (glfwGetKey(Display::m_impl->m_window, GLFW_KEY_R) == GLFW_PRESS) {
-        m_impl->m_rotationXDegrees = 0.0f;
-        m_impl->m_rotationZDegrees = 0.0f;
+      m_impl->m_rotationXDegrees = 0.0f;
+      m_impl->m_rotationZDegrees = 0.0f;
     }
 
     if (m_impl->m_glfwJoystickIndex >= 0) {
@@ -666,7 +689,10 @@ void DisplayWindow::DisplayThread(std::string windowName,
     std::lock_guard<std::mutex> lock(Display::m_impl->m_contextMutex);
     glfwMakeContextCurrent(Display::m_impl->m_window);
 
-    m_composite->Render(renderTime, m_impl->m_views);
+    auto composite = std::atomic_load(&m_composite);
+    if (composite) {
+      composite->Render(renderTime, m_impl->m_views);
+    }
 
     // Record the render submit time if we have a place to put it.
     if (m_timingInfo) {
@@ -700,7 +726,8 @@ void DisplayWindow::SetNowPlaying(bool nowPlaying)
   // we don't extrapolate forward in time while paused.
   if (!m_nowPlaying) {
     m_pauseTime = std::make_unique<Time>();
-    m_timer->GetCoreTime(*m_pauseTime, std::chrono::steady_clock::now());
+    auto timer = std::atomic_load(&m_timer);
+    timer->GetCoreTime(*m_pauseTime, std::chrono::steady_clock::now());
   } else {
     m_pauseTime.reset();
   }
@@ -1873,7 +1900,7 @@ void asdp::render::DisplayOpenXR::DisplayOpenXRImpl::OpenXRPollActions()
   CHECK_XRCMD(xrGetActionStateBoolean(m_session, &getInfo, &quitValue));
   if ((quitValue.isActive == XR_TRUE) && (quitValue.changedSinceLastSync == XR_TRUE) && (quitValue.currentState == XR_TRUE)) {
     CHECK_XRCMD(xrRequestExitSession(m_session));
-    m_display->m_composite.reset();
+    std::atomic_store(&m_display->m_composite, std::shared_ptr<Composite>());
     m_display->m_status = "Done";
   }
 }
@@ -1966,12 +1993,14 @@ bool asdp::render::DisplayOpenXR::DisplayOpenXRImpl::OpenXRRenderLayer(XrTime pr
     // Without this adjustment, it is hard to stereoscopically fuse the images rendered using the cylindrical projection,
     // since the binocular disparity between the left and right images is too large.
     // The amount of binocular disparity adjustment is dependent on the resolution (proportional to pixel size or PPD).
-    if (m_display->m_composite->m_CP_enabled) {
+    auto composite = std::atomic_load(&m_display->m_composite);
+    if (composite && composite->m_CP_enabled) {
       float shift_amount = 225.0 * vri.width / 5184 + 0.5;
-      if (i == 0)
-          vri.x = (int)shift_amount;
-      else
-          vri.x = -(int)shift_amount;
+      if (i == 0) {
+        vri.x = (int)shift_amount;
+      } else {
+        vri.x = -(int)shift_amount;
+      }
     }
     //======================================
 
@@ -1982,12 +2011,12 @@ bool asdp::render::DisplayOpenXR::DisplayOpenXRImpl::OpenXRRenderLayer(XrTime pr
   // Do this by converting the predicted display time to a Windows performance counter time and then
   // subtracting the current time.
   Time time;
-  std::shared_ptr<Timer> timer;
-  if (!m_display->m_timer) {
+  std::shared_ptr<Timer> timer = std::atomic_load(&m_display->m_timer);
+  if (!timer) {
     std::cerr << "OpenXRRenderLayer(): No timer available" << std::endl;
     return false;
   }
-  Status status = m_display->m_timer->GetCoreTime(time);
+  Status status = timer->GetCoreTime(time);
   if (status != OKAY) {
     return false;
   }
@@ -2052,7 +2081,10 @@ bool asdp::render::DisplayOpenXR::DisplayOpenXRImpl::OpenXRRenderLayer(XrTime pr
   if (m_pauseTime) {
     time = *m_pauseTime;
   }
-  m_display->m_composite->Render(time, viewRenderInfos);
+  auto composite = std::atomic_load(&m_display->m_composite);
+  if (composite) {
+    composite->Render(time, viewRenderInfos);
+  }
 
   /*
   // Swap our window every other eye for RenderDoc
@@ -2089,7 +2121,8 @@ void asdp::render::DisplayOpenXR::DisplayOpenXRImpl::OpenXRRenderFrame()
     std::chrono::steady_clock::time_point renderTime = std::chrono::steady_clock::now();
     renderTime += std::chrono::nanoseconds(m_frameDurationNS * 3 / 2);
     Time coreTime;
-    Status status = m_display->m_timer->GetCoreTime(coreTime, renderTime);
+    auto timer = std::atomic_load(&m_display->m_timer);
+    Status status = timer->GetCoreTime(coreTime, renderTime);
     if (m_pauseTime) {
       coreTime = *m_pauseTime;
     }
@@ -2240,7 +2273,8 @@ void DisplayOpenXR::SetNowPlaying(bool nowPlaying)
   // we don't extrapolate forward in time while paused.
   if (!m_nowPlaying) {
     m_impl->m_pauseTime = std::make_unique<Time>();
-    m_timer->GetCoreTime(*m_impl->m_pauseTime, std::chrono::steady_clock::now());
+    auto timer = std::atomic_load(&m_timer);
+    timer->GetCoreTime(*m_impl->m_pauseTime, std::chrono::steady_clock::now());
   } else {
     m_impl->m_pauseTime.reset();
   }
@@ -2666,7 +2700,8 @@ void DisplayXSight::DisplayThread(
 
     // Determine the scan-out time of the frame (center of the image).
     Time renderTime;
-    m_timer->GetCoreTime(renderTime, std::chrono::steady_clock::now());
+    auto timer = std::atomic_load(&m_timer);
+    timer->GetCoreTime(renderTime, std::chrono::steady_clock::now());
     if (!m_replaying) {
       double frameTime = 1.0 / fps;
       double middleOfNextFrameOffset = frameTime / 2.0 + renderAheadMicroseconds / 1e6;
@@ -2708,7 +2743,7 @@ void DisplayXSight::DisplayThread(
 
     // Quit when our window closes.
     if (glfwWindowShouldClose(Display::m_impl->m_window)) {
-      m_composite.reset();
+      std::atomic_store(&m_composite, std::shared_ptr<Composite>());
       m_status = "Done";
       break;
     }
@@ -2721,7 +2756,7 @@ void DisplayXSight::DisplayThread(
     // Adding key mappings for closing windows
     if (glfwGetKey(Display::m_impl->m_window, GLFW_KEY_Q) == GLFW_PRESS
       || glfwGetKey(Display::m_impl->m_window, GLFW_KEY_ESCAPE) == GLFW_PRESS) {
-      m_composite.reset();
+      std::atomic_store(&m_composite, std::shared_ptr<Composite>());
       m_status = "Done";
       break;
     }
@@ -2892,7 +2927,10 @@ void DisplayXSight::DisplayThread(
     lineComposite.UpdateValues(lineData);
 
     // Render the frame data
-    m_composite->Render(renderTime, m_impl->m_views);
+    auto composite = std::atomic_load(&m_composite);
+    if (composite) {
+      composite->Render(renderTime, m_impl->m_views);
+    }
 
     // Wait for the rendering to finish so that the frame buffer textures will be ready to read.
     // Use a fence to wait for the rendering to finish.
@@ -2970,9 +3008,9 @@ void DisplayXSight::SetNowPlaying(bool nowPlaying)
   // we don't extrapolate forward in time while paused.
   if (!m_nowPlaying) {
     m_pauseTime = std::make_unique<Time>();
-    m_timer->GetCoreTime(*m_pauseTime, std::chrono::steady_clock::now());
-  }
-  else {
+    auto timer = std::atomic_load(&m_timer);
+    timer->GetCoreTime(*m_pauseTime, std::chrono::steady_clock::now());
+  } else {
     m_pauseTime.reset();
   }
 }
