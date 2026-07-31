@@ -108,23 +108,10 @@ Display::~Display()
   m_impl.reset();
 }
 
-void Display::UpdateClientAndComposite(std::shared_ptr<CoreClient> client,
-  std::shared_ptr<Composite> composite)
+void Display::UpdateComposite(std::shared_ptr<Composite> composite)
 {
   // Update these pointers atomically.
-  std::atomic_store(&m_client, client);
   std::atomic_store(&m_composite, composite);
-
-  // Update the timer pointer atomically, if we have a client.
-  // First find the pointer to replace it with, then atomicly store it in m_timer.
-  std::shared_ptr<Timer> newTimer;
-  if (client) {
-    Status status = client->GetTimer(newTimer);
-    if (status != OKAY) {
-      newTimer.reset();
-    }
-  }
-  std::atomic_store(&m_timer, newTimer);
 }
 
 bool Display::Quit()
@@ -137,9 +124,9 @@ bool Display::Quit()
   m_status = "Done";
 
   // Clean up all resources, including those kept in shared pointers.
-  std::atomic_store(&m_timer, std::shared_ptr<Timer>());
+  m_timer.reset();
   std::atomic_store(&m_composite, std::shared_ptr<Composite>());
-  std::atomic_store(&m_client, std::shared_ptr<CoreClient>());
+  m_client.reset();
 
   return true;
 }
@@ -156,9 +143,7 @@ std::string Display::GetStatus() const
 
 bool Display::TriggerCameras(std::chrono::steady_clock::time_point when)
 {
-  auto client = std::atomic_load(&m_client);
-  auto timer = std::atomic_load(&m_timer);
-  if ((client == nullptr) || (timer == nullptr) || (m_triggerID == 0)) {
+  if ((m_client == nullptr) || (m_timer == nullptr) || (m_triggerID == 0)) {
     // No client or timer, so we can't trigger the cameras.
     return true;
   }
@@ -167,7 +152,7 @@ bool Display::TriggerCameras(std::chrono::steady_clock::time_point when)
   // offset from the time to trigger the cameras and then converting to Core time.
   std::chrono::steady_clock::time_point sysTime = when - std::chrono::microseconds(m_offsetMicroseconds);
   Time coreTime;
-  Status status = timer->GetCoreTime(coreTime, sysTime);
+  Status status = m_timer->GetCoreTime(coreTime, sysTime);
   if (status != OKAY) {
     return false;
   }
@@ -177,7 +162,7 @@ bool Display::TriggerCameras(std::chrono::steady_clock::time_point when)
   if (packet.GetConstructorStatus() != OKAY) {
     return false;
   }
-  status = client->SendCommandPacket(packet);
+  status = m_client->SendCommandPacket(packet);
   if (status != OKAY) {
     return false;
   }
@@ -507,9 +492,8 @@ void DisplayWindow::DisplayThread(std::string windowName,
     glfwPollEvents();
 
     // Determine the scan-out time of the frame (center of the image).
-    auto timer = std::atomic_load(&m_timer);
     Time renderTime;
-    timer->GetCoreTime(renderTime, std::chrono::steady_clock::now());
+    m_timer->GetCoreTime(renderTime, std::chrono::steady_clock::now());
     if (!m_replaying) {
       double frameTime = 1.0 / fps;
       double middleOfNextFrameOffset = frameTime / 2.0 + renderAheadMicroseconds / 1e6;
@@ -726,8 +710,7 @@ void DisplayWindow::SetNowPlaying(bool nowPlaying)
   // we don't extrapolate forward in time while paused.
   if (!m_nowPlaying) {
     m_pauseTime = std::make_unique<Time>();
-    auto timer = std::atomic_load(&m_timer);
-    timer->GetCoreTime(*m_pauseTime, std::chrono::steady_clock::now());
+    m_timer->GetCoreTime(*m_pauseTime, std::chrono::steady_clock::now());
   } else {
     m_pauseTime.reset();
   }
@@ -2011,12 +1994,11 @@ bool asdp::render::DisplayOpenXR::DisplayOpenXRImpl::OpenXRRenderLayer(XrTime pr
   // Do this by converting the predicted display time to a Windows performance counter time and then
   // subtracting the current time.
   Time time;
-  std::shared_ptr<Timer> timer = std::atomic_load(&m_display->m_timer);
-  if (!timer) {
+  if (!m_display->m_timer) {
     std::cerr << "OpenXRRenderLayer(): No timer available" << std::endl;
     return false;
   }
-  Status status = timer->GetCoreTime(time);
+  Status status = m_display->m_timer->GetCoreTime(time);
   if (status != OKAY) {
     return false;
   }
@@ -2121,8 +2103,7 @@ void asdp::render::DisplayOpenXR::DisplayOpenXRImpl::OpenXRRenderFrame()
     std::chrono::steady_clock::time_point renderTime = std::chrono::steady_clock::now();
     renderTime += std::chrono::nanoseconds(m_frameDurationNS * 3 / 2);
     Time coreTime;
-    auto timer = std::atomic_load(&m_display->m_timer);
-    Status status = timer->GetCoreTime(coreTime, renderTime);
+    Status status = m_display->m_timer->GetCoreTime(coreTime, renderTime);
     if (m_pauseTime) {
       coreTime = *m_pauseTime;
     }
@@ -2273,8 +2254,7 @@ void DisplayOpenXR::SetNowPlaying(bool nowPlaying)
   // we don't extrapolate forward in time while paused.
   if (!m_nowPlaying) {
     m_impl->m_pauseTime = std::make_unique<Time>();
-    auto timer = std::atomic_load(&m_timer);
-    timer->GetCoreTime(*m_impl->m_pauseTime, std::chrono::steady_clock::now());
+    m_timer->GetCoreTime(*m_impl->m_pauseTime, std::chrono::steady_clock::now());
   } else {
     m_impl->m_pauseTime.reset();
   }
@@ -2700,8 +2680,7 @@ void DisplayXSight::DisplayThread(
 
     // Determine the scan-out time of the frame (center of the image).
     Time renderTime;
-    auto timer = std::atomic_load(&m_timer);
-    timer->GetCoreTime(renderTime, std::chrono::steady_clock::now());
+    m_timer->GetCoreTime(renderTime, std::chrono::steady_clock::now());
     if (!m_replaying) {
       double frameTime = 1.0 / fps;
       double middleOfNextFrameOffset = frameTime / 2.0 + renderAheadMicroseconds / 1e6;
@@ -3008,8 +2987,7 @@ void DisplayXSight::SetNowPlaying(bool nowPlaying)
   // we don't extrapolate forward in time while paused.
   if (!m_nowPlaying) {
     m_pauseTime = std::make_unique<Time>();
-    auto timer = std::atomic_load(&m_timer);
-    timer->GetCoreTime(*m_pauseTime, std::chrono::steady_clock::now());
+    m_timer->GetCoreTime(*m_pauseTime, std::chrono::steady_clock::now());
   } else {
     m_pauseTime.reset();
   }
