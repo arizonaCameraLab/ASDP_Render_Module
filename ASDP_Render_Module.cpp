@@ -1591,6 +1591,7 @@ int spin_up(std::shared_ptr<CoreClient> client, int &serialNumber, std::shared_p
     return 19;
   }
 
+  cameraIDs.clear();
   for (uint32_t i = 0; i < cameraRenderInfos.size(); i++) {
     cameraIDs.push_back(cameraRenderInfos[i]->m_ID);
   }
@@ -1784,6 +1785,7 @@ int spin_up(std::shared_ptr<CoreClient> client, int &serialNumber, std::shared_p
   std::vector< std::shared_ptr<CUDABufferPool> > gpuImageBuffers;
   std::vector< std::shared_ptr<CUDABufferPool> > gpuNUCBuffers;
   std::vector< std::shared_ptr<cudaStream_t> > streams;
+  UDPReceivers.clear();
   for (size_t i = 0; i < cameras.size(); i++) {
     try {
       // Preallocate pinned memory buffers for the CPU.
@@ -2023,6 +2025,9 @@ int spin_down(std::shared_ptr<CoreClient> client, std::atomic<bool>& done,
       return 32;
     }
   }
+  cameras.clear();
+  cameraIDs.clear();
+  UDPReceivers.clear();
 
   // If we have a depth thread, shut it down and then join it.
   if (depthContext) {
@@ -2719,7 +2724,6 @@ int main(int argc, char** argv)
         auto now = std::chrono::steady_clock::now();
         auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - kioskStart).count();
         if (elapsed >= kioskInfo[kioskIndex]["afterSeconds"]) {
-          kioskStart = now;
           std::cout << "Activating next kiosk entry: " << kioskInfo[kioskIndex]["command"];
           for (const auto& param : kioskInfo[kioskIndex]["parameters"]) {
             std::cout << " " << param;
@@ -2738,7 +2742,9 @@ int main(int argc, char** argv)
             }
             std::string toneMapName = kioskInfo[kioskIndex]["parameters"][0];
             auto toneMap = ToneMap();
-            if (toneMapName == "10bit") {
+            if (toneMapName == "linear") {
+              toneMap = ToneMap();
+            } else if (toneMapName == "10bit") {
               float maxFraction = 1023.0f / 65535; // 10-bit max value as fraction of 16-bit max value.
               toneMap = ToneMap({ {0.0, 0.0,0.0,0.0}, {maxFraction, 1.0,1.0,1.0} });
             } else if (toneMapName == "blackbody") {
@@ -2775,6 +2781,11 @@ int main(int argc, char** argv)
             if (stdBelow == 0 && stdAbove == 0) {
               rangeEstimator = nullptr;
             } else {
+              // Make a display object that shares textures with the others.
+              std::shared_ptr<Display> display = std::make_shared<DisplayTexture>(displayTexture.get());
+              // Make a MeanStdGroup object to handle the statistics.
+              meanStdGroup = std::make_shared<asdp::render::imageStatistics::MeanStdGroup>(g_visibleCameras,
+                display, 1.0 / cameraFPS);
               rangeEstimator = std::make_shared<RangeEstimatorStdRanges>(meanStdGroup, stdBelow, stdAbove);
             }
             for (auto& composite : g_composites) {
@@ -2809,6 +2820,11 @@ int main(int argc, char** argv)
               toneMapTextures, staticDepth, done, ip_address, doStreamPoses, frameStride, analysisModuleURLs,
               meanStdGroup, rangeEstimator, clockSync, timer, depthContext, copyDataToGPUThreads,
               analysisThread, dataQueues, receiveDataThreads);
+
+            // Set the new composites in each of the displays.
+            for (size_t i = 0; i < displays.size(); i++) {
+              displays[i]->UpdateComposite(g_composites[i]);
+            }
             if (ret != 0) {
               return ret;
             }
@@ -2818,6 +2834,7 @@ int main(int argc, char** argv)
           }
 
           // Go to the next (or back to the first) kiosk entry.
+          kioskStart = std::chrono::steady_clock::now();
           kioskIndex++;
           if (kioskIndex >= kioskInfo.size()) {
             std::cout << "Kiosk entries completed, resetting." << std::endl;
