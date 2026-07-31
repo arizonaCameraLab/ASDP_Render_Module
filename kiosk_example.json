@@ -5,27 +5,32 @@
     "parameters": []
   },
   {
-    "afterSeconds": 10,
-    "command": "toneMap",
-    "parameters": [ "blackbody" ]
+    "afterSeconds": 15,
+    "command": "camera",
+    "parameters": [ 6, 1 ]
   },
   {
-    "afterSeconds": 5,
-    "command": "autoRangeStd",
-    "parameters": [ 0, 0 ]
-  },
-  {
-    "afterSeconds": 10,
+    "afterSeconds": 1,
     "command": "toneMap",
     "parameters": [ "bluesky" ]
   },
   {
-    "afterSeconds": 5,
+    "afterSeconds": 1,
     "command": "autoRangeStd",
     "parameters": [ 1, 1 ]
   },
   {
-    "afterSeconds": 10,
+    "afterSeconds": 15,
+    "command": "camera",
+    "parameters": [ 5, 1 ]
+  },
+  {
+    "afterSeconds": 1,
+    "command": "autoRangeStd",
+    "parameters": [ 0, 0 ]
+  },
+  {
+    "afterSeconds": 1,
     "command": "toneMap",
     "parameters": [ "linear" ]
   },

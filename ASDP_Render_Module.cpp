@@ -1360,6 +1360,9 @@ int spin_up(std::shared_ptr<CoreClient> client, int &serialNumber, std::shared_p
   std::vector<std::thread> &receiveDataThreads
 )
 {
+  // We're not done yet
+  done = false;
+
   std::map<uint32_t, std::string> servers;
   Status status = client->IdentifiedServers(servers);
   if (status != OKAY) {
@@ -1426,14 +1429,15 @@ int spin_up(std::shared_ptr<CoreClient> client, int &serialNumber, std::shared_p
     std::cerr << "Failed to get features: " << ErrorMessage(status) << std::endl;
     return 1000;
   }
+  hasStorage = false;
+  hasTemperatures = false;
+  hasPoses = false;
   for (const auto& feature : features) {
     if (feature == STORAGE_API_AVAILABLE) {
       hasStorage = true;
-    }
-    else if (feature == TEMPERATURE_API_AVAILABLE) {
+    } else if (feature == TEMPERATURE_API_AVAILABLE) {
       hasTemperatures = true;
-    }
-    else if (feature == POSE_API_POSITION_AVAILABLE || feature == POSE_API_ORIENTATION_AVAILABLE) {
+    } else if (feature == POSE_API_POSITION_AVAILABLE || feature == POSE_API_ORIENTATION_AVAILABLE) {
       hasPoses = true;
     }
   }
@@ -2036,6 +2040,7 @@ int spin_down(std::shared_ptr<CoreClient> client, std::atomic<bool>& done,
       thread.join();
     }
   }
+  copyDataToGPUThreads.clear();
 
   // Shut down any analysis thread.
   g_runAnalysisThread = false;
@@ -2049,6 +2054,7 @@ int spin_down(std::shared_ptr<CoreClient> client, std::atomic<bool>& done,
   for (auto& queue : dataQueues) {
     queue.reset();
   }
+  dataQueues.clear();
 
   // Now that all of the buffers have been returned to the buffer queue, join our receive-data threads.
   for (auto& thread : receiveDataThreads) {
@@ -2056,6 +2062,7 @@ int spin_down(std::shared_ptr<CoreClient> client, std::atomic<bool>& done,
       thread.join();
     }
   }
+  receiveDataThreads.clear();
 
   // Now borrow the context from the displayTexture so that we can delete the textures.
   if (!displayTexture->BorrowContext()) {
@@ -2773,6 +2780,39 @@ int main(int argc, char** argv)
             for (auto& composite : g_composites) {
               composite->UpdateRangeEstimator(rangeEstimator);
             }
+          } else if (command == "camera") {
+            if (kioskInfo[kioskIndex]["parameters"].size() != 2) {
+              std::cerr << "Error: camera command requires one parameter." << std::endl;
+            }
+            if (!kioskInfo[kioskIndex]["parameters"][0].is_number() ||
+                !kioskInfo[kioskIndex]["parameters"][1].is_number()) {
+              std::cerr << "Error: camera command parameters must be numbers." << std::endl;
+            }
+            int cameraID = kioskInfo[kioskIndex]["parameters"][0];
+            int streamID = kioskInfo[kioskIndex]["parameters"][1];
+
+            // Spin down the existing camera, switch the camera ID and stream ID, and spin the new one up.
+            ret = spin_down(client, done, cameras, cameraIDs, UDPReceivers, ip_address, depthContext,
+              copyDataToGPUThreads, analysisThread, dataQueues, receiveDataThreads, displayTexture,
+              cameraRenderInfos, toneMapTextures);
+            if (ret != 0) {
+              return ret;
+            }
+            serialNumber = cameraID;
+            replayStreamID = streamID;
+            std::this_thread::sleep_for(std::chrono::milliseconds(5000)); // Give the server time to close the old stream before we open the new one.
+            ret = spin_up(client, serialNumber, receiver, cameras, hasStorage, hasTemperatures, hasPoses,
+              triggerID, replayStreamID, configPath, UDPReceivers, skipCameras, nucInfos, maxCameras,
+              lineBatchesPerGPUSend, displayTexture, displayInfos, renderAheadFrames, cameraFPS, computeDepth,
+              autoRangeStdBelow, autoRangeStdAbove, maxDepth, depthThreshold, poseAdjuster, cameraRenderInfos,
+              cameraIDs,
+              toneMapTextures, staticDepth, done, ip_address, doStreamPoses, frameStride, analysisModuleURLs,
+              meanStdGroup, rangeEstimator, clockSync, timer, depthContext, copyDataToGPUThreads,
+              analysisThread, dataQueues, receiveDataThreads);
+            if (ret != 0) {
+              return ret;
+            }
+            std::cout << " Switched to camera ID " << cameraID << " and stream ID " << streamID << std::endl;
           } else {
             std::cerr << "Error: Unknown kiosk command." << std::endl;
           }
