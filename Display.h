@@ -133,12 +133,11 @@ namespace asdp {
       /// @return True on success, false on failure.
       bool ReturnContext();
 
-      /// @brief Update the CoreClient and Composite pointers used by this Display object.
-      /// @details This is used when the CoreClient and Composite objects are being replaced by new
+      /// @brief Update the Composite pointer used by this Display object.
+      /// @details This is used when the Composite objects are being replaced by new
       /// objects, which is used by kiosk mode to change them out without restarting the Display object.
-      /// @param client The new CoreClient to use, or nullptr to not remove it.
       /// @param composite The new Composite to use, or nullptr to not remove it.
-      void UpdateClientAndComposite(std::shared_ptr<CoreClient> client, std::shared_ptr<Composite> composite);
+      void UpdateComposite(std::shared_ptr<Composite> composite);
 
 protected:
 
