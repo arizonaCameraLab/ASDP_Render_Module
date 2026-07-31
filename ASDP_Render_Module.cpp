@@ -1335,6 +1335,664 @@ void HandleAnalysisThread(std::vector<std::string> analysisModuleURLs, std::shar
 
 //=================================================================
 
+/// @brief Static function to spin up all of the things related to connecting to a camera ball.
+
+int spin_up(std::shared_ptr<CoreClient> client, int &serialNumber, std::shared_ptr<Receiver> &receiver,
+  std::vector<CameraInfo> &cameras, bool &hasStorage, bool &hasTemperatures, bool &hasPoses,
+  uint8_t &triggerID, uint32_t &replayStreamID,
+  std::filesystem::path &configPath, std::vector< std::shared_ptr<ReceiverUDP> > &UDPReceivers,
+  std::set<int> const &skipCameras, std::vector<NUCInfo> &nucInfos, int &maxCameras,
+  int &lineBatchesPerGPUSend, std::shared_ptr<DisplayTexture> &displayTexture,
+  std::vector<DisplayInfo> &displayInfos, double &renderAheadFrames, double &cameraFPS,
+  bool &computeDepth, double &autoRangeStdBelow, double &autoRangeStdAbove, float &maxDepth,
+  float &depthThreshold, std::shared_ptr<PoseAdjuster> &poseAdjuster,
+  std::vector< std::shared_ptr<asdp::render::CameraRenderInfo> > &cameraRenderInfos,
+  std::vector<uint32_t> &cameraIDs,
+  std::vector<GLuint> &toneMapTextures, double &staticDepth, std::atomic<bool> &done,
+  std::string &ip_address, bool &doStreamPoses, uint32_t &frameStride,
+  std::vector<std::string> &analysisModuleURLs,
+  std::shared_ptr<asdp::render::imageStatistics::MeanStdGroup> &meanStdGroup,
+  std::shared_ptr<RangeEstimator> &rangeEstimator,
+  std::shared_ptr<ClockSynchronizer> &clockSync, std::shared_ptr<Timer> &timer,
+  std::shared_ptr<DisplayTexture> &depthContext, std::vector<std::thread> &copyDataToGPUThreads,
+  std::thread &analysisThread,
+  std::vector< std::shared_ptr< SpinFreeQueue< std::shared_ptr<DataToSendToGPU> > > > &dataQueues,
+  std::vector<std::thread> &receiveDataThreads
+)
+{
+  std::map<uint32_t, std::string> servers;
+  Status status = client->IdentifiedServers(servers);
+  if (status != OKAY) {
+    std::cerr << "Error: Unable to get identified servers: " << ErrorMessage(status) << std::endl;
+    return 7;
+  }
+
+  if (servers.empty()) {
+    std::cerr << "No servers found; be sure to run the server first." << std::endl;
+    return 8;
+  }
+  std::cout << "Servers found: " << servers.size() << std::endl;
+  for (const auto& server : servers) {
+    std::cout << "  " << server.second << " (serial #" << server.first << ")" << std::endl;
+  }
+
+  // Connect to the first matching server found.
+  auto serverIt = servers.begin();
+  if (serialNumber >= 0) {
+    serverIt = servers.find(serialNumber);
+    if (serverIt == servers.end()) {
+      std::cerr << "Server with serial number " << serialNumber << " not found." << std::endl;
+      return 8;
+    }
+  }
+  std::cout << "Connecting to " << serverIt->second << std::endl;
+  uint16_t major, minor, patch;
+  status = client->ConnectToServer(serverIt->second, major, minor, patch);
+  if (status != OKAY) {
+    std::cerr << "Failed to connect to server: " << ErrorMessage(status) << std::endl;
+    return 9;
+  }
+  serialNumber = serverIt->first;
+  std::cout << "  Connected to server version " << major << "." << minor << "." << patch
+    << " with serial number " << serialNumber << std::endl;
+
+  // Get the main stream receiver
+  status = client->GetMainStreamReceiver(receiver);
+  if (status != OKAY) {
+    std::cerr << "Failed to get main stream receiver: " << ErrorMessage(status) << std::endl;
+    return 10;
+  }
+
+  // Ensure that we get a state message from the server within a reasonable time.
+  // Report information about the cameras that were found.
+  std::shared_ptr<Message> msg = WaitForMessageType(receiver, STATE, 5.0);
+  if (msg == nullptr) {
+    std::cerr << "Did not get state message." << std::endl;
+    return 11;
+  }
+  MessageState state(*msg);
+  if (state.GetConstructorStatus() != OKAY) {
+    std::cerr << "Failed to construct state message: " << ErrorMessage(state.GetConstructorStatus()) << std::endl;
+    return 12;
+  }
+  status = state.GetCameras(cameras);
+  std::cout << "Found " << cameras.size() << " cameras" << std::endl;
+  if (cameras.size() == 0) {
+    return 13;
+  }
+  std::vector<FeatureID> features;
+  status = state.GetFeatures(features);
+  if (status != OKAY) {
+    std::cerr << "Failed to get features: " << ErrorMessage(status) << std::endl;
+    return 1000;
+  }
+  for (const auto& feature : features) {
+    if (feature == STORAGE_API_AVAILABLE) {
+      hasStorage = true;
+    }
+    else if (feature == TEMPERATURE_API_AVAILABLE) {
+      hasTemperatures = true;
+    }
+    else if (feature == POSE_API_POSITION_AVAILABLE || feature == POSE_API_ORIENTATION_AVAILABLE) {
+      hasPoses = true;
+    }
+  }
+
+  // Find the trigger for the first camera, which we will use to synchronize to the display.  We assume that
+  // they are all using the same trigger.  We don't send triggers when we replay.
+  if (cameras.size() > 0 && replayStreamID == 0) {
+    triggerID = cameras[0].trigger;
+  }
+
+  // If there is a map CSV file associated with this camera, read it into the point correspondence.
+  {
+    std::filesystem::path mapCSVPath = g_dirPath / (std::to_string(serialNumber) + ".map.csv");
+    if (std::filesystem::exists(mapCSVPath)) {
+      std::cout << "Reading map CSV file: " << mapCSVPath << std::endl;
+      g_pointCorrespondences = std::make_shared<PointCorrespondences>(mapCSVPath.string());
+    } else {
+      g_pointCorrespondences.reset();
+    }
+  }
+
+  // Read the configuration file associated with the serial number for the server. Verify that
+  // it has a matching serial number and number of cameras.
+  configPath = g_dirPath / (std::to_string(serialNumber) + ".json");
+  std::vector<CameraRenderInfo> rawCameraRenderInfos;
+  try {
+    rawCameraRenderInfos = asdp::render::calibration::GetCameraRenderInfos(configPath.string());
+  }
+  catch (const std::exception& e) {
+    std::cerr << "Error reading configuration file: " << e.what() << std::endl;
+    return 14;
+  }
+  if (cameras.size() != rawCameraRenderInfos.size()) {
+    std::cerr << "Number of cameras mismatch: expected " << cameras.size() << " but got " << rawCameraRenderInfos.size() << std::endl;
+    return 16;
+  }
+  std::cout << "Read configuration from " << configPath << std::endl;
+
+  // Remove any cameras that we are to skip from cameras, cameraInfos and NUCInfos.
+  std::vector<CameraRenderInfo> filteredCameraRenderInfos;
+  std::vector<CameraInfo> filteredCameras;
+  for (size_t i = 0; i < cameras.size(); i++) {
+    if (skipCameras.find(i + 1) == skipCameras.end()) {
+      filteredCameras.push_back(cameras[i]);
+    }
+    else {
+      std::cout << "Skipping camera ID " << i + 1 << std::endl;
+    }
+    if (skipCameras.find(rawCameraRenderInfos[i].m_ID) == skipCameras.end()) {
+      filteredCameraRenderInfos.push_back(rawCameraRenderInfos[i]);
+    }
+    for (auto& nucInfo : nucInfos) {
+      // Delete the camera NUC tables if we are skipping this camera.
+      if (skipCameras.find(i + 1) != skipCameras.end()) {
+        nucInfo.CameraNUCTables.erase(i + 1);
+        std::cout << "  Skipping NUC tables for camera ID " << i + 1 << std::endl;
+      }
+    }
+  }
+  cameras = filteredCameras;
+  std::cout << "After skipping, " << cameras.size() << " cameras remain." << std::endl;
+  if (cameras.size() == 0) {
+    std::cerr << "No cameras remain after skipping." << std::endl;
+    return 15;
+  }
+
+  // If there are more cameras than the maximum, limit the number of cameras to the maximum.
+  if (maxCameras > 0 && cameras.size() > maxCameras) {
+    std::cout << "Limiting number of cameras to " << maxCameras << std::endl;
+    cameras.resize(maxCameras);
+    // Cannot use resize() here because there is not a default constructor for CameraInfo.
+    while (filteredCameraRenderInfos.size() > maxCameras) {
+      filteredCameraRenderInfos.pop_back();
+    }
+  }
+
+  // Make additional OpenGL contexts for all but the first texture thread.
+  int NUM_TEXTURE_THREADS = 2;
+  if (cameras.size() > 21) {
+    // We need larger batches of lines to keep up with more than 21 cameras. The jump from
+    // default 110 to 330 has both cases ending at 990, which is just below the 1024 limit so will make
+    // a small final batch, reducing the latency from the end of the frame receipt to texture upload.s
+    // NOTE: Originally, we could keep up on Linux by bumping our number of threads to 3 and leaving
+    // the line batches the same. As of 4/24, this no longer works -- but depth estimation is now
+    // taking much longer than it used to.  We collapsed to a common solution of more batches because
+    // it keeps a small final batch, still reducing the latency with fewer threads.
+    lineBatchesPerGPUSend *= 3;
+  }
+
+  std::vector< std::shared_ptr<DisplayTexture> > displayTextures;
+  for (size_t i = 0; i < NUM_TEXTURE_THREADS; i++) {
+    std::shared_ptr<DisplayTexture> dt = std::make_shared<DisplayTexture>(displayTexture.get());
+    displayTextures.push_back(dt);
+  }
+
+  // Construct a vector of CameraRenderInfo objects from the configuration file, adding an image
+  // queue to each.
+  try {
+    for (const auto& info : filteredCameraRenderInfos) {
+
+      //==================================================================================================
+      // Fill in three textures for this camera, all gray and at time zero.
+      // We must borrow the context from the displayTexture so that we can create the textures.
+      if (!displayTexture->BorrowContext()) {
+        std::cerr << "Error borrowing context from displayTexture." << std::endl;
+        return 17;
+      }
+
+      unsigned int width = info.m_resolutionPixels[0];
+      unsigned int height = info.m_resolutionPixels[1];
+      std::vector<uint16_t> image(width * height, 32767);
+
+      // Create the textures for the camera. Make two for each Composite to pull when it is looking
+      // for the next image to render, one for the texture thread to write to, one for an image-statistics
+      // class to use, and one to lie fallow.
+      // Also add as many frames as needed to render ahead the number we want to.
+      for (size_t i = 0; i < 2 * displayInfos.size() + 1 + 1 + 1 + ceil(renderAheadFrames); i++) {
+        std::shared_ptr<ImageData> imageData = std::make_shared<ImageData>();
+
+        unsigned int texture;
+        glGenTextures(1, &texture);
+        glBindTexture(GL_TEXTURE_2D, texture);
+        // Set the texture wrapping parameters
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        // Set texture filtering parameters
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+        // Load image into the texture
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_R16, width, height, 0, GL_RED, GL_UNSIGNED_SHORT, image.data());
+        glBindTexture(GL_TEXTURE_2D, 0);
+
+        imageData->texture = texture;
+        info.m_imageQueue->InsertImage(imageData);
+      }
+
+      if (!displayTexture->ReturnContext()) {
+        std::cerr << "Error returning context to displayTexture." << std::endl;
+        return 18;
+      }
+      //
+      //==================================================================================================
+
+      // Push the CameraRenderInfo onto the vector.
+      cameraRenderInfos.push_back(std::make_shared<CameraRenderInfo>(info));
+    }
+  }
+  catch (const std::exception& e) {
+    std::cerr << "Error parsing configuration file: " << e.what() << std::endl;
+    return 19;
+  }
+
+  for (uint32_t i = 0; i < cameraRenderInfos.size(); i++) {
+    cameraIDs.push_back(cameraRenderInfos[i]->m_ID);
+  }
+
+  // If the camera FPS is not set, find the minimum period for one of the cameras and use that.
+  // This assumes that all cameras capture at the same frame rate.
+  if (cameraFPS == 0.0 && cameras.size() > 0) {
+    cameraFPS = 1.0 / cameras[0].minTriggerPeriod;
+  }
+  std::cout << "Camera frame rate: " << cameraFPS << " fps" << std::endl;
+
+  // Initialize the timing information, making an entry for each camera.  We make sure that there is
+  // the maximum camera ID so that we can use the camera ID as an index.
+  uint32_t maxID = 0;
+  for (auto ID : cameraIDs) {
+    if (ID > maxID) {
+      maxID = ID;
+    }
+  }
+  g_timingInfo.SetNumCameras(maxID);
+
+  // Separate the cameras into two groups: those with IDs less than 22 are visible cameras and those
+  // with larger ones are depth-estimation cameras. Only do this if we are computing depth.
+  for (size_t j = 0; j < cameraRenderInfos.size(); j++) {
+    if (cameraRenderInfos[j]->m_ID > 21 && computeDepth) {
+      g_depthCameras.push_back(cameraRenderInfos[j]);
+    }
+    else {
+      g_visibleCameras.push_back(cameraRenderInfos[j]);
+    }
+  }
+
+  // If we have no remaining visible cameras, we cannot continue because there would be nothing to display.
+  if (g_visibleCameras.size() == 0) {
+    std::cerr << "No visible cameras remain after skipping." << std::endl;
+    return 20;
+  }
+
+  // If we've been asked to do standard-deviation-based auto-ranging, set that up.
+  rangeEstimator = std::make_shared<RangeEstimatorFixed>();
+  if (autoRangeStdAbove != 0 || autoRangeStdBelow != 0) {
+    // Make a display object that shares textures with the others.
+    std::shared_ptr<Display> display = std::make_shared<DisplayTexture>(displayTexture.get());
+    // Make a MeanStdGroup object to handle the statistics.
+    meanStdGroup = std::make_shared<asdp::render::imageStatistics::MeanStdGroup>(g_visibleCameras,
+      display, 1.0 / cameraFPS);
+    // Make a RangeEstimator object to handle the range.
+    rangeEstimator = std::make_shared<RangeEstimatorStdRanges>(meanStdGroup,
+      autoRangeStdBelow, autoRangeStdAbove);
+  }
+
+  // Construct a depth-estimation object if there are any depth-estimation cameras.
+  // There must be sets of two camera pairs for depth estimation.
+  if (g_depthCameras.size() > 0) {
+    depthContext = std::make_shared<DisplayTexture>(displayTexture.get());
+    bool enablingCP = false; // Whether cylindrical projection is enabled for any of the displays.
+    for (const auto& displayInfo : displayInfos) {
+      if (displayInfo.enableCP) {
+        enablingCP = true;
+        break;
+      }
+    }
+    if (enablingCP) {
+      std::cerr << "Cylindrical projection is incompatible with depth estimation." << std::endl;
+      return 100;
+    }
+
+    if (g_depthCameras.size() % 2 != 0) {
+      std::cerr << "Error: There must be an even number of depth-estimation cameras." << std::endl;
+      return 101;
+    }
+    std::vector< std::array<std::shared_ptr<asdp::render::CameraRenderInfo>, 2> > cameras;
+    for (size_t i = 0; i < g_depthCameras.size(); i += 2) {
+      std::array<std::shared_ptr<asdp::render::CameraRenderInfo>, 2> pair = { g_depthCameras[i], g_depthCameras[i + 1] };
+      cameras.push_back(pair);
+    }
+
+    if (!depthContext->BorrowContext()) {
+      std::cerr << "Error borrowing context from depthContext for DepthEstimator." << std::endl;
+      return 102;
+    }
+
+    // Initialize GLEW in our context. It is okay to initialize it more than once.
+    glewExperimental = true;
+    if (glewInit() != GLEW_OK) {
+      std::cerr << "Failed to initialize GLEW before DepthTexture" << std::endl;
+      return 103;
+    }
+    // Clear any GL error that Glew caused.  Apparently on Non-Windows
+    // platforms, this can cause a spurious error 1280.
+    glGetError();
+
+    // Determine the range of depths to use for the depth estimater and then construct it.
+    std::vector<float> depths(7);
+    depths[depths.size() - 1] = maxDepth;
+    for (int i = depths.size() - 2; i >= 0; i--) {
+      depths[i] = depths[i + 1] / 2;
+    }
+    g_depthEstimator = std::make_shared<DepthEstimator>(cameras, rangeEstimator, poseAdjuster, float(1.0 / cameraFPS),
+      g_depthCameras[0]->m_resolutionPixels[0] * 2 / 100, g_depthCameras[0]->m_resolutionPixels[1] * 2 / 100,
+      depths, depthThreshold);
+    std::cout << "Constructed DepthEstimator with " << cameras.size() << " camera pairs." << std::endl;
+
+    // Compute a depth estimate to get all of the machinery set up and GLEW initialized on this thread.
+    g_depthEstimator->ComputeDepthEstimate(0);
+
+    if (!depthContext->ReturnContext()) {
+      std::cerr << "Error returning context to depthContext for DepthEstimator." << std::endl;
+      return 104;
+    }
+
+    // Start the depth estimation thread.
+    g_runDepthThread = true;
+    g_depthThread = std::thread(DepthThreadFunction, timer, depthContext);
+  }
+
+  for (size_t i = 0; i < displayInfos.size(); i++) {
+
+    // Construct a Tone Map texture to use for rendering the cameras.
+    if (!displayTexture->BorrowContext()) {
+      std::cerr << "Error borrowing context from displayTexture for ToneMap." << std::endl;
+      return 21;
+    }
+    GLuint toneMapTexture = displayInfos[i].toneMap.GenerateTexture();
+    toneMapTextures.push_back(toneMapTexture);
+    if (toneMapTexture == 0) {
+      std::cerr << "Error generating texture for ToneMap." << std::endl;
+      return 22;
+    }
+    if (!displayTexture->ReturnContext()) {
+      std::cerr << "Error returning context to displayTexture for ToneMap." << std::endl;
+      return 23;
+    }
+
+    // Construct a Composite object to render the visible cameras.  We need a separate Composite per Display so that each
+    // can cache consistent camera images for the whole frame while views are being rendered.
+    // Two displays cannot share a SetupRenderFrame() call because they may have different frame rates.
+    // Rendering offset based on how many frames we want to render ahead.
+    uint32_t renderOffsetMicroseconds = renderAheadFrames * (1000000 / cameraFPS);
+    g_composites.push_back(std::make_shared<CompositeCameras>(
+      g_visibleCameras, toneMapTexture, poseAdjuster, Time(1 / cameraFPS),
+      renderOffsetMicroseconds,
+      Time(0, 1000000 / displayInfos[i].fps), (i == 0) ? (&g_timingInfo) : nullptr,
+      rangeEstimator, staticDepth, AnnotationCallbackHandler, nullptr));
+
+    //======================================
+    // Added by Sang Yoon to just pass the status of enabling the cylindrical projection (true or false) from DisplayInfos[i] to composite.
+    // Note that the cylinderical projection is processed in Composite Submodule.
+    g_composites[i]->m_CP_enabled = displayInfos[i].enableCP;
+    //======================================
+
+    //======================================
+    // Added by Sang Yoon to just pass the status of overview and detailed view for the current display to composite.
+    // Note that the overview and detailed view are handled in Composite Submodule.
+    g_composites[i]->m_overview = displayInfos[i].overview;
+    g_composites[i]->m_detailed_view = displayInfos[i].detailed_view;
+    //======================================
+  }
+
+  /// @todo This was the boundary in the original code between things that happened before the
+  /// displays were created and things that happened after.  Hopefully we don't need to split this
+  /// into two functions, but if we do then this is the place to split it.
+
+    // Verify that the width and height of the cameras match the width and height of the NUC information,
+    // if any NUC information was provided.
+  for (const auto& nucInfo : nucInfos) {
+    for (const auto& nucCam : nucInfo.CameraNUCTables) {
+      uint32_t cameraID = nucCam.first;
+      int nucWidth = nucCam.second.imageWidth;
+      int nucHeight = nucCam.second.imageHeight;
+      // Find the index of the camera whose CameraRenderInfo has this ID.
+      int cameraIndex = -1;
+      for (int i = 0; i < static_cast<int>(cameraRenderInfos.size()); i++) {
+        if (cameraRenderInfos[i]->m_ID == cameraID) {
+          cameraIndex = i;
+          break;
+        }
+      }
+      if (cameraIndex < 0) {
+        std::cerr << "Error: NUC information for camera ID " << cameraID << " does not match any camera in the configuration file." << std::endl;
+        return 100;
+      }
+      if ((nucWidth != cameras[cameraIndex].width) || (nucHeight != cameras[cameraIndex].height)) {
+        std::cerr << "Error: NUC information for camera ID " << cameraID << " has dimensions (" <<
+          nucWidth << ", " << nucHeight << ") that do not match the camera dimensions (" <<
+          cameras[cameraIndex].width << ", " << cameras[cameraIndex].height << ")." << std::endl;
+        return 101;
+      }
+    }
+  }
+
+  // Construct shared pointers to the data structures that we'll need to do rendering, with
+  // custom destructors that will clean up when the shared_ptr is destroyed.
+  std::vector< std::shared_ptr<CUDABufferPool> > cpuPinnedImageBuffers;
+  std::vector< std::shared_ptr<CUDABufferPool> > gpuImageBuffers;
+  std::vector< std::shared_ptr<CUDABufferPool> > gpuNUCBuffers;
+  std::vector< std::shared_ptr<cudaStream_t> > streams;
+  for (size_t i = 0; i < cameras.size(); i++) {
+    try {
+      // Preallocate pinned memory buffers for the CPU.
+      cpuPinnedImageBuffers.push_back(std::make_shared<CUDABufferPool>(cameras[i].width * cameras[i].height * sizeof(uint16_t), 5, true));
+
+      // Preallocate memory buffers for the GPU.
+      gpuImageBuffers.push_back(std::make_shared<CUDABufferPool>(cameras[i].width * cameras[i].height * sizeof(uint16_t), 5, false));
+
+      // Make a pool of GPU memory buffers for per-pixel NUC to use if it is running.
+      // Pre-allocate some if we are doing per-pixel NUC, otherwise leave the vector empty.
+      size_t nucBufferCount = cameras.size() * 2 * nucInfos.size();
+      gpuNUCBuffers.push_back(std::make_shared<CUDABufferPool>(cameras[i].width * cameras[i].height * sizeof(float), nucBufferCount, false));
+    }
+    catch (std::exception& e) {
+      std::cerr << "Error creating buffer pools: " << e.what() << std::endl;
+      return 26;
+    }
+
+    // Create a stream for the GPU to use.
+    cudaStream_t* streamPtr = new cudaStream_t;
+    cudaStreamCreate(streamPtr);
+    streams.push_back(std::shared_ptr<cudaStream_t>(streamPtr,
+      [](cudaStream_t* ptr) { cudaStreamDestroy(*ptr); delete ptr; }
+    ));
+
+    // Create a UDP receiver for the camera.
+    std::shared_ptr<ReceiverUDP> receiverUDP = std::make_shared<ReceiverUDP>(ip_address);
+    if (receiverUDP->GetConstructorStatus() != OKAY) {
+      std::cerr << "Error constructing ReceiverUDP: " << ErrorMessage(receiverUDP->GetConstructorStatus()) << std::endl;
+      return 27;
+    }
+    UDPReceivers.push_back(receiverUDP);
+  }
+
+  // Make the queues to pass the NUC data tables to the receive-data threads, one for each camera -- they
+  // will be nullptr if there is no NUC information for that camera.  If we don't have any NUC information at all,
+  // the vector will contain nullptr for each camera.
+  std::vector< std::shared_ptr< SpinFreeQueue< NUCDataPair > > > nucTableQueues;
+  for (size_t i = 0; i < cameras.size(); i++) {
+    std::shared_ptr< SpinFreeQueue< NUCDataPair > > nucTableQueue;
+    if (nucInfos.size()) {
+      nucTableQueue = std::make_shared< SpinFreeQueue< NUCDataPair > >();
+    }
+    nucTableQueues.push_back(nucTableQueue);
+  }
+
+  // Go ahead and allocate and fill buffers for the NUC data tables for each camera that has NUC information,
+  // so that the receive-data threads can use them right away when they start receiving data from the cameras.
+  /// @todo In the future, we will use temperature information to interpolate between tables.  For now we, just
+  /// use the first NUCInfo.
+  if (nucInfos.size() > 0) {
+    const NUCInfo& nucInfo = nucInfos[0];
+    for (const auto& it : nucInfo.CameraNUCTables) {
+      int cameraID = it.first;
+      // Find the index of the camera whose CameraRenderInfo has this ID.
+      int cameraIndex = -1;
+      for (int i = 0; i < static_cast<int>(cameraRenderInfos.size()); i++) {
+        if (cameraRenderInfos[i]->m_ID == cameraID) {
+          cameraIndex = i;
+          break;
+        }
+      }
+      const NucTables& nucTable = it.second;
+      if (cameraIndex < 0) {
+        std::cerr << "Error: NUC information for camera ID " << cameraID << " does not match any camera in the configuration file." << std::endl;
+        return 102;
+      }
+      NUCDataPair nucDataPair;
+      nucDataPair.gainBuffer = gpuNUCBuffers[cameraIndex]->GetBuffer(true, 0);
+      nucDataPair.offsetBuffer = gpuNUCBuffers[cameraIndex]->GetBuffer(true, 0);
+      if (nucDataPair.gainBuffer == nullptr || nucDataPair.offsetBuffer == nullptr) {
+        std::cerr << "Error: Failed to get NUC buffers for camera ID " << cameraID << std::endl;
+        return 103;
+      }
+
+      // Use a CUDA copy to transfer the NUC tables to the GPU.
+      size_t numPixels = cameras[cameraIndex].width * cameras[cameraIndex].height;
+      cudaError_t cerr;
+      cerr = cudaMemcpy(nucDataPair.gainBuffer.get(), nucTable.gainTable.data(),
+        numPixels * sizeof(float), cudaMemcpyHostToDevice);
+      if (cerr != cudaSuccess) {
+        std::cerr << "Error: Failed to copy gain table to GPU for camera ID " << cameraID << ": " << cudaGetErrorString(cerr) << std::endl;
+        return 104;
+      }
+      cerr = cudaMemcpy(nucDataPair.offsetBuffer.get(), nucTable.offsetTable.data(),
+        numPixels * sizeof(float), cudaMemcpyHostToDevice);
+      if (cerr != cudaSuccess) {
+        std::cerr << "Error: Failed to copy offset table to GPU for camera ID " << cameraID << ": " << cudaGetErrorString(cerr) << std::endl;
+        return 105;
+      }
+
+      // Queue the buffers for use by the receive-data thread for this camera.
+      nucTableQueues[cameraIndex]->enqueue(nucDataPair);
+    }
+  }
+
+  // Make the queues to pass data between the receiver and texture threads, one for each texture thread.
+  // The cameras will be spread among the threads in a round-robin fashion.
+  for (size_t i = 0; i < NUM_TEXTURE_THREADS; i++) {
+    dataQueues.push_back(std::make_shared< SpinFreeQueue< std::shared_ptr<DataToSendToGPU> > >());
+  }
+
+  // Launch the threads to copy data to the GPU, each having its own queue.
+  for (size_t i = 0; i < NUM_TEXTURE_THREADS; i++) {
+    copyDataToGPUThreads.push_back(std::thread(CopyDataToTextures, cameras[0].width, cameras[0].height, std::ref(done),
+      dataQueues[i], lineBatchesPerGPUSend, displayTextures[i], std::ref(g_timingInfo.cameras)));
+  }
+
+  // Launch the data receiving threads, hooking them together using the queues and passing the texture OpenGL
+  // context to it.  Round-robin the data queues among the receive-data threads.
+  for (size_t i = 0; i < cameras.size(); i++) {
+    receiveDataThreads.push_back(std::thread(ReceiveDataThread, std::ref(*UDPReceivers[i]), 9000,
+      std::ref(done), cpuPinnedImageBuffers[i], gpuImageBuffers[i], streams[i], cameraRenderInfos[i]->m_imageQueue,
+      dataQueues[i % NUM_TEXTURE_THREADS],
+      &g_timingInfo.cameras[i].frameBeginTimes, &g_timingInfo.cameras[i].frameEndTimes,
+      nucTableQueues[i]));
+  }
+
+  // Ask for streaming pose and temperature data.
+  if (doStreamPoses && hasPoses) {
+    std::cout << "Requesting pose data." << std::endl;
+    status = client->SendCommandPacket(CommandPacketStreamPoses());
+    if (status != OKAY) {
+      std::cerr << "Failed to request pose data: " << ErrorMessage(status) << std::endl;
+      return 28;
+    }
+  }
+  if (hasTemperatures) {
+    std::cout << "Requesting temperature data." << std::endl;
+    status = client->SendCommandPacket(CommandPacketStreamTemperatures());
+    if (status != OKAY) {
+      std::cerr << "Failed to request temperature data: " << ErrorMessage(status) << std::endl;
+      return 29;
+    }
+  }
+
+  // Request streaming on the cameras at their maximum rates from their associated ID.
+  std::cout << "Streaming every " << frameStride << " frames from " << cameraIDs.size() << " cameras" << std::endl;
+  for (size_t i = 0; i < cameras.size(); i++) {
+    uint32_t camID = cameraIDs[i];
+    CameraInfo& camera = cameras[i];
+
+    TriggerInfo ti;
+    ti.ID = camera.trigger;
+    ti.mode = 3;
+    ti.period = 1 / cameraFPS;
+    ti.offset = 0;
+    ti.trackingFactor = 0.005;
+    ti.externalID = camera.trigger;
+    status = client->SendCommandPacket(CommandPacketConfigureTrigger(ti));
+    if (status != OKAY) {
+      std::cerr << "Failed to configure trigger: " << ErrorMessage(status) << std::endl;
+      return 30;
+    }
+    std::cout << std::setprecision(10) << "  Configured trigger for camera " << camID << " with period " << ti.period << " seconds" << std::endl;
+
+    // Request the camera to stream full-frame images once every frameStride frames.
+    uint16_t port;
+    status = UDPReceivers[i]->GetPort(port);
+    if (status != OKAY) {
+      std::cerr << "Failed to get port: " << ErrorMessage(status) << std::endl;
+      return 31;
+    }
+    StreamEndpoint endpoint(ip_address, port);
+    SubregionDescription region;
+    region.cameraID = camID;
+    region.skipFrames = frameStride - 1;
+    region.startTimeSeconds = 0;
+    region.startTimeMicroseconds = 0;
+    region.left = 0;
+    region.top = 0;
+    region.right = camera.width - 1;
+    region.bottom = camera.height - 1;
+    status = client->SendCommandPacket(CommandPacketStreamSubregion(endpoint, region));
+    if (status != OKAY) {
+      std::cerr << "Failed to stream images: " << ErrorMessage(status) << std::endl;
+      return 32;
+    }
+  }
+
+  // If we've been asked to replay a stream, then send a request to do this.
+  if (replayStreamID) {
+    if (!hasStorage) {
+      std::cerr << "Error: Storage API not available when replay requested." << std::endl;
+      return 33;
+    }
+    std::cout << "Requesting replay of stream " << replayStreamID << std::endl;
+    // Set the initial time to be above zero so that we never predict backwards to negative time.
+    status = client->SendCommandPacket(CommandPacketStartReplay(replayStreamID, Time(10, 0)));
+    if (status != OKAY) {
+      std::cerr << "Failed to start replay: " << ErrorMessage(status) << std::endl;
+      return 34;
+    }
+  }
+
+  // Create a ClockSynchronizer that will manage adjusting the timer based on clock-sync messages.
+  clockSync = std::make_shared<ClockSynchronizer>(timer);
+
+  // If there are any analysis modules, launch a thread to service all of them, passing it the vector of module URLs.
+  if (!analysisModuleURLs.empty()) {
+    g_runAnalysisThread = true;
+    analysisThread = std::thread(HandleAnalysisThread, analysisModuleURLs, timer);
+  }
+
+  return 0;
+}
+
+//=================================================================
+
 static void usage(std::string name)
 {
   std::cerr << "Usage: " << name << " [options] <ip_address>" << std::endl;
@@ -1371,8 +2029,8 @@ static void usage(std::string name)
   std::cerr << "  --enableCP                          Enable the cylindrical projection." << std::endl; // Added by Sang Yoon
   std::cerr << "  --enableOD                          Enable the display interface of overview plus detail view." << std::endl; // Added by Sang Yoon
   std::cerr << "  --openXR                            Use OpenXR for rendering. If set, overrides the following and sets lineBatchesPerGPUSend to 10000." << std::endl;
-  std::cerr << "  --xSight <ip of NIC to listen on> <display>   Render to XSight on specified NIC. If set, overrides the following." << std::endl;
-  std::cerr << "  --xSight2 <ip of NIC to listen on> <display>  Render to a color, smaller XSight on specified NIC. If set, overrides the following." << std::endl;
+  std::cerr << "  --xSight <ip of NIC to listen on>   <display> Render to XSight on specified NIC. If set, overrides the following." << std::endl;
+  std::cerr << "  --xSight2 <ip of NIC to listen on>  <display> Render to a color, smaller XSight on specified NIC. If set, overrides the following." << std::endl;
   std::cerr << "  --width <width>                     The width of the window (default 1280)." << std::endl;
   std::cerr << "  --height <height>                   The height of the window (default 1024)." << std::endl;
   std::cerr << "  --hFOV <horizontal field of view>   The horizontal field of view in degrees (default 40)." << std::endl;
@@ -1766,153 +2424,14 @@ int main(int argc, char** argv)
       std::this_thread::sleep_for(std::chrono::milliseconds(100));
     } while (std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count() <= 2.0);
 
-    if (servers.empty()) {
-      std::cerr << "No servers found; be sure to run the server first." << std::endl;
-      return 7;
-    }
-    std::cout << "Servers found: " << servers.size() << std::endl;
-    for (const auto& server : servers) {
-      std::cout << "  " << server.second << " (serial #" << server.first << ")" << std::endl;
-    }
-
-    // Connect to the first matching server found.
-    auto serverIt = servers.begin();
-    if (serialNumber >= 0) {
-      serverIt = servers.find(serialNumber);
-      if (serverIt == servers.end()) {
-        std::cerr << "Server with serial number " << serialNumber << " not found." << std::endl;
-        return 9;
-      }
-    }
-    std::cout << "Connecting to " << serverIt->second << std::endl;
-    uint16_t major, minor, patch;
-    status = client->ConnectToServer(serverIt->second, major, minor, patch);
-    if (status != OKAY) {
-      std::cerr << "Failed to connect to server: " << ErrorMessage(status) << std::endl;
-      return 8;
-    }
-    uint32_t sn = serverIt->first;
-    std::cout << "  Connected to server version " << major << "." << minor << "." << patch
-      << " with serial number " << sn << std::endl;
-
-    // Get the main stream receiver
-    std::shared_ptr<Receiver> receiver;
-    status = client->GetMainStreamReceiver(receiver);
-    if (status != OKAY) {
-      std::cerr << "Failed to get main stream receiver: " << ErrorMessage(status) << std::endl;
-      return 10;
-    }
-
-    // Ensure that we get a state message from the server within a reasonable time.
-    // Report information about the cameras that were found.
-    std::shared_ptr<Message> msg = WaitForMessageType(receiver, STATE, 5.0);
-    if (msg == nullptr) {
-      std::cerr << "Did not get state message." << std::endl;
-      return 11;
-    }
-    MessageState state(*msg);
-    if (state.GetConstructorStatus() != OKAY) {
-      std::cerr << "Failed to construct state message: " << ErrorMessage(state.GetConstructorStatus()) << std::endl;
-      return 12;
-    }
-    std::vector<CameraInfo> cameras;
-    status = state.GetCameras(cameras);
-    std::cout << "Found " << cameras.size() << " cameras" << std::endl;
-    if (cameras.size() == 0) {
-      return 13;
-    }
-    std::vector<FeatureID> features;
-    status = state.GetFeatures(features);
-    if (status != OKAY) {
-      std::cerr << "Failed to get features: " << ErrorMessage(status) << std::endl;
-      return 1000;
-    }
-    bool hasStorage = false;
-    bool hasTemperatures = false;
-    bool hasPoses = false;
-    for (const auto& feature : features) {
-      if (feature == STORAGE_API_AVAILABLE) {
-        hasStorage = true;
-      } else if (feature == TEMPERATURE_API_AVAILABLE) {
-        hasTemperatures = true;
-      } else if (feature == POSE_API_POSITION_AVAILABLE || feature == POSE_API_ORIENTATION_AVAILABLE) {
-        hasPoses = true;
-      }
-    }
-
-    // Find the trigger for the first camera, which we will use to synchronize to the display.  We assume that
-    // they are all using the same trigger.  We don't send triggers when we replay.
-    uint8_t triggerID = 0;
-    if (cameras.size() > 0 && replayStreamID == 0) {
-      triggerID = cameras[0].trigger;
-    }
-
-    // If there is a map CSV file associated with this camera, read it into the point correspondence.
-    {
-      std::filesystem::path mapCSVPath = g_dirPath / (std::to_string(sn) + ".map.csv");
-      if (std::filesystem::exists(mapCSVPath)) {
-        std::cout << "Reading map CSV file: " << mapCSVPath << std::endl;
-        g_pointCorrespondences = std::make_shared<PointCorrespondences>(mapCSVPath.string());
-      }
-    }
-
-    // Read the configuration file associated with the serial number for the server. Verify that
-    // it has a matching serial number and number of cameras.
-    std::filesystem::path configPath = g_dirPath / (std::to_string(sn) + ".json");
-    std::vector<CameraRenderInfo> rawCameraRenderInfos;
-    try {
-      rawCameraRenderInfos = asdp::render::calibration::GetCameraRenderInfos(configPath.string());
-    }
-    catch (const std::exception& e) {
-      std::cerr << "Error reading configuration file: " << e.what() << std::endl;
-      return 14;
-    }
-    if (cameras.size() != rawCameraRenderInfos.size()) {
-      std::cerr << "Number of cameras mismatch: expected " << cameras.size() << " but got " << rawCameraRenderInfos.size() << std::endl;
-      return 16;
-    }
-    std::cout << "Read configuration from " << configPath << std::endl;
-
-    // Remove any cameras that we are to skip from cameras, cameraInfos and NUCInfos.
-    std::vector<CameraRenderInfo> filteredCameraRenderInfos;
-    std::vector<CameraInfo> filteredCameras;
-    for (size_t i = 0; i < cameras.size(); i++) {
-      if (skipCameras.find(i+1) == skipCameras.end()) {
-        filteredCameras.push_back(cameras[i]);
-      } else {
-        std::cout << "Skipping camera ID " << i+1 << std::endl;
-      }
-      if (skipCameras.find(rawCameraRenderInfos[i].m_ID) == skipCameras.end()) {
-        filteredCameraRenderInfos.push_back(rawCameraRenderInfos[i]);
-      }
-      for (auto& nucInfo : nucInfos) {
-        // Delete the camera NUC tables if we are skipping this camera.
-        if (skipCameras.find(i+1) != skipCameras.end()) {
-          nucInfo.CameraNUCTables.erase(i+1);
-          std::cout << "  Skipping NUC tables for camera ID " << i+1 << std::endl;
-        }
-      }
-    }
-    cameras = filteredCameras;
-    std::cout << "After skipping, " << cameras.size() << " cameras remain." << std::endl;
-    if (cameras.size() == 0) {
-      std::cerr << "No cameras remain after skipping." << std::endl;
-      return 15;
-    }
-
-    // If there are more cameras than the maximum, limit the number of cameras to the maximum.
-    if (maxCameras > 0 && cameras.size() > maxCameras) {
-      std::cout << "Limiting number of cameras to " << maxCameras << std::endl;
-      cameras.resize(maxCameras);
-      // Cannot use resize() here because there is not a default constructor for CameraInfo.
-      while (filteredCameraRenderInfos.size() > maxCameras) {
-        filteredCameraRenderInfos.pop_back();
-      }
-    }
-
     // Construct a DisplayTexture object to handle textures.  It will be the base object that all others will use
     // to share contexts.
     std::shared_ptr<DisplayTexture> displayTexture = std::make_shared<DisplayTexture>();
+
+    // Construct a Display for use by the point correspondence object, if any.
+    if (g_pointCorrespondences != nullptr) {
+      g_pointCorrespondenceDisplay = std::make_shared<DisplayTexture>(displayTexture.get());
+    }
 
     //=================================================================
     // If we are running in kiosk mode, parse the configuration file.
@@ -1955,136 +2474,6 @@ int main(int argc, char** argv)
       g_kioskDisplay = std::make_shared<DisplayTexture>(displayTexture.get());
     }
 
-    // Make additional OpenGL contexts for all but the first texture thread -- re-use the original for
-    // the first one.
-    int NUM_TEXTURE_THREADS = 2;
-    if (cameras.size() > 21) {
-      // We need larger batches of lines to keep up with more than 21 cameras. The jump from
-      // default 110 to 330 has both cases ending at 990, which is just below the 1024 limit so will make
-      // a small final batch, reducing the latency from the end of the frame receipt to texture upload.s
-      // NOTE: Originally, we could keep up on Linux by bumping our number of threads to 3 and leaving
-      // the line batches the same. As of 4/24, this no longer works -- but depth estimation is now
-      // taking much longer than it used to.  We collapsed to a common solution of more batches because
-      // it keeps a small final batch, still reducing the latency with fewer threads.
-      lineBatchesPerGPUSend *= 3;
-    }
-
-    std::vector< std::shared_ptr<DisplayTexture> > displayTextures = { displayTexture };
-    for (size_t i = 1; i < NUM_TEXTURE_THREADS; i++) {
-      std::shared_ptr<DisplayTexture> dt = std::make_shared<DisplayTexture>(displayTexture.get());
-      displayTextures.push_back(dt);
-    }
-
-    // Construct a vector of CameraRenderInfo objects from the configuration file, adding an image
-    // queue to each.
-    std::vector< std::shared_ptr<asdp::render::CameraRenderInfo> > cameraRenderInfos;
-    try {
-      for (const auto& info : filteredCameraRenderInfos) {
-
-        //==================================================================================================
-        // Fill in three textures for this camera, all gray and at time zero.
-        // We must borrow the context from the displayTexture so that we can create the textures.
-        if (!displayTexture->BorrowContext()) {
-          std::cerr << "Error borrowing context from displayTexture." << std::endl;
-          return 17;
-        }
-
-        unsigned int width = info.m_resolutionPixels[0];
-        unsigned int height = info.m_resolutionPixels[1];
-        std::vector<uint16_t> image(width * height, 32767);
-
-        // Create the textures for the camera. Make two for each Composite to pull when it is looking
-        // for the next image to render, one for the texture thread to write to, one for an image-statistics
-        // class to use, and one to lie fallow.
-        // Also add as many frames as needed to render ahead the number we want to.
-        for (size_t i = 0; i < 2*displayInfos.size() + 1 + 1 + 1 + ceil(renderAheadFrames); i++) {
-          std::shared_ptr<ImageData> imageData = std::make_shared<ImageData>();
-
-          unsigned int texture;
-          glGenTextures(1, &texture);
-          glBindTexture(GL_TEXTURE_2D, texture);
-          // Set the texture wrapping parameters
-          glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-          glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-          // Set texture filtering parameters
-          glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-          glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-
-          // Load image into the texture
-          glTexImage2D(GL_TEXTURE_2D, 0, GL_R16, width, height, 0, GL_RED, GL_UNSIGNED_SHORT, image.data());
-          glBindTexture(GL_TEXTURE_2D, 0);
-
-          imageData->texture = texture;
-          info.m_imageQueue->InsertImage(imageData);
-        }
-
-        if (!displayTexture->ReturnContext()) {
-          std::cerr << "Error returning context to displayTexture." << std::endl;
-          return 18;
-        }
-        //
-        //==================================================================================================
-
-        // Push the CameraRenderInfo onto the vector.
-        cameraRenderInfos.push_back(std::make_shared<CameraRenderInfo>(info));
-      }
-    }  catch (const std::exception& e) {
-      std::cerr << "Error parsing configuration file: " << e.what() << std::endl;
-      return 19;
-    }
-
-    std::vector<uint32_t> cameraIDs; ///< The camera IDs to render, in the same order as the records in the configuration file.
-    for (uint32_t i = 0; i < cameraRenderInfos.size(); i++) {
-      cameraIDs.push_back(cameraRenderInfos[i]->m_ID);
-    }
-
-    // If the camera FPS is not set, find the minimum period for one of the cameras and use that.
-    // This assumes that all cameras capture at the same frame rate.
-    if (cameraFPS == 0.0 && cameras.size() > 0) {
-      cameraFPS = 1.0 / cameras[0].minTriggerPeriod;
-    }
-    std::cout << "Camera frame rate: " << cameraFPS << " fps" << std::endl;
-
-    // Initialize the timing information, making an entry for each camera.  We make sure that there is
-    // the maximum camera ID so that we can use the camera ID as an index.
-    uint32_t maxID = 0;
-    for (auto ID: cameraIDs) {
-      if (ID > maxID) {
-        maxID = ID;
-      }
-    }
-    g_timingInfo.SetNumCameras(maxID);
-
-    // Separate the cameras into two groups: those with IDs less than 22 are visible cameras and those
-    // with larger ones are depth-estimation cameras. Only do this if we are computing depth.
-    for (size_t j = 0; j < cameraRenderInfos.size(); j++) {
-      if (cameraRenderInfos[j]->m_ID > 21 && computeDepth) {
-        g_depthCameras.push_back(cameraRenderInfos[j]);
-      } else {
-        g_visibleCameras.push_back(cameraRenderInfos[j]);
-      }
-    }
-
-    // If we have no remaining visible cameras, we cannot continue because there would be nothing to display.
-    if (g_visibleCameras.size() == 0) {
-      std::cerr << "No visible cameras remain after skipping." << std::endl;
-      return 20;
-    }
-
-    // If we've been asked to do standard-deviation-based auto-ranging, set that up.
-    std::shared_ptr<asdp::render::imageStatistics::MeanStdGroup> meanStdGroup;
-    std::shared_ptr<RangeEstimator> rangeEstimator = std::make_shared<RangeEstimatorFixed>();
-    if (autoRangeStdAbove != 0 || autoRangeStdBelow != 0) {
-      // Make a display object that shares textures with the others.
-      std::shared_ptr<Display> display = std::make_shared<DisplayTexture>(displayTexture.get());
-      // Make a MeanStdGroup object to handle the statistics.
-      meanStdGroup = std::make_shared<asdp::render::imageStatistics::MeanStdGroup>(g_visibleCameras,
-        display, 1.0/cameraFPS);
-      // Make a RangeEstimator object to handle the range.
-      rangeEstimator = std::make_shared<RangeEstimatorStdRanges>(meanStdGroup,
-        autoRangeStdBelow, autoRangeStdAbove);
-    }
-
     std::shared_ptr<Timer> timer;
     status = client->GetTimer(timer);
     if (status != OKAY) {
@@ -2092,70 +2481,40 @@ int main(int argc, char** argv)
       return 300;
     }
 
-    // Construct a depth-estimation object if there are any depth-estimation cameras.
-    // There must be sets of two camera pairs for depth estimation.
+    // Keeps track of when we were paused so we can adjust our clock synchronization when resumed.
+    Time pausedTime = {};
+
+    // Spin up the client, which will connect to the server and fill in lots of information.
+    std::shared_ptr<Receiver> receiver;
+    std::vector<CameraInfo> cameras;
+    bool hasStorage = false;
+    bool hasTemperatures = false;
+    bool hasPoses = false;
+    uint8_t triggerID = 0;
+    std::filesystem::path configPath;
+    std::vector< std::shared_ptr<ReceiverUDP> > UDPReceivers;
+    std::vector< std::shared_ptr<asdp::render::CameraRenderInfo> > cameraRenderInfos;
+    std::vector<uint32_t> cameraIDs; ///< The camera IDs to render, in the same order as the records in the configuration file.
+    std::vector<GLuint> toneMapTextures;  ///< Stores these for later deletion or replacement.
+    std::atomic<bool> done{false};
+    std::shared_ptr<asdp::render::imageStatistics::MeanStdGroup> meanStdGroup;
+    std::shared_ptr<RangeEstimator> rangeEstimator;
+    std::shared_ptr<ClockSynchronizer> clockSync;
     std::shared_ptr<DisplayTexture> depthContext;
-    if (g_depthCameras.size() > 0) {
-      depthContext = std::make_shared<DisplayTexture>(displayTexture.get());
-      bool enablingCP = false; // Whether cylindrical projection is enabled for any of the displays.
-      for (const auto& displayInfo : displayInfos) {
-        if (displayInfo.enableCP) {
-          enablingCP = true;
-          break;
-        }
-      }
-      if (enablingCP) {
-        std::cerr << "Cylindrical projection is incompatible with depth estimation." << std::endl;
-        return 100;
-      }
-
-      if (g_depthCameras.size() % 2 != 0) {
-        std::cerr << "Error: There must be an even number of depth-estimation cameras." << std::endl;
-        return 101;
-      }
-      std::vector< std::array<std::shared_ptr<asdp::render::CameraRenderInfo>, 2> > cameras;
-      for (size_t i = 0; i < g_depthCameras.size(); i += 2) {
-        std::array<std::shared_ptr<asdp::render::CameraRenderInfo>, 2> pair = { g_depthCameras[i], g_depthCameras[i + 1] };
-        cameras.push_back(pair);
-      }
-
-      if (!depthContext->BorrowContext()) {
-        std::cerr << "Error borrowing context from depthContext for DepthEstimator." << std::endl;
-        return 102;
-      }
-
-      // Initialize GLEW in our context. It is okay to initialize it more than once.
-      glewExperimental = true;
-      if (glewInit() != GLEW_OK) {
-        std::cerr << "Failed to initialize GLEW before DepthTexture" << std::endl;
-        return 103;
-      }
-      // Clear any GL error that Glew caused.  Apparently on Non-Windows
-      // platforms, this can cause a spurious error 1280.
-      glGetError();
-
-      // Determine the range of depths to use for the depth estimater and then construct it.
-      std::vector<float> depths(7);
-      depths[depths.size()-1] = maxDepth;
-      for (int i = depths.size() - 2; i >= 0; i--) {
-        depths[i] = depths[i + 1] / 2;
-      }
-      g_depthEstimator = std::make_shared<DepthEstimator>(cameras, rangeEstimator, poseAdjuster, float(1.0/cameraFPS),
-        g_depthCameras[0]->m_resolutionPixels[0] * 2 / 100, g_depthCameras[0]->m_resolutionPixels[1] * 2 / 100,
-        depths, depthThreshold);
-      std::cout << "Constructed DepthEstimator with " << cameras.size() << " camera pairs." << std::endl;
-
-      // Compute a depth estimate to get all of the machinery set up and GLEW initialized on this thread.
-      g_depthEstimator->ComputeDepthEstimate(0);
-
-      if (!depthContext->ReturnContext()) {
-        std::cerr << "Error returning context to depthContext for DepthEstimator." << std::endl;
-        return 104;
-      }
-
-      // Start the depth estimation thread.
-      g_runDepthThread = true;
-      g_depthThread = std::thread(DepthThreadFunction, timer, depthContext);
+    std::vector<std::thread> copyDataToGPUThreads;
+    std::thread analysisThread;
+    std::vector< std::shared_ptr< SpinFreeQueue< std::shared_ptr<DataToSendToGPU> > > > dataQueues;
+    std::vector<std::thread> receiveDataThreads;
+    int ret = spin_up(client, serialNumber, receiver, cameras, hasStorage, hasTemperatures, hasPoses,
+      triggerID, replayStreamID, configPath, UDPReceivers, skipCameras, nucInfos, maxCameras,
+      lineBatchesPerGPUSend, displayTexture, displayInfos, renderAheadFrames, cameraFPS, computeDepth,
+      autoRangeStdBelow, autoRangeStdAbove, maxDepth, depthThreshold, poseAdjuster, cameraRenderInfos,
+      cameraIDs,
+      toneMapTextures, staticDepth, done, ip_address, doStreamPoses, frameStride, analysisModuleURLs,
+      meanStdGroup, rangeEstimator, clockSync, timer, depthContext, copyDataToGPUThreads,
+      analysisThread, dataQueues, receiveDataThreads);
+    if (ret != 0) {
+      return ret;
     }
 
     // Configure an event structure to handle callbacks for the display windows.
@@ -2176,14 +2535,8 @@ int main(int argc, char** argv)
     handlers->ResetAnalysis = ResetAnalysis;
     g_callbackHandlerData.cameraConfigFileName = configPath.string();
 
-    // Construct a Display for use by the point correspondence object, if any.
-    if (g_pointCorrespondences != nullptr) {
-      g_pointCorrespondenceDisplay = std::make_shared<DisplayTexture>(displayTexture.get());
-    }
-
     // Construct one or more Display objects to render the cameras.  They all share objects with the texture Display.
     std::vector<std::shared_ptr<Display>> displays;
-    std::vector<GLuint> toneMapTextures;  ///< Stores these for later deletion or replacement.
 
     //======================================
     // Added by Sang Yoon to enable the display interface of overview plus detail view.
@@ -2215,54 +2568,14 @@ int main(int argc, char** argv)
 
     for (size_t i = 0; i < displayInfos.size(); i++) {
 
-      // Construct a Tone Map texture to use for rendering the cameras.
-      if (!displayTexture->BorrowContext()) {
-        std::cerr << "Error borrowing context from displayTexture for ToneMap." << std::endl;
-        return 21;
-      }
-      GLuint toneMapTexture = displayInfos[i].toneMap.GenerateTexture();
-      toneMapTextures.push_back(toneMapTexture);
-      if (toneMapTexture == 0) {
-        std::cerr << "Error generating texture for ToneMap." << std::endl;
-        return 22;
-      }
-      if (!displayTexture->ReturnContext()) {
-        std::cerr << "Error returning context to displayTexture for ToneMap." << std::endl;
-        return 23;
-      }
-
-      // Construct a Composite object to render the visible cameras.  We need a separate Composite per Display so that each
-      // can cache consistent camera images for the whole frame while views are being rendered.
-      // Two displays cannot share a SetupRenderFrame() call because they may have different frame rates.
-      // Rendering offset based on how many frames we want to render ahead.
-      uint32_t renderOffsetMicroseconds = renderAheadFrames * (1000000 / cameraFPS);
-      g_composites.push_back(std::make_shared<CompositeCameras>(
-        g_visibleCameras, toneMapTexture, poseAdjuster, Time(1/cameraFPS),
-        renderOffsetMicroseconds,
-        Time(0, 1000000 / displayInfos[i].fps), (i == 0) ? (&g_timingInfo) : nullptr,
-        rangeEstimator, staticDepth, AnnotationCallbackHandler, nullptr));
-
-      //======================================
-      // Added by Sang Yoon to just pass the status of enabling the cylindrical projection (true or false) from DisplayInfos[i] to composite.
-      // Note that the cylinderical projection is processed in Composite Submodule.
-      g_composites.back()->m_CP_enabled = displayInfos[i].enableCP;
-      //======================================
-
-      //======================================
-      // Added by Sang Yoon to just pass the status of overview and detailed view for the current display to composite.
-      // Note that the overview and detailed view are handled in Composite Submodule.
-      g_composites.back()->m_overview = displayInfos[i].overview;
-      g_composites.back()->m_detailed_view = displayInfos[i].detailed_view;
-      //======================================
-
       // Only time the first listed display, to avoid race conditions
       if (displayInfos[i].useOpenXR) {
-        displays.push_back(std::make_shared<DisplayOpenXR>(g_composites.back(), displayTexture.get(),
+        displays.push_back(std::make_shared<DisplayOpenXR>(g_composites[i], displayTexture.get(),
           client, triggerID, triggerAheadMicroseconds, depthAheadMicroseconds, displayInfos[i].viewpointOffset,
           renderAheadMicroseconds, 1, handlers, &g_callbackHandlerData,
           (i == 0) ? (&g_timingInfo) : nullptr, replayStreamID != 0));
       } else if (!displayInfos[i].XSightNIC.empty()) {
-        displays.push_back(std::make_shared<DisplayXSight>(displayInfos[i].XSightNIC, g_composites.back(), displayTexture.get(),
+        displays.push_back(std::make_shared<DisplayXSight>(displayInfos[i].XSightNIC, g_composites[i], displayTexture.get(),
           client, triggerID, triggerAheadMicroseconds,
           depthAheadMicroseconds, displayInfos[i].viewpointOffset,
           renderAheadMicroseconds,
@@ -2271,7 +2584,7 @@ int main(int argc, char** argv)
           displayInfos[i].XSightDisplay
         ));
       } else if (!displayInfos[i].XSight2NIC.empty()) {
-        displays.push_back(std::make_shared<DisplayXSight>(displayInfos[i].XSight2NIC, g_composites.back(), displayTexture.get(),
+        displays.push_back(std::make_shared<DisplayXSight>(displayInfos[i].XSight2NIC, g_composites[i], displayTexture.get(),
           client, triggerID, triggerAheadMicroseconds,
           depthAheadMicroseconds, displayInfos[i].viewpointOffset,
           renderAheadMicroseconds,
@@ -2283,7 +2596,7 @@ int main(int argc, char** argv)
         ));
       } else {
         displays.push_back(std::make_shared<DisplayWindow>("ASDP Render Module " + std::to_string(i),
-          g_composites.back(), client, triggerID, triggerAheadMicroseconds, depthAheadMicroseconds, displayInfos[i].viewpointOffset,
+          g_composites[i], client, triggerID, triggerAheadMicroseconds, depthAheadMicroseconds, displayInfos[i].viewpointOffset,
           displayInfos[i].fps, renderAheadMicroseconds,
           displayInfos[i].width, displayInfos[i].height,
           displayInfos[i].hFOV, displayInfos[i].joystick, displayTexture.get(),
@@ -2295,253 +2608,6 @@ int main(int argc, char** argv)
         displays.clear();
         return 25;
       }
-    }
-
-    // Verify that the width and height of the cameras match the width and height of the NUC information,
-    // if any NUC information was provided.
-    for (const auto& nucInfo : nucInfos) {
-      for (const auto& nucCam : nucInfo.CameraNUCTables) {
-        uint32_t cameraID = nucCam.first;
-        int nucWidth = nucCam.second.imageWidth;
-        int nucHeight = nucCam.second.imageHeight;
-        // Find the index of the camera whose CameraRenderInfo has this ID.
-        int cameraIndex = -1;
-        for (int i = 0; i < static_cast<int>(cameraRenderInfos.size()); i++) {
-          if (cameraRenderInfos[i]->m_ID == cameraID) {
-            cameraIndex = i;
-            break;
-          }
-        }
-        if (cameraIndex < 0) {
-          std::cerr << "Error: NUC information for camera ID " << cameraID << " does not match any camera in the configuration file." << std::endl;
-          return 100;
-        }
-        if ( (nucWidth != cameras[cameraIndex].width) || (nucHeight != cameras[cameraIndex].height) ) {
-          std::cerr << "Error: NUC information for camera ID " << cameraID << " has dimensions (" <<
-            nucWidth << ", " << nucHeight << ") that do not match the camera dimensions (" <<
-            cameras[cameraIndex].width << ", " << cameras[cameraIndex].height << ")." << std::endl;
-          return 101;
-        }
-      }
-    }
-
-    // Construct shared pointers to the data structures that we'll need to do rendering, with
-    // custom destructors that will clean up when the shared_ptr is destroyed.
-    std::atomic<bool> done(false);
-    std::vector< std::shared_ptr<CUDABufferPool> > cpuPinnedImageBuffers;
-    std::vector< std::shared_ptr<CUDABufferPool> > gpuImageBuffers;
-    std::vector< std::shared_ptr<CUDABufferPool> > gpuNUCBuffers;
-    std::vector< std::shared_ptr<cudaStream_t> > streams;
-    std::vector< std::shared_ptr<ReceiverUDP> > UDPReceivers;
-    for (size_t i = 0; i < cameras.size(); i++) {
-      try {
-        // Preallocate pinned memory buffers for the CPU.
-        cpuPinnedImageBuffers.push_back(std::make_shared<CUDABufferPool>(cameras[i].width* cameras[i].height * sizeof(uint16_t), 5, true));
-
-        // Preallocate memory buffers for the GPU.
-        gpuImageBuffers.push_back(std::make_shared<CUDABufferPool>(cameras[i].width* cameras[i].height * sizeof(uint16_t), 5, false));
-
-        // Make a pool of GPU memory buffers for per-pixel NUC to use if it is running.
-        // Pre-allocate some if we are doing per-pixel NUC, otherwise leave the vector empty.
-        size_t nucBufferCount = cameras.size() * 2 * nucInfos.size();
-        gpuNUCBuffers.push_back(std::make_shared<CUDABufferPool>(cameras[i].width* cameras[i].height * sizeof(float), nucBufferCount, false));
-      } catch (std::exception &e) {
-        std::cerr << "Error creating buffer pools: " << e.what() << std::endl;
-        return 26;
-      }
-
-      // Create a stream for the GPU to use.
-      cudaStream_t* streamPtr = new cudaStream_t;
-      cudaStreamCreate(streamPtr);
-      streams.push_back(std::shared_ptr<cudaStream_t>(streamPtr,
-        [](cudaStream_t* ptr) { cudaStreamDestroy(*ptr); delete ptr; }
-      ));
-
-      // Create a UDP receiver for the camera.
-      std::shared_ptr<ReceiverUDP> receiverUDP = std::make_shared<ReceiverUDP>(ip_address);
-      if (receiverUDP->GetConstructorStatus() != OKAY) {
-        std::cerr << "Error constructing ReceiverUDP: " << ErrorMessage(receiverUDP->GetConstructorStatus()) << std::endl;
-        return 27;
-      }
-      UDPReceivers.push_back(receiverUDP);
-    }
-
-    // Make the queues to pass the NUC data tables to the receive-data threads, one for each camera -- they
-    // will be nullptr if there is no NUC information for that camera.  If we don't have any NUC information at all,
-    // the vector will contain nullptr for each camera.
-    std::vector< std::shared_ptr< SpinFreeQueue< NUCDataPair > > > nucTableQueues;
-    for (size_t i = 0; i < cameras.size(); i++) {
-      std::shared_ptr< SpinFreeQueue< NUCDataPair > > nucTableQueue;
-      if (nucInfos.size()) {
-        nucTableQueue = std::make_shared< SpinFreeQueue< NUCDataPair > >();
-      }
-      nucTableQueues.push_back(nucTableQueue);
-    }
-
-    // Go ahead and allocate and fill buffers for the NUC data tables for each camera that has NUC information,
-    // so that the receive-data threads can use them right away when they start receiving data from the cameras.
-    /// @todo In the future, we will use temperature information to interpolate between tables.  For now we, just
-    /// use the first NUCInfo.
-    if (nucInfos.size() > 0) {
-      const NUCInfo& nucInfo = nucInfos[0];
-      for (const auto& it : nucInfo.CameraNUCTables) {
-        int cameraID = it.first;
-        // Find the index of the camera whose CameraRenderInfo has this ID.
-        int cameraIndex = -1;
-        for (int i = 0; i < static_cast<int>(cameraRenderInfos.size()); i++) {
-          if (cameraRenderInfos[i]->m_ID == cameraID) {
-            cameraIndex = i;
-            break;
-          }
-        }
-        const NucTables& nucTable = it.second;
-        if (cameraIndex < 0) {
-          std::cerr << "Error: NUC information for camera ID " << cameraID << " does not match any camera in the configuration file." << std::endl;
-          return 102;
-        }
-        NUCDataPair nucDataPair;
-        nucDataPair.gainBuffer = gpuNUCBuffers[cameraIndex]->GetBuffer(true, 0);
-        nucDataPair.offsetBuffer = gpuNUCBuffers[cameraIndex]->GetBuffer(true, 0);
-        if (nucDataPair.gainBuffer == nullptr || nucDataPair.offsetBuffer == nullptr) {
-          std::cerr << "Error: Failed to get NUC buffers for camera ID " << cameraID << std::endl;
-          return 103;
-        }
-
-        // Use a CUDA copy to transfer the NUC tables to the GPU.
-        size_t numPixels = cameras[cameraIndex].width * cameras[cameraIndex].height;
-        cudaError_t cerr;
-        cerr = cudaMemcpy(nucDataPair.gainBuffer.get(), nucTable.gainTable.data(),
-          numPixels * sizeof(float), cudaMemcpyHostToDevice);
-        if (cerr != cudaSuccess) {
-          std::cerr << "Error: Failed to copy gain table to GPU for camera ID " << cameraID << ": " << cudaGetErrorString(cerr) << std::endl;
-          return 104;
-        }
-        cerr = cudaMemcpy(nucDataPair.offsetBuffer.get(), nucTable.offsetTable.data(),
-          numPixels * sizeof(float), cudaMemcpyHostToDevice);
-        if (cerr != cudaSuccess) {
-          std::cerr << "Error: Failed to copy offset table to GPU for camera ID " << cameraID << ": " << cudaGetErrorString(cerr) << std::endl;
-          return 105;
-        }
-
-        // Queue the buffers for use by the receive-data thread for this camera.
-        nucTableQueues[cameraIndex]->enqueue(nucDataPair);
-      }
-    }
-
-
-    // Make the queues to pass data between the receiver and texture threads, one for each texture thread.
-    // The cameras will be spread among the threads in a round-robin fashion.
-    std::vector< std::shared_ptr< SpinFreeQueue< std::shared_ptr<DataToSendToGPU> > > > dataQueues;
-    for (size_t i = 0; i < NUM_TEXTURE_THREADS; i++) {
-      dataQueues.push_back(std::make_shared< SpinFreeQueue< std::shared_ptr<DataToSendToGPU> > >());
-    }
-
-    // Launch the threads to copy data to the GPU, each having its own queue.
-    std::vector<std::thread> copyDataToGPUThread;
-    for (size_t i = 0; i < NUM_TEXTURE_THREADS; i++) {
-      copyDataToGPUThread.push_back(std::thread(CopyDataToTextures, cameras[0].width, cameras[0].height, std::ref(done),
-        dataQueues[i], lineBatchesPerGPUSend, displayTextures[i], std::ref(g_timingInfo.cameras)));
-    }
-
-    // Launch the data receiving threads, hooking them together using the queues and passing the texture OpenGL
-    // context to it.  Round-robin the data queues among the receive-data threads.
-    std::vector<std::thread> receiveDataThreads;
-    for (size_t i = 0; i < cameras.size(); i++) {
-      receiveDataThreads.push_back(std::thread(ReceiveDataThread, std::ref(*UDPReceivers[i]), 9000,
-        std::ref(done), cpuPinnedImageBuffers[i], gpuImageBuffers[i], streams[i], cameraRenderInfos[i]->m_imageQueue,
-        dataQueues[i % NUM_TEXTURE_THREADS],
-        &g_timingInfo.cameras[i].frameBeginTimes, &g_timingInfo.cameras[i].frameEndTimes,
-        nucTableQueues[i]));
-    }
-
-    // Ask for streaming pose and temperature data.
-    if (doStreamPoses && hasPoses) {
-      std::cout << "Requesting pose data." << std::endl;
-      status = client->SendCommandPacket(CommandPacketStreamPoses());
-      if (status != OKAY) {
-        std::cerr << "Failed to request pose data: " << ErrorMessage(status) << std::endl;
-        return 28;
-      }
-    }
-    if (hasTemperatures) {
-      std::cout << "Requesting temperature data." << std::endl;
-      status = client->SendCommandPacket(CommandPacketStreamTemperatures());
-      if (status != OKAY) {
-        std::cerr << "Failed to request temperature data: " << ErrorMessage(status) << std::endl;
-        return 29;
-      }
-    }
-
-    // Request streaming on the cameras at their maximum rates from their associated ID.
-    std::cout << "Streaming every " << frameStride << " frames from " << cameraIDs.size() << " cameras" << std::endl;
-    for (size_t i = 0; i < cameras.size(); i++) {
-      uint32_t camID = cameraIDs[i];
-      CameraInfo &camera = cameras[i];
-
-      TriggerInfo ti;
-      ti.ID = camera.trigger;
-      ti.mode = 3;
-      ti.period = 1/cameraFPS;
-      ti.offset = 0;
-      ti.trackingFactor = 0.005;
-      ti.externalID = camera.trigger;
-      status = client->SendCommandPacket(CommandPacketConfigureTrigger(ti));
-      if (status != OKAY) {
-        std::cerr << "Failed to configure trigger: " << ErrorMessage(status) << std::endl;
-        return 30;
-      }
-      std::cout << std::setprecision(10) << "  Configured trigger for camera " << camID << " with period " << ti.period << " seconds" << std::endl;
-
-      // Request the camera to stream full-frame images once every frameStride frames.
-      uint16_t port;
-      status = UDPReceivers[i]->GetPort(port);
-      if (status != OKAY) {
-        std::cerr << "Failed to get port: " << ErrorMessage(status) << std::endl;
-        return 31;
-      }
-      StreamEndpoint endpoint(ip_address, port);
-      SubregionDescription region;
-      region.cameraID = camID;
-      region.skipFrames = frameStride - 1;
-      region.startTimeSeconds = 0;
-      region.startTimeMicroseconds = 0;
-      region.left = 0;
-      region.top = 0;
-      region.right = camera.width - 1;
-      region.bottom = camera.height - 1;
-      status = client->SendCommandPacket(CommandPacketStreamSubregion(endpoint, region));
-      if (status != OKAY) {
-        std::cerr << "Failed to stream images: " << ErrorMessage(status) << std::endl;
-        return 32;
-      }
-    }
-
-    // If we've been asked to replay a stream, then send a request to do this.
-    if (replayStreamID) {
-      if (!hasStorage) {
-        std::cerr << "Error: Storage API not available when replay requested." << std::endl;
-        return 33;
-      }
-      std::cout << "Requesting replay of stream " << replayStreamID << std::endl;
-      // Set the initial time to be above zero so that we never predict backwards to negative time.
-      status = client->SendCommandPacket(CommandPacketStartReplay(replayStreamID, Time(10,0)));
-      if (status != OKAY) {
-        std::cerr << "Failed to start replay: " << ErrorMessage(status) << std::endl;
-        return 34;
-      }
-    }
-
-    // Create a ClockSynchronizer that will manage adjusting the timer based on clock-sync messages.
-    std::shared_ptr<ClockSynchronizer> clockSync = std::make_shared<ClockSynchronizer>(timer);
-
-    // Keeps track of when we were paused so we can adjust our clock synchronization when resumed.
-    Time pausedTime = {};
-
-    // If there are any analysis modules, launch a thread to service all of them, passing it the vector of module URLs.
-    std::thread analysisThread;
-    if (!analysisModuleURLs.empty()) {
-      g_runAnalysisThread = true;
-      analysisThread = std::thread(HandleAnalysisThread, analysisModuleURLs, timer);
     }
 
     // Render frames until someone has marked us to be done.
@@ -2732,7 +2798,7 @@ int main(int argc, char** argv)
 
     // Set done and wait for all of our GPU data threads to join.
     done = true;
-    for (auto& thread : copyDataToGPUThread) {
+    for (auto& thread : copyDataToGPUThreads) {
       if (thread.joinable()) {
         thread.join();
       }
