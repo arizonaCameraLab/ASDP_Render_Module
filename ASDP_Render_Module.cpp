@@ -2025,9 +2025,6 @@ int spin_down(std::shared_ptr<CoreClient> client, std::atomic<bool>& done,
       return 32;
     }
   }
-  cameras.clear();
-  cameraIDs.clear();
-  UDPReceivers.clear();
 
   // If we have a depth thread, shut it down and then join it.
   if (depthContext) {
@@ -2081,6 +2078,11 @@ int spin_down(std::shared_ptr<CoreClient> client, std::atomic<bool>& done,
     std::cerr << "Error returning context to displayTexture." << std::endl;
     return 37;
   }
+
+  // Clean up local objects that are used by threads above
+  cameras.clear();
+  cameraIDs.clear();
+  UDPReceivers.clear();
 
   // Clean up the global objects.
   g_pointCorrespondenceDisplay.reset();

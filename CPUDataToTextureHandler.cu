@@ -680,8 +680,4 @@ void asdp::render::ReceiveDataThread(ReceiverUDP& receiveSocket, size_t maxBytes
       outQueue->enqueue(std::make_shared<DataToSendToGPU>(data));
     } // End of processing ready packets.
   } // End of while we are not done.
-
-  // Release our out-queue pointer so it will be destroyed and release all its resources back to our
-  // buffer pool.
-  outQueue.reset();
 }
