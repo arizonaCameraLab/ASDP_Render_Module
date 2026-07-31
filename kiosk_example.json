@@ -1,41 +1,41 @@
 [
   {
-    "afterSeconds": 3,
-    "command": "pause",
-    "parameters": []
-  },
-  {
-    "afterSeconds": 15,
+    "afterSeconds": 30,
     "command": "camera",
-    "parameters": [ 6, 1 ]
+    "parameters": [ 3, 1 ]
   },
   {
-    "afterSeconds": 1,
-    "command": "toneMap",
-    "parameters": [ "bluesky" ]
-  },
-  {
-    "afterSeconds": 1,
+    "afterSeconds": 0,
     "command": "autoRangeStd",
     "parameters": [ 1, 1 ]
   },
   {
-    "afterSeconds": 1,
+    "afterSeconds": 0,
+    "command": "toneMap",
+    "parameters": [ "balcony" ]
+  },
+  {
+    "afterSeconds": 15,
+    "command": "toneMap",
+    "parameters": [ "bluesky" ]
+  },
+  {
+    "afterSeconds": 15,
     "command": "pause",
     "parameters": []
   },
   {
-    "afterSeconds": 15,
+    "afterSeconds": 5,
     "command": "camera",
     "parameters": [ 5, 1 ]
   },
   {
-    "afterSeconds": 1,
+    "afterSeconds": 0,
     "command": "autoRangeStd",
     "parameters": [ 0, 0 ]
   },
   {
-    "afterSeconds": 1,
+    "afterSeconds": 0,
     "command": "toneMap",
     "parameters": [ "linear" ]
   }
