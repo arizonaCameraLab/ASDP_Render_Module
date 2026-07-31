@@ -20,6 +20,11 @@
     "parameters": [ 1, 1 ]
   },
   {
+    "afterSeconds": 1,
+    "command": "pause",
+    "parameters": []
+  },
+  {
     "afterSeconds": 15,
     "command": "camera",
     "parameters": [ 5, 1 ]
@@ -33,10 +38,5 @@
     "afterSeconds": 1,
     "command": "toneMap",
     "parameters": [ "linear" ]
-  },
-  {
-    "afterSeconds": 1,
-    "command": "resume",
-    "parameters": []
   }
 ]
