@@ -163,7 +163,7 @@ bool Display::TriggerCameras(std::chrono::steady_clock::time_point when)
     return false;
   }
   status = m_client->SendCommandPacket(packet);
-  if (status != OKAY) {
+  if (status != OKAY && status != NOT_CONNECTED) {
     return false;
   }
 
