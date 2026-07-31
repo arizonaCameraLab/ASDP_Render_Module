@@ -1746,12 +1746,8 @@ int spin_up(std::shared_ptr<CoreClient> client, int &serialNumber, std::shared_p
     //======================================
   }
 
-  /// @todo This was the boundary in the original code between things that happened before the
-  /// displays were created and things that happened after.  Hopefully we don't need to split this
-  /// into two functions, but if we do then this is the place to split it.
-
-    // Verify that the width and height of the cameras match the width and height of the NUC information,
-    // if any NUC information was provided.
+  // Verify that the width and height of the cameras match the width and height of the NUC information,
+  // if any NUC information was provided.
   for (const auto& nucInfo : nucInfos) {
     for (const auto& nucCam : nucInfo.CameraNUCTables) {
       uint32_t cameraID = nucCam.first;
@@ -1987,6 +1983,99 @@ int spin_up(std::shared_ptr<CoreClient> client, int &serialNumber, std::shared_p
     g_runAnalysisThread = true;
     analysisThread = std::thread(HandleAnalysisThread, analysisModuleURLs, timer);
   }
+
+  return 0;
+}
+
+/// @brief Static function to spin down all of the things related to connecting to a camera ball.
+int spin_down(std::shared_ptr<CoreClient> client, std::atomic<bool>& done,
+  std::vector<CameraInfo> &cameras, std::vector<uint32_t> &cameraIDs,
+  std::vector< std::shared_ptr<ReceiverUDP> > &UDPReceivers, std::string &ip_address,
+  std::shared_ptr<DisplayTexture>& depthContext, std::vector<std::thread>& copyDataToGPUThreads,
+  std::thread &analysisThread,
+  std::vector< std::shared_ptr< SpinFreeQueue< std::shared_ptr<DataToSendToGPU> > > > &dataQueues,
+  std::vector<std::thread> &receiveDataThreads, std::shared_ptr<DisplayTexture> &displayTexture,
+  std::vector< std::shared_ptr<asdp::render::CameraRenderInfo> > &cameraRenderInfos,
+  std::vector<GLuint> &toneMapTextures
+  )
+{
+  // Stopping streaming on the cameras
+  std::cout << "Stop streaming from " << cameraIDs.size() << " cameras" << std::endl;
+  for (size_t i = 0; i < cameras.size(); i++) {
+    uint32_t camID = cameraIDs[i];
+    CameraInfo& camera = cameras[i];
+
+    // Request the camera to cancel streaming.
+    uint16_t port;
+    Status status = UDPReceivers[i]->GetPort(port);
+    if (status != OKAY) {
+      std::cerr << "Failed to get port: " << ErrorMessage(status) << std::endl;
+      return 31;
+    }
+    StreamEndpoint endpoint(ip_address, port);
+    status = client->SendCommandPacket(CommandPacketCancelSubregion(camID, endpoint));
+    if (status != OKAY) {
+      std::cerr << "Failed to stop streaming images: " << ErrorMessage(status) << std::endl;
+      return 32;
+    }
+  }
+
+  // If we have a depth thread, shut it down and then join it.
+  if (depthContext) {
+    g_runDepthThread = false;
+    if (g_depthThread.joinable()) {
+      g_depthThread.join();
+    }
+    depthContext.reset();
+  }
+
+  // Set done and wait for all of our GPU data threads to join.
+  done = true;
+  for (auto& thread : copyDataToGPUThreads) {
+    if (thread.joinable()) {
+      thread.join();
+    }
+  }
+
+  // Shut down any analysis thread.
+  g_runAnalysisThread = false;
+  if (analysisThread.joinable()) {
+    analysisThread.join();
+  }
+
+  // Clear all remaining data from the queues now that the receivers are done.
+  // All of the receiving threads will also delete this before they exit, which will remove all of the
+  // references and push their buffers back onto their empty queues.
+  for (auto& queue : dataQueues) {
+    queue.reset();
+  }
+
+  // Now that all of the buffers have been returned to the buffer queue, join our receive-data threads.
+  for (auto& thread : receiveDataThreads) {
+    if (thread.joinable()) {
+      thread.join();
+    }
+  }
+
+  // Now borrow the context from the displayTexture so that we can delete the textures.
+  if (!displayTexture->BorrowContext()) {
+    std::cerr << "Error borrowing context from displayTexture." << std::endl;
+    return 36;
+  }
+  cameraRenderInfos.clear();
+
+  glDeleteTextures(toneMapTextures.size(), toneMapTextures.data());
+  if (!displayTexture->ReturnContext()) {
+    std::cerr << "Error returning context to displayTexture." << std::endl;
+    return 37;
+  }
+
+  // Clean up the global objects.
+  g_pointCorrespondenceDisplay.reset();
+  g_visibleCameras.clear();
+  g_depthCameras.clear();
+  g_depthEstimator.reset();
+  g_composites.clear();
 
   return 0;
 }
@@ -2487,14 +2576,14 @@ int main(int argc, char** argv)
     // Spin up the client, which will connect to the server and fill in lots of information.
     std::shared_ptr<Receiver> receiver;
     std::vector<CameraInfo> cameras;
+    std::vector<uint32_t> cameraIDs; ///< The camera IDs to render, in the same order as the records in the configuration file.
+    std::vector< std::shared_ptr<asdp::render::CameraRenderInfo> > cameraRenderInfos;
     bool hasStorage = false;
     bool hasTemperatures = false;
     bool hasPoses = false;
     uint8_t triggerID = 0;
     std::filesystem::path configPath;
     std::vector< std::shared_ptr<ReceiverUDP> > UDPReceivers;
-    std::vector< std::shared_ptr<asdp::render::CameraRenderInfo> > cameraRenderInfos;
-    std::vector<uint32_t> cameraIDs; ///< The camera IDs to render, in the same order as the records in the configuration file.
     std::vector<GLuint> toneMapTextures;  ///< Stores these for later deletion or replacement.
     std::atomic<bool> done{false};
     std::shared_ptr<asdp::render::imageStatistics::MeanStdGroup> meanStdGroup;
@@ -2766,86 +2855,18 @@ int main(int argc, char** argv)
       }
     }
 
-    // Stopping streaming on the cameras
-    std::cout << "Stop streaming from " << cameraIDs.size() << " cameras" << std::endl;
-    for (size_t i = 0; i < cameras.size(); i++) {
-      uint32_t camID = cameraIDs[i];
-      CameraInfo& camera = cameras[i];
-
-      // Request the camera to cancel streaming.
-      uint16_t port;
-      status = UDPReceivers[i]->GetPort(port);
-      if (status != OKAY) {
-        std::cerr << "Failed to get port: " << ErrorMessage(status) << std::endl;
-        return 31;
-      }
-      StreamEndpoint endpoint(ip_address, port);
-      status = client->SendCommandPacket(CommandPacketCancelSubregion(camID, endpoint));
-      if (status != OKAY) {
-        std::cerr << "Failed to stop streaming images: " << ErrorMessage(status) << std::endl;
-        return 32;
-      }
+    ret = spin_down(client, done, cameras, cameraIDs, UDPReceivers, ip_address, depthContext,
+      copyDataToGPUThreads, analysisThread, dataQueues, receiveDataThreads, displayTexture,
+      cameraRenderInfos, toneMapTextures);
+    if (ret != 0) {
+      return ret;
     }
 
-    // If we have a depth thread, shut it down and then join it.
-    if (depthContext) {
-      g_runDepthThread = false;
-      if (g_depthThread.joinable()) {
-        g_depthThread.join();
-      }
-      depthContext.reset();
-    }
-
-    // Set done and wait for all of our GPU data threads to join.
-    done = true;
-    for (auto& thread : copyDataToGPUThreads) {
-      if (thread.joinable()) {
-        thread.join();
-      }
-    }
-
-    // Shut down any analysis thread.
-    g_runAnalysisThread = false;
-    if (analysisThread.joinable()) {
-      analysisThread.join();
-    }
-
-    // Destroy our client
+    // Destroy our client ONLY AFTER spin_down; we don't want to do this inside spin_down,
+    // because kiosk mode needs it to remain alive when switching cameras.
     client.reset();
 
-    // Clear all remaining data from the queues now that the receivers are done.
-    // All of the receiving threads will also delete this before they exit, which will remove all of the
-    // references and push their buffers back onto their empty queues.
-    for (auto& queue : dataQueues) {
-      queue.reset();
-    }
-
-    // Now that all of the buffers have been returned to the buffer queue, join our receive-data threads.
-    for (auto& thread : receiveDataThreads) {
-      if (thread.joinable()) {
-        thread.join();
-      }
-    }
-
-    // Now borrow the context from the displayTexture so that we can delete the textures.
-    if (!displayTexture->BorrowContext()) {
-      std::cerr << "Error borrowing context from displayTexture." << std::endl;
-      return 36;
-    }
-    cameraRenderInfos.clear();
-
-    glDeleteTextures(toneMapTextures.size(), toneMapTextures.data());
-    if (!displayTexture->ReturnContext()) {
-      std::cerr << "Error returning context to displayTexture." << std::endl;
-      return 37;
-    }
-
-    // Clean up the global objects.
-    g_pointCorrespondenceDisplay.reset();
-    g_visibleCameras.clear();
-    g_depthCameras.clear();
-    g_depthEstimator.reset();
-    g_composites.clear();
+    // Destroy kiosk mode display context, if any.
     g_kioskDisplay.reset();
 
     // Delete our display devices.
