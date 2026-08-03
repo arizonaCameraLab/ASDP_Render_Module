@@ -589,12 +589,16 @@ void asdp::render::ReceiveDataThread(ReceiverUDP& receiveSocket, size_t maxBytes
                 if (cpuImageBufferPtr == nullptr || gpuImageBufferPtr == nullptr) {
                   // This may be okay because we may be shutting down and the buffers are not available.
                   std::cout << "ReceiveDataThread: No CPU or GPU image buffer available, perhaps shutting down?" << std::endl;
+                  cpuImageBufferPtr.reset();
+                  gpuImageBufferPtr.reset();
                   done = true;
                   return;
                 }
               }
               catch (std::exception& e) {
                 std::cerr << "Error getting buffers: " << e.what() << std::endl;
+                cpuImageBufferPtr.reset();
+                gpuImageBufferPtr.reset();
                 done = true;
                 return;
               }
@@ -660,6 +664,8 @@ void asdp::render::ReceiveDataThread(ReceiverUDP& receiveSocket, size_t maxBytes
         if (OKAY != status) {
           done = true;
           std::cerr << "ReceiveDataThread: GetNextMessage() failed: " << ErrorMessage(status) << std::endl;
+          cpuImageBufferPtr.reset();
+          gpuImageBufferPtr.reset();
           return;
         }
       }
@@ -680,4 +686,16 @@ void asdp::render::ReceiveDataThread(ReceiverUDP& receiveSocket, size_t maxBytes
       outQueue->enqueue(std::make_shared<DataToSendToGPU>(data));
     } // End of processing ready packets.
   } // End of while we are not done.
+
+  // Clear things that may hold up other things in their destructors.
+  gpuImageBufferPtr.reset();
+  cpuImageBufferPtr.reset();
+
+  // Dequeue any remaining packets in the outQueue in case we're the last thread standing.
+  while (outQueue->size() != 0) {
+    std::shared_ptr<DataToSendToGPU> data;
+    if (outQueue->dequeue(data, std::chrono::milliseconds(1))) {
+      // Do nothing; just let the shared pointer go out of scope to clean up.
+    }
+  }
 }
