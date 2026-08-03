@@ -2735,9 +2735,15 @@ int main(int argc, char** argv)
           // Handle the command for this kiosk entry.
           std::string command = kioskInfo[kioskIndex]["command"];
           if (command == "pause") {
-            g_paused = true;
+            if (replayStreamID) {
+              client->SendCommandPacket(CommandPacketPauseReplay());
+              g_paused = true;
+            }
           } else if (command == "resume") {
-            g_paused = false;
+            if (replayStreamID) {
+              client->SendCommandPacket(CommandPacketResumeReplay());
+              g_paused = false;
+            }
           } else if (command == "toneMap") {
             if (kioskInfo[kioskIndex]["parameters"].size() != 1) {
               std::cerr << "Error: toneMap command requires one parameter." << std::endl;
