@@ -2810,16 +2810,28 @@ int main(int argc, char** argv)
             int cameraID = kioskInfo[kioskIndex]["parameters"][0];
             int streamID = kioskInfo[kioskIndex]["parameters"][1];
 
-            // Spin down the existing camera, switch the camera ID and stream ID, and spin the new one up.
+            // Spin down the existing camera
             ret = spin_down(client, done, cameras, cameraIDs, UDPReceivers, ip_address, depthContext,
               copyDataToGPUThreads, analysisThread, dataQueues, receiveDataThreads, displayTexture,
               cameraRenderInfos, toneMapTextures);
             if (ret != 0) {
               return ret;
             }
+
+            // Change the serial number and stream ID.
             serialNumber = cameraID;
             replayStreamID = streamID;
-            std::this_thread::sleep_for(std::chrono::milliseconds(5000)); // Give the server time to close the old stream before we open the new one.
+
+            //=================================================================
+            // Create a PoseAdjuster to handle helicopter motion.
+            PoseAdjusterCoordinates poseAdjusterCoordinates = HELICOPTER;
+            if (lockRotation) {
+              poseAdjusterCoordinates = INITIAL_ORIENTATION;
+            }
+            std::shared_ptr<PoseAdjuster> poseAdjuster = std::make_shared<PoseAdjuster>(2000, poseAdjusterCoordinates,
+              disableLatencyCompensation);
+
+            // Spin up the new camera.
             ret = spin_up(client, serialNumber, receiver, cameras, hasStorage, hasTemperatures, hasPoses,
               triggerID, replayStreamID, configPath, UDPReceivers, skipCameras, nucInfos, maxCameras,
               lineBatchesPerGPUSend, displayTexture, displayInfos, renderAheadFrames, cameraFPS, computeDepth,
