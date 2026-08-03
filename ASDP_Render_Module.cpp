@@ -2025,6 +2025,8 @@ int spin_down(std::shared_ptr<CoreClient> client, std::atomic<bool>& done,
       return 32;
     }
   }
+  cameras.clear();
+  cameraIDs.clear();
 
   // If we have a depth thread, shut it down and then join it.
   if (depthContext) {
@@ -2050,14 +2052,6 @@ int spin_down(std::shared_ptr<CoreClient> client, std::atomic<bool>& done,
     analysisThread.join();
   }
 
-  // Clear all remaining data from the queues now that the receivers are done.
-  // All of the receiving threads will also delete this before they exit, which will remove all of the
-  // references and push their buffers back onto their empty queues.
-  for (auto& queue : dataQueues) {
-    queue.reset();
-  }
-  dataQueues.clear();
-
   // Now that all of the buffers have been returned to the buffer queue, join our receive-data threads.
   for (auto& thread : receiveDataThreads) {
     if (thread.joinable()) {
@@ -2065,6 +2059,17 @@ int spin_down(std::shared_ptr<CoreClient> client, std::atomic<bool>& done,
     }
   }
   receiveDataThreads.clear();
+
+  // Shut down all of the UDP receivers now that the receiving threads have finished.
+  UDPReceivers.clear();
+
+  // Clear all remaining data from the queues now that the receivers are done.
+  // All of the receiving threads will also delete this before they exit, which will remove all of the
+  // references and push their buffers back onto their empty queues.
+  for (auto& queue : dataQueues) {
+    queue.reset();
+  }
+  dataQueues.clear();
 
   // Now borrow the context from the displayTexture so that we can delete the textures.
   if (!displayTexture->BorrowContext()) {
@@ -2078,11 +2083,6 @@ int spin_down(std::shared_ptr<CoreClient> client, std::atomic<bool>& done,
     std::cerr << "Error returning context to displayTexture." << std::endl;
     return 37;
   }
-
-  // Clean up local objects that are used by threads above
-  cameras.clear();
-  cameraIDs.clear();
-  UDPReceivers.clear();
 
   // Clean up the global objects.
   g_pointCorrespondenceDisplay.reset();
