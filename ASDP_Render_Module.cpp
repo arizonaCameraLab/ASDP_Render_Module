@@ -56,7 +56,7 @@ using namespace asdp::render;
 using namespace asdp::analysis;
 using json = nlohmann::json;
 
-static std::string VERSION = "3.35.0";
+static std::string VERSION = "3.36.0";
 
 /// @brief The path to the configuration file. Defined in the CMakeLists file.
 std::filesystem::path g_dirPath = CONFIG_FILE_PATH;
@@ -1357,11 +1357,21 @@ int spin_up(std::shared_ptr<CoreClient> client, int &serialNumber, std::shared_p
   std::shared_ptr<DisplayTexture> &depthContext, std::vector<std::thread> &copyDataToGPUThreads,
   std::thread &analysisThread,
   std::vector< std::shared_ptr< SpinFreeQueue< std::shared_ptr<DataToSendToGPU> > > > &dataQueues,
-  std::vector<std::thread> &receiveDataThreads
+  std::vector<std::thread> &receiveDataThreads,
+  bool lockRotation, bool disableLatencyCompensation
 )
 {
   // We're not done yet
   done = false;
+
+  //=================================================================
+  // Create a PoseAdjuster to handle helicopter motion.
+  PoseAdjusterCoordinates poseAdjusterCoordinates = HELICOPTER;
+  if (lockRotation) {
+    poseAdjusterCoordinates = INITIAL_ORIENTATION;
+  }
+  poseAdjuster = std::make_shared<PoseAdjuster>(2000, poseAdjusterCoordinates,
+    disableLatencyCompensation);
 
   std::map<uint32_t, std::string> servers;
   Status status = client->IdentifiedServers(servers);
@@ -2479,15 +2489,6 @@ int main(int argc, char** argv)
       << asdp::Core::GetVersion() << std::endl;
 
     //=================================================================
-    // Create a PoseAdjuster to handle helicopter motion.
-    PoseAdjusterCoordinates poseAdjusterCoordinates = HELICOPTER;
-    if (lockRotation) {
-      poseAdjusterCoordinates = INITIAL_ORIENTATION;
-    }
-    std::shared_ptr<PoseAdjuster> poseAdjuster = std::make_shared<PoseAdjuster>(2000, poseAdjusterCoordinates,
-      disableLatencyCompensation);
-
-    //=================================================================
     // Open a client, specifying the IP address to listen on.
     std::shared_ptr<CoreClient> client = std::make_shared<CoreClient>(ip_address);
     if (client->GetConstructorStatus() != OKAY) {
@@ -2608,6 +2609,7 @@ int main(int argc, char** argv)
     std::thread analysisThread;
     std::vector< std::shared_ptr< SpinFreeQueue< std::shared_ptr<DataToSendToGPU> > > > dataQueues;
     std::vector<std::thread> receiveDataThreads;
+    std::shared_ptr<PoseAdjuster> poseAdjuster;
     int ret = spin_up(client, serialNumber, receiver, cameras, hasStorage, hasTemperatures, hasPoses,
       triggerID, replayStreamID, configPath, UDPReceivers, skipCameras, nucInfos, maxCameras,
       lineBatchesPerGPUSend, displayTexture, displayInfos, renderAheadFrames, cameraFPS, computeDepth,
@@ -2615,7 +2617,7 @@ int main(int argc, char** argv)
       cameraIDs,
       toneMapTextures, staticDepth, done, ip_address, doStreamPoses, frameStride, analysisModuleURLs,
       meanStdGroup, rangeEstimator, clockSync, timer, depthContext, copyDataToGPUThreads,
-      analysisThread, dataQueues, receiveDataThreads);
+      analysisThread, dataQueues, receiveDataThreads, lockRotation, disableLatencyCompensation);
     if (ret != 0) {
       return ret;
     }
@@ -2822,15 +2824,6 @@ int main(int argc, char** argv)
             serialNumber = cameraID;
             replayStreamID = streamID;
 
-            //=================================================================
-            // Create a PoseAdjuster to handle helicopter motion.
-            PoseAdjusterCoordinates poseAdjusterCoordinates = HELICOPTER;
-            if (lockRotation) {
-              poseAdjusterCoordinates = INITIAL_ORIENTATION;
-            }
-            std::shared_ptr<PoseAdjuster> poseAdjuster = std::make_shared<PoseAdjuster>(2000, poseAdjusterCoordinates,
-              disableLatencyCompensation);
-
             // Spin up the new camera.
             ret = spin_up(client, serialNumber, receiver, cameras, hasStorage, hasTemperatures, hasPoses,
               triggerID, replayStreamID, configPath, UDPReceivers, skipCameras, nucInfos, maxCameras,
@@ -2839,7 +2832,7 @@ int main(int argc, char** argv)
               cameraIDs,
               toneMapTextures, staticDepth, done, ip_address, doStreamPoses, frameStride, analysisModuleURLs,
               meanStdGroup, rangeEstimator, clockSync, timer, depthContext, copyDataToGPUThreads,
-              analysisThread, dataQueues, receiveDataThreads);
+              analysisThread, dataQueues, receiveDataThreads, lockRotation, disableLatencyCompensation);
 
             // Set the new composites in each of the displays.
             for (size_t i = 0; i < displays.size(); i++) {
