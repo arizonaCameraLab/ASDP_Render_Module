@@ -1524,7 +1524,7 @@ int spin_up(std::shared_ptr<CoreClient> client, int &serialNumber, std::shared_p
     }
   }
 
-  // Make additional OpenGL contexts for all but the first texture thread.
+  // Make additional OpenGL contexts for the texture threads.
   int NUM_TEXTURE_THREADS = 2;
   if (cameras.size() > 21) {
     // We need larger batches of lines to keep up with more than 21 cameras. The jump from
