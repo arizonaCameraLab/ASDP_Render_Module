@@ -56,7 +56,7 @@ using namespace asdp::render;
 using namespace asdp::analysis;
 using json = nlohmann::json;
 
-static std::string VERSION = "3.36.0";
+static std::string VERSION = "3.37.0";
 
 /// @brief The path to the configuration file. Defined in the CMakeLists file.
 std::filesystem::path g_dirPath = CONFIG_FILE_PATH;
@@ -2477,6 +2477,34 @@ int main(int argc, char** argv)
     return 2;
   }
 
+  //======================================
+  // Added by Sang Yoon to enable the display interface of overview plus detail view.
+  if (enableOD) {
+    // Determine overview window and detail view window.
+    // Where the number of displays is greater than 1, the widest window is considered as an overview window,
+    // and the narrowest window is considered as a detail view window.
+    int overview_displayID = -1; // display ID of overview window
+    int detailed_view_displayID = -1; // display ID of detailed view window
+
+    if (displayInfos.size() > 1) {
+      float widest_hFOV = 0.0f;
+      float narrowest_hFOV = 360.0f;
+      for (size_t i = 0; i < displayInfos.size(); i++) {
+        if (displayInfos[i].hFOV >= widest_hFOV) {
+          widest_hFOV = displayInfos[i].hFOV;
+          overview_displayID = i;
+        }
+        if (displayInfos[i].hFOV < narrowest_hFOV || displayInfos[i].useOpenXR) {
+          narrowest_hFOV = displayInfos[i].hFOV;
+          detailed_view_displayID = i;
+        }
+      }
+      displayInfos[overview_displayID].overview = true;
+      displayInfos[detailed_view_displayID].detailed_view = true;
+    }
+  }
+  //======================================
+
   // If we are connected to one or more analysis modules, increment the rendering start time by 1ms.
   if (!analysisModuleURLs.empty()) {
     std::cout << "Moving rendering forwards by 1ms to allow time for analysis display." << std::endl;
@@ -2642,34 +2670,6 @@ int main(int argc, char** argv)
 
     // Construct one or more Display objects to render the cameras.  They all share objects with the texture Display.
     std::vector<std::shared_ptr<Display>> displays;
-
-    //======================================
-    // Added by Sang Yoon to enable the display interface of overview plus detail view.
-    if (enableOD) {
-    // Determine overview window and detail view window.
-    // Where the number of displays is greater than 1, the widest window is considered as an overview window,
-    // and the narrowest window is considered as a detail view window.
-      int overview_displayID = -1; // display ID of overview window
-      int detailed_view_displayID = -1; // display ID of detailed view window
-
-      if (displayInfos.size() > 1) {
-        float widest_hFOV = 0.0f;
-        float narrowest_hFOV = 360.0f;
-        for (size_t i = 0; i < displayInfos.size(); i++) {
-          if (displayInfos[i].hFOV >= widest_hFOV) {
-            widest_hFOV = displayInfos[i].hFOV;
-            overview_displayID = i;
-          }
-          if (displayInfos[i].hFOV < narrowest_hFOV || displayInfos[i].useOpenXR) {
-            narrowest_hFOV = displayInfos[i].hFOV;
-            detailed_view_displayID = i;
-          }
-        }
-        displayInfos[overview_displayID].overview = true;
-        displayInfos[detailed_view_displayID].detailed_view = true;
-      }
-    }
-    //======================================
 
     for (size_t i = 0; i < displayInfos.size(); i++) {
 
