@@ -489,6 +489,13 @@ void asdp::render::ReceiveDataThread(ReceiverUDP& receiveSocket, size_t maxBytes
   // arrive out of order.
   StreamPacketSortedQueue sortedQueue(50);
 
+  // Keep track of the longest duration for an enqueue operation and report it every
+  // five seconds.  This is useful for determining if the queue is getting backed up and causing
+  // the system to drop frames. Also keep track of how many missing frames gaps we had.
+  std::chrono::steady_clock::time_point lastPrint = std::chrono::steady_clock::now();
+  std::chrono::duration<double> longestEnqueueDuration(0), totalEnqueueDuration(0);
+  size_t numGaps = 0;
+
   // Loop through and receive packets until we've been told to quit.
   DataToSendToGPU data;
   NUCDataPair nucDataPtr;
@@ -521,7 +528,8 @@ void asdp::render::ReceiveDataThread(ReceiverUDP& receiveSocket, size_t maxBytes
     // Add to the sorted queue and then handle any messages that are ready to be processed.
     std::list< std::shared_ptr<StreamPacket> > readyPackets = sortedQueue.AddPacket(packet);
     if (readyPackets.size() > 1) {
-      std::cerr << "Warning: More than one packet ready to process (re-ordered or missing packet)." << std::endl;
+      numGaps++;
+      //std::cerr << "Warning: More than one packet ready to process (re-ordered or missing packet)." << std::endl;
     }
     while (!readyPackets.empty()) {
       std::shared_ptr<StreamPacket> streamPacket = readyPackets.front();
@@ -683,7 +691,24 @@ void asdp::render::ReceiveDataThread(ReceiverUDP& receiveSocket, size_t maxBytes
       data.streamPtr = streamPtr;
       data.gpuNUCGainPtr = nucDataPtr.gainBuffer;
       data.gpuNUCOffsetPtr = nucDataPtr.offsetBuffer;
+      auto enqueueStart = std::chrono::steady_clock::now();
       outQueue->enqueue(std::make_shared<DataToSendToGPU>(data));
+      auto enqueueDuration = std::chrono::steady_clock::now() - enqueueStart;
+      if (enqueueDuration > longestEnqueueDuration) {
+        longestEnqueueDuration = enqueueDuration;
+      }
+      totalEnqueueDuration += enqueueDuration;
+      if (std::chrono::duration<double>(std::chrono::steady_clock::now() - lastPrint).count() > 5.0) {
+        if (numGaps > 0) {
+          std::cout << numGaps << " gaps; Longest enqueue: " << longestEnqueueDuration.count() * 1000
+            << " milliseconds, Total enqueue: " << totalEnqueueDuration.count() * 1000
+            << " milliseconds" << std::endl;
+        }
+        lastPrint = std::chrono::steady_clock::now();
+        longestEnqueueDuration = std::chrono::duration<double>(0);
+        totalEnqueueDuration = std::chrono::duration<double>(0);
+        numGaps = 0;
+      }
     } // End of processing ready packets.
   } // End of while we are not done.
 
