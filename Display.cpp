@@ -2397,10 +2397,12 @@ DisplayXSight::DisplayXSight(std::string NICName, std::shared_ptr<Composite> com
   int desiredDisplay,
   int desiredWidth, int desiredHeight, float fps,
   float horizontalFOVDegrees,
-  bool encodeMonochrome
+  bool encodeMonochrome,
+  uint16_t port
   )
   : Display(composite, client, triggerID, triggerAheadMicroseconds, depthAheadMicroseconds, viewpointOffset, handlers, userData)
   , m_NICName(NICName)
+  , m_port(port)
   , m_timingInfo(timingInfo)
   , m_replaying(replaying)
   , m_impl(new DisplayXSightImpl)
@@ -2630,7 +2632,7 @@ void DisplayXSight::DisplayThread(
   uint32_t time = 0;
 
   // Open a multicast UDP receiver to listen for LOS data from the XSight on the specified port.
-  asdp::ReceiverUDP receiver(m_NICName, 5535, 9000 - 28, false, "224.0.0.50");
+  asdp::ReceiverUDP receiver(m_NICName, m_port, 9000 - 28, false, "224.0.0.50");
   Status status = receiver.GetConstructorStatus();
   if (status != OKAY) {
     m_status = "Failed to create UDP receiver";
