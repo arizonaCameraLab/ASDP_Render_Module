@@ -12,6 +12,22 @@ ImageData::~ImageData()
   }
 }
 
+ImageQueue::~ImageQueue()
+{
+  // Ensure that all of the images are unlocked, removing each element as it is unlocked.
+  m_mutex.lock();
+  while (!m_images.empty()) {
+    if (m_images.back().refCount > 0) {
+      m_mutex.unlock();
+      // Wait for the image to be unlocked, not eating a whole core.
+      std::this_thread::sleep_for(std::chrono::milliseconds(1));
+      m_mutex.lock();
+    } else {
+      m_images.pop_back();
+    }
+  }
+}
+
 std::shared_ptr<ImageData> ImageQueue::GetOldestImage()
 {
   std::lock_guard<std::mutex> lock(m_mutex);
