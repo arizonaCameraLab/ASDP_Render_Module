@@ -409,6 +409,7 @@ protected:
       /// @param replaying True if the display is replaying a recording, false if not.
       /// @param encodeMonochrome True to encode the data as two monochrome values per color pixel,
       /// false to leave as RGB. Some XSight displays require this and some do not.
+      /// @param port The UDP port to listen on for packets from the XSight HMD.  The default is 5535.
       DisplayXSight(std::string NICName, std::shared_ptr<Composite> composite, Display* sharedWindow,
         std::shared_ptr<CoreClient> client, uint8_t triggerID, uint32_t triggerAheadMicroseconds,
         uint32_t depthAheadMicroseconds, std::array<float, 3> viewpointOffset,
@@ -418,7 +419,8 @@ protected:
         int desiredDisplay = 1,
         int desiredWidth = 2560, int desiredHeight = 2048, float fps = 50,
         float horizontalFOVDegrees = 70.0f,
-        bool encodeMonochrome = true
+        bool encodeMonochrome = true,
+        uint16_t port = 5535
       );
 
       void SetNowPlaying(bool nowPlaying) override;
@@ -428,6 +430,9 @@ protected:
     private:
       /// Name of the NIC to use for UDP packets from the XSight HMD.
       std::string m_NICName;
+
+      /// Port to listen on for UDP packets from the XSight HMD.
+      uint16_t m_port;
 
       /// Where to store render timing info, if not nullptr.
       RenderTimingInfo* m_timingInfo;
