@@ -1,4 +1,29 @@
 cmake_minimum_required(VERSION 3.16.0)
+cmake_policy(VERSION 3.5)
+
+# Handle MSVC runtime library for both old and new CMake versions
+if(POLICY CMP0091)
+    # CMake 3.15+ : Use modern runtime library handling
+    cmake_policy(SET CMP0091 NEW)
+    if(MSVC)
+        set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
+    endif()
+else()
+    # CMake < 3.15: Use legacy flag manipulation
+    if(MSVC)
+        # Force /MD for all configurations
+        set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /MD")
+        set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} /MDd")
+        set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} /MD")
+        set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} /MDd")
+
+        # Remove /MT flags
+        foreach(flag_var CMAKE_CXX_FLAGS CMAKE_CXX_FLAGS_DEBUG CMAKE_CXX_FLAGS_RELEASE
+                         CMAKE_C_FLAGS CMAKE_C_FLAGS_DEBUG CMAKE_C_FLAGS_RELEASE)
+            string(REPLACE "/MT" "/MD" ${flag_var} "${${flag_var}}")
+        endforeach()
+    endif()
+endif()
 
 if(UNIX)
 # @todo Add 100;120 once we've upgraded to a newer version of Linux that has CUDA 13.0 available
@@ -11,6 +36,7 @@ project(ASDP_Render_Module LANGUAGES CUDA CXX C)
 # We require C++17 for the use of std::filesystem.
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
 list(APPEND CMAKE_PREFIX_PATH
   F:/Packages/GLEW/glew-2.2.0
   "C:/Program Files/opencv/build/x64/vc16/lib"
@@ -71,6 +97,22 @@ FetchContent_Declare(
   GIT_SUBMODULES_RECURSE TRUE
 )
 FetchContent_MakeAvailable(Geogram)
+
+# Force Geogram runtime library (works with both old and new CMake)
+if(MSVC AND TARGET geogram)
+    if(POLICY CMP0091)
+        # CMake 3.15+
+        set_target_properties(geogram PROPERTIES
+            MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL"
+        )
+    else()
+        # CMake < 3.15: Use compile options
+        target_compile_options(geogram PRIVATE
+            $<$<CONFIG:Release>:/MD>
+            $<$<CONFIG:Debug>:/MDd>
+        )
+    endif()
+endif()
 
 # Geogram built GLFW3 for us as part of its build so we just need to find it.
 find_package(glfw3 REQUIRED)
@@ -196,7 +238,7 @@ target_include_directories(Render_Module PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/dependencies/glm"
 )
 target_link_libraries(Render_Module PUBLIC
-  ASDP_Core_API::ASDP_Core_API glfw GLEW::glew OpenGL::GL geogram freetype nlohmann_json::nlohmann_json
+  ASDP_Core_API::ASDP_Core_API glfw GLEW::GLEW OpenGL::GL geogram freetype nlohmann_json::nlohmann_json
 )
 if(OPENXR_FOUND)
   target_compile_definitions(Render_Module PRIVATE XR_USE_GRAPHICS_API_OPENGL)
@@ -281,10 +323,10 @@ if(WIN32)
       set(${result} "${found_element}" PARENT_SCOPE)
   endfunction()
 
-  # Assuming GLEW::glew is the imported target from find_package(GLEW REQUIRED)
+  # Assuming GLEW::GLEW is the imported target from find_package(GLEW REQUIRED)
   # Use that to find all of the glew32.dll files in neighboring directories and then pick the one
   # that has "x64" in the path.
-  get_target_property(GLEW_INCLUDE_DIRS GLEW::glew INTERFACE_INCLUDE_DIRECTORIES)
+  get_target_property(GLEW_INCLUDE_DIRS GLEW::GLEW INTERFACE_INCLUDE_DIRECTORIES)
   file(GLOB_RECURSE GLEW_DLL "${GLEW_INCLUDE_DIRS}/../*glew32.dll")
   find_element_with_substring(GLEW_DLL2 "${GLEW_DLL}" "x64")
 
@@ -330,7 +372,7 @@ if(BUILD_UTILITIES)
       spot_tracker_library
       ASDP_Core_API::ASDP_Core_API
       glfw
-      GLEW::glew
+      GLEW::GLEW
       OpenGL::GL
       Calibration_Helpers
       Gimbal
