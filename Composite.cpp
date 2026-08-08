@@ -1175,6 +1175,11 @@ void CompositeCameras::SetupRenderFrame(asdp::Time scanOutTime)
     images.push_back(cameraRenderInfo->m_imageQueue->LockNewestImages(framesToGrab));
     if (images.back().size() != framesToGrab) {
       std::cerr << "Composite::SetupRenderFrame(): Could not get all needed images, skipping frame" << std::endl;
+      for (auto const& imList : images) {
+        for (auto const& im : imList) {
+          cameraRenderInfo->m_imageQueue->UnlockImage(im);
+        }
+      }
       return;
     }
   }

@@ -252,6 +252,11 @@ static std::vector< std::shared_ptr<ImageData> > GetConsistentImageSet()
     images.push_back(cameraRenderInfo->m_imageQueue->LockNewestImages(2));
     if (images.back().size() != 2) {
       std::cerr << "GetConsistentImageSet(): Could not get all needed images, skipping frame" << std::endl;
+      for (auto const& imList : images) {
+        for (auto const& image : imList) {
+          cameraRenderInfo->m_imageQueue->UnlockImage(image);
+        }
+      }
       return imageSet;
     }
   }
