@@ -53,10 +53,10 @@ if(WIN32)
       COMMENT "Running windeployqt to deploy Qt DLLs"
   )
 
-  # Assuming GLEW::glew is the imported target from find_package(GLEW REQUIRED)
+  # Assuming GLEW::GLEW is the imported target from find_package(GLEW REQUIRED)
   # Use that to find all of the glew32.dll files in neighboring directories and then pick the one
   # that has "x64" in the path.
-  get_target_property(GLEW_INCLUDE_DIRS GLEW::glew INTERFACE_INCLUDE_DIRECTORIES)
+  get_target_property(GLEW_INCLUDE_DIRS GLEW::GLEW INTERFACE_INCLUDE_DIRECTORIES)
   file(GLOB_RECURSE GLEW_DLL "${GLEW_INCLUDE_DIRS}/../*glew32.dll")
   find_element_with_substring(GLEW_DLL2 "${GLEW_DLL}" "x64")
 
