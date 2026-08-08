@@ -23,6 +23,7 @@ set(GLEW_USE_STATIC OFF CACHE BOOL "Force static GLEW linking")
 
 # Search paths
 set(_GLEW_SEARCH_DIRS
+    ${CMAKE_PREFIX_PATH}
     ${GLEW_ROOT}
     ${GLEW_ROOT}/lib
     ${GLEW_ROOT}/lib64
@@ -43,15 +44,15 @@ find_path(GLEW_INCLUDE_DIR
 
 # Locate static and shared libs
 find_library(GLEW_STATIC_LIB
-    NAMES GLEW glew libGLEW
-    PATH_SUFFIXES lib lib64
+    NAMES GLEW glew libGLEW glew32s
+    PATH_SUFFIXES lib lib64 lib/Release/x64
     PATHS ${_GLEW_SEARCH_DIRS}
     NO_DEFAULT_PATH
 )
 
 find_library(GLEW_SHARED_LIB
-    NAMES GLEW glew libGLEW
-    PATH_SUFFIXES lib lib64
+    NAMES GLEW glew libGLEW glew32
+    PATH_SUFFIXES lib lib64 lib/Release/x64
     PATHS ${_GLEW_SEARCH_DIRS}
 )
 
