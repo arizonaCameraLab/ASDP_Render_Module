@@ -1356,7 +1356,6 @@ int spin_up(std::shared_ptr<CoreClient> client, int &serialNumber, std::shared_p
   std::vector<GLuint> &toneMapTextures, double &staticDepth, std::atomic<bool> &done,
   std::string &ip_address, bool &doStreamPoses, uint32_t &frameStride,
   std::vector<std::string> &analysisModuleURLs,
-  std::shared_ptr<asdp::render::imageStatistics::MeanStdGroup> &meanStdGroup,
   std::shared_ptr<RangeEstimator> &rangeEstimator,
   std::shared_ptr<ClockSynchronizer> &clockSync, std::shared_ptr<Timer> &timer,
   std::shared_ptr<DisplayTexture> &depthContext, std::vector<std::thread> &copyDataToGPUThreads,
@@ -1651,8 +1650,9 @@ int spin_up(std::shared_ptr<CoreClient> client, int &serialNumber, std::shared_p
     // Make a display object that shares textures with the others.
     std::shared_ptr<Display> display = std::make_shared<DisplayTexture>(displayTexture.get());
     // Make a MeanStdGroup object to handle the statistics.
-    meanStdGroup = std::make_shared<asdp::render::imageStatistics::MeanStdGroup>(g_visibleCameras,
-      display, 1.0 / cameraFPS);
+    std::shared_ptr<asdp::render::imageStatistics::MeanStdGroup> meanStdGroup =
+      std::make_shared<asdp::render::imageStatistics::MeanStdGroup>(g_visibleCameras,
+        display, 1.0 / cameraFPS);
     // Make a RangeEstimator object to handle the range.
     rangeEstimator = std::make_shared<RangeEstimatorStdRanges>(meanStdGroup,
       autoRangeStdBelow, autoRangeStdAbove);
@@ -2096,7 +2096,6 @@ int spin_down(std::shared_ptr<CoreClient> client, std::atomic<bool>& done,
     return 36;
   }
   cameraRenderInfos.clear();
-
   glDeleteTextures(toneMapTextures.size(), toneMapTextures.data());
   if (!displayTexture->ReturnContext()) {
     std::cerr << "Error returning context to displayTexture." << std::endl;
@@ -2655,7 +2654,6 @@ int main(int argc, char** argv)
     std::vector< std::shared_ptr<ReceiverUDP> > UDPReceivers;
     std::vector<GLuint> toneMapTextures;  ///< Stores these for later deletion or replacement.
     std::atomic<bool> done{false};
-    std::shared_ptr<asdp::render::imageStatistics::MeanStdGroup> meanStdGroup;
     std::shared_ptr<RangeEstimator> rangeEstimator;
     std::shared_ptr<ClockSynchronizer> clockSync;
     std::shared_ptr<DisplayTexture> depthContext;
@@ -2670,7 +2668,7 @@ int main(int argc, char** argv)
       autoRangeStdBelow, autoRangeStdAbove, maxDepth, depthThreshold, poseAdjuster, cameraRenderInfos,
       cameraIDs,
       toneMapTextures, staticDepth, done, ip_address, doStreamPoses, frameStride, analysisModuleURLs,
-      meanStdGroup, rangeEstimator, clockSync, timer, depthContext, copyDataToGPUThreads,
+      rangeEstimator, clockSync, timer, depthContext, copyDataToGPUThreads,
       analysisThread, dataQueues, receiveDataThreads, lockRotation, disableLatencyCompensation);
     if (ret != 0) {
       return ret;
@@ -2820,8 +2818,9 @@ int main(int argc, char** argv)
               // Make a display object that shares textures with the others.
               std::shared_ptr<Display> display = std::make_shared<DisplayTexture>(displayTexture.get());
               // Make a MeanStdGroup object to handle the statistics.
-              meanStdGroup = std::make_shared<asdp::render::imageStatistics::MeanStdGroup>(g_visibleCameras,
-                display, 1.0 / cameraFPS);
+              std::shared_ptr<asdp::render::imageStatistics::MeanStdGroup> meanStdGroup =
+                std::make_shared<asdp::render::imageStatistics::MeanStdGroup>(g_visibleCameras,
+                  display, 1.0 / cameraFPS);
               rangeEstimator = std::make_shared<RangeEstimatorStdRanges>(meanStdGroup, stdBelow, stdAbove);
             }
             for (auto& composite : g_composites) {
@@ -2857,7 +2856,7 @@ int main(int argc, char** argv)
               autoRangeStdBelow, autoRangeStdAbove, maxDepth, depthThreshold, poseAdjuster, cameraRenderInfos,
               cameraIDs,
               toneMapTextures, staticDepth, done, ip_address, doStreamPoses, frameStride, analysisModuleURLs,
-              meanStdGroup, rangeEstimator, clockSync, timer, depthContext, copyDataToGPUThreads,
+              rangeEstimator, clockSync, timer, depthContext, copyDataToGPUThreads,
               analysisThread, dataQueues, receiveDataThreads, lockRotation, disableLatencyCompensation);
 
             // Set the new composites in each of the displays.
