@@ -2017,9 +2017,13 @@ int spin_down(std::shared_ptr<CoreClient> client, std::atomic<bool>& done,
   std::vector< std::shared_ptr< SpinFreeQueue< std::shared_ptr<DataToSendToGPU> > > > &dataQueues,
   std::vector<std::thread> &receiveDataThreads, std::shared_ptr<DisplayTexture> &displayTexture,
   std::vector< std::shared_ptr<asdp::render::CameraRenderInfo> > &cameraRenderInfos,
-  std::vector<GLuint> &toneMapTextures
+  std::vector<GLuint> &toneMapTextures,
+  std::shared_ptr<RangeEstimator>& rangeEstimator
   )
 {
+  // Done with our RangeEstimator, if any.
+  rangeEstimator.reset();
+
   // Stopping streaming on the cameras
   std::cout << "Stop streaming from " << cameraIDs.size() << " cameras" << std::endl;
   for (size_t i = 0; i < cameras.size(); i++) {
@@ -2837,7 +2841,7 @@ int main(int argc, char** argv)
             // Spin down the existing camera
             ret = spin_down(client, done, cameras, cameraIDs, UDPReceivers, ip_address, depthContext,
               copyDataToGPUThreads, analysisThread, dataQueues, receiveDataThreads, displayTexture,
-              cameraRenderInfos, toneMapTextures);
+              cameraRenderInfos, toneMapTextures, rangeEstimator);
             if (ret != 0) {
               return ret;
             }
@@ -2949,7 +2953,7 @@ int main(int argc, char** argv)
 
     ret = spin_down(client, done, cameras, cameraIDs, UDPReceivers, ip_address, depthContext,
       copyDataToGPUThreads, analysisThread, dataQueues, receiveDataThreads, displayTexture,
-      cameraRenderInfos, toneMapTextures);
+      cameraRenderInfos, toneMapTextures, rangeEstimator);
     if (ret != 0) {
       return ret;
     }
