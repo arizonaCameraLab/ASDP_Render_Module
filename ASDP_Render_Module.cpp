@@ -1356,7 +1356,6 @@ int spin_up(std::shared_ptr<CoreClient> client, int &serialNumber, std::shared_p
   std::vector<GLuint> &toneMapTextures, double &staticDepth, std::atomic<bool> &done,
   std::string &ip_address, bool &doStreamPoses, uint32_t &frameStride,
   std::vector<std::string> &analysisModuleURLs,
-  std::shared_ptr<RangeEstimator> &rangeEstimator,
   std::shared_ptr<ClockSynchronizer> &clockSync, std::shared_ptr<Timer> &timer,
   std::shared_ptr<DisplayTexture> &depthContext, std::vector<std::thread> &copyDataToGPUThreads,
   std::thread &analysisThread,
@@ -1645,7 +1644,7 @@ int spin_up(std::shared_ptr<CoreClient> client, int &serialNumber, std::shared_p
   }
 
   // If we've been asked to do standard-deviation-based auto-ranging, set that up.
-  rangeEstimator = std::make_shared<RangeEstimatorFixed>();
+  std::shared_ptr<RangeEstimator> rangeEstimator = std::make_shared<RangeEstimatorFixed>();
   if (autoRangeStdAbove != 0 || autoRangeStdBelow != 0) {
     // Make a display object that shares textures with the others.
     std::shared_ptr<Display> display = std::make_shared<DisplayTexture>(displayTexture.get());
@@ -2017,13 +2016,10 @@ int spin_down(std::shared_ptr<CoreClient> client, std::atomic<bool>& done,
   std::vector< std::shared_ptr< SpinFreeQueue< std::shared_ptr<DataToSendToGPU> > > > &dataQueues,
   std::vector<std::thread> &receiveDataThreads, std::shared_ptr<DisplayTexture> &displayTexture,
   std::vector< std::shared_ptr<asdp::render::CameraRenderInfo> > &cameraRenderInfos,
-  std::vector<GLuint> &toneMapTextures,
-  std::shared_ptr<RangeEstimator>& rangeEstimator
+  std::vector<GLuint> &toneMapTextures
   )
 {
   // Done with our RangeEstimator, if any.
-  rangeEstimator.reset();
-
   // Stopping streaming on the cameras
   std::cout << "Stop streaming from " << cameraIDs.size() << " cameras" << std::endl;
   for (size_t i = 0; i < cameras.size(); i++) {
@@ -2654,7 +2650,6 @@ int main(int argc, char** argv)
     std::vector< std::shared_ptr<ReceiverUDP> > UDPReceivers;
     std::vector<GLuint> toneMapTextures;  ///< Stores these for later deletion or replacement.
     std::atomic<bool> done{false};
-    std::shared_ptr<RangeEstimator> rangeEstimator;
     std::shared_ptr<ClockSynchronizer> clockSync;
     std::shared_ptr<DisplayTexture> depthContext;
     std::vector<std::thread> copyDataToGPUThreads;
@@ -2668,7 +2663,7 @@ int main(int argc, char** argv)
       autoRangeStdBelow, autoRangeStdAbove, maxDepth, depthThreshold, poseAdjuster, cameraRenderInfos,
       cameraIDs,
       toneMapTextures, staticDepth, done, ip_address, doStreamPoses, frameStride, analysisModuleURLs,
-      rangeEstimator, clockSync, timer, depthContext, copyDataToGPUThreads,
+      clockSync, timer, depthContext, copyDataToGPUThreads,
       analysisThread, dataQueues, receiveDataThreads, lockRotation, disableLatencyCompensation);
     if (ret != 0) {
       return ret;
@@ -2812,6 +2807,7 @@ int main(int argc, char** argv)
             }
             float stdBelow = kioskInfo[kioskIndex]["parameters"][0].get<float>();
             float stdAbove = kioskInfo[kioskIndex]["parameters"][1].get<float>();
+            std::shared_ptr<RangeEstimator> rangeEstimator;
             if (stdBelow == 0 && stdAbove == 0) {
               rangeEstimator = nullptr;
             } else {
@@ -2840,7 +2836,7 @@ int main(int argc, char** argv)
             // Spin down the existing camera
             ret = spin_down(client, done, cameras, cameraIDs, UDPReceivers, ip_address, depthContext,
               copyDataToGPUThreads, analysisThread, dataQueues, receiveDataThreads, displayTexture,
-              cameraRenderInfos, toneMapTextures, rangeEstimator);
+              cameraRenderInfos, toneMapTextures);
             if (ret != 0) {
               return ret;
             }
@@ -2856,7 +2852,7 @@ int main(int argc, char** argv)
               autoRangeStdBelow, autoRangeStdAbove, maxDepth, depthThreshold, poseAdjuster, cameraRenderInfos,
               cameraIDs,
               toneMapTextures, staticDepth, done, ip_address, doStreamPoses, frameStride, analysisModuleURLs,
-              rangeEstimator, clockSync, timer, depthContext, copyDataToGPUThreads,
+              clockSync, timer, depthContext, copyDataToGPUThreads,
               analysisThread, dataQueues, receiveDataThreads, lockRotation, disableLatencyCompensation);
 
             // Set the new composites in each of the displays.
@@ -2952,7 +2948,7 @@ int main(int argc, char** argv)
 
     ret = spin_down(client, done, cameras, cameraIDs, UDPReceivers, ip_address, depthContext,
       copyDataToGPUThreads, analysisThread, dataQueues, receiveDataThreads, displayTexture,
-      cameraRenderInfos, toneMapTextures, rangeEstimator);
+      cameraRenderInfos, toneMapTextures);
     if (ret != 0) {
       return ret;
     }
