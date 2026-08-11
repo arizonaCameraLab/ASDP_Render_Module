@@ -2477,6 +2477,23 @@ int main(int argc, char** argv)
     return 2;
   }
 
+  // Verify that none of the displays have a horizontal field of view greater than 360 degrees
+  // or equal to or greater than 180 degrees unless --enableCP is set for that display.
+  for (size_t i = 0; i < displayInfos.size(); i++) {
+    if (displayInfos[i].hFOV > 360.0f) {
+      std::cerr << "Error: Display " << i << " has a horizontal field of view greater than 360 degrees." << std::endl;
+      return 2;
+    }
+    if (displayInfos[i].hFOV <= 0.0f) {
+      std::cerr << "Error: Display " << i << " has a horizontal field of view less than 0 degrees." << std::endl;
+      return 2;
+    }
+    if (displayInfos[i].hFOV >= 180.0f && !displayInfos[i].enableCP) {
+      std::cerr << "Error: Display " << i << " has a horizontal field of view equal to or greater than 180 degrees without --enableCP." << std::endl;
+      return 2;
+    }
+  }
+
   //======================================
   // Added by Sang Yoon to enable the display interface of overview plus detail view.
   if (enableOD) {
