@@ -2841,6 +2841,11 @@ int main(int argc, char** argv)
               return ret;
             }
 
+            // Remove the old composite in each of the displays.
+            for (size_t i = 0; i < displays.size(); i++) {
+              displays[i]->UpdateComposite(nullptr);
+            }
+
             // Change the serial number and stream ID.
             serialNumber = cameraID;
             replayStreamID = streamID;
@@ -2854,13 +2859,13 @@ int main(int argc, char** argv)
               toneMapTextures, staticDepth, done, ip_address, doStreamPoses, frameStride, analysisModuleURLs,
               clockSync, timer, depthContext, copyDataToGPUThreads,
               analysisThread, dataQueues, receiveDataThreads, lockRotation, disableLatencyCompensation);
+            if (ret != 0) {
+              return ret;
+            }
 
             // Set the new composites in each of the displays.
             for (size_t i = 0; i < displays.size(); i++) {
               displays[i]->UpdateComposite(g_composites[i]);
-            }
-            if (ret != 0) {
-              return ret;
             }
             std::cout << " Switched to camera ID " << cameraID << " and stream ID " << streamID << std::endl;
           } else {
