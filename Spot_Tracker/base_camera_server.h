@@ -157,7 +157,7 @@ double image_wrapper_square_sum(const image_wrapper &img, unsigned rgb = 0);
 class double_image: public image_wrapper {
 public:
   double_image(int minx = 0, int maxx = 255, int miny = 0, int maxy = 255);
-  ~double_image();
+  virtual ~double_image();
 
   // Tell what the range is for the image.
   virtual void	read_range(int &minx, int &maxx, int &miny, int &maxy) const;
