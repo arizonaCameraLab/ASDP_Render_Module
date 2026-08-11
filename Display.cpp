@@ -363,7 +363,7 @@ void DisplayWindow::SetViewportSizeAndFOVs(ViewRenderInfo& viewInfo, int width, 
   //======================================
   // Added by Sang Yoon to calculate a vertical FOV for cylindrical projection
   auto composite = std::atomic_load(&m_composite);
-  if (composite->m_CP_enabled)
+  if (composite && composite->m_CP_enabled)
       halfAngle = m_impl->m_horizontalFOVDegrees / 2.0 * aspectRatio;
   //======================================
 
