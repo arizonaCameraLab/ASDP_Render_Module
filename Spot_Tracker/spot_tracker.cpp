@@ -2035,7 +2035,7 @@ void Tracker_Collection_Manager::add_tracker(double x, double y, double radius)
     d_trackers.push_back(
       new Spot_Information(d_xy_tracker_creator(x,y,radius),
                            d_z_tracker_creator()));
-    d_active_tracker = d_trackers.size()-1;
+    d_active_tracker = static_cast<int>(d_trackers.size()-1);
 
     // Set the last position in case we're doing prediction.
     spot_tracker_XY *tkr = d_trackers.back()->xytracker();

@@ -714,17 +714,17 @@ public:
         maxXRatio = std::max(maxXRatio, fabs(distortedCorner[0] / xHalfWidth));
         maxYRatio = std::max(maxYRatio, fabs(distortedCorner[1] / yHalfWidth));
       }
-      fovsDeg[0] = maxHFOV;
-      fovsDeg[1] = maxVFOV;
+      fovsDeg[0] = static_cast<float>(maxHFOV);
+      fovsDeg[1] = static_cast<float>(maxVFOV);
 
       // Use the ratio of the new and original fields of view to scale the pixel count, making sure that
       // the results are an even multiple of the number of samples in X and Y.
       std::array<unsigned, 2> pixelCounts;
       uint16_t maxX = std::max(cameras[i][0]->m_resolutionPixels[0], cameras[i][1]->m_resolutionPixels[0]);
       uint16_t maxY = std::max(cameras[i][0]->m_resolutionPixels[1], cameras[i][1]->m_resolutionPixels[1]);
-      pixelCounts[0] = maxX * maxXRatio;
+      pixelCounts[0] = static_cast<unsigned>(maxX * maxXRatio);
       if (pixelCounts[0] % m_nx != 0) { pixelCounts[0] += m_nx - (pixelCounts[0] % m_nx); }
-      pixelCounts[1] = maxY * maxYRatio;
+      pixelCounts[1] = static_cast<unsigned>(maxY * maxYRatio);
       if (pixelCounts[1] % m_ny != 0) { pixelCounts[1] += m_ny - (pixelCounts[1] % m_ny); }
 
       //std::cout << "XXX Position: " << position.x << " " << position.y << " " << position.z
@@ -778,13 +778,13 @@ public:
           // Fill in the render info.
           ViewRenderInfo vri;
           for (size_t i = 0; i < 3; i++) {
-            vri.viewpoint[i] = cpi.m_position[i];
+            vri.viewpoint[i] = static_cast<float>(cpi.m_position[i]);
           }
           // The vri.orientation quaternion is in WXYZ order, but the glm quaternion is in XYZW order.
-          vri.orientation[0] = cpi.m_orientation.w;
-          vri.orientation[1] = cpi.m_orientation.x;
-          vri.orientation[2] = cpi.m_orientation.y;
-          vri.orientation[3] = cpi.m_orientation.z;
+          vri.orientation[0] = static_cast<float>(cpi.m_orientation.w);
+          vri.orientation[1] = static_cast<float>(cpi.m_orientation.x);
+          vri.orientation[2] = static_cast<float>(cpi.m_orientation.y);
+          vri.orientation[3] = static_cast<float>(cpi.m_orientation.z);
           vri.leftHalfFOV = -cpi.m_fovsDeg[0] / 2.0f;
           vri.rightHalfFOV = cpi.m_fovsDeg[0] / 2.0f;
           vri.bottomHalfFOV = -cpi.m_fovsDeg[1] / 2.0f;
@@ -996,8 +996,8 @@ public:
       // Find the best depth value for each region.
       // Determine the best-matched and worse-matched scores at each location.
       std::vector<float> bestDepths(numRegions);
-      std::vector<float> bestDepthValues(numRegions, 1e30);
-      std::vector<float> worstDepthValues(numRegions, -1e30);
+      std::vector<float> bestDepthValues(numRegions, 1e30f);
+      std::vector<float> worstDepthValues(numRegions, -1e30f);
       for (CameraPairInfo::PerDepth& pd : cpi.m_perDepths) {
         float depth = pd.m_depth;
         for (size_t i = 0; i < pd.m_CPURegionBuffer.size(); i++) {
@@ -1217,8 +1217,8 @@ static __host__ __device__ float estimateDepth(float *data, const Vec3& point, c
   float yScaled = y * ny / (ny - 1.0f);
   float xCoord = (xScaled + 1.0f) / 2.0f * (nx - 1.0f);
   xCoord = clamp(xCoord, 0.0f, nx - 1.0f);
-  float yCoord = (yScaled + 1.0f) / 2.0 * (ny - 1.0f);
-  yCoord = clamp(yCoord, 0.0, ny - 1.0f);
+  float yCoord = (yScaled + 1.0f) / 2.0f * (ny - 1.0f);
+  yCoord = clamp(yCoord, 0.0f, ny - 1.0f);
 
   // Look up the four values (floor and ceiling) around the point and use bilinear interpolation
   // to determine the depth at the point.
@@ -1255,7 +1255,7 @@ static __host__ __device__ float estimateDepth(float *data, const Vec3& point, c
 static bool intersectRayWithPlane(const glm::dvec3& rayStart, const glm::dvec3& rayDir,
   const glm::dvec3& planeStart, const glm::dvec3& planeNormal, glm::dvec3& intersectionPoint)
 {
-  float denom = glm::dot(rayDir, planeNormal);
+  float denom = static_cast<float>(glm::dot(rayDir, planeNormal));
   if (glm::epsilonEqual(denom, 0.0f, glm::epsilon<float>())) {
     // The ray is parallel to the plane
     return false;
@@ -1392,7 +1392,7 @@ void DepthEstimator::UpdateMeshesCPU(std::vector<std::shared_ptr<CameraRenderInf
         double xOff = x - xCenter;
         VertexInfo& v = cam.m_mesh.vertexInfo[y * (cam.m_mesh.nx + 1) + x];
         double offsetFactor = 1.0 + offsetScale * sqrt(xOff * xOff + yOff * yOff);
-        v.depth = EstimateDepth(cameraPosition, v.normalizedOffset) * offsetFactor;
+        v.depth = static_cast<float>(EstimateDepth(cameraPosition, v.normalizedOffset) * offsetFactor);
       }
     }
   }
@@ -1483,7 +1483,7 @@ void DepthEstimator::UpdateMeshesGPU(std::vector<std::shared_ptr<CameraRenderInf
       m_impl->m_cameraPairsKernelData->kData,
       Vec3(c->m_positionMeters[0], c->m_positionMeters[1], c->m_positionMeters[2]),
       m_impl->m_cameraOffsetInfoKernelData[c.get()]->kData,
-      m_impl->m_defaultDepth,
+      static_cast<float>(m_impl->m_defaultDepth),
       c->m_mesh.nx, c->m_mesh.ny,
       m_impl->m_nx, m_impl->m_ny,
       m_impl->m_cameraDepthInfoKernelData[c.get()]->kData
@@ -1523,7 +1523,7 @@ void DepthEstimator::UpdateMeshesGPU(std::vector<std::shared_ptr<CameraRenderInf
         double xOff = x - xCenter;
         VertexInfo& v = cPtr->m_mesh.vertexInfo[y * (cPtr->m_mesh.nx + 1) + x];
         double offsetFactor = 1.0 + offsetScale * sqrt(xOff * xOff + yOff * yOff);
-        v.depth *= offsetFactor;
+        v.depth *= static_cast<float>(offsetFactor);
       }
     }
   }
@@ -1703,7 +1703,7 @@ float DepthEstimator::SpeedTestSingleEstimation(uint16_t width, uint16_t height,
   }
   std::chrono::high_resolution_clock::time_point end = std::chrono::high_resolution_clock::now();
   std::chrono::duration<double> elapsed = end - start;
-  return elapsed.count() / iterations;
+  return static_cast<float>(elapsed.count() / iterations);
 }
 
 __global__ void TestEstimateDepthKernel(float* depthInfo, Vec3 point, Vec3 direction, float defaultDepth,
@@ -2089,7 +2089,7 @@ std::string DepthEstimator::Test()
 
       // Test shooting at a slight angle to the +Y axis towards the plane.  The depth should scale
       // with the length of the long edge of the triangle.
-      float dx = 0.1;
+      float dx = 0.1f;
       estimatedDepth = de.EstimateDepth(glm::vec3(0, 0, 0), glm::vec3(dx, 1, 0));
       float expectedDepth = sqrt(1 + dx * dx) * depth;
       if (fabs(estimatedDepth - expectedDepth) > expectedDepth * 1e-6) {
@@ -2098,7 +2098,7 @@ std::string DepthEstimator::Test()
 
       // Test shooting at a slight angle in Z to the +Y axis towards the plane.  The depth should scale
       // with the length of the long edge of the triangle.
-      float dy = 0.2;
+      float dy = 0.2f;
       estimatedDepth = de.EstimateDepth(glm::vec3(0, 0, 0), glm::vec3(0, 1, dy));
       expectedDepth = sqrt(1 + dy * dy) * depth;
       if (fabs(estimatedDepth - expectedDepth) > expectedDepth * 1e-6) {
@@ -2107,7 +2107,7 @@ std::string DepthEstimator::Test()
 
       // Test shooting at an angle that is beyond the edge.  It should use the same depth as the
       // value at the edge.
-      dx = 2.0;
+      dx = 2.0f;
       estimatedDepth = de.EstimateDepth(glm::vec3(0, 0, 0), glm::vec3(dx, 1, 0));
       expectedDepth = sqrt(1 + dx * dx) * depth;
       if (fabs(estimatedDepth - expectedDepth) > expectedDepth * 1e-6) {
@@ -2129,7 +2129,7 @@ std::string DepthEstimator::Test()
 
         // Test shooting at a slight angle to the +Y axis towards the plane.  The depth should scale
         // with the length of the long edge of the triangle.
-        float dx = 0.1;
+        float dx = 0.1f;
         estimatedDepth = estimateDepth(kd.data, glm::vec3(0, 0, 0), glm::vec3(dx, 1, 0), defaultDepth,
           de.m_impl->m_nx, de.m_impl->m_ny);
         expectedDepth = sqrt(1 + dx * dx) * depth;
@@ -2139,7 +2139,7 @@ std::string DepthEstimator::Test()
 
         // Test shooting at a slight angle in Z to the +Y axis towards the plane.  The depth should scale
         // with the length of the long edge of the triangle.
-        float dy = 0.2;
+        float dy = 0.2f;
         estimatedDepth = estimateDepth(kd.data, glm::vec3(0, 0, 0), glm::vec3(0, 1, dy), defaultDepth,
           de.m_impl->m_nx, de.m_impl->m_ny);
         expectedDepth = sqrt(1 + dy * dy) * depth;
@@ -2179,7 +2179,7 @@ std::string DepthEstimator::Test()
 
       // Test shooting at a slight angle in X to the +Y axis towards the plane.  The depth should scale
       // with the length of the long edge of the triangle.
-      dx = 0.1;
+      dx = 0.1f;
       estimatedDepth = de.EstimateDepth(glm::vec3(0, 0, 0), glm::vec3(dx, 1, 0));
       expectedDepth = sqrt(1 + dx * dx) * depth;
       if (fabs(estimatedDepth - expectedDepth) > expectedDepth * 1e-6) {
@@ -2218,7 +2218,7 @@ std::string DepthEstimator::Test()
 
         // Test shooting at a slight angle in X to the +Y axis towards the plane.  The depth should scale
         // with the length of the long edge of the triangle.
-        dx = 0.1;
+        dx = 0.1f;
         estimatedDepth = estimateDepth(kd.data, glm::vec3(0, 0, 0), glm::vec3(dx, 1, 0), defaultDepth,
           de.m_impl->m_nx, de.m_impl->m_ny);
         expectedDepth = sqrt(1 + dx * dx) * depth;
@@ -2244,7 +2244,7 @@ std::string DepthEstimator::Test()
       double centerDepth = depth * 1.5;
       for (size_t x = nx/4; x < 3*nx/4; x++) {
         for (size_t y = 0; y < 3*ny/4; y++) {
-          de.m_impl->m_cameraPairs[0]->m_depths[y * nx + x] = centerDepth;
+          de.m_impl->m_cameraPairs[0]->m_depths[y * nx + x] = static_cast<float>(centerDepth);
         }
       }
 
@@ -2266,7 +2266,7 @@ std::string DepthEstimator::Test()
       // Test shooting between two points and make sure that the answer is between the two depths.
       // We aim for slightly over halfway to the edge, which should be between the center and
       // outer points.
-      dx = tan(glm::radians(de.m_impl->m_cameraPairs[0]->m_fovsDeg[0]) / 2.0) / 2.0 + 0.01;
+      dx = tan(glm::radians(de.m_impl->m_cameraPairs[0]->m_fovsDeg[0]) / 2.0f) / 2.0f + 0.01f;
       double below = sqrt(1 + dx * dx) * depth;
       double above = sqrt(1 + dx * dx) * centerDepth;
       estimatedDepth = de.EstimateDepth(glm::vec3(0, 0, 0), glm::vec3(dx, 1, 0));
@@ -2288,7 +2288,7 @@ std::string DepthEstimator::Test()
 
       // Test in -Y screen (-Z world) and make sure that the answer is centerDepth.
       dz = -dz;
-      expectedDepth = sqrt(1 + dz * dz) * centerDepth;
+      expectedDepth = static_cast<float>(sqrt(1 + dz * dz) * centerDepth);
       estimatedDepth = de.EstimateDepth(glm::vec3(0, 0, 0), glm::vec3(0, 1, dz));
       if (fabs(estimatedDepth - expectedDepth) > expectedDepth * 1e-6) {
         return "EstimateDepth() varying depth failed for interpolating between two points in -Y";
@@ -2320,7 +2320,7 @@ std::string DepthEstimator::Test()
         // Test shooting between two points and make sure that the answer is between the two depths.
         // We aim for slightly over halfway to the edge, which should be between the center and
         // outer points.
-        dx = tan(glm::radians(de.m_impl->m_cameraPairs[0]->m_fovsDeg[0]) / 2.0) / 2.0 + 0.01;
+        dx = tan(glm::radians(de.m_impl->m_cameraPairs[0]->m_fovsDeg[0]) / 2.0f) / 2.0f + 0.01f;
         double below = sqrt(1 + dx * dx) * depth;
         double above = sqrt(1 + dx * dx) * centerDepth;
         estimatedDepth = estimateDepth(kd.data, glm::vec3(0, 0, 0), glm::vec3(dx, 1, 0), defaultDepth,
@@ -2344,7 +2344,7 @@ std::string DepthEstimator::Test()
 
         // Test in -Y screen (-Z world) and make sure that the answer is centerDepth.
         dz = -dz;
-        expectedDepth = sqrt(1 + dz * dz) * centerDepth;
+        expectedDepth = static_cast<float>(sqrt(1 + dz * dz) * centerDepth);
         estimatedDepth = estimateDepth(kd.data, glm::vec3(0, 0, 0), glm::vec3(0, 1, dz), defaultDepth,
           de.m_impl->m_nx, de.m_impl->m_ny);
         if (fabs(estimatedDepth - expectedDepth) > expectedDepth * 1e-6) {
