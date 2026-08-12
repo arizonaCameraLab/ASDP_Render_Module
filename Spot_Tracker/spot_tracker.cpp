@@ -2015,7 +2015,7 @@ bool Tracker_Collection_Manager::delete_tracker(unsigned which)
         if (d_trackers.size() == 0) {
           d_active_tracker = -1;
         } else {
-          d_active_tracker = d_trackers.size() - 1;
+          d_active_tracker = static_cast<int>(d_trackers.size() - 1);
         }
       }
 
@@ -2777,7 +2777,7 @@ unsigned Tracker_Collection_Manager::optimize_based_on(const image_wrapper &s_im
   }
 
   // Return the number of trackers.
-  return d_trackers.size();
+  return static_cast<unsigned>(d_trackers.size());
 }
 
 bool Tracker_Collection_Manager::optimize_z_based_on(const image_wrapper &s_image,
@@ -3214,11 +3214,11 @@ unsigned Tracker_Collection_Manager::delete_beads_marked_as_lost(void)
       if (d_trackers.size() == 0) {
         d_active_tracker = -1;
       } else {
-        d_active_tracker = d_trackers.size() - 1;
+        d_active_tracker = static_cast<int>(d_trackers.size() - 1);
       }
     }
 
-    return d_trackers.size();
+    return static_cast<unsigned>(d_trackers.size());
 }
 
 

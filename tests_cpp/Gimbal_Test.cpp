@@ -59,6 +59,7 @@ int main(int argc, char** argv)
       return 1;
     }
     else switch (++realParams) {
+      case 1:
       default:
         usage(argv[0]);
         return 1;

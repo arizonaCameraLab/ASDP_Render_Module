@@ -79,8 +79,9 @@ extern int vrpn_read_available_characters(int comm,
 /// are too fast, so need time between characters; the write_slowly function
 /// handles
 /// this case.
-/// @}
+/// @{
 extern int vrpn_write_characters(int comm, const unsigned char *buffer,
                                           size_t bytes);
 extern int vrpn_write_slowly(int comm, const unsigned char *buffer,
                                       size_t bytes, int millisec_delay);
+/// @}

@@ -56,7 +56,7 @@ static void handleDataThread(std::atomic<bool>& done, SpinFreeQueue<DataToSend>&
       }
 
       // Perform a dummy computation on the data.
-      int size = data.size / 2;
+      int size = static_cast<int>(data.size / 2);
       int blockSize = 256;
       int numBlocks = (size + blockSize - 1) / blockSize;
       uint16_t* data16 = reinterpret_cast<uint16_t*>(data.gpuBuffer);
@@ -225,7 +225,7 @@ int main(int argc, char* argv[])
 
   // Create the receive sockets.
   std::vector<ReceiverUDP> receiveSockets;
-  for (unsigned i = 0; i < cameras; i++) {
+  for (int i = 0; i < cameras; i++) {
     receiveSockets.push_back(ReceiverUDP(IP, port + i));
     if (receiveSockets.back().GetConstructorStatus() != OKAY) {
       std::cerr << "Error creating receive socket: " << receiveSockets.back().GetConstructorStatus() << std::endl;
@@ -242,7 +242,7 @@ int main(int argc, char* argv[])
   std::mutex printMutex;
   std::atomic<bool> broken(false);
   std::vector<std::thread> receivers;
-  for (unsigned i = 0; i < cameras; i++) {
+  for (int i = 0; i < cameras; i++) {
     // Allocate pinned host memory
     unsigned char* cpuBuffer = nullptr;
     cudaMallocHost((void**)&cpuBuffer, bytesPerFrame);
@@ -266,7 +266,7 @@ int main(int argc, char* argv[])
   }
 
   // Wait for the threads to finish.
-  for (unsigned i = 0; i < cameras; i++) {
+  for (int i = 0; i < cameras; i++) {
     receivers[i].join();
   }
 

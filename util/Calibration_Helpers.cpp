@@ -1257,7 +1257,6 @@ std::string asdp::render::calibration::Test()
 
     // Test PlaneIntersectionForPixel()
     {
-      double xPixel, yPixel;
 
       {
         //===========================================================================
