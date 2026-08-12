@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2024: Arizona Board of Regents on Behalf of the University of Arizona
+ * Copyright (C) 2024-2026: Arizona Board of Regents on Behalf of the University of Arizona
  */
 
 #ifdef WIN32
@@ -1019,6 +1019,9 @@ DisplayTexture::~DisplayTexture()
   // Make sure we're done with our rendering state and then clean up.
   Quit();
   m_impl.reset();
+
+  // Done with the window
+  glfwDestroyWindow(Display::m_impl->m_window);
 }
 
 #ifdef USE_OPENXR
@@ -2265,6 +2268,9 @@ DisplayOpenXR::~DisplayOpenXR()
   // Make sure we're done with our rendering state and then clean up.
   Quit();
   m_impl.reset();
+
+  // Done with the window
+  glfwDestroyWindow(Display::m_impl->m_window);
 }
 
 void DisplayOpenXR::DisplayThread(Display* sharedWindow, uint32_t renderAheadMicroseconds)
