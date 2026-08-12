@@ -94,7 +94,9 @@ CPUDataToTextureHandler::CPUDataToTextureHandler(
     if (cudaStatus != cudaSuccess) {
       m_status = "Failed to map texture: " + std::string(cudaGetErrorString(cudaStatus));
       cudaGraphicsUnmapResources(1, &m_resource, *(m_dataPtr->streamPtr));
-      (*texturesToCUDAMap)[textureID] = nullptr;
+      cudaGraphicsUnregisterResource(m_resource);
+      texturesToCUDAMap->erase(textureID);
+      m_resource = nullptr;
       return;
     }
   }
@@ -143,7 +145,6 @@ CPUDataToTextureHandler::~CPUDataToTextureHandler()
   cudaDestroySurfaceObject(m_surfObj);
   // As a side effect, this call guarantees that all CUDA work completes before any later-called OpenGL work starts.
   cudaGraphicsUnmapResources(1, &m_resource, *(m_dataPtr->streamPtr));
-  cudaGraphicsUnregisterResource(m_resource);
   m_resource = nullptr;
 
   // Be sure that everything is registered with OpenGL before putting the texture back into use on another thread.
