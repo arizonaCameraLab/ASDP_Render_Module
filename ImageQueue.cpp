@@ -26,6 +26,7 @@ ImageQueue::~ImageQueue()
       m_images.pop_back();
     }
   }
+  m_mutex.unlock();
 }
 
 std::shared_ptr<ImageData> ImageQueue::GetOldestImage()
@@ -101,6 +102,13 @@ size_t ImageQueue::size() const
 {
   std::lock_guard<std::mutex> lock(m_mutex);
   return m_images.size();
+}
+
+// Thread to wait for a specified time and then unlock the specified image in the queue.
+void WaitAndUnlockImage(ImageQueue& imageQueue, std::shared_ptr<ImageData> image, int waitTimeMs)
+{
+  std::this_thread::sleep_for(std::chrono::milliseconds(waitTimeMs));
+  imageQueue.UnlockImage(image);
 }
 
 std::string ImageQueue::Test()
@@ -244,6 +252,25 @@ std::string ImageQueue::Test()
   renderImage = imageQueue.GetOldestImage();
   if (renderImage.get() != image2.get()) {
     return "Failed to get image from queue with hand-locked last element.";
+  }
+  imageQueue.m_images.back().refCount = 0;
+
+  // Ensure that a locked image in a queue keeps the destructor from completing until
+  // it is onlocked.
+  {
+    ImageQueue* queue = new ImageQueue();
+    std::shared_ptr<ImageData> image = std::make_shared<ImageData>();
+    queue->InsertImage(image);
+    auto lockedImages = queue->LockNewestImages();
+    auto beforeDestruction = std::chrono::steady_clock::now();
+    std::thread unlockThread(WaitAndUnlockImage, std::ref(*queue), lockedImages.front(), 1000);
+    delete queue;
+    unlockThread.join();
+    auto afterDestruction = std::chrono::steady_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(afterDestruction - beforeDestruction).count();
+    if (duration < 1000) {
+      return "ImageQueue destructor did not wait for locked image to be unlocked.";
+    }
   }
 
   return "";
