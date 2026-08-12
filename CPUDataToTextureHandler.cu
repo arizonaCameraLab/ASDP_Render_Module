@@ -89,10 +89,17 @@ CPUDataToTextureHandler::CPUDataToTextureHandler(
     }
 
     // Map the texture for writing by CUDA
-    cudaGraphicsMapResources(1, &m_resource, *(m_dataPtr->streamPtr));
-    cudaStatus = cudaGraphicsSubResourceGetMappedArray(&m_textureData, m_resource, 0, 0);
+    cudaStatus = cudaGraphicsMapResources(1, &m_resource, *(m_dataPtr->streamPtr));
     if (cudaStatus != cudaSuccess) {
       m_status = "Failed to map texture: " + std::string(cudaGetErrorString(cudaStatus));
+      cudaGraphicsUnregisterResource(m_resource);
+      texturesToCUDAMap->erase(textureID);
+      m_resource = nullptr;
+      return;
+    }
+    cudaStatus = cudaGraphicsSubResourceGetMappedArray(&m_textureData, m_resource, 0, 0);
+    if (cudaStatus != cudaSuccess) {
+      m_status = "Failed to get mapped array: " + std::string(cudaGetErrorString(cudaStatus));
       cudaGraphicsUnmapResources(1, &m_resource, *(m_dataPtr->streamPtr));
       cudaGraphicsUnregisterResource(m_resource);
       texturesToCUDAMap->erase(textureID);

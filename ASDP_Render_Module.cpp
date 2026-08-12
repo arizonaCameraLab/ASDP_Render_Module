@@ -1803,10 +1803,10 @@ int spin_up(std::shared_ptr<CoreClient> client, int &serialNumber, std::shared_p
   for (size_t i = 0; i < cameras.size(); i++) {
     try {
       // Preallocate pinned memory buffers for the CPU.
-      cpuPinnedImageBuffers.push_back(std::make_shared<CUDABufferPool>(cameras[i].width * cameras[i].height * sizeof(uint16_t), 5, true));
+      cpuPinnedImageBuffers.push_back(std::make_shared<CUDABufferPool>(cameras[i].width * cameras[i].height * sizeof(uint16_t), 10, true));
 
       // Preallocate memory buffers for the GPU.
-      gpuImageBuffers.push_back(std::make_shared<CUDABufferPool>(cameras[i].width * cameras[i].height * sizeof(uint16_t), 5, false));
+      gpuImageBuffers.push_back(std::make_shared<CUDABufferPool>(cameras[i].width * cameras[i].height * sizeof(uint16_t), 10, false));
 
       // Make a pool of GPU memory buffers for per-pixel NUC to use if it is running.
       // Pre-allocate some if we are doing per-pixel NUC, otherwise leave the vector empty.
