@@ -85,10 +85,10 @@ bool  image_wrapper::write_to_pgm_file(const char *filename, unsigned channel, d
       read_pixel(minx + c, miny + flip_r, value, 0);
       value *= gain;
       if (sixteen_bits) {
-        uint16_t uShortValue = value;
+        uint16_t uShortValue = static_cast<uint16_t>(value);
         fwrite(&uShortValue, 2, 1, f);
       } else {
-        uint8_t uCharValue = value;
+        uint8_t uCharValue = static_cast<uint8_t>(value);
         fwrite(&uCharValue, 1, 1, f);
       }
     }

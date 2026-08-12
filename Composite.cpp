@@ -132,7 +132,8 @@ void Composite::Render(asdp::Time scanOutTime, std::vector<ViewRenderInfo> views
     double rightFrust = tan(glm::radians(view.rightHalfFOV)) * view.nearClip;
     double bottomFrust = tan(glm::radians(view.bottomHalfFOV)) * view.nearClip;
     double topFrust = tan(glm::radians(view.topHalfFOV)) * view.nearClip;
-    glm::mat4 Projection = glm::frustum<float>(leftFrust, rightFrust, bottomFrust, topFrust,
+    glm::mat4 Projection = glm::frustum<float>(static_cast<float>(leftFrust), static_cast<float>(rightFrust),
+      static_cast<float>(bottomFrust), static_cast<float>(topFrust),
       view.nearClip, view.farClip);
     glm::mat4 VP = Projection * ViewTranslate;
 
@@ -143,10 +144,10 @@ void Composite::Render(asdp::Time scanOutTime, std::vector<ViewRenderInfo> views
     if (eye == 0 && m_detailed_view) {
         std::lock_guard<std::mutex> lock(g_overview_mutex);
         g_detailed_view_translate = ViewTranslate;
-        g_detailed_view_leftf = leftFrust;
-        g_detailed_view_rightf = rightFrust;
-        g_detailed_view_topf = topFrust;
-        g_detailed_view_bottomf = bottomFrust;
+        g_detailed_view_leftf = static_cast<float>(leftFrust);
+        g_detailed_view_rightf = static_cast<float>(rightFrust);
+        g_detailed_view_topf = static_cast<float>(topFrust);
+        g_detailed_view_bottomf = static_cast<float>(bottomFrust);
         g_detailed_view_nearf = view.nearClip;
     }
     //======================================
@@ -676,7 +677,7 @@ bool CompositeCube::SetupRendering()
   size_t trianglesPerSide = 2 * quadsPerEdge * quadsPerEdge;
   // 6 faces
   size_t numTriangles = static_cast<size_t>(trianglesPerSide * 6);
-  m_roomCube = std::shared_ptr<MeshCube>(new MeshCube(m_radius, numTriangles));
+  m_roomCube = std::shared_ptr<MeshCube>(new MeshCube(static_cast<float>(m_radius), numTriangles));
 
   return true;
 }
@@ -710,10 +711,10 @@ void CompositeCube::RenderView(asdp::Time scanOutTime, const float* viewProjecti
     else // If the flag for cylindrical projection is enabled, use the cylindrical projection.
     {
         glUniform1i(m_useCPUniformId, 1);
-        glUniform1f(m_lh_hfovUniformId, vri.leftHalfFOV * M_PI / 180.0);
-        glUniform1f(m_rh_hfovUniformId, vri.rightHalfFOV * M_PI / 180.0);
-        glUniform1f(m_bh_vfovUniformId, vri.bottomHalfFOV * M_PI / 180.0);
-        glUniform1f(m_th_vfovUniformId, vri.topHalfFOV * M_PI / 180.0);
+        glUniform1f(m_lh_hfovUniformId, static_cast<float>(vri.leftHalfFOV * M_PI / 180.0));
+        glUniform1f(m_rh_hfovUniformId, static_cast<float>(vri.rightHalfFOV * M_PI / 180.0));
+        glUniform1f(m_bh_vfovUniformId, static_cast<float>(vri.bottomHalfFOV * M_PI / 180.0));
+        glUniform1f(m_th_vfovUniformId, static_cast<float>(vri.topHalfFOV * M_PI / 180.0));
         glUniform1f(m_nearUniformId, vri.nearClip);
         glUniform1f(m_farUniformId, vri.farClip);
         glUniformMatrix4fv(m_modelViewUniformId, 1, GL_FALSE, modelViewMatrix);
@@ -898,7 +899,7 @@ CompositeCameras::CompositeCameras(std::vector< std::shared_ptr<CameraRenderInfo
   , m_offsetUniformID(0)
   , m_gainUniformID(0)
   , m_depthScaleUniformID(0)
-  , m_globalExposureGain(cameraFrameInterval.seconds + cameraFrameInterval.microseconds * 1e-6)
+  , m_globalExposureGain(cameraFrameInterval.seconds + cameraFrameInterval.microseconds * 1e-6f)
   , m_imageTextureId(0)
   , m_toneMapTextureId(0)
 
@@ -1035,7 +1036,7 @@ bool CompositeCameras::SetupRendering()
   // the mesh if it has not already been filled in.
   for (auto &cameraRenderInfo : m_cameraRenderInfos) {
     if (cameraRenderInfo->m_mesh.nx == 0) {
-      cameraRenderInfo->ComputePlanarCameraMeshInfo(100, 100, m_defaultStaticDepth);
+      cameraRenderInfo->ComputePlanarCameraMeshInfo(100, 100, static_cast<float>(m_defaultStaticDepth));
     }
     CreateBufferInfo(*cameraRenderInfo, cameraRenderInfo->m_mesh);
   }
@@ -1046,7 +1047,7 @@ CompositeCameras::~CompositeCameras()
 {
   m_renderHaloedLines.reset();
   m_renderText.reset();
-  for (size_t i = 0; i < m_cameraBufferInfos.size(); i++) {
+  for (uint16_t i = 0; i < m_cameraBufferInfos.size(); i++) {
     glDeleteBuffers(1, &m_cameraBufferInfos[i].vertexBufferObject);
     glDeleteBuffers(1, &m_cameraBufferInfos[i].indexBufferObject);
   }
@@ -1315,7 +1316,7 @@ void CompositeCameras::RenderView(asdp::Time scanOutTime, const float* viewProje
   }
 
   // Find the frame time in floating point seconds.
-  float frameTime = m_cameraFrameInterval.seconds + m_cameraFrameInterval.microseconds * 1.0e-6;
+  float frameTime = m_cameraFrameInterval.seconds + m_cameraFrameInterval.microseconds * 1.0e-6f;
 
   // Bind the tone map texture to texture unit 1.
   glActiveTexture(GL_TEXTURE1);

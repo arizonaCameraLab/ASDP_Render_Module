@@ -55,8 +55,8 @@ void CameraRenderInfo::ComputePlanarCameraMeshInfo(size_t nx, size_t ny, float d
       // The normalized texture coordinates in the range 0 to 1 handle mapping the texture so that
       // the corners of the last pixels are at the edges of the quad.  Flip the V coordinate so that
       // the image can be drawn in right-handed coordinates.
-      GLfloat u = i * fnxInv;
-      GLfloat v = 1.0f - j * fnyInv;
+      GLfloat u = static_cast<float>(i * fnxInv);
+      GLfloat v = 1.0f - static_cast<float>(j * fnyInv);
 
       // Compute the normalized X, Y, coordinates in the range -1 to 1.
       double xn = -1.0f + 2.0f * i * fnxInv;
@@ -103,7 +103,7 @@ void CameraRenderInfo::ComputePlanarCameraMeshInfo(size_t nx, size_t ny, float d
       vertex.vignetteGain = 1.0;
       if (m_vignette != nullptr) {
         // Compute the vignette gain at the point (xn, yn)
-        vertex.vignetteGain = m_vignette->EvaluateAtPoint({ xn, yn });
+        vertex.vignetteGain = m_vignette->EvaluateAtPoint({ static_cast<float>(xn), static_cast<float>(yn) });
       }
       vertices.push_back(vertex);
     }
