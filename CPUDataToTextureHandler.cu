@@ -373,6 +373,7 @@ void asdp::render::CopyDataToTextures(uint16_t width, uint16_t height,
   for (auto& texture : *texturesToCUDAMap) {
     cudaGraphicsUnregisterResource(texture.second);
   }
+  texturesToCUDAMap->clear();
 
   // Return the context borrowed from the shared context so that we can use it to map textures.
   if (!sharedContext->ReturnContext()) {
