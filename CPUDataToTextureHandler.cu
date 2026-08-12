@@ -365,6 +365,10 @@ void asdp::render::CopyDataToTextures(uint16_t width, uint16_t height,
     } // End of if we got a message from the queue.
   } // End of while we are not done.
 
+  // Delete all of the handlers to ensure that they clean up and push any remaining data to the textures
+  // while we still have our context.
+  handlers.clear();
+
   // Unregister all of our textures from CUDA.
   for (auto& texture : *texturesToCUDAMap) {
     cudaGraphicsUnregisterResource(texture.second);
