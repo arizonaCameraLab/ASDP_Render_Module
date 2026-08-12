@@ -67,7 +67,7 @@ namespace asdp {
       /// @brief Bottom edge of the view in degrees from the principal ray (this will be half the vertical FOV).
       /// @details Top and bottom are different for off-center projection.
       float bottomHalfFOV = -45;
-      float nearClip = 0.7;                 ///< Near clipping plane in meters.
+      float nearClip = 0.7f;                ///< Near clipping plane in meters.
       float farClip = 4000;                 ///< Far clipping plane in meters. Must be > max Composite depth
       GLuint frameBuffer = 0;               ///< Frame buffer to render into.  Set to 0 for the default frame buffer.
       GLuint colorBuffer = 0;               ///< Texture for color to be rendered into (will be bound to the frameBuffer). Ignored for frameBuffer 0.

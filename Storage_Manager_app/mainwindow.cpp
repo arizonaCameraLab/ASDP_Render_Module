@@ -419,7 +419,7 @@ void MainWindow::PeriodicTask()
               ti.mode = 3;
               ti.period = 1 / cameraFPS;
               ti.offset = 0;
-              ti.trackingFactor = 0.005;
+              ti.trackingFactor = 0.005f;
               ti.externalID = camera.trigger;
               status = m_client->SendCommandPacket(CommandPacketConfigureTrigger(ti));
               if (status != OKAY) {
@@ -718,7 +718,7 @@ void MainWindow::ViewCamera(const QString& cameraID)
 
   // Construct a composite object to render the visible cameras.
   std::shared_ptr<CompositeCameras> composite = std::make_shared<CompositeCameras>(
-    m_visibleCameras, m_toneMap, poseAdjuster, Time(1 / 60.0),
+    m_visibleCameras, m_toneMap, poseAdjuster, Time(1 / 60.0f),
     0,
     Time(0, 1000000 / 60.0), nullptr,
     rangeEstimator);

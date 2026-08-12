@@ -87,7 +87,7 @@ int main(int argc, char** argv)
       std::vector<uint8_t> message = encodeMessage(RPA, timeMilli, valid);
 
       // Send the message.
-      status = sender.Send(message.data(), message.size());
+      status = sender.Send(message.data(), static_cast<uint32_t>(message.size()));
       if (status != asdp::Status::OKAY) {
         std::cerr << "Failed to send the message: " << asdp::ErrorMessage(status) << std::endl;
         return 3;

@@ -285,8 +285,8 @@ int main(int argc, char** argv)
           //===========================================================
           // Run along each edge of the rectangle, asking for images from all cameras that can
           // see the requested point within their margins.
-          int numXSteps = 1 + (xMax - xMin) / curStep;
-          int numYSteps = 1 + (yMax - yMin) / curStep;
+          int numXSteps = static_cast<int>(1 + (xMax - xMin) / curStep);
+          int numYSteps = static_cast<int>(1 + (yMax - yMin) / curStep);
 
           // Go smoothly around the edges so we minimize motion.
           RunAlongLine(outFile, frameIndex, camerasToImage, frames, cri, targetPoint, target.id,

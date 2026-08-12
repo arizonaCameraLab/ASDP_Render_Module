@@ -732,22 +732,22 @@ void DisplayWindow::HandleKeyboard()
 
   // Rotate to look up when the up key is pressed
   if (glfwGetKey(Display::m_impl->m_window, GLFW_KEY_UP) == GLFW_PRESS) {
-    m_impl->m_rotationXDegrees += DegreesPerSecond * elapsed.count();
+    m_impl->m_rotationXDegrees += static_cast<float>(DegreesPerSecond * elapsed.count());
   }
 
   // Rotate to look down when the down key is pressed
   if (glfwGetKey(Display::m_impl->m_window, GLFW_KEY_DOWN) == GLFW_PRESS) {
-    m_impl->m_rotationXDegrees -= DegreesPerSecond * elapsed.count();
+    m_impl->m_rotationXDegrees -= static_cast<float>(DegreesPerSecond * elapsed.count());
   }
 
   // Rotate to look right when the right key is pressed
   if (glfwGetKey(Display::m_impl->m_window, GLFW_KEY_RIGHT) == GLFW_PRESS) {
-    m_impl->m_rotationZDegrees -= DegreesPerSecond * elapsed.count();
+    m_impl->m_rotationZDegrees -= static_cast<float>(DegreesPerSecond * elapsed.count());
   }
 
   // Rotate to look left when the left key is pressed
   if (glfwGetKey(Display::m_impl->m_window, GLFW_KEY_LEFT) == GLFW_PRESS) {
-    m_impl->m_rotationZDegrees += DegreesPerSecond * elapsed.count();
+    m_impl->m_rotationZDegrees += static_cast<float>(DegreesPerSecond * elapsed.count());
   }
 
   // Toggle play/pause when the space key is pressed (once per press/release cycle).

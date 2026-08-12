@@ -79,21 +79,21 @@ public:
     // position = data * microstepSize;
     // Therefore, data = position / microstepSize;
     // The direction of motion is the opposite of the direction of the gimbal, so we flip the sign.
-    return -degrees / microstepSize;
+    return static_cast<int>(-degrees / microstepSize);
   }
 
   unsigned valueForSpeed(double degreesPerSecond)   {
     // The conversion from counts to real-world velocity is as follows (from the API documentation):
     // velocity = data * microstepSize / 1.6384;
     // Therefore, data = velocity * 1.6384 / microstepSize;
-    return degreesPerSecond * 1.6384 / microstepSize;
+    return static_cast<unsigned>(degreesPerSecond * 1.6384 / microstepSize);
   }
 
   unsigned valueForAccel(double degreesPerSecondSquared) {
     // The conversion from counts to real-world acceleration is as follows (from the API documentation):
     // acceleration = data * microstepSize * 10000 / 1.6384;
     // Therefore, data = acceleration * 1.6384 / (microstepSize * 10000);
-    return degreesPerSecondSquared * 1.6384 / (microstepSize * 10000);
+    return static_cast<unsigned>(degreesPerSecondSquared * 1.6384 / (microstepSize * 10000));
   }
 
   // These are not strictly needed because we can set the speed and acceleration for each move command.
@@ -411,8 +411,8 @@ GimbalZaber_X_G_RST::GimbalZaber_X_G_RST(std::string comPortName, int deviceID,
   }
   if (m_impl->commPort != -1) {
     // Set the device parameters
-    m_impl->speed = maxVelocityDeg;
-    m_impl->accel = maxAccelDeg;
+    m_impl->speed = static_cast<unsigned>(maxVelocityDeg);
+    m_impl->accel = static_cast<unsigned>(maxAccelDeg);
 
     // Gobble up any full or partial responses that have come from the device.
     std::vector<GimbalZaber_X_G_RST_Impl::Response> responses;
@@ -727,7 +727,7 @@ Gimbal_iOptron::Gimbal_iOptron(std::string comPortName, std::string mountInfoRes
 
   // Set the latitude to 0 degrees (equator).
   int lat = 0;
-  int latTicks = static_cast<size_t>(lat * 3600.0) * 100;
+  int latTicks = static_cast<int>(static_cast<size_t>(lat * 3600.0) * 100);
   std::string latString = std::to_string(std::abs(latTicks));
   while (latString.length() < 8) {
     latString = "0" + latString;
@@ -854,7 +854,7 @@ void Gimbal_iOptron::MoveAbsoluteRaw(double yawAdjusted, double pitchAdjusted, s
   // Set the declination to be slewed to.  This value is in units of 0.01 arc-seconds, so we
   // convert from degrees to arc-seconds and then multiply by 100.  We then put this into
   // an 8-character (sign then digits padded with 0 to the left to 8 digits long) string.
-  int yawArcSeconds = static_cast<size_t>(yawAdjusted * 3600.0);
+  int yawArcSeconds = static_cast<int>(yawAdjusted * 3600.0);
   int yawTicks = yawArcSeconds * 100;
   std::string yawString = std::to_string(std::abs(yawTicks));
   while (yawString.length() < 8) {
@@ -872,7 +872,7 @@ void Gimbal_iOptron::MoveAbsoluteRaw(double yawAdjusted, double pitchAdjusted, s
   // Set the right ascension to be slewed to.  This value is in units of 0.01 arc-seconds, so we
   // convert from degrees to arc-seconds and then multiply by 100.  We then put this into
   // an 9-character (padded with 0 to the left) string.
-  int pitchArcSeconds = static_cast<size_t>((pitchAdjusted) * 3600.0);
+  int pitchArcSeconds = static_cast<int>((pitchAdjusted) * 3600.0);
   int pitchTicks = pitchArcSeconds * 100;
   std::string pitchString = std::to_string(std::abs(pitchTicks));
   while (pitchString.length() < 9) {
