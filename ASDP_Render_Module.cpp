@@ -2019,6 +2019,12 @@ int spin_down(std::shared_ptr<CoreClient> client, std::atomic<bool>& done,
   std::vector<GLuint> &toneMapTextures
   )
 {
+  // Now borrow the context from the displayTexture so that we can free up resources.
+  if (!displayTexture->BorrowContext()) {
+    std::cerr << "Error borrowing context from displayTexture." << std::endl;
+    return 36;
+  }
+
   // Done with our RangeEstimator, if any.
   // Stopping streaming on the cameras
   std::cout << "Stop streaming from " << cameraIDs.size() << " cameras" << std::endl;
@@ -2086,17 +2092,8 @@ int spin_down(std::shared_ptr<CoreClient> client, std::atomic<bool>& done,
   }
   dataQueues.clear();
 
-  // Now borrow the context from the displayTexture so that we can delete the textures.
-  if (!displayTexture->BorrowContext()) {
-    std::cerr << "Error borrowing context from displayTexture." << std::endl;
-    return 36;
-  }
   cameraRenderInfos.clear();
   glDeleteTextures(toneMapTextures.size(), toneMapTextures.data());
-  if (!displayTexture->ReturnContext()) {
-    std::cerr << "Error returning context to displayTexture." << std::endl;
-    return 37;
-  }
 
   // Clean up the global objects.
   g_pointCorrespondenceDisplay.reset();
@@ -2104,6 +2101,12 @@ int spin_down(std::shared_ptr<CoreClient> client, std::atomic<bool>& done,
   g_depthCameras.clear();
   g_depthEstimator.reset();
   g_composites.clear();
+
+  // We're done with the context.
+  if (!displayTexture->ReturnContext()) {
+    std::cerr << "Error returning context to displayTexture." << std::endl;
+    return 37;
+  }
 
   return 0;
 }
