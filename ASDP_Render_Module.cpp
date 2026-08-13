@@ -2025,7 +2025,6 @@ int spin_down(std::shared_ptr<CoreClient> client, std::atomic<bool>& done,
     return 36;
   }
 
-  // Done with our RangeEstimator, if any.
   // Stopping streaming on the cameras
   std::cout << "Stop streaming from " << cameraIDs.size() << " cameras" << std::endl;
   for (size_t i = 0; i < cameras.size(); i++) {
@@ -2810,6 +2809,7 @@ int main(int argc, char** argv)
             }
             float stdBelow = kioskInfo[kioskIndex]["parameters"][0].get<float>();
             float stdAbove = kioskInfo[kioskIndex]["parameters"][1].get<float>();
+
             std::shared_ptr<RangeEstimator> rangeEstimator;
             if (stdBelow == 0 && stdAbove == 0) {
               rangeEstimator = nullptr;
@@ -2837,9 +2837,14 @@ int main(int argc, char** argv)
             int streamID = kioskInfo[kioskIndex]["parameters"][1];
 
             // Remove the old composite in each of the displays before we spin down so that everything
-            // will be released (in particular, the CameraRenderInfo->m_imageQueue textures.
+            // will be released (in particular, the CameraRenderInfo->m_imageQueue textures).
             for (size_t i = 0; i < displays.size(); i++) {
               displays[i]->UpdateComposite(nullptr);
+            }
+
+            // Remove any RangeEstimator from the composites so that their resources will be released.
+            for (auto& composite : g_composites) {
+              composite->UpdateRangeEstimator(nullptr);
             }
 
             // Spin down the existing camera

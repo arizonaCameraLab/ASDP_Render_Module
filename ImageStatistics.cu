@@ -281,8 +281,8 @@ std::string MeanStdGroup::GetMeanStd(double& mean, double& stddev) const
   // Lock the mutex to access the vectors.
   std::lock_guard<std::mutex> lock(m_mutex);
 
-  // If we have no entries yet, return 0.0 for mean and stddev.
-  if (m_means.size() == 0) {
+  // If we have no entries yet, or we're stopping, return 0.0 for mean and stddev.
+  if (m_means.size() == 0 || m_stopThread) {
     mean = stddev = 0.0;
     return "";
   }
