@@ -487,6 +487,7 @@ public:
 
     // Draw our geometry
     glDrawArrays(GL_TRIANGLES, 0, static_cast<GLsizei>(vertexBufferData.size()));
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
   }
 
 private:
