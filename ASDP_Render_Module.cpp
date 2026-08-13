@@ -2836,17 +2836,18 @@ int main(int argc, char** argv)
             int cameraID = kioskInfo[kioskIndex]["parameters"][0];
             int streamID = kioskInfo[kioskIndex]["parameters"][1];
 
+            // Remove the old composite in each of the displays before we spin down so that everything
+            // will be released (in particular, the CameraRenderInfo->m_imageQueue textures.
+            for (size_t i = 0; i < displays.size(); i++) {
+              displays[i]->UpdateComposite(nullptr);
+            }
+
             // Spin down the existing camera
             ret = spin_down(client, done, cameras, cameraIDs, UDPReceivers, ip_address, depthContext,
               copyDataToGPUThreads, analysisThread, dataQueues, receiveDataThreads, displayTexture,
               cameraRenderInfos, toneMapTextures);
             if (ret != 0) {
               return ret;
-            }
-
-            // Remove the old composite in each of the displays.
-            for (size_t i = 0; i < displays.size(); i++) {
-              displays[i]->UpdateComposite(nullptr);
             }
 
             // Change the serial number and stream ID.

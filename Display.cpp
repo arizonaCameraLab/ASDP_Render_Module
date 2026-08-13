@@ -1021,6 +1021,7 @@ DisplayTexture::~DisplayTexture()
   m_impl.reset();
 
   // Done with the window
+  glfwMakeContextCurrent(nullptr);
   glfwDestroyWindow(Display::m_impl->m_window);
 }
 
