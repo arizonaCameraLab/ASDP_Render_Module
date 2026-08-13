@@ -1047,6 +1047,12 @@ CompositeCameras::~CompositeCameras()
 {
   m_renderHaloedLines.reset();
   m_renderText.reset();
+  if (m_head_orientation_colorTexture) {
+    glDeleteTextures(1, &m_head_orientation_colorTexture);
+  }
+  if (m_head_orientation_toneMapTexture) {
+    glDeleteTextures(1, &m_head_orientation_toneMapTexture);
+  }
   for (uint16_t i = 0; i < m_cameraBufferInfos.size(); i++) {
     glDeleteBuffers(1, &m_cameraBufferInfos[i].vertexBufferObject);
     glDeleteBuffers(1, &m_cameraBufferInfos[i].indexBufferObject);
