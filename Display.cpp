@@ -493,7 +493,12 @@ void DisplayWindow::DisplayThread(std::string windowName,
 
     // Determine the scan-out time of the frame (center of the image).
     Time renderTime;
-    m_timer->GetCoreTime(renderTime, std::chrono::steady_clock::now());
+    Status status = m_timer->GetCoreTime(renderTime, std::chrono::steady_clock::now());
+    if (status != OKAY) {
+      m_status = "Failed to get Core time";
+      m_done = true;
+      break;
+    }
     if (!m_replaying) {
       double frameTime = 1.0 / fps;
       double middleOfNextFrameOffset = frameTime / 2.0 + renderAheadMicroseconds / 1e6;

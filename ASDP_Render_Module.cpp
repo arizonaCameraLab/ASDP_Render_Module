@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2024: Arizona Board of Regents on Behalf of the University of Arizona
+ * Copyright (C) 2024-2026: Arizona Board of Regents on Behalf of the University of Arizona
  */
 
 // This is a client that connects to the first server it encounters and runs a Render Module.
@@ -56,7 +56,7 @@ using namespace asdp::render;
 using namespace asdp::analysis;
 using json = nlohmann::json;
 
-static std::string VERSION = "3.38.0";
+static std::string VERSION = "3.39.0";
 
 /// @brief The path to the configuration file. Defined in the CMakeLists file.
 std::filesystem::path g_dirPath = CONFIG_FILE_PATH;
@@ -1361,7 +1361,8 @@ int spin_up(std::shared_ptr<CoreClient> client, int &serialNumber, std::shared_p
   std::thread &analysisThread,
   std::vector< std::shared_ptr< SpinFreeQueue< std::shared_ptr<DataToSendToGPU> > > > &dataQueues,
   std::vector<std::thread> &receiveDataThreads,
-  bool lockRotation, bool disableLatencyCompensation
+  bool lockRotation, bool disableLatencyCompensation,
+  bool &firstSpinUp
 )
 {
   // We're not done yet
@@ -1988,7 +1989,13 @@ int spin_up(std::shared_ptr<CoreClient> client, int &serialNumber, std::shared_p
     }
     std::cout << "Requesting replay of stream " << replayStreamID << std::endl;
     // Set the initial time to be above zero so that we never predict backwards to negative time.
-    status = client->SendCommandPacket(CommandPacketStartReplay(replayStreamID, Time(10, 0)));
+    // If this is not the first time through, use the current time so that we can continue from where
+    // we left off.
+    Time initialTime = Time(10, 0);
+    if (!firstSpinUp) {
+      timer->GetCoreTime(initialTime);
+    }
+    status = client->SendCommandPacket(CommandPacketStartReplay(replayStreamID, initialTime));
     if (status != OKAY) {
       std::cerr << "Failed to start replay: " << ErrorMessage(status) << std::endl;
       return 34;
@@ -2004,6 +2011,7 @@ int spin_up(std::shared_ptr<CoreClient> client, int &serialNumber, std::shared_p
     analysisThread = std::thread(HandleAnalysisThread, analysisModuleURLs, timer);
   }
 
+  firstSpinUp = false;
   return 0;
 }
 
@@ -2659,6 +2667,7 @@ int main(int argc, char** argv)
     std::vector< std::shared_ptr< SpinFreeQueue< std::shared_ptr<DataToSendToGPU> > > > dataQueues;
     std::vector<std::thread> receiveDataThreads;
     std::shared_ptr<PoseAdjuster> poseAdjuster;
+    bool firstSpinUp = true;
     int ret = spin_up(client, serialNumber, receiver, cameras, hasStorage, hasTemperatures, hasPoses,
       triggerID, replayStreamID, configPath, UDPReceivers, skipCameras, nucInfos, maxCameras,
       lineBatchesPerGPUSend, displayTexture, displayInfos, renderAheadFrames, cameraFPS, computeDepth,
@@ -2666,7 +2675,8 @@ int main(int argc, char** argv)
       cameraIDs,
       toneMapTextures, staticDepth, done, ip_address, doStreamPoses, frameStride, analysisModuleURLs,
       clockSync, timer, depthContext, copyDataToGPUThreads,
-      analysisThread, dataQueues, receiveDataThreads, lockRotation, disableLatencyCompensation);
+      analysisThread, dataQueues, receiveDataThreads, lockRotation, disableLatencyCompensation,
+      firstSpinUp);
     if (ret != 0) {
       return ret;
     }
@@ -2861,6 +2871,9 @@ int main(int argc, char** argv)
             serialNumber = cameraID;
             replayStreamID = streamID;
 
+            // Make sure we are not paused when we spin up the new camera.
+            g_paused = false;
+
             // Spin up the new camera.
             ret = spin_up(client, serialNumber, receiver, cameras, hasStorage, hasTemperatures, hasPoses,
               triggerID, replayStreamID, configPath, UDPReceivers, skipCameras, nucInfos, maxCameras,
@@ -2869,7 +2882,8 @@ int main(int argc, char** argv)
               cameraIDs,
               toneMapTextures, staticDepth, done, ip_address, doStreamPoses, frameStride, analysisModuleURLs,
               clockSync, timer, depthContext, copyDataToGPUThreads,
-              analysisThread, dataQueues, receiveDataThreads, lockRotation, disableLatencyCompensation);
+              analysisThread, dataQueues, receiveDataThreads, lockRotation, disableLatencyCompensation,
+              firstSpinUp);
             if (ret != 0) {
               return ret;
             }
