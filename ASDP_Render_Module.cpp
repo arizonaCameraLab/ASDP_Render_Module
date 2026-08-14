@@ -56,7 +56,7 @@ using namespace asdp::render;
 using namespace asdp::analysis;
 using json = nlohmann::json;
 
-static std::string VERSION = "3.37.0";
+static std::string VERSION = "3.38.0";
 
 /// @brief The path to the configuration file. Defined in the CMakeLists file.
 std::filesystem::path g_dirPath = CONFIG_FILE_PATH;
@@ -2838,9 +2838,11 @@ int main(int argc, char** argv)
 
             // Remove the old composite in each of the displays before we spin down so that everything
             // will be released (in particular, the CameraRenderInfo->m_imageQueue textures).
+            // Wait briefly to enable any in-progress rendering to finish before we tear things down.
             for (size_t i = 0; i < displays.size(); i++) {
               displays[i]->UpdateComposite(nullptr);
             }
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
             // Remove any RangeEstimator from the composites so that their resources will be released.
             for (auto& composite : g_composites) {
