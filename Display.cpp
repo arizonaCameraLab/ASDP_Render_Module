@@ -46,7 +46,7 @@ static GLFWInitializer initGLFW;
 } // namespace asdp}
 
 /// Ensure that we only create one window at a time.
-std::mutex Display::m_windowMutex;
+std::mutex Display::g_windowMutex;
 
 //==============================================================================
 // Structures and methods for Display class.
@@ -380,7 +380,7 @@ void DisplayWindow::DisplayThread(std::string windowName,
   {
     {
       // Hold the window mutex so that only one window can be created at a time.
-      std::lock_guard<std::mutex> windowLock(m_windowMutex);
+      std::lock_guard<std::mutex> windowLock(g_windowMutex);
 
       // Set the window visibility.
       glfwWindowHint(GLFW_VISIBLE, !hidden);
@@ -963,7 +963,7 @@ DisplayTexture::DisplayTexture(Display* sharedWindow)
 {
   {
     // Hold the window mutex so that only one window can be created at a time.
-    std::lock_guard<std::mutex> windowLock(m_windowMutex);
+    std::lock_guard<std::mutex> windowLock(g_windowMutex);
 
     // Set the window to be hidden.
     glfwWindowHint(GLFW_VISIBLE, false);
@@ -1263,7 +1263,7 @@ void asdp::render::DisplayOpenXR::DisplayOpenXRImpl::OpenGLInitializeDevice(Disp
 
   {
     // Hold the window mutex so that only one window can be created at a time.
-    std::lock_guard<std::mutex> windowLock(m_windowMutex);
+    std::lock_guard<std::mutex> windowLock(g_windowMutex);
 
     // Create a windowed mode window and its OpenGL context.
     // This must be done in the same thread that will do the rendering so that the window events will
@@ -2544,7 +2544,7 @@ void DisplayXSight::DisplayThread(
     int width = m_impl->m_encodeMonochrome ? desiredWidth / 2 : desiredWidth;
     {
       // Hold the window mutex so that only one window can be created at a time.
-      std::lock_guard<std::mutex> windowLock(m_windowMutex);
+      std::lock_guard<std::mutex> windowLock(g_windowMutex);
 
       // Set the window to be visible.
       glfwWindowHint(GLFW_VISIBLE, true);

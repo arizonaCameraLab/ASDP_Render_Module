@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2024-2025: Arizona Board of Regents on Behalf of the University of Arizona
+ * Copyright (C) 2024-2026: Arizona Board of Regents on Behalf of the University of Arizona
  */
 
 #include <iostream>
@@ -110,10 +110,12 @@ int main(int argc, char** argv)
         return 1;
       }
 
-      // Create a second Display window to show the same CompositeCube object that shares objects
-      // with the texWindow (and therefore the first Display window).
+      // Create a second Display window to show another CompositeCube object that shares objects
+      // with the texWindow (and therefore the first Display window).  We need it to be a different
+      // Composite because the two will have different viewpoints in general.
       // Control it using joystick 1.
-      displays.push_back(std::make_shared<asdp::render::DisplayWindow>("Display_Test2", composite, client,
+      std::shared_ptr<asdp::render::CompositeCube> composite2 = std::make_shared<asdp::render::CompositeCube>(10);
+      displays.push_back(std::make_shared<asdp::render::DisplayWindow>("Display_Test2", composite2, client,
         0, 0, 0, viewpointOffset, 60.0f, 2500, width, height,
         90, "GLFW::1", &texWindow));
       if (displays.back()->GetStatus() != "") {
