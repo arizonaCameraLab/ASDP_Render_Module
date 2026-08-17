@@ -1591,6 +1591,7 @@ int64_t asdp::render::DisplayOpenXR::DisplayOpenXRImpl::OpenGLSelectColorSwapcha
   constexpr int64_t SupportedColorSwapchainFormats[] = {
       GL_RGB10_A2,
       GL_RGBA16F,
+      GL_SRGB8_ALPHA8,
       // The two below should only be used as a fallback, as they are linear color formats without enough bits for color
       // depth, thus leading to banding.
       GL_RGBA8,
