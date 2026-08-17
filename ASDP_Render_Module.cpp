@@ -56,7 +56,7 @@ using namespace asdp::render;
 using namespace asdp::analysis;
 using json = nlohmann::json;
 
-static std::string VERSION = "3.39.0";
+static std::string VERSION = "3.40.0";
 
 /// @brief The path to the configuration file. Defined in the CMakeLists file.
 std::filesystem::path g_dirPath = CONFIG_FILE_PATH;
@@ -319,7 +319,10 @@ static std::vector< std::array<uint16_t, 2> > GetRawPixelValues(
   std::array< std::shared_ptr<ImageData>, 2> imageData)
 {
   // Borrow the OpenGL context so that we can read back the pixel values.
-  if (!g_pointCorrespondenceDisplay || !g_pointCorrespondenceDisplay->BorrowContext()) {
+  if (!g_pointCorrespondenceDisplay) {
+    std::cerr << "GetRawPixelValues(): Error: No g_pointCorrespondenceDisplay." << std::endl;
+    return {};
+  } else if (!g_pointCorrespondenceDisplay->BorrowContext()) {
     std::cerr << "GetRawPixelValues(): Error: Could not borrow OpenGL context." << std::endl;
     return {};
   }
@@ -1468,6 +1471,8 @@ int spin_up(std::shared_ptr<CoreClient> client, int &serialNumber, std::shared_p
     if (std::filesystem::exists(mapCSVPath)) {
       std::cout << "Reading map CSV file: " << mapCSVPath << std::endl;
       g_pointCorrespondences = std::make_shared<PointCorrespondences>(mapCSVPath.string());
+      // Construct a Display for use by the point correspondence object, if any.
+      g_pointCorrespondenceDisplay = std::make_shared<DisplayTexture>(displayTexture.get());
     } else {
       g_pointCorrespondences.reset();
     }
@@ -2590,11 +2595,6 @@ int main(int argc, char** argv)
     // Construct a DisplayTexture object to handle textures.  It will be the base object that all others will use
     // to share contexts.
     std::shared_ptr<DisplayTexture> displayTexture = std::make_shared<DisplayTexture>();
-
-    // Construct a Display for use by the point correspondence object, if any.
-    if (g_pointCorrespondences != nullptr) {
-      g_pointCorrespondenceDisplay = std::make_shared<DisplayTexture>(displayTexture.get());
-    }
 
     //=================================================================
     // If we are running in kiosk mode, parse the configuration file.
