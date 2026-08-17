@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2024: Arizona Board of Regents on Behalf of the University of Arizona
+ * Copyright (C) 2024-2026: Arizona Board of Regents on Behalf of the University of Arizona
  */
 
 #include <ImageQueue.h>
@@ -9,6 +9,22 @@ ImageData::~ImageData()
 {
   if (texture != 0) {
     glDeleteTextures(1, &texture);
+  }
+}
+
+ImageQueue::~ImageQueue()
+{
+  // Ensure that all of the images are unlocked, removing each element as it is unlocked.
+  m_mutex.lock();
+  while (!m_images.empty()) {
+    if (m_images.back().refCount > 0) {
+      m_mutex.unlock();
+      // Wait for the image to be unlocked, not eating a whole core.
+      std::this_thread::sleep_for(std::chrono::milliseconds(1));
+      m_mutex.lock();
+    } else {
+      m_images.pop_back();
+    }
   }
 }
 

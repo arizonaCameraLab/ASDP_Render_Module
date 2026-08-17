@@ -142,15 +142,18 @@ public:
     cudaGraphicsResource* cgr;
     res = cudaGraphicsGLRegisterImage(&cgr, image->texture, GL_TEXTURE_2D, cudaGraphicsRegisterFlagsReadOnly);
     if (res != cudaSuccess) {
+      m_camera->m_imageQueue->UnlockImage(image);
       return "cudaGraphicsGLRegisterImage() failed: " + std::string(cudaGetErrorString(res));
     }
     res = cudaGraphicsMapResources(1, &cgr, *m_stream);
     if (res != cudaSuccess) {
+      m_camera->m_imageQueue->UnlockImage(image);
       return "cudaGraphicsMapResources() failed: " + std::string(cudaGetErrorString(res));
     }
     cudaArray* array;
     res = cudaGraphicsSubResourceGetMappedArray(&array, cgr, 0, 0);
     if (res != cudaSuccess) {
+      m_camera->m_imageQueue->UnlockImage(image);
       return "cudaGraphicsSubResourceGetMappedArray() failed: " + std::string(cudaGetErrorString(res));
     }
     cudaSurfaceObject_t surfObj;
@@ -160,16 +163,19 @@ public:
     resDesc.res.array.array = array;
     res = cudaCreateSurfaceObject(&surfObj, &resDesc);
     if (res != cudaSuccess) {
+      m_camera->m_imageQueue->UnlockImage(image);
       return "cudaCreateSurfaceObject() failed: " + std::string(cudaGetErrorString(res));
     }
 
     // Zero the sum and sum of squares.
     res = cudaMemsetAsync(m_sum, 0, sizeof(unsigned long long), *m_stream);
     if (res != cudaSuccess) {
+      m_camera->m_imageQueue->UnlockImage(image);
       return "cudaMemset() failed: " + std::string(cudaGetErrorString(res));
     }
     res = cudaMemsetAsync(m_sumOfSquares, 0, sizeof(unsigned long long), *m_stream);
     if (res != cudaSuccess) {
+      m_camera->m_imageQueue->UnlockImage(image);
       return "cudaMemset() failed: " + std::string(cudaGetErrorString(res));
     }
 
@@ -275,8 +281,8 @@ std::string MeanStdGroup::GetMeanStd(double& mean, double& stddev) const
   // Lock the mutex to access the vectors.
   std::lock_guard<std::mutex> lock(m_mutex);
 
-  // If we have no entries yet, return 0.0 for mean and stddev.
-  if (m_means.size() == 0) {
+  // If we have no entries yet, or we're stopping, return 0.0 for mean and stddev.
+  if (m_means.size() == 0 || m_stopThread) {
     mean = stddev = 0.0;
     return "";
   }

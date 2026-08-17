@@ -64,7 +64,7 @@ namespace asdp {
     class ImageQueue {
     public:
       ImageQueue() = default;
-      virtual ~ImageQueue() = default;
+      virtual ~ImageQueue();
 
       /// @brief Add an image to the queue in time-sorted order.
       /// @param[in] image Image to add to the queue.

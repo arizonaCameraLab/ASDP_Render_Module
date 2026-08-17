@@ -182,7 +182,7 @@ protected:
 
       /// Mutex to ensure that only one entity is trying to create a window/context at a time
       /// This avoids race conditions due to global state in the window-management library.
-      static std::mutex m_windowMutex;
+      static std::mutex g_windowMutex;
 
       /// @brief Trigger the cameras to take a picture at the given time.
       /// @details This function is called by the derived class to trigger the cameras to take a picture.

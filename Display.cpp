@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2024: Arizona Board of Regents on Behalf of the University of Arizona
+ * Copyright (C) 2024-2026: Arizona Board of Regents on Behalf of the University of Arizona
  */
 
 #ifdef WIN32
@@ -46,7 +46,7 @@ static GLFWInitializer initGLFW;
 } // namespace asdp}
 
 /// Ensure that we only create one window at a time.
-std::mutex Display::m_windowMutex;
+std::mutex Display::g_windowMutex;
 
 //==============================================================================
 // Structures and methods for Display class.
@@ -363,7 +363,7 @@ void DisplayWindow::SetViewportSizeAndFOVs(ViewRenderInfo& viewInfo, int width, 
   //======================================
   // Added by Sang Yoon to calculate a vertical FOV for cylindrical projection
   auto composite = std::atomic_load(&m_composite);
-  if (composite->m_CP_enabled)
+  if (composite && composite->m_CP_enabled)
       halfAngle = m_impl->m_horizontalFOVDegrees / 2.0 * aspectRatio;
   //======================================
 
@@ -380,7 +380,7 @@ void DisplayWindow::DisplayThread(std::string windowName,
   {
     {
       // Hold the window mutex so that only one window can be created at a time.
-      std::lock_guard<std::mutex> windowLock(m_windowMutex);
+      std::lock_guard<std::mutex> windowLock(g_windowMutex);
 
       // Set the window visibility.
       glfwWindowHint(GLFW_VISIBLE, !hidden);
@@ -493,7 +493,12 @@ void DisplayWindow::DisplayThread(std::string windowName,
 
     // Determine the scan-out time of the frame (center of the image).
     Time renderTime;
-    m_timer->GetCoreTime(renderTime, std::chrono::steady_clock::now());
+    Status status = m_timer->GetCoreTime(renderTime, std::chrono::steady_clock::now());
+    if (status != OKAY) {
+      m_status = "Failed to get Core time";
+      m_done = true;
+      break;
+    }
     if (!m_replaying) {
       double frameTime = 1.0 / fps;
       double middleOfNextFrameOffset = frameTime / 2.0 + renderAheadMicroseconds / 1e6;
@@ -958,7 +963,7 @@ DisplayTexture::DisplayTexture(Display* sharedWindow)
 {
   {
     // Hold the window mutex so that only one window can be created at a time.
-    std::lock_guard<std::mutex> windowLock(m_windowMutex);
+    std::lock_guard<std::mutex> windowLock(g_windowMutex);
 
     // Set the window to be hidden.
     glfwWindowHint(GLFW_VISIBLE, false);
@@ -1019,6 +1024,10 @@ DisplayTexture::~DisplayTexture()
   // Make sure we're done with our rendering state and then clean up.
   Quit();
   m_impl.reset();
+
+  // Done with the window
+  glfwMakeContextCurrent(nullptr);
+  glfwDestroyWindow(Display::m_impl->m_window);
 }
 
 #ifdef USE_OPENXR
@@ -1254,7 +1263,7 @@ void asdp::render::DisplayOpenXR::DisplayOpenXRImpl::OpenGLInitializeDevice(Disp
 
   {
     // Hold the window mutex so that only one window can be created at a time.
-    std::lock_guard<std::mutex> windowLock(m_windowMutex);
+    std::lock_guard<std::mutex> windowLock(g_windowMutex);
 
     // Create a windowed mode window and its OpenGL context.
     // This must be done in the same thread that will do the rendering so that the window events will
@@ -2265,6 +2274,9 @@ DisplayOpenXR::~DisplayOpenXR()
   // Make sure we're done with our rendering state and then clean up.
   Quit();
   m_impl.reset();
+
+  // Done with the window
+  glfwDestroyWindow(Display::m_impl->m_window);
 }
 
 void DisplayOpenXR::DisplayThread(Display* sharedWindow, uint32_t renderAheadMicroseconds)
@@ -2532,7 +2544,7 @@ void DisplayXSight::DisplayThread(
     int width = m_impl->m_encodeMonochrome ? desiredWidth / 2 : desiredWidth;
     {
       // Hold the window mutex so that only one window can be created at a time.
-      std::lock_guard<std::mutex> windowLock(m_windowMutex);
+      std::lock_guard<std::mutex> windowLock(g_windowMutex);
 
       // Set the window to be visible.
       glfwWindowHint(GLFW_VISIBLE, true);

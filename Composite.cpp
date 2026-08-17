@@ -487,6 +487,7 @@ public:
 
     // Draw our geometry
     glDrawArrays(GL_TRIANGLES, 0, static_cast<GLsizei>(vertexBufferData.size()));
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
   }
 
 private:
@@ -1047,6 +1048,12 @@ CompositeCameras::~CompositeCameras()
 {
   m_renderHaloedLines.reset();
   m_renderText.reset();
+  if (m_head_orientation_colorTexture) {
+    glDeleteTextures(1, &m_head_orientation_colorTexture);
+  }
+  if (m_head_orientation_toneMapTexture) {
+    glDeleteTextures(1, &m_head_orientation_toneMapTexture);
+  }
   for (uint16_t i = 0; i < m_cameraBufferInfos.size(); i++) {
     glDeleteBuffers(1, &m_cameraBufferInfos[i].vertexBufferObject);
     glDeleteBuffers(1, &m_cameraBufferInfos[i].indexBufferObject);
@@ -1097,12 +1104,14 @@ void CompositeCameras::CreateBufferInfo(CameraRenderInfo const& cameraRenderInfo
   glGenBuffers(1, &vertexBufferObject);
   glBindBuffer(GL_ARRAY_BUFFER, vertexBufferObject);
   glBufferData(GL_ARRAY_BUFFER, sizeof(vertices[0]) * vertices.size(), vertices.data(), GL_DYNAMIC_DRAW);
+  glBindBuffer(GL_ARRAY_BUFFER, 0);
 
   // Create a vertex buffer object for the indices.
   GLuint indexBufferObject;
   glGenBuffers(1, &indexBufferObject);
   glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, indexBufferObject);
   glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices[0]) * indices.size(), indices.data(), GL_STATIC_DRAW);
+  glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 
   // Save the camera buffer information for this camera, filling in all of its elements.
   CameraBufferInfo cbi;
@@ -1143,6 +1152,7 @@ void CompositeCameras::UpdateVertexBuffer(CameraRenderInfo const& cameraRenderIn
   // Update the vertex buffer object data with the vertices.
   glBindBuffer(GL_ARRAY_BUFFER, cbi.vertexBufferObject);
   glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(vertices[0]) * vertices.size(), vertices.data());
+  glBindBuffer(GL_ARRAY_BUFFER, 0);
 }
 
 void CompositeCameras::UpdateRangeEstimator(std::shared_ptr<asdp::render::RangeEstimator> rangeEstimator)
@@ -1175,6 +1185,11 @@ void CompositeCameras::SetupRenderFrame(asdp::Time scanOutTime)
     images.push_back(cameraRenderInfo->m_imageQueue->LockNewestImages(framesToGrab));
     if (images.back().size() != framesToGrab) {
       std::cerr << "Composite::SetupRenderFrame(): Could not get all needed images, skipping frame" << std::endl;
+      for (auto const& imList : images) {
+        for (auto const& im : imList) {
+          cameraRenderInfo->m_imageQueue->UnlockImage(im);
+        }
+      }
       return;
     }
   }
@@ -1515,6 +1530,8 @@ void CompositeCameras::RenderView(asdp::Time scanOutTime, const float* viewProje
     glVertexAttribPointer(2, 1, GL_FLOAT, GL_FALSE, 6 * sizeof(GLfloat), (GLvoid*)(5 * sizeof(GLfloat)));
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_cameraBufferInfos[cameraID].indexBufferObject);
     glDrawElements(GL_TRIANGLES, m_cameraBufferInfos[cameraID].numIndices, GL_UNSIGNED_INT, 0);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 
     // Unbind the camera image from its texture unit
     glActiveTexture(GL_TEXTURE0);
