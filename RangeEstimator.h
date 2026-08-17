@@ -22,6 +22,7 @@ namespace asdp {
     /// @brief RangeEstimator pure virtual base class that defines the interface.
     class RangeEstimator {
     public:
+      virtual ~RangeEstimator() = default;
 
       /// @brief Report the current value of the range in a thread-safe manner.
       /// @details Reports the current value of the range from 0-1.

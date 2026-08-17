@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2024: Arizona Board of Regents on Behalf of the University of Arizona
+ * Copyright (C) 2024-2026: Arizona Board of Regents on Behalf of the University of Arizona
  */
 
 // This is a client that connects to the first server it encounters and runs a Render Module.
@@ -56,7 +56,7 @@ using namespace asdp::render;
 using namespace asdp::analysis;
 using json = nlohmann::json;
 
-static std::string VERSION = "3.37.0";
+static std::string VERSION = "3.39.0";
 
 /// @brief The path to the configuration file. Defined in the CMakeLists file.
 std::filesystem::path g_dirPath = CONFIG_FILE_PATH;
@@ -252,6 +252,11 @@ static std::vector< std::shared_ptr<ImageData> > GetConsistentImageSet()
     images.push_back(cameraRenderInfo->m_imageQueue->LockNewestImages(2));
     if (images.back().size() != 2) {
       std::cerr << "GetConsistentImageSet(): Could not get all needed images, skipping frame" << std::endl;
+      for (auto const& imList : images) {
+        for (auto const& image : imList) {
+          cameraRenderInfo->m_imageQueue->UnlockImage(image);
+        }
+      }
       return imageSet;
     }
   }
@@ -1351,14 +1356,13 @@ int spin_up(std::shared_ptr<CoreClient> client, int &serialNumber, std::shared_p
   std::vector<GLuint> &toneMapTextures, double &staticDepth, std::atomic<bool> &done,
   std::string &ip_address, bool &doStreamPoses, uint32_t &frameStride,
   std::vector<std::string> &analysisModuleURLs,
-  std::shared_ptr<asdp::render::imageStatistics::MeanStdGroup> &meanStdGroup,
-  std::shared_ptr<RangeEstimator> &rangeEstimator,
   std::shared_ptr<ClockSynchronizer> &clockSync, std::shared_ptr<Timer> &timer,
   std::shared_ptr<DisplayTexture> &depthContext, std::vector<std::thread> &copyDataToGPUThreads,
   std::thread &analysisThread,
   std::vector< std::shared_ptr< SpinFreeQueue< std::shared_ptr<DataToSendToGPU> > > > &dataQueues,
   std::vector<std::thread> &receiveDataThreads,
-  bool lockRotation, bool disableLatencyCompensation
+  bool lockRotation, bool disableLatencyCompensation,
+  bool &firstSpinUp
 )
 {
   // We're not done yet
@@ -1641,13 +1645,14 @@ int spin_up(std::shared_ptr<CoreClient> client, int &serialNumber, std::shared_p
   }
 
   // If we've been asked to do standard-deviation-based auto-ranging, set that up.
-  rangeEstimator = std::make_shared<RangeEstimatorFixed>();
+  std::shared_ptr<RangeEstimator> rangeEstimator = std::make_shared<RangeEstimatorFixed>();
   if (autoRangeStdAbove != 0 || autoRangeStdBelow != 0) {
     // Make a display object that shares textures with the others.
     std::shared_ptr<Display> display = std::make_shared<DisplayTexture>(displayTexture.get());
     // Make a MeanStdGroup object to handle the statistics.
-    meanStdGroup = std::make_shared<asdp::render::imageStatistics::MeanStdGroup>(g_visibleCameras,
-      display, 1.0 / cameraFPS);
+    std::shared_ptr<asdp::render::imageStatistics::MeanStdGroup> meanStdGroup =
+      std::make_shared<asdp::render::imageStatistics::MeanStdGroup>(g_visibleCameras,
+        display, 1.0 / cameraFPS);
     // Make a RangeEstimator object to handle the range.
     rangeEstimator = std::make_shared<RangeEstimatorStdRanges>(meanStdGroup,
       autoRangeStdBelow, autoRangeStdAbove);
@@ -1799,10 +1804,10 @@ int spin_up(std::shared_ptr<CoreClient> client, int &serialNumber, std::shared_p
   for (size_t i = 0; i < cameras.size(); i++) {
     try {
       // Preallocate pinned memory buffers for the CPU.
-      cpuPinnedImageBuffers.push_back(std::make_shared<CUDABufferPool>(cameras[i].width * cameras[i].height * sizeof(uint16_t), 5, true));
+      cpuPinnedImageBuffers.push_back(std::make_shared<CUDABufferPool>(cameras[i].width * cameras[i].height * sizeof(uint16_t), 10, true));
 
       // Preallocate memory buffers for the GPU.
-      gpuImageBuffers.push_back(std::make_shared<CUDABufferPool>(cameras[i].width * cameras[i].height * sizeof(uint16_t), 5, false));
+      gpuImageBuffers.push_back(std::make_shared<CUDABufferPool>(cameras[i].width * cameras[i].height * sizeof(uint16_t), 10, false));
 
       // Make a pool of GPU memory buffers for per-pixel NUC to use if it is running.
       // Pre-allocate some if we are doing per-pixel NUC, otherwise leave the vector empty.
@@ -1984,7 +1989,13 @@ int spin_up(std::shared_ptr<CoreClient> client, int &serialNumber, std::shared_p
     }
     std::cout << "Requesting replay of stream " << replayStreamID << std::endl;
     // Set the initial time to be above zero so that we never predict backwards to negative time.
-    status = client->SendCommandPacket(CommandPacketStartReplay(replayStreamID, Time(10, 0)));
+    // If this is not the first time through, use the current time so that we can continue from where
+    // we left off.
+    Time initialTime = Time(10, 0);
+    if (!firstSpinUp) {
+      timer->GetCoreTime(initialTime);
+    }
+    status = client->SendCommandPacket(CommandPacketStartReplay(replayStreamID, initialTime));
     if (status != OKAY) {
       std::cerr << "Failed to start replay: " << ErrorMessage(status) << std::endl;
       return 34;
@@ -2000,6 +2011,7 @@ int spin_up(std::shared_ptr<CoreClient> client, int &serialNumber, std::shared_p
     analysisThread = std::thread(HandleAnalysisThread, analysisModuleURLs, timer);
   }
 
+  firstSpinUp = false;
   return 0;
 }
 
@@ -2015,6 +2027,12 @@ int spin_down(std::shared_ptr<CoreClient> client, std::atomic<bool>& done,
   std::vector<GLuint> &toneMapTextures
   )
 {
+  // Now borrow the context from the displayTexture so that we can free up resources.
+  if (!displayTexture->BorrowContext()) {
+    std::cerr << "Error borrowing context from displayTexture." << std::endl;
+    return 36;
+  }
+
   // Stopping streaming on the cameras
   std::cout << "Stop streaming from " << cameraIDs.size() << " cameras" << std::endl;
   for (size_t i = 0; i < cameras.size(); i++) {
@@ -2081,18 +2099,8 @@ int spin_down(std::shared_ptr<CoreClient> client, std::atomic<bool>& done,
   }
   dataQueues.clear();
 
-  // Now borrow the context from the displayTexture so that we can delete the textures.
-  if (!displayTexture->BorrowContext()) {
-    std::cerr << "Error borrowing context from displayTexture." << std::endl;
-    return 36;
-  }
   cameraRenderInfos.clear();
-
   glDeleteTextures(toneMapTextures.size(), toneMapTextures.data());
-  if (!displayTexture->ReturnContext()) {
-    std::cerr << "Error returning context to displayTexture." << std::endl;
-    return 37;
-  }
 
   // Clean up the global objects.
   g_pointCorrespondenceDisplay.reset();
@@ -2100,6 +2108,12 @@ int spin_down(std::shared_ptr<CoreClient> client, std::atomic<bool>& done,
   g_depthCameras.clear();
   g_depthEstimator.reset();
   g_composites.clear();
+
+  // We're done with the context.
+  if (!displayTexture->ReturnContext()) {
+    std::cerr << "Error returning context to displayTexture." << std::endl;
+    return 37;
+  }
 
   return 0;
 }
@@ -2646,8 +2660,6 @@ int main(int argc, char** argv)
     std::vector< std::shared_ptr<ReceiverUDP> > UDPReceivers;
     std::vector<GLuint> toneMapTextures;  ///< Stores these for later deletion or replacement.
     std::atomic<bool> done{false};
-    std::shared_ptr<asdp::render::imageStatistics::MeanStdGroup> meanStdGroup;
-    std::shared_ptr<RangeEstimator> rangeEstimator;
     std::shared_ptr<ClockSynchronizer> clockSync;
     std::shared_ptr<DisplayTexture> depthContext;
     std::vector<std::thread> copyDataToGPUThreads;
@@ -2655,14 +2667,16 @@ int main(int argc, char** argv)
     std::vector< std::shared_ptr< SpinFreeQueue< std::shared_ptr<DataToSendToGPU> > > > dataQueues;
     std::vector<std::thread> receiveDataThreads;
     std::shared_ptr<PoseAdjuster> poseAdjuster;
+    bool firstSpinUp = true;
     int ret = spin_up(client, serialNumber, receiver, cameras, hasStorage, hasTemperatures, hasPoses,
       triggerID, replayStreamID, configPath, UDPReceivers, skipCameras, nucInfos, maxCameras,
       lineBatchesPerGPUSend, displayTexture, displayInfos, renderAheadFrames, cameraFPS, computeDepth,
       autoRangeStdBelow, autoRangeStdAbove, maxDepth, depthThreshold, poseAdjuster, cameraRenderInfos,
       cameraIDs,
       toneMapTextures, staticDepth, done, ip_address, doStreamPoses, frameStride, analysisModuleURLs,
-      meanStdGroup, rangeEstimator, clockSync, timer, depthContext, copyDataToGPUThreads,
-      analysisThread, dataQueues, receiveDataThreads, lockRotation, disableLatencyCompensation);
+      clockSync, timer, depthContext, copyDataToGPUThreads,
+      analysisThread, dataQueues, receiveDataThreads, lockRotation, disableLatencyCompensation,
+      firstSpinUp);
     if (ret != 0) {
       return ret;
     }
@@ -2805,14 +2819,17 @@ int main(int argc, char** argv)
             }
             float stdBelow = kioskInfo[kioskIndex]["parameters"][0].get<float>();
             float stdAbove = kioskInfo[kioskIndex]["parameters"][1].get<float>();
+
+            std::shared_ptr<RangeEstimator> rangeEstimator;
             if (stdBelow == 0 && stdAbove == 0) {
               rangeEstimator = nullptr;
             } else {
               // Make a display object that shares textures with the others.
               std::shared_ptr<Display> display = std::make_shared<DisplayTexture>(displayTexture.get());
               // Make a MeanStdGroup object to handle the statistics.
-              meanStdGroup = std::make_shared<asdp::render::imageStatistics::MeanStdGroup>(g_visibleCameras,
-                display, 1.0 / cameraFPS);
+              std::shared_ptr<asdp::render::imageStatistics::MeanStdGroup> meanStdGroup =
+                std::make_shared<asdp::render::imageStatistics::MeanStdGroup>(g_visibleCameras,
+                  display, 1.0 / cameraFPS);
               rangeEstimator = std::make_shared<RangeEstimatorStdRanges>(meanStdGroup, stdBelow, stdAbove);
             }
             for (auto& composite : g_composites) {
@@ -2829,6 +2846,19 @@ int main(int argc, char** argv)
             int cameraID = kioskInfo[kioskIndex]["parameters"][0];
             int streamID = kioskInfo[kioskIndex]["parameters"][1];
 
+            // Remove the old composite in each of the displays before we spin down so that everything
+            // will be released (in particular, the CameraRenderInfo->m_imageQueue textures).
+            // Wait briefly to enable any in-progress rendering to finish before we tear things down.
+            for (size_t i = 0; i < displays.size(); i++) {
+              displays[i]->UpdateComposite(nullptr);
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+            // Remove any RangeEstimator from the composites so that their resources will be released.
+            for (auto& composite : g_composites) {
+              composite->UpdateRangeEstimator(nullptr);
+            }
+
             // Spin down the existing camera
             ret = spin_down(client, done, cameras, cameraIDs, UDPReceivers, ip_address, depthContext,
               copyDataToGPUThreads, analysisThread, dataQueues, receiveDataThreads, displayTexture,
@@ -2841,6 +2871,9 @@ int main(int argc, char** argv)
             serialNumber = cameraID;
             replayStreamID = streamID;
 
+            // Make sure we are not paused when we spin up the new camera.
+            g_paused = false;
+
             // Spin up the new camera.
             ret = spin_up(client, serialNumber, receiver, cameras, hasStorage, hasTemperatures, hasPoses,
               triggerID, replayStreamID, configPath, UDPReceivers, skipCameras, nucInfos, maxCameras,
@@ -2848,15 +2881,16 @@ int main(int argc, char** argv)
               autoRangeStdBelow, autoRangeStdAbove, maxDepth, depthThreshold, poseAdjuster, cameraRenderInfos,
               cameraIDs,
               toneMapTextures, staticDepth, done, ip_address, doStreamPoses, frameStride, analysisModuleURLs,
-              meanStdGroup, rangeEstimator, clockSync, timer, depthContext, copyDataToGPUThreads,
-              analysisThread, dataQueues, receiveDataThreads, lockRotation, disableLatencyCompensation);
+              clockSync, timer, depthContext, copyDataToGPUThreads,
+              analysisThread, dataQueues, receiveDataThreads, lockRotation, disableLatencyCompensation,
+              firstSpinUp);
+            if (ret != 0) {
+              return ret;
+            }
 
             // Set the new composites in each of the displays.
             for (size_t i = 0; i < displays.size(); i++) {
               displays[i]->UpdateComposite(g_composites[i]);
-            }
-            if (ret != 0) {
-              return ret;
             }
             std::cout << " Switched to camera ID " << cameraID << " and stream ID " << streamID << std::endl;
           } else {

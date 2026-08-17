@@ -89,12 +89,21 @@ CPUDataToTextureHandler::CPUDataToTextureHandler(
     }
 
     // Map the texture for writing by CUDA
-    cudaGraphicsMapResources(1, &m_resource, *(m_dataPtr->streamPtr));
-    cudaStatus = cudaGraphicsSubResourceGetMappedArray(&m_textureData, m_resource, 0, 0);
+    cudaStatus = cudaGraphicsMapResources(1, &m_resource, *(m_dataPtr->streamPtr));
     if (cudaStatus != cudaSuccess) {
       m_status = "Failed to map texture: " + std::string(cudaGetErrorString(cudaStatus));
+      cudaGraphicsUnregisterResource(m_resource);
+      texturesToCUDAMap->erase(textureID);
+      m_resource = nullptr;
+      return;
+    }
+    cudaStatus = cudaGraphicsSubResourceGetMappedArray(&m_textureData, m_resource, 0, 0);
+    if (cudaStatus != cudaSuccess) {
+      m_status = "Failed to get mapped array: " + std::string(cudaGetErrorString(cudaStatus));
       cudaGraphicsUnmapResources(1, &m_resource, *(m_dataPtr->streamPtr));
-      (*texturesToCUDAMap)[textureID] = nullptr;
+      cudaGraphicsUnregisterResource(m_resource);
+      texturesToCUDAMap->erase(textureID);
+      m_resource = nullptr;
       return;
     }
   }
@@ -109,7 +118,9 @@ CPUDataToTextureHandler::CPUDataToTextureHandler(
   if (cudaStatus != cudaSuccess) {
     m_status = "Failed to create surface object: " + std::string(cudaGetErrorString(cudaStatus));
     cudaGraphicsUnmapResources(1, &m_resource, *(m_dataPtr->streamPtr));
-    (*texturesToCUDAMap)[textureID] = nullptr;
+    cudaGraphicsUnregisterResource(m_resource);
+    texturesToCUDAMap->erase(textureID);
+    m_resource = nullptr;
     return;
   }
 }
@@ -141,6 +152,7 @@ CPUDataToTextureHandler::~CPUDataToTextureHandler()
   cudaDestroySurfaceObject(m_surfObj);
   // As a side effect, this call guarantees that all CUDA work completes before any later-called OpenGL work starts.
   cudaGraphicsUnmapResources(1, &m_resource, *(m_dataPtr->streamPtr));
+  m_resource = nullptr;
 
   // Be sure that everything is registered with OpenGL before putting the texture back into use on another thread.
   // Adding this call fixed a misalignment between cameras where neighbors had different-timed images.
@@ -360,10 +372,15 @@ void asdp::render::CopyDataToTextures(uint16_t width, uint16_t height,
     } // End of if we got a message from the queue.
   } // End of while we are not done.
 
+  // Delete all of the handlers to ensure that they clean up and push any remaining data to the textures
+  // while we still have our context.
+  handlers.clear();
+
   // Unregister all of our textures from CUDA.
   for (auto& texture : *texturesToCUDAMap) {
     cudaGraphicsUnregisterResource(texture.second);
   }
+  texturesToCUDAMap->clear();
 
   // Return the context borrowed from the shared context so that we can use it to map textures.
   if (!sharedContext->ReturnContext()) {
