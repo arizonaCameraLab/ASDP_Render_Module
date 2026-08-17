@@ -56,7 +56,7 @@ using namespace asdp::render;
 using namespace asdp::analysis;
 using json = nlohmann::json;
 
-static std::string VERSION = "3.41.0";
+static std::string VERSION = "3.42.0";
 
 /// @brief The path to the configuration file. Defined in the CMakeLists file.
 std::filesystem::path g_dirPath = CONFIG_FILE_PATH;
@@ -2820,10 +2820,15 @@ int main(int argc, char** argv)
             float stdBelow = kioskInfo[kioskIndex]["parameters"][0].get<float>();
             float stdAbove = kioskInfo[kioskIndex]["parameters"][1].get<float>();
 
+            // Clear the previous ones so that we free our MeanStdGroup objects
+            for (auto& composite : g_composites) {
+              composite->UpdateRangeEstimator(nullptr);
+            }
+
+            // If we have non-zero values for either stdBelow or stdAbove, make a new
+            // RangeEstimatorStdRanges object and set it in the composites.
             std::shared_ptr<RangeEstimator> rangeEstimator;
-            if (stdBelow == 0 && stdAbove == 0) {
-              rangeEstimator = nullptr;
-            } else {
+            if (stdBelow != 0 || stdAbove != 0) {
               // Make a display object that shares textures with the others.
               std::shared_ptr<Display> display = std::make_shared<DisplayTexture>(displayTexture.get());
               // Make a MeanStdGroup object to handle the statistics.
