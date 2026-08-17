@@ -56,7 +56,7 @@ using namespace asdp::render;
 using namespace asdp::analysis;
 using json = nlohmann::json;
 
-static std::string VERSION = "3.42.0";
+static std::string VERSION = "3.43.0";
 
 /// @brief The path to the configuration file. Defined in the CMakeLists file.
 std::filesystem::path g_dirPath = CONFIG_FILE_PATH;
@@ -2820,6 +2820,10 @@ int main(int argc, char** argv)
             float stdBelow = kioskInfo[kioskIndex]["parameters"][0].get<float>();
             float stdAbove = kioskInfo[kioskIndex]["parameters"][1].get<float>();
 
+            if (!g_kioskDisplay->BorrowContext()) {
+              std::cerr << "Error borrowing context from g_kioskDisplay for autoRangeStd." << std::endl;
+            }
+
             // Clear the previous ones so that we free our MeanStdGroup objects
             for (auto& composite : g_composites) {
               composite->UpdateRangeEstimator(nullptr);
@@ -2839,6 +2843,10 @@ int main(int argc, char** argv)
             }
             for (auto& composite : g_composites) {
               composite->UpdateRangeEstimator(rangeEstimator);
+            }
+
+            if (!g_kioskDisplay->ReturnContext()) {
+              std::cerr << "Error returning context to g_kioskDisplay for autoRangeStd." << std::endl;
             }
           } else if (command == "camera") {
             if (kioskInfo[kioskIndex]["parameters"].size() != 2) {
