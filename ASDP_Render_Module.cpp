@@ -56,7 +56,7 @@ using namespace asdp::render;
 using namespace asdp::analysis;
 using json = nlohmann::json;
 
-static std::string VERSION = "3.43.0";
+static std::string VERSION = "3.44.0";
 
 /// @brief The path to the configuration file. Defined in the CMakeLists file.
 std::filesystem::path g_dirPath = CONFIG_FILE_PATH;
@@ -223,6 +223,24 @@ static void AdjustActiveCameraGain(float gainDelta, void* /* unused */)
   cri->GetColorOffsetGain(currentOffset, currentGain);
   cri->SetColorOffsetGain(currentOffset, currentGain * gainDelta);
   std::cout << "Adjusted camera ID " << cri->m_ID << " color gain to : " << currentGain * gainDelta << std::endl;
+}
+
+/// @brief Reset the active camera's color gain to 1 and offset to 0.
+static void ResetActiveCameraGainOffset(void* /* unused */)
+{
+  if (g_activeCameraIndex >= g_visibleCameras.size()) {
+    std::cerr << "Error: Active camera index out of range." << std::endl;
+    return;
+  }
+  std::shared_ptr<asdp::render::CameraRenderInfo> cri = g_visibleCameras[g_activeCameraIndex];
+  if (cri == nullptr) {
+    std::cerr << "Error: Active camera is null." << std::endl;
+    return;
+  }
+
+  // Adjust the color offset and gain.
+  cri->SetColorOffsetGain(0.0f, 1.0f);
+  std::cout << "Reset camera ID " << cri->m_ID << " color gain to 1 and offset to 0." << std::endl;
 }
 
 static double TimeDiffMagnitude(asdp::Time t1, asdp::Time t2)
@@ -2692,6 +2710,7 @@ int main(int argc, char** argv)
     handlers->DecrementActiveCamera = DecrementActiveCamera;
     handlers->AdjustActiveCameraOffset = AdjustActiveCameraOffset;
     handlers->AdjustActiveCameraGain = AdjustActiveCameraGain;
+    handlers->ResetActiveCameraGainOffset = ResetActiveCameraGainOffset;
     handlers->AutoUpdateColorOffsets = AutoUpdateColorOffsets;
     handlers->AutoUpdateColorOffsetsAndGains = AutoUpdateColorOffsetsAndGains;
     handlers->SaveCameraConfig = SaveCameraConfig;

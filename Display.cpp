@@ -267,6 +267,9 @@ public:
   /// Whether or not the 'o' key was pressed during the last loop, used to toggle overview plus detail view.
   bool m_oPressed = false;
 
+  /// Whether or not the 'i' key was pressed during the last loop, used to reset active camera gain and offset.
+  bool m_iPressed = false;
+
   /// Whether or not the 'c' key was pressed during the last loop, used to toggle camera names display.
   bool m_cPressed = false;
 
@@ -835,6 +838,13 @@ void DisplayWindow::HandleKeyboard()
     }
   }
   m_impl->m_oPressed = oPressed;
+
+  bool iPressed = (glfwGetKey(Display::m_impl->m_window, GLFW_KEY_I) == GLFW_PRESS);
+  if (iPressed && !m_impl->m_iPressed) {
+    if (m_eventHandlers && m_eventHandlers->ResetActiveCameraGainOffset) {
+      m_eventHandlers->ResetActiveCameraGainOffset(m_userData);
+    }
+  }
 
   // If the 's' key is pressed, send an event asking to save the current configuration file.
   bool sPressed = (glfwGetKey(Display::m_impl->m_window, GLFW_KEY_S) == GLFW_PRESS);
