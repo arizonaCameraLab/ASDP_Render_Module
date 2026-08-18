@@ -63,6 +63,9 @@ namespace asdp {
       /// Automatically update the color offsets and gains for all cameras based on point correspondences.
       void (*AutoUpdateColorOffsetsAndGains)(void* userData) = nullptr;
 
+      /// Make the gain 1 and offset 0 for the currently-specified camera.
+      void (*ResetActiveCameraGainOffset)(void* userData) = nullptr;
+
       /// Save the current camera configuration settings to a file.
       void (*SaveCameraConfig)(const std::string& fileName, void* userData) = nullptr;
 
