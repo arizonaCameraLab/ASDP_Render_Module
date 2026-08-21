@@ -634,7 +634,7 @@ public:
   friend class DepthEstimator;
   DepthEstimatorImpl() = delete;
   DepthEstimatorImpl(DepthEstimator *parent,
-      std::vector< std::array<std::shared_ptr<CameraRenderInfo>, 2> > cameras,
+      std::vector< std::array<std::shared_ptr<CameraRenderInfo>, 2> > pairs,
       std::shared_ptr<asdp::render::RangeEstimator> rangeEstimator,
       std::shared_ptr<PoseAdjuster> poseAdjuster,
       Time cameraFrameInterval,
@@ -662,7 +662,7 @@ public:
     // NOTE: Tonemap must be monochrome because the test code calls all colored pixels background.
     // The default black-to-white one works.
     ToneMap toneMap;
-    for (unsigned i = 0; i < cameras.size(); i++) {
+    for (unsigned i = 0; i < pairs.size(); i++) {
 
       // For each pair, create a viewpoint that is halfway between
       // the two cameras with an orientation that is the average of the two.
@@ -670,19 +670,19 @@ public:
       // to quaternions to average them.
       glm::dvec3 position;
 
-      std::array<double, 3> const& p1 = cameras[i][0]->m_positionMeters;
-      std::array<double, 3> const& p2 = cameras[i][1]->m_positionMeters;
+      std::array<double, 3> const& p1 = pairs[i][0]->m_positionMeters;
+      std::array<double, 3> const& p2 = pairs[i][1]->m_positionMeters;
       position = 0.5 * (glm::dvec3(p1[0], p1[1], p1[2]) + glm::dvec3(p2[0], p2[1], p2[2]));
 
       glm::quat orientation;
-      glm::quat rotx = glm::angleAxis(glm::radians(cameras[i][0]->m_orientationDegrees[0]), glm::dvec3(1, 0, 0));
-      glm::quat roty = glm::angleAxis(glm::radians(cameras[i][0]->m_orientationDegrees[1]), glm::dvec3(0, 1, 0));
-      glm::quat rotz = glm::angleAxis(glm::radians(cameras[i][0]->m_orientationDegrees[2]), glm::dvec3(0, 0, 1));
+      glm::quat rotx = glm::angleAxis(glm::radians(pairs[i][0]->m_orientationDegrees[0]), glm::dvec3(1, 0, 0));
+      glm::quat roty = glm::angleAxis(glm::radians(pairs[i][0]->m_orientationDegrees[1]), glm::dvec3(0, 1, 0));
+      glm::quat rotz = glm::angleAxis(glm::radians(pairs[i][0]->m_orientationDegrees[2]), glm::dvec3(0, 0, 1));
       glm::quat rot1 = rotx * roty * rotz;
 
-      rotx = glm::angleAxis(glm::radians(cameras[i][1]->m_orientationDegrees[0]), glm::dvec3(1, 0, 0));
-      roty = glm::angleAxis(glm::radians(cameras[i][1]->m_orientationDegrees[1]), glm::dvec3(0, 1, 0));
-      rotz = glm::angleAxis(glm::radians(cameras[i][1]->m_orientationDegrees[2]), glm::dvec3(0, 0, 1));
+      rotx = glm::angleAxis(glm::radians(pairs[i][1]->m_orientationDegrees[0]), glm::dvec3(1, 0, 0));
+      roty = glm::angleAxis(glm::radians(pairs[i][1]->m_orientationDegrees[1]), glm::dvec3(0, 1, 0));
+      rotz = glm::angleAxis(glm::radians(pairs[i][1]->m_orientationDegrees[2]), glm::dvec3(0, 0, 1));
       glm::quat rot2 = rotx * roty * rotz;
 
       orientation = glm::slerp(rot1, rot2, 0.5f);
@@ -692,36 +692,54 @@ public:
       // pixel count, which should be an even multiple of the number of samples in each dimension
       // and its ratio should be similar to the aspect ratio of the frame buffer and it should have
       // at least as many pixels as the camera images in each dimension.  Start by determining the
-      // distorted location of a point at the upper-right corner of the camera image on a plane at
-      // Z = -1 and computing its fields of view.
+      // distorted locations of the points at the left, right, top, and bottom of the frustum at
+      // Z = -1 and computing its fields of view by taking the minimum of left and right and minimum
+      // of top and bottom.
       std::array<float, 2> fovsDeg;
       double depthForFOV = 1.0;
       double maxHFOV = 0, maxVFOV = 0;
-      double maxXRatio = 1.0, maxYRatio = 1.0;
+      double maxXRatio = 0.0, maxYRatio = 0.0;
       for (size_t c = 0; c < 2; c++) {
-        double xHalfWidth = tan(glm::radians(cameras[i][c]->m_fovDegrees[0]) * 0.5) * depthForFOV;
-        double yHalfWidth = tan(glm::radians(cameras[i][c]->m_fovDegrees[1]) * 0.5) * depthForFOV;
+        double xHalfWidth = tan(glm::radians(pairs[i][c]->m_fovDegrees[0]) * 0.5) * depthForFOV;
+        double yHalfWidth = tan(glm::radians(pairs[i][c]->m_fovDegrees[1]) * 0.5) * depthForFOV;
 
-        std::array<double, 3> corner = { xHalfWidth, yHalfWidth, -depthForFOV };
-        std::array<double, 3> distortedCorner = cameras[i][c]->m_distortion->MapPoint(corner);
+        std::array<double, 3> left = { -xHalfWidth, 0.0, -depthForFOV };
+        std::array<double, 3> right = { xHalfWidth, 0.0, -depthForFOV };
+        std::array<double, 3> top = { 0.0, yHalfWidth, -depthForFOV };
+        std::array<double, 3> bottom = { 0.0, -yHalfWidth, -depthForFOV };
 
-        double hFOV = glm::degrees(2.0 * atan(fabs(distortedCorner[0] / distortedCorner[2])));
-        double vFOV = glm::degrees(2.0 * atan(fabs(distortedCorner[1] / distortedCorner[2])));
+        std::array<double, 3> distortedLeft = pairs[i][c]->m_distortion->MapPoint(left);
+        std::array<double, 3> distortedRight = pairs[i][c]->m_distortion->MapPoint(right);
+        std::array<double, 3> distortedTop = pairs[i][c]->m_distortion->MapPoint(top);
+        std::array<double, 3> distortedBottom = pairs[i][c]->m_distortion->MapPoint(bottom);
+
+        double leftHFOV = glm::degrees(2.0 * atan(fabs(distortedLeft[0] / distortedLeft[2])));
+        double rightHFOV = glm::degrees(2.0 * atan(fabs(distortedRight[0] / distortedRight[2])));
+        double topVFOV = glm::degrees(2.0 * atan(fabs(distortedTop[1] / distortedTop[2])));
+        double bottomVFOV = glm::degrees(2.0 * atan(fabs(distortedBottom[1] / distortedBottom[2])));
+
+        double hFOV = std::min(leftHFOV, rightHFOV);
+        double vFOV = std::min(topVFOV, bottomVFOV);
 
         maxHFOV = std::max(maxHFOV, hFOV);
         maxVFOV = std::max(maxVFOV, vFOV);
 
-        maxXRatio = std::max(maxXRatio, fabs(distortedCorner[0] / xHalfWidth));
-        maxYRatio = std::max(maxYRatio, fabs(distortedCorner[1] / yHalfWidth));
+        maxXRatio = std::max(maxXRatio, std::min(fabs(distortedLeft[0]),fabs(distortedRight[0])) / xHalfWidth);
+        maxYRatio = std::max(maxYRatio, std::min(fabs(distortedTop[1]),fabs(distortedBottom[1])) / yHalfWidth);
       }
+
+      // Reduce the FOVs by the difference in pointing direction of the two cameras, around the
+      // X axis for teh vertical FOV and around the Z axis for the horizontal FOV.  This is to handle
+      // the fact that one will point further in each direction than the other.
+      /// @todo
       fovsDeg[0] = static_cast<float>(maxHFOV);
       fovsDeg[1] = static_cast<float>(maxVFOV);
 
       // Use the ratio of the new and original fields of view to scale the pixel count, making sure that
       // the results are an even multiple of the number of samples in X and Y.
       std::array<unsigned, 2> pixelCounts;
-      uint16_t maxX = std::max(cameras[i][0]->m_resolutionPixels[0], cameras[i][1]->m_resolutionPixels[0]);
-      uint16_t maxY = std::max(cameras[i][0]->m_resolutionPixels[1], cameras[i][1]->m_resolutionPixels[1]);
+      uint16_t maxX = std::max(pairs[i][0]->m_resolutionPixels[0], pairs[i][1]->m_resolutionPixels[0]);
+      uint16_t maxY = std::max(pairs[i][0]->m_resolutionPixels[1], pairs[i][1]->m_resolutionPixels[1]);
       pixelCounts[0] = static_cast<unsigned>(maxX * maxXRatio);
       if (pixelCounts[0] % m_nx != 0) { pixelCounts[0] += m_nx - (pixelCounts[0] % m_nx); }
       pixelCounts[1] = static_cast<unsigned>(maxY * maxYRatio);
@@ -735,7 +753,7 @@ public:
 
       // Make the camera pair info.
       std::shared_ptr<CameraPairInfo> cameraPairInfo = std::make_shared<CameraPairInfo>(
-        toneMap, cameras[i][0], cameras[i][1], rangeEstimator,
+        toneMap, pairs[i][0], pairs[i][1], rangeEstimator,
         position, orientation, fovsDeg, pixelCounts,
         poseAdjuster, cameraFrameInterval, depths, m_defaultDepth);
       if (!cameraPairInfo->m_constructorStatus.empty()) {
