@@ -1728,7 +1728,10 @@ int spin_up(std::shared_ptr<CoreClient> client, int &serialNumber, std::shared_p
     for (int i = depths.size() - 2; i >= 0; i--) {
       depths[i] = depths[i + 1] / 2;
     }
-    g_depthEstimator = std::make_shared<DepthEstimator>(cameras, rangeEstimator, poseAdjuster, float(1.0 / cameraFPS),
+    /// @todo Because we have visible-light depth cameras even when using IR cameras, we avoid
+    /// using a RangeEstimator when constructing them.
+    g_depthEstimator = std::make_shared<DepthEstimator>(cameras, std::make_shared<RangeEstimatorFixed>(),
+      poseAdjuster, float(1.0 / cameraFPS),
       g_depthCameras[0]->m_resolutionPixels[0] * 2 / 100, g_depthCameras[0]->m_resolutionPixels[1] * 2 / 100,
       depths, depthThreshold);
     std::cout << "Constructed DepthEstimator with " << cameras.size() << " camera pairs." << std::endl;
