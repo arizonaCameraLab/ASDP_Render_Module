@@ -2395,8 +2395,9 @@ std::string DepthEstimator::Test()
         cudaFree(d_estimatedDepth);
 
         // Test the value.
-        if (abs(estimatedDepth - defaultDepth) > 1e-6f) {
-          return "estimateDepth() GPU test failed for origin";
+        if (abs(estimatedDepth - centerDepth) > 1e-6f) {
+          return "estimateDepth() GPU test failed for origin: expected " +
+            std::to_string(centerDepth) + ", found " + std::to_string(estimatedDepth);
         }
       }
 
