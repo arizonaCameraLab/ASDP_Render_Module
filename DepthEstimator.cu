@@ -697,7 +697,7 @@ public:
       // of top and bottom.
       std::array<float, 2> fovsDeg;
       double depthForFOV = 1.0;
-      double maxHFOV = 0, maxVFOV = 0;
+      double minHFOV = 1e10, minVFOV = 1e10;
       double maxXRatio = 0.0, maxYRatio = 0.0;
       for (size_t c = 0; c < 2; c++) {
         double xHalfWidth = tan(glm::radians(pairs[i][c]->m_fovDegrees[0]) * 0.5) * depthForFOV;
@@ -721,8 +721,8 @@ public:
         double hFOV = std::min(leftHFOV, rightHFOV);
         double vFOV = std::min(topVFOV, bottomVFOV);
 
-        maxHFOV = std::max(maxHFOV, hFOV);
-        maxVFOV = std::max(maxVFOV, vFOV);
+        minHFOV = std::min(minHFOV, hFOV);
+        minVFOV = std::min(minVFOV, vFOV);
 
         maxXRatio = std::max(maxXRatio, std::min(fabs(distortedLeft[0]),fabs(distortedRight[0])) / xHalfWidth);
         maxYRatio = std::max(maxYRatio, std::min(fabs(distortedTop[1]),fabs(distortedBottom[1])) / yHalfWidth);
@@ -733,8 +733,8 @@ public:
       // the fact that one will point further in each direction than the other.
       double deltaX = fabs(pairs[i][0]->m_orientationDegrees[0] - pairs[i][1]->m_orientationDegrees[0]);
       double deltaZ = fabs(pairs[i][0]->m_orientationDegrees[2] - pairs[i][1]->m_orientationDegrees[2]);
-      fovsDeg[0] = static_cast<float>(maxHFOV - deltaZ);
-      fovsDeg[1] = static_cast<float>(maxVFOV - deltaX);
+      fovsDeg[0] = static_cast<float>(minHFOV - deltaZ);
+      fovsDeg[1] = static_cast<float>(minVFOV - deltaX);
 
       // Use the ratio of the new and original fields of view to scale the pixel count, making sure that
       // the results are an even multiple of the number of samples in X and Y.
