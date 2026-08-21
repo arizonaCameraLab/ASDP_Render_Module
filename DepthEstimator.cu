@@ -731,9 +731,10 @@ public:
       // Reduce the FOVs by the difference in pointing direction of the two cameras, around the
       // X axis for teh vertical FOV and around the Z axis for the horizontal FOV.  This is to handle
       // the fact that one will point further in each direction than the other.
-      /// @todo
-      fovsDeg[0] = static_cast<float>(maxHFOV);
-      fovsDeg[1] = static_cast<float>(maxVFOV);
+      double deltaX = fabs(pairs[i][0]->m_orientationDegrees[0] - pairs[i][1]->m_orientationDegrees[0]);
+      double deltaZ = fabs(pairs[i][0]->m_orientationDegrees[2] - pairs[i][1]->m_orientationDegrees[2]);
+      fovsDeg[0] = static_cast<float>(maxHFOV - deltaZ);
+      fovsDeg[1] = static_cast<float>(maxVFOV - deltaX);
 
       // Use the ratio of the new and original fields of view to scale the pixel count, making sure that
       // the results are an even multiple of the number of samples in X and Y.
