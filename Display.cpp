@@ -978,6 +978,9 @@ DisplayTexture::DisplayTexture(Display* sharedWindow)
     // Set the window to be hidden.
     glfwWindowHint(GLFW_VISIBLE, false);
 
+    // Make sRGB capable so that we can use sRGB framebuffers for rendering to textures.
+    glfwWindowHint(GLFW_SRGB_CAPABLE, GLFW_TRUE);
+
     // Construct our context, borrowing the context of the shared window so that it will be
     // active on our context (required for Windows).
     GLFWwindow* windowToShare = nullptr;
@@ -1019,6 +1022,11 @@ DisplayTexture::DisplayTexture(Display* sharedWindow)
   // Clear any GL error that Glew caused.  Apparently on Non-Windows
   // platforms, this can cause a spurious error 1280.
   glGetError();
+
+  // Make an sRGB framebuffer so that this will match the behavior for on-screen rendering.
+  /// @todo Consider whether this is better for depth estimation or not.
+  //glEnable(GL_FRAMEBUFFER_SRGB);
+  glDisable(GL_FRAMEBUFFER_SRGB);
 
   // Release the window's current context in case another Display wants to borrow it.
   glfwMakeContextCurrent(nullptr);
