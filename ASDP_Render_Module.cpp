@@ -56,7 +56,7 @@ using namespace asdp::render;
 using namespace asdp::analysis;
 using json = nlohmann::json;
 
-static std::string VERSION = "3.45.0";
+static std::string VERSION = "3.46.0";
 
 /// @brief The path to the configuration file. Defined in the CMakeLists file.
 std::filesystem::path g_dirPath = CONFIG_FILE_PATH;
@@ -2176,7 +2176,7 @@ static void usage(std::string name)
   std::cerr << "  --autoRangeStd <below> <above>      Adjust color range to specified standard deviations above and below the mean." << std::endl;
   std::cerr << "  --noDepth                           Do not compute depth even when stereo cameras are available." << std::endl;
   std::cerr << "  --maxDepth <float>                  Maximum depth to test for in meters (default 200)." << std::endl;
-  std::cerr << "  --depthThreshold <float>            Depth threshold in squared pixel value differences (default 10.0)." << std::endl;
+  std::cerr << "  --depthThreshold <float>            Depth threshold in squared pixel value differences (default 2.0)." << std::endl;
   std::cerr << "  --staticDepth <double>              The static depth to use for cameras without depth information (default 900.0)." << std::endl;
   std::cerr << "  --cameraFPS <frames per second>     The frames per second to run the camera at (default is maximum rate)." << std::endl;
   std::cerr << "  --enableCP                          Enable the cylindrical projection." << std::endl; // Added by Sang Yoon
@@ -2223,7 +2223,7 @@ int main(int argc, char** argv)
   double autoRangeStdAbove = 0.0; ///< Adjust color range to this many standard deviations above the mean.
   bool computeDepth = true;       ///< Compute depth when stereo cameras are available.
   float maxDepth = 200.0f;        ///< Maximum depth to test for in meters.
-  float depthThreshold = 10.0f;   ///< Depth threshold in squared pixel value differences.
+  float depthThreshold = 2.0f;    ///< Depth threshold in squared pixel value differences.
   double staticDepth = 900.0;     ///< The static depth to use for cameras without depth information.
   int durationSeconds = 0;        ///< The duration to run before quitting, 0 means run until user quits.
   std::string kioskConfigFile;    ///< The name of the kiosk configuration file to use, if any.
