@@ -12,7 +12,10 @@
 
 static void usage(const char* progName)
 {
-  std::cerr << "Usage: " << progName << " [--openXR] [--xSight <NIC name> <display>] [--xSight2 <NIC name> <display>]" << std::endl;
+  std::cerr << "Usage: " << progName << " [--openXR] [--xSight <NIC name> <display>]"
+    << " [--xSight2 <NIC name> <display>]"
+    << " [--xSightG <NIC name> <display> <width> <height> <fps> <hFOV> <monochrome> <port>]"
+    << std::endl;
 }
 
 int main(int argc, char** argv)
@@ -21,10 +24,14 @@ int main(int argc, char** argv)
   int height = 640;
 
   bool useOpenXR = false;
+
   std::string xSightNICName = "";
-  std::string xSight2NICName = "";
   int xSightDisplay = 0;
-  int xSight2Display = 0;
+  float xSightFPS = 50.0f;
+  float xSightHorizontalFOV = 70.0f;
+  bool xSightMonochrome = true;
+  uint16_t xSightPort = 5535;
+
   for (int i = 1; i < argc; ++i) {
     if (std::string("--openXR") == argv[i]) {
       useOpenXR = true;
@@ -40,18 +47,72 @@ int main(int argc, char** argv)
         return 1;
       }
       xSightDisplay = std::stoi(argv[i]);
+      width = 2560;
+      height = 2048;
+      xSightFPS = 50.0f;
+      xSightHorizontalFOV = 70.0f;
+      xSightMonochrome = true;
+      xSightPort = 5535;
     }
     else if (std::string("--xSight2") == argv[i]) {
       if (++i >= argc) {
         usage(argv[0]);
         return 1;
       }
-      xSight2NICName = argv[i];
+      xSightNICName = argv[i];
       if (++i >= argc) {
         usage(argv[0]);
         return 1;
       }
-      xSight2Display = std::stoi(argv[i]);
+      xSightDisplay = std::stoi(argv[i]);
+      width = 1920;
+      height = 1200;
+      xSightFPS = 50.0f;
+      xSightHorizontalFOV = 70.0f;
+      xSightMonochrome = false;
+      xSightPort = 5540;
+    }
+    else if (std::string("--xSightG") == argv[i]) {
+      if (++i >= argc) {
+        usage(argv[0]);
+        return 1;
+      }
+      xSightNICName = argv[i];
+      if (++i >= argc) {
+        usage(argv[0]);
+        return 1;
+      }
+      xSightDisplay = std::stoi(argv[i]);
+      if (++i >= argc) {
+        usage(argv[0]);
+        return 1;
+      }
+      width = std::stoi(argv[i]);
+      if (++i >= argc) {
+        usage(argv[0]);
+        return 1;
+      }
+      height = std::stoi(argv[i]);
+      if (++i >= argc) {
+        usage(argv[0]);
+        return 1;
+      }
+      xSightFPS = atof(argv[i]);
+      if (++i >= argc) {
+        usage(argv[0]);
+        return 1;
+      }
+      xSightHorizontalFOV = atof(argv[i]);
+      if (++i >= argc) {
+        usage(argv[0]);
+        return 1;
+      }
+      xSightMonochrome = (std::string(argv[i]) == "true");
+      if (++i >= argc) {
+        usage(argv[0]);
+        return 1;
+      }
+      xSightPort = static_cast<uint16_t>(std::stoi(argv[i]));
     }
     else {
       usage(argv[0]);
@@ -89,17 +150,12 @@ int main(int argc, char** argv)
       displays.push_back(std::make_shared<asdp::render::DisplayOpenXR>(composite, &texWindow, client,
         0, 0, 0, viewpointOffset, 2500, 0, nullptr, nullptr, nullptr, false));
     } else if (xSightNICName != "") {
-      // First XSight configuration the project encountered
+      // XSight configuration
       displays.push_back(std::make_shared<asdp::render::DisplayXSight>(xSightNICName, composite, &texWindow, client,
         0, 0, 0, viewpointOffset,
-        2500, nullptr, nullptr, nullptr, false, xSightDisplay));
-    } else if (xSight2NICName != "") {
-      // Second XSight configuration the project encountered
-      displays.push_back(std::make_shared<asdp::render::DisplayXSight>(xSight2NICName, composite, &texWindow, client,
-        0, 0, 0, viewpointOffset,
-        2500, nullptr, nullptr, nullptr, false, xSight2Display,
-        1920, 1200, 50, 70.0f,
-        false));
+        2500, nullptr, nullptr, nullptr, false, xSightDisplay,
+        width, height, xSightFPS, xSightHorizontalFOV,
+        xSightMonochrome, xSightPort));
     } else {
       // Create a Display window to show the CompositeCube object that shares objects with the texWindow.
       // Control it using joystick 0.

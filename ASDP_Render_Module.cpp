@@ -26,6 +26,7 @@
 #include <atomic>
 #include <memory>
 #include <algorithm>
+#include <cstdlib>
 #include <ASDP_Core_API.h>
 #include <ASDP_SpinFreeQueue.hpp>
 #include <ASDP_BufferPool.h>
@@ -57,7 +58,7 @@ using namespace asdp::render;
 using namespace asdp::analysis;
 using json = nlohmann::json;
 
-static std::string VERSION = "3.35.0";
+static std::string VERSION = "3.47.0";
 
 /// @brief The path to the configuration file. Defined in the CMakeLists file.
 std::string g_dirPath = CONFIG_FILE_PATH;
@@ -320,13 +321,18 @@ static std::vector< std::array<uint16_t, 2> > GetRawPixelValues(
 
   // Read back both images from texture memory to CPU memory.  These have already been adjusted by
   // the offset and gain on the way to being written to the texture.
+<<<<<<< HEAD
   std::vector<std::vector<uint16_t>> imagePixels(imageData.size());
   GLenum ret;
+=======
+  std::array<std::vector<uint16_t>, imageData.size()> imagePixels;
+>>>>>>> e9ea131 (Adding --xSightG (for generic) command-line arguments to ASDP_Render_Module and Display_Test to support adjusting many parameters of the XSight independently, supporting a wide range of configurations. Fixed compiler warnings. Switched to command-line parsing that does not throw exceptions.)
   for (int i = 0; i < imagePixels.size(); i++) {
     imagePixels[i].resize(widths[i] * heights[i]);
     glBindTexture(GL_TEXTURE_2D, imageData[i]->texture);
     glGetTexImage(GL_TEXTURE_2D, 0, GL_RED, GL_UNSIGNED_SHORT, imagePixels[i].data());
 #if !defined(NDEBUG)
+    GLenum ret;
     ret = glGetError();
     if (ret != GL_NO_ERROR) {
       std::cerr << "GetRawPixelValues(): Error: glGetTexImage() failed for image " << i
@@ -397,8 +403,8 @@ static float ComputeNewColorOffset(
     sum1 += (pixelPair[0] + offset1) * gain1;
     sum2 += (pixelPair[1] + offset2) * gain2;
   }
-  float avg1 = sum1 / rawPixels.size();
-  float avg2 = sum2 / rawPixels.size();
+  float avg1 = static_cast<float>(sum1 / rawPixels.size());
+  float avg2 = static_cast<float>(sum2 / rawPixels.size());
 
   // Compute the new offset for the second camera to make its average match the first camera's average.
   // We want to know how much and in which direction to shift the second camera's pixel values.  The
@@ -507,10 +513,10 @@ static std::array<float, 2> ComputeNewColorOffsetGain(
   // Compute the best-fit line through the points.
   float sumX = 0.0f, sumY = 0.0f, sumXY = 0.0f, sumXX = 0.0f;
   for (const auto& pt : adjustedPoints) {
-    sumX += pt[0];
-    sumY += pt[1];
-    sumXY += pt[0] * pt[1];
-    sumXX += pt[0] * pt[0];
+    sumX += static_cast<float>(pt[0]);
+    sumY += static_cast<float>(pt[1]);
+    sumXY += static_cast<float>(pt[0] * pt[1]);
+    sumXX += static_cast<float>(pt[0] * pt[0]);
   }
   float n = static_cast<float>(adjustedPoints.size());
   float slope = (n * sumXY - sumX * sumY) / (n * sumXX - sumX * sumX);
@@ -533,8 +539,8 @@ static std::array<float, 2> ComputeNewColorOffsetGain(
   // Find the average pixel value for each camera in the adjusted point set.
   float sum1 = 0.0, sum2 = 0.0;
   for (const auto& pt : adjustedPoints) {
-    sum1 += pt[0];
-    sum2 += pt[1];
+    sum1 += static_cast<float>(pt[0]);
+    sum2 += static_cast<float>(pt[1]);
   }
   float avg1 = sum1 / adjustedPoints.size();
   float avg2 = sum2 / adjustedPoints.size();
@@ -959,8 +965,8 @@ struct DisplayInfo
   bool useOpenXR = false;       ///< Use OpenXR for rendering? If so, overrides all of the following.
   std::string XSightNIC = "";   ///< NIC to listen to XSight on for rendering. If not empty, overrides all of the following.
   int XSightDisplay = 1;        ///< The display to use for XSight rendering.
-  std::string XSight2NIC = "";  ///< NIC to listen to XSight2 on for rendering. If not empty, overrides all of the following.
-  int XSight2Display = 1;       ///< The display to use for XSight2 rendering.
+  bool XSightMonochrome = true; ///< Render XSight in monochrome mode.
+  uint16_t XSightPort = 5535;   ///< The port to listen to XSight on for rendering.
   int width = 1280;             ///< The width of the display.
   int height = 1024;            ///< The height of the display.
   float hFOV = 40.0f;           ///< The horizontal field of view in degrees.
@@ -1150,7 +1156,7 @@ std::vector<CompositeCameras::Annotation> AnnotationCallbackHandler(Time time, v
       float dt = 0;
       if (report->Timestamp < time) {
         Time delta = time - report->Timestamp;
-        dt = delta.seconds + delta.microseconds * 1e-6;
+        dt = delta.seconds + delta.microseconds * 1e-6f;
       }
       float opacity = 1.0f - dt / g_analysisFadeTimeSeconds;
       if (opacity <= 0.0f) {
@@ -1296,7 +1302,9 @@ void HandleAnalysisThread(std::vector<std::string> analysisModuleURLs, std::shar
       for (auto it = rm.begin(); it != rm.end();) {
         auto& series = it->second;
         // Remove old reports from the back of the series.
-        while (!series.empty() && series.back().Timestamp + Time(g_analysisFadeTimeSeconds, 0) < now) {
+        uint32_t seconds = static_cast<uint32_t>(g_analysisFadeTimeSeconds);
+        uint32_t microseconds = static_cast<uint32_t>((g_analysisChanceThreshold - seconds) * 1000000);
+        while (!series.empty() && series.back().Timestamp + Time(seconds, microseconds) < now) {
           series.pop_back();
         }
         if (series.empty()) {
@@ -1334,6 +1342,796 @@ void HandleAnalysisThread(std::vector<std::string> analysisModuleURLs, std::shar
   }
 }
 
+<<<<<<< HEAD
+=======
+//=================================================================
+
+/// @brief Static function to spin up all of the things related to connecting to a camera ball.
+
+int spin_up(std::shared_ptr<CoreClient> client, int &serialNumber, std::shared_ptr<Receiver> &receiver,
+  std::vector<CameraInfo> &cameras, bool &hasStorage, bool &hasTemperatures, bool &hasPoses,
+  uint8_t &triggerID, uint32_t &replayStreamID,
+  std::filesystem::path &configPath, std::vector< std::shared_ptr<ReceiverUDP> > &UDPReceivers,
+  std::set<int> const &skipCameras, std::vector<NUCInfo> &nucInfos, int &maxCameras,
+  int &lineBatchesPerGPUSend, std::shared_ptr<DisplayTexture> &displayTexture,
+  std::vector<DisplayInfo> &displayInfos, double &renderAheadFrames, double &cameraFPS,
+  bool &computeDepth, double &autoRangeStdBelow, double &autoRangeStdAbove, float &maxDepth,
+  float &depthThreshold, std::shared_ptr<PoseAdjuster> &poseAdjuster,
+  std::vector< std::shared_ptr<asdp::render::CameraRenderInfo> > &cameraRenderInfos,
+  std::vector<uint32_t> &cameraIDs,
+  std::vector<GLuint> &toneMapTextures, double &staticDepth, std::atomic<bool> &done,
+  std::string &ip_address, bool &doStreamPoses, uint32_t &frameStride,
+  std::vector<std::string> &analysisModuleURLs,
+  std::shared_ptr<ClockSynchronizer> &clockSync, std::shared_ptr<Timer> &timer,
+  std::shared_ptr<DisplayTexture> &depthContext, std::vector<std::thread> &copyDataToGPUThreads,
+  std::thread &analysisThread,
+  std::vector< std::shared_ptr< SpinFreeQueue< std::shared_ptr<DataToSendToGPU> > > > &dataQueues,
+  std::vector<std::thread> &receiveDataThreads,
+  bool lockRotation, bool disableLatencyCompensation,
+  bool &firstSpinUp
+)
+{
+  // We're not done yet
+  done = false;
+
+  //=================================================================
+  // Create a PoseAdjuster to handle helicopter motion.
+  PoseAdjusterCoordinates poseAdjusterCoordinates = HELICOPTER;
+  if (lockRotation) {
+    poseAdjusterCoordinates = INITIAL_ORIENTATION;
+  }
+  poseAdjuster = std::make_shared<PoseAdjuster>(2000, poseAdjusterCoordinates,
+    disableLatencyCompensation);
+
+  std::map<uint32_t, std::string> servers;
+  Status status = client->IdentifiedServers(servers);
+  if (status != OKAY) {
+    std::cerr << "Error: Unable to get identified servers: " << ErrorMessage(status) << std::endl;
+    return 7;
+  }
+
+  if (servers.empty()) {
+    std::cerr << "No servers found; be sure to run the server first." << std::endl;
+    return 8;
+  }
+  std::cout << "Servers found: " << servers.size() << std::endl;
+  for (const auto& server : servers) {
+    std::cout << "  " << server.second << " (serial #" << server.first << ")" << std::endl;
+  }
+
+  // Connect to the first matching server found.
+  auto serverIt = servers.begin();
+  if (serialNumber >= 0) {
+    serverIt = servers.find(serialNumber);
+    if (serverIt == servers.end()) {
+      std::cerr << "Server with serial number " << serialNumber << " not found." << std::endl;
+      return 8;
+    }
+  }
+  std::cout << "Connecting to " << serverIt->second << std::endl;
+  uint16_t major, minor, patch;
+  status = client->ConnectToServer(serverIt->second, major, minor, patch);
+  if (status != OKAY) {
+    std::cerr << "Failed to connect to server: " << ErrorMessage(status) << std::endl;
+    return 9;
+  }
+  serialNumber = serverIt->first;
+  std::cout << "  Connected to server version " << major << "." << minor << "." << patch
+    << " with serial number " << serialNumber << std::endl;
+
+  // Get the main stream receiver
+  status = client->GetMainStreamReceiver(receiver);
+  if (status != OKAY) {
+    std::cerr << "Failed to get main stream receiver: " << ErrorMessage(status) << std::endl;
+    return 10;
+  }
+
+  // Ensure that we get a state message from the server within a reasonable time.
+  // Report information about the cameras that were found.
+  std::shared_ptr<Message> msg = WaitForMessageType(receiver, STATE, 5.0);
+  if (msg == nullptr) {
+    std::cerr << "Did not get state message." << std::endl;
+    return 11;
+  }
+  MessageState state(*msg);
+  if (state.GetConstructorStatus() != OKAY) {
+    std::cerr << "Failed to construct state message: " << ErrorMessage(state.GetConstructorStatus()) << std::endl;
+    return 12;
+  }
+  status = state.GetCameras(cameras);
+  std::cout << "Found " << cameras.size() << " cameras" << std::endl;
+  if (cameras.size() == 0) {
+    return 13;
+  }
+  std::vector<FeatureID> features;
+  status = state.GetFeatures(features);
+  if (status != OKAY) {
+    std::cerr << "Failed to get features: " << ErrorMessage(status) << std::endl;
+    return 1000;
+  }
+  hasStorage = false;
+  hasTemperatures = false;
+  hasPoses = false;
+  for (const auto& feature : features) {
+    if (feature == STORAGE_API_AVAILABLE) {
+      hasStorage = true;
+    } else if (feature == TEMPERATURE_API_AVAILABLE) {
+      hasTemperatures = true;
+    } else if (feature == POSE_API_POSITION_AVAILABLE || feature == POSE_API_ORIENTATION_AVAILABLE) {
+      hasPoses = true;
+    }
+  }
+
+  // Find the trigger for the first camera, which we will use to synchronize to the display.  We assume that
+  // they are all using the same trigger.  We don't send triggers when we replay.
+  if (cameras.size() > 0 && replayStreamID == 0) {
+    triggerID = cameras[0].trigger;
+  }
+
+  // If there is a map CSV file associated with this camera, read it into the point correspondence.
+  {
+    std::filesystem::path mapCSVPath = g_dirPath / (std::to_string(serialNumber) + ".map.csv");
+    if (std::filesystem::exists(mapCSVPath)) {
+      std::cout << "Reading map CSV file: " << mapCSVPath << std::endl;
+      g_pointCorrespondences = std::make_shared<PointCorrespondences>(mapCSVPath.string());
+      // Construct a Display for use by the point correspondence object, if any.
+      g_pointCorrespondenceDisplay = std::make_shared<DisplayTexture>(displayTexture.get());
+    } else {
+      g_pointCorrespondences.reset();
+    }
+  }
+
+  // Read the configuration file associated with the serial number for the server. Verify that
+  // it has a matching serial number and number of cameras.
+  configPath = g_dirPath / (std::to_string(serialNumber) + ".json");
+  std::vector<CameraRenderInfo> rawCameraRenderInfos;
+  try {
+    rawCameraRenderInfos = asdp::render::calibration::GetCameraRenderInfos(configPath.string());
+  }
+  catch (const std::exception& e) {
+    std::cerr << "Error reading configuration file: " << e.what() << std::endl;
+    return 14;
+  }
+  if (cameras.size() != rawCameraRenderInfos.size()) {
+    std::cerr << "Number of cameras mismatch: expected " << cameras.size() << " but got " << rawCameraRenderInfos.size() << std::endl;
+    return 16;
+  }
+  std::cout << "Read configuration from " << configPath << std::endl;
+
+  // Remove any cameras that we are to skip from cameras, cameraInfos and NUCInfos.
+  std::vector<CameraRenderInfo> filteredCameraRenderInfos;
+  std::vector<CameraInfo> filteredCameras;
+  for (int i = 0; i < cameras.size(); i++) {
+    if (skipCameras.find(i + 1) == skipCameras.end()) {
+      filteredCameras.push_back(cameras[i]);
+    }
+    else {
+      std::cout << "Skipping camera ID " << i + 1 << std::endl;
+    }
+    if (skipCameras.find(rawCameraRenderInfos[i].m_ID) == skipCameras.end()) {
+      filteredCameraRenderInfos.push_back(rawCameraRenderInfos[i]);
+    }
+    for (auto& nucInfo : nucInfos) {
+      // Delete the camera NUC tables if we are skipping this camera.
+      if (skipCameras.find(i + 1) != skipCameras.end()) {
+        nucInfo.CameraNUCTables.erase(i + 1);
+        std::cout << "  Skipping NUC tables for camera ID " << i + 1 << std::endl;
+      }
+    }
+  }
+  cameras = filteredCameras;
+  std::cout << "After skipping, " << cameras.size() << " cameras remain." << std::endl;
+  if (cameras.size() == 0) {
+    std::cerr << "No cameras remain after skipping." << std::endl;
+    return 15;
+  }
+
+  // If there are more cameras than the maximum, limit the number of cameras to the maximum.
+  if (maxCameras > 0 && cameras.size() > maxCameras) {
+    std::cout << "Limiting number of cameras to " << maxCameras << std::endl;
+    cameras.resize(maxCameras);
+    // Cannot use resize() here because there is not a default constructor for CameraInfo.
+    while (filteredCameraRenderInfos.size() > maxCameras) {
+      filteredCameraRenderInfos.pop_back();
+    }
+  }
+
+  // Make additional OpenGL contexts for the texture threads.
+  int NUM_TEXTURE_THREADS = 2;
+  if (cameras.size() > 21) {
+    // We need larger batches of lines to keep up with more than 21 cameras. The jump from
+    // default 110 to 330 has both cases ending at 990, which is just below the 1024 limit so will make
+    // a small final batch, reducing the latency from the end of the frame receipt to texture upload.s
+    // NOTE: Originally, we could keep up on Linux by bumping our number of threads to 3 and leaving
+    // the line batches the same. As of 4/24, this no longer works -- but depth estimation is now
+    // taking much longer than it used to.  We collapsed to a common solution of more batches because
+    // it keeps a small final batch, still reducing the latency with fewer threads.
+    lineBatchesPerGPUSend *= 3;
+  }
+
+  std::vector< std::shared_ptr<DisplayTexture> > displayTextures;
+  for (size_t i = 0; i < NUM_TEXTURE_THREADS; i++) {
+    std::shared_ptr<DisplayTexture> dt = std::make_shared<DisplayTexture>(displayTexture.get());
+    displayTextures.push_back(dt);
+  }
+
+  // Construct a vector of CameraRenderInfo objects from the configuration file, adding an image
+  // queue to each.
+  try {
+    for (const auto& info : filteredCameraRenderInfos) {
+
+      //==================================================================================================
+      // Fill in three textures for this camera, all gray and at time zero.
+      // We must borrow the context from the displayTexture so that we can create the textures.
+      if (!displayTexture->BorrowContext()) {
+        std::cerr << "Error borrowing context from displayTexture." << std::endl;
+        return 17;
+      }
+
+      unsigned int width = info.m_resolutionPixels[0];
+      unsigned int height = info.m_resolutionPixels[1];
+      std::vector<uint16_t> image(width * height, 32767);
+
+      // Create the textures for the camera. Make two for each Composite to pull when it is looking
+      // for the next image to render, one for the texture thread to write to, one for an image-statistics
+      // class to use, and one to lie fallow.
+      // Also add as many frames as needed to render ahead the number we want to.
+      for (size_t i = 0; i < 2 * displayInfos.size() + 1 + 1 + 1 + ceil(renderAheadFrames); i++) {
+        std::shared_ptr<ImageData> imageData = std::make_shared<ImageData>();
+
+        unsigned int texture;
+        glGenTextures(1, &texture);
+        glBindTexture(GL_TEXTURE_2D, texture);
+        // Set the texture wrapping parameters
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        // Set texture filtering parameters
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+        // Load image into the texture
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_R16, width, height, 0, GL_RED, GL_UNSIGNED_SHORT, image.data());
+        glBindTexture(GL_TEXTURE_2D, 0);
+
+        imageData->texture = texture;
+        info.m_imageQueue->InsertImage(imageData);
+      }
+
+      if (!displayTexture->ReturnContext()) {
+        std::cerr << "Error returning context to displayTexture." << std::endl;
+        return 18;
+      }
+      //
+      //==================================================================================================
+
+      // Push the CameraRenderInfo onto the vector.
+      cameraRenderInfos.push_back(std::make_shared<CameraRenderInfo>(info));
+    }
+  }
+  catch (const std::exception& e) {
+    std::cerr << "Error parsing configuration file: " << e.what() << std::endl;
+    return 19;
+  }
+
+  cameraIDs.clear();
+  for (uint32_t i = 0; i < cameraRenderInfos.size(); i++) {
+    cameraIDs.push_back(cameraRenderInfos[i]->m_ID);
+  }
+
+  // If the camera FPS is not set, find the minimum period for one of the cameras and use that.
+  // This assumes that all cameras capture at the same frame rate.
+  if (cameraFPS == 0.0 && cameras.size() > 0) {
+    cameraFPS = 1.0 / cameras[0].minTriggerPeriod;
+  }
+  std::cout << "Camera frame rate: " << cameraFPS << " fps" << std::endl;
+
+  // Initialize the timing information, making an entry for each camera.  We make sure that there is
+  // the maximum camera ID so that we can use the camera ID as an index.
+  uint32_t maxID = 0;
+  for (auto ID : cameraIDs) {
+    if (ID > maxID) {
+      maxID = ID;
+    }
+  }
+  g_timingInfo.SetNumCameras(maxID);
+
+  // Separate the cameras into two groups: those with IDs less than 22 are visible cameras and those
+  // with larger ones are depth-estimation cameras. Only do this if we are computing depth.
+  for (size_t j = 0; j < cameraRenderInfos.size(); j++) {
+    if (cameraRenderInfos[j]->m_ID > 21 && computeDepth) {
+      g_depthCameras.push_back(cameraRenderInfos[j]);
+    }
+    else {
+      g_visibleCameras.push_back(cameraRenderInfos[j]);
+    }
+  }
+
+  // If we have no remaining visible cameras, we cannot continue because there would be nothing to display.
+  if (g_visibleCameras.size() == 0) {
+    std::cerr << "No visible cameras remain after skipping." << std::endl;
+    return 20;
+  }
+
+  // If we've been asked to do standard-deviation-based auto-ranging, set that up.
+  std::shared_ptr<RangeEstimator> rangeEstimator = std::make_shared<RangeEstimatorFixed>();
+  if (autoRangeStdAbove != 0 || autoRangeStdBelow != 0) {
+    // Make a display object that shares textures with the others.
+    std::shared_ptr<Display> display = std::make_shared<DisplayTexture>(displayTexture.get());
+    // Make a MeanStdGroup object to handle the statistics.
+    std::shared_ptr<asdp::render::imageStatistics::MeanStdGroup> meanStdGroup =
+      std::make_shared<asdp::render::imageStatistics::MeanStdGroup>(g_visibleCameras,
+        display, 1.0 / cameraFPS);
+    // Make a RangeEstimator object to handle the range.
+    rangeEstimator = std::make_shared<RangeEstimatorStdRanges>(meanStdGroup,
+      autoRangeStdBelow, autoRangeStdAbove);
+  }
+
+  // Construct a depth-estimation object if there are any depth-estimation cameras.
+  // There must be sets of two camera pairs for depth estimation.
+  if (g_depthCameras.size() > 0) {
+    depthContext = std::make_shared<DisplayTexture>(displayTexture.get());
+    bool enablingCP = false; // Whether cylindrical projection is enabled for any of the displays.
+    for (const auto& displayInfo : displayInfos) {
+      if (displayInfo.enableCP) {
+        enablingCP = true;
+        break;
+      }
+    }
+    if (enablingCP) {
+      std::cerr << "Cylindrical projection is incompatible with depth estimation." << std::endl;
+      return 100;
+    }
+
+    if (g_depthCameras.size() % 2 != 0) {
+      std::cerr << "Error: There must be an even number of depth-estimation cameras." << std::endl;
+      return 101;
+    }
+    std::vector< std::array<std::shared_ptr<asdp::render::CameraRenderInfo>, 2> > cameras;
+    for (size_t i = 0; i < g_depthCameras.size(); i += 2) {
+      std::array<std::shared_ptr<asdp::render::CameraRenderInfo>, 2> pair = { g_depthCameras[i], g_depthCameras[i + 1] };
+      cameras.push_back(pair);
+    }
+
+    if (!depthContext->BorrowContext()) {
+      std::cerr << "Error borrowing context from depthContext for DepthEstimator." << std::endl;
+      return 102;
+    }
+
+    // Initialize GLEW in our context. It is okay to initialize it more than once.
+    glewExperimental = true;
+    if (glewInit() != GLEW_OK) {
+      std::cerr << "Failed to initialize GLEW before DepthTexture" << std::endl;
+      return 103;
+    }
+    // Clear any GL error that Glew caused.  Apparently on Non-Windows
+    // platforms, this can cause a spurious error 1280.
+    glGetError();
+
+    // Determine the range of depths to use for the depth estimater and then construct it.
+    std::vector<float> depths(7);
+    depths[depths.size() - 1] = maxDepth;
+    for (long i = static_cast<long>(depths.size()) - 2; i >= 0; i--) {
+      depths[i] = depths[i + 1] / 2;
+    }
+    /// @todo Because we have visible-light depth cameras even when using IR cameras, we avoid
+    /// using a RangeEstimator when constructing them.
+    g_depthEstimator = std::make_shared<DepthEstimator>(cameras, std::make_shared<RangeEstimatorFixed>(),
+      poseAdjuster, float(1.0 / cameraFPS),
+      g_depthCameras[0]->m_resolutionPixels[0] * 2 / 100, g_depthCameras[0]->m_resolutionPixels[1] * 2 / 100,
+      depths, depthThreshold);
+    std::cout << "Constructed DepthEstimator with " << cameras.size() << " camera pairs." << std::endl;
+
+    // Compute a depth estimate to get all of the machinery set up and GLEW initialized on this thread.
+    g_depthEstimator->ComputeDepthEstimate(0);
+
+    if (!depthContext->ReturnContext()) {
+      std::cerr << "Error returning context to depthContext for DepthEstimator." << std::endl;
+      return 104;
+    }
+
+    // Start the depth estimation thread.
+    g_runDepthThread = true;
+    g_depthThread = std::thread(DepthThreadFunction, timer, depthContext);
+  }
+
+  for (size_t i = 0; i < displayInfos.size(); i++) {
+
+    // Construct a Tone Map texture to use for rendering the cameras.
+    if (!displayTexture->BorrowContext()) {
+      std::cerr << "Error borrowing context from displayTexture for ToneMap." << std::endl;
+      return 21;
+    }
+    GLuint toneMapTexture = displayInfos[i].toneMap.GenerateTexture();
+    toneMapTextures.push_back(toneMapTexture);
+    if (toneMapTexture == 0) {
+      std::cerr << "Error generating texture for ToneMap." << std::endl;
+      return 22;
+    }
+    if (!displayTexture->ReturnContext()) {
+      std::cerr << "Error returning context to displayTexture for ToneMap." << std::endl;
+      return 23;
+    }
+
+    // Construct a Composite object to render the visible cameras.  We need a separate Composite per Display so that each
+    // can cache consistent camera images for the whole frame while views are being rendered.
+    // Two displays cannot share a SetupRenderFrame() call because they may have different frame rates.
+    // Rendering offset based on how many frames we want to render ahead.
+    uint32_t renderOffsetMicroseconds = static_cast<uint32_t>(renderAheadFrames * (1000000 / cameraFPS));
+    g_composites.push_back(std::make_shared<CompositeCameras>(
+      g_visibleCameras, toneMapTexture, poseAdjuster, Time(static_cast<float>(1 / cameraFPS)),
+      renderOffsetMicroseconds,
+      Time(0, static_cast<uint32_t>(1000000 / displayInfos[i].fps)), (i == 0) ? (&g_timingInfo) : nullptr,
+      rangeEstimator, staticDepth, AnnotationCallbackHandler, nullptr));
+
+    //======================================
+    // Added by Sang Yoon to just pass the status of enabling the cylindrical projection (true or false) from DisplayInfos[i] to composite.
+    // Note that the cylinderical projection is processed in Composite Submodule.
+    g_composites[i]->m_CP_enabled = displayInfos[i].enableCP;
+    //======================================
+
+    //======================================
+    // Added by Sang Yoon to just pass the status of overview and detailed view for the current display to composite.
+    // Note that the overview and detailed view are handled in Composite Submodule.
+    g_composites[i]->m_overview = displayInfos[i].overview;
+    g_composites[i]->m_detailed_view = displayInfos[i].detailed_view;
+    //======================================
+  }
+
+  // Verify that the width and height of the cameras match the width and height of the NUC information,
+  // if any NUC information was provided.
+  for (const auto& nucInfo : nucInfos) {
+    for (const auto& nucCam : nucInfo.CameraNUCTables) {
+      uint32_t cameraID = nucCam.first;
+      int nucWidth = nucCam.second.imageWidth;
+      int nucHeight = nucCam.second.imageHeight;
+      // Find the index of the camera whose CameraRenderInfo has this ID.
+      int cameraIndex = -1;
+      for (int i = 0; i < static_cast<int>(cameraRenderInfos.size()); i++) {
+        if (cameraRenderInfos[i]->m_ID == cameraID) {
+          cameraIndex = i;
+          break;
+        }
+      }
+      if (cameraIndex < 0) {
+        std::cerr << "Error: NUC information for camera ID " << cameraID << " does not match any camera in the configuration file." << std::endl;
+        return 100;
+      }
+      if ((nucWidth != cameras[cameraIndex].width) || (nucHeight != cameras[cameraIndex].height)) {
+        std::cerr << "Error: NUC information for camera ID " << cameraID << " has dimensions (" <<
+          nucWidth << ", " << nucHeight << ") that do not match the camera dimensions (" <<
+          cameras[cameraIndex].width << ", " << cameras[cameraIndex].height << ")." << std::endl;
+        return 101;
+      }
+    }
+  }
+
+  // Construct shared pointers to the data structures that we'll need to do rendering, with
+  // custom destructors that will clean up when the shared_ptr is destroyed.
+  std::vector< std::shared_ptr<CUDABufferPool> > cpuPinnedImageBuffers;
+  std::vector< std::shared_ptr<CUDABufferPool> > gpuImageBuffers;
+  std::vector< std::shared_ptr<CUDABufferPool> > gpuNUCBuffers;
+  std::vector< std::shared_ptr<cudaStream_t> > streams;
+  UDPReceivers.clear();
+  for (size_t i = 0; i < cameras.size(); i++) {
+    try {
+      // Preallocate pinned memory buffers for the CPU.
+      cpuPinnedImageBuffers.push_back(std::make_shared<CUDABufferPool>(cameras[i].width * cameras[i].height * sizeof(uint16_t), 10, true));
+
+      // Preallocate memory buffers for the GPU.
+      gpuImageBuffers.push_back(std::make_shared<CUDABufferPool>(cameras[i].width * cameras[i].height * sizeof(uint16_t), 10, false));
+
+      // Make a pool of GPU memory buffers for per-pixel NUC to use if it is running.
+      // Pre-allocate some if we are doing per-pixel NUC, otherwise leave the vector empty.
+      size_t nucBufferCount = cameras.size() * 2 * nucInfos.size();
+      gpuNUCBuffers.push_back(std::make_shared<CUDABufferPool>(cameras[i].width * cameras[i].height * sizeof(float), nucBufferCount, false));
+    }
+    catch (std::exception& e) {
+      std::cerr << "Error creating buffer pools: " << e.what() << std::endl;
+      return 26;
+    }
+
+    // Create a stream for the GPU to use.
+    cudaStream_t* streamPtr = new cudaStream_t;
+    cudaStreamCreate(streamPtr);
+    streams.push_back(std::shared_ptr<cudaStream_t>(streamPtr,
+      [](cudaStream_t* ptr) { cudaStreamDestroy(*ptr); delete ptr; }
+    ));
+
+    // Create a UDP receiver for the camera.
+    std::shared_ptr<ReceiverUDP> receiverUDP = std::make_shared<ReceiverUDP>(ip_address);
+    if (receiverUDP->GetConstructorStatus() != OKAY) {
+      std::cerr << "Error constructing ReceiverUDP: " << ErrorMessage(receiverUDP->GetConstructorStatus()) << std::endl;
+      return 27;
+    }
+    UDPReceivers.push_back(receiverUDP);
+  }
+
+  // Make the queues to pass the NUC data tables to the receive-data threads, one for each camera -- they
+  // will be nullptr if there is no NUC information for that camera.  If we don't have any NUC information at all,
+  // the vector will contain nullptr for each camera.
+  std::vector< std::shared_ptr< SpinFreeQueue< NUCDataPair > > > nucTableQueues;
+  for (size_t i = 0; i < cameras.size(); i++) {
+    std::shared_ptr< SpinFreeQueue< NUCDataPair > > nucTableQueue;
+    if (nucInfos.size()) {
+      nucTableQueue = std::make_shared< SpinFreeQueue< NUCDataPair > >();
+    }
+    nucTableQueues.push_back(nucTableQueue);
+  }
+
+  // Go ahead and allocate and fill buffers for the NUC data tables for each camera that has NUC information,
+  // so that the receive-data threads can use them right away when they start receiving data from the cameras.
+  /// @todo In the future, we will use temperature information to interpolate between tables.  For now we, just
+  /// use the first NUCInfo.
+  if (nucInfos.size() > 0) {
+    const NUCInfo& nucInfo = nucInfos[0];
+    for (const auto& it : nucInfo.CameraNUCTables) {
+      int cameraID = it.first;
+      // Find the index of the camera whose CameraRenderInfo has this ID.
+      int cameraIndex = -1;
+      for (int i = 0; i < static_cast<int>(cameraRenderInfos.size()); i++) {
+        if (cameraRenderInfos[i]->m_ID == cameraID) {
+          cameraIndex = i;
+          break;
+        }
+      }
+      const NucTables& nucTable = it.second;
+      if (cameraIndex < 0) {
+        std::cerr << "Error: NUC information for camera ID " << cameraID << " does not match any camera in the configuration file." << std::endl;
+        return 102;
+      }
+      NUCDataPair nucDataPair;
+      nucDataPair.gainBuffer = gpuNUCBuffers[cameraIndex]->GetBuffer(true, 0);
+      nucDataPair.offsetBuffer = gpuNUCBuffers[cameraIndex]->GetBuffer(true, 0);
+      if (nucDataPair.gainBuffer == nullptr || nucDataPair.offsetBuffer == nullptr) {
+        std::cerr << "Error: Failed to get NUC buffers for camera ID " << cameraID << std::endl;
+        return 103;
+      }
+
+      // Use a CUDA copy to transfer the NUC tables to the GPU.
+      size_t numPixels = cameras[cameraIndex].width * cameras[cameraIndex].height;
+      cudaError_t cerr;
+      cerr = cudaMemcpy(nucDataPair.gainBuffer.get(), nucTable.gainTable.data(),
+        numPixels * sizeof(float), cudaMemcpyHostToDevice);
+      if (cerr != cudaSuccess) {
+        std::cerr << "Error: Failed to copy gain table to GPU for camera ID " << cameraID << ": " << cudaGetErrorString(cerr) << std::endl;
+        return 104;
+      }
+      cerr = cudaMemcpy(nucDataPair.offsetBuffer.get(), nucTable.offsetTable.data(),
+        numPixels * sizeof(float), cudaMemcpyHostToDevice);
+      if (cerr != cudaSuccess) {
+        std::cerr << "Error: Failed to copy offset table to GPU for camera ID " << cameraID << ": " << cudaGetErrorString(cerr) << std::endl;
+        return 105;
+      }
+
+      // Queue the buffers for use by the receive-data thread for this camera.
+      nucTableQueues[cameraIndex]->enqueue(nucDataPair);
+    }
+  }
+
+  // Make the queues to pass data between the receiver and texture threads, one for each texture thread.
+  // The cameras will be spread among the threads in a round-robin fashion.
+  for (size_t i = 0; i < NUM_TEXTURE_THREADS; i++) {
+    dataQueues.push_back(std::make_shared< SpinFreeQueue< std::shared_ptr<DataToSendToGPU> > >());
+  }
+
+  // Launch the threads to copy data to the GPU, each having its own queue.
+  for (size_t i = 0; i < NUM_TEXTURE_THREADS; i++) {
+    copyDataToGPUThreads.push_back(std::thread(CopyDataToTextures, cameras[0].width, cameras[0].height, std::ref(done),
+      dataQueues[i], lineBatchesPerGPUSend, displayTextures[i], std::ref(g_timingInfo.cameras)));
+  }
+
+  // Launch the data receiving threads, hooking them together using the queues and passing the texture OpenGL
+  // context to it.  Round-robin the data queues among the receive-data threads.
+  for (size_t i = 0; i < cameras.size(); i++) {
+    receiveDataThreads.push_back(std::thread(ReceiveDataThread, std::ref(*UDPReceivers[i]), 9000,
+      std::ref(done), cpuPinnedImageBuffers[i], gpuImageBuffers[i], streams[i], cameraRenderInfos[i]->m_imageQueue,
+      dataQueues[i % NUM_TEXTURE_THREADS],
+      &g_timingInfo.cameras[i].frameBeginTimes, &g_timingInfo.cameras[i].frameEndTimes,
+      nucTableQueues[i]));
+  }
+
+  // Ask for streaming pose and temperature data.
+  if (doStreamPoses && hasPoses) {
+    std::cout << "Requesting pose data." << std::endl;
+    status = client->SendCommandPacket(CommandPacketStreamPoses());
+    if (status != OKAY) {
+      std::cerr << "Failed to request pose data: " << ErrorMessage(status) << std::endl;
+      return 28;
+    }
+  }
+  if (hasTemperatures) {
+    std::cout << "Requesting temperature data." << std::endl;
+    status = client->SendCommandPacket(CommandPacketStreamTemperatures());
+    if (status != OKAY) {
+      std::cerr << "Failed to request temperature data: " << ErrorMessage(status) << std::endl;
+      return 29;
+    }
+  }
+
+  // Request streaming on the cameras at their maximum rates from their associated ID.
+  std::cout << "Streaming every " << frameStride << " frames from " << cameraIDs.size() << " cameras" << std::endl;
+  for (size_t i = 0; i < cameras.size(); i++) {
+    uint32_t camID = cameraIDs[i];
+    CameraInfo& camera = cameras[i];
+
+    TriggerInfo ti;
+    ti.ID = camera.trigger;
+    ti.mode = 3;
+    ti.period = 1 / cameraFPS;
+    ti.offset = 0;
+    ti.trackingFactor = 0.005f;
+    ti.externalID = camera.trigger;
+    status = client->SendCommandPacket(CommandPacketConfigureTrigger(ti));
+    if (status != OKAY) {
+      std::cerr << "Failed to configure trigger: " << ErrorMessage(status) << std::endl;
+      return 30;
+    }
+    std::cout << std::setprecision(10) << "  Configured trigger for camera " << camID << " with period " << ti.period << " seconds" << std::endl;
+
+    // Request the camera to stream full-frame images once every frameStride frames.
+    uint16_t port;
+    status = UDPReceivers[i]->GetPort(port);
+    if (status != OKAY) {
+      std::cerr << "Failed to get port: " << ErrorMessage(status) << std::endl;
+      return 31;
+    }
+    StreamEndpoint endpoint(ip_address, port);
+    SubregionDescription region;
+    region.cameraID = camID;
+    region.skipFrames = frameStride - 1;
+    region.startTimeSeconds = 0;
+    region.startTimeMicroseconds = 0;
+    region.left = 0;
+    region.top = 0;
+    region.right = camera.width - 1;
+    region.bottom = camera.height - 1;
+    status = client->SendCommandPacket(CommandPacketStreamSubregion(endpoint, region));
+    if (status != OKAY) {
+      std::cerr << "Failed to stream images: " << ErrorMessage(status) << std::endl;
+      return 32;
+    }
+  }
+
+  // If we've been asked to replay a stream, then send a request to do this.
+  if (replayStreamID) {
+    if (!hasStorage) {
+      std::cerr << "Error: Storage API not available when replay requested." << std::endl;
+      return 33;
+    }
+    std::cout << "Requesting replay of stream " << replayStreamID << std::endl;
+    // Set the initial time to be above zero so that we never predict backwards to negative time.
+    // If this is not the first time through, use the current time so that we can continue from where
+    // we left off.
+    Time initialTime = Time(10, 0);
+    if (!firstSpinUp) {
+      timer->GetCoreTime(initialTime);
+    }
+    status = client->SendCommandPacket(CommandPacketStartReplay(replayStreamID, initialTime));
+    if (status != OKAY) {
+      std::cerr << "Failed to start replay: " << ErrorMessage(status) << std::endl;
+      return 34;
+    }
+  }
+
+  // Create a ClockSynchronizer that will manage adjusting the timer based on clock-sync messages.
+  clockSync = std::make_shared<ClockSynchronizer>(timer);
+
+  // If there are any analysis modules, launch a thread to service all of them, passing it the vector of module URLs.
+  if (!analysisModuleURLs.empty()) {
+    g_runAnalysisThread = true;
+    analysisThread = std::thread(HandleAnalysisThread, analysisModuleURLs, timer);
+  }
+
+  firstSpinUp = false;
+  return 0;
+}
+
+/// @brief Static function to spin down all of the things related to connecting to a camera ball.
+int spin_down(std::shared_ptr<CoreClient> client, std::atomic<bool>& done,
+  std::vector<CameraInfo> &cameras, std::vector<uint32_t> &cameraIDs,
+  std::vector< std::shared_ptr<ReceiverUDP> > &UDPReceivers, std::string &ip_address,
+  std::shared_ptr<DisplayTexture>& depthContext, std::vector<std::thread>& copyDataToGPUThreads,
+  std::thread &analysisThread,
+  std::vector< std::shared_ptr< SpinFreeQueue< std::shared_ptr<DataToSendToGPU> > > > &dataQueues,
+  std::vector<std::thread> &receiveDataThreads, std::shared_ptr<DisplayTexture> &displayTexture,
+  std::vector< std::shared_ptr<asdp::render::CameraRenderInfo> > &cameraRenderInfos,
+  std::vector<GLuint> &toneMapTextures
+  )
+{
+  // Now borrow the context from the displayTexture so that we can free up resources.
+  if (!displayTexture->BorrowContext()) {
+    std::cerr << "Error borrowing context from displayTexture." << std::endl;
+    return 36;
+  }
+
+  // Stopping streaming on the cameras
+  std::cout << "Stop streaming from " << cameraIDs.size() << " cameras" << std::endl;
+  for (size_t i = 0; i < cameras.size(); i++) {
+    uint32_t camID = cameraIDs[i];
+    CameraInfo& camera = cameras[i];
+
+    // Request the camera to cancel streaming.
+    uint16_t port;
+    Status status = UDPReceivers[i]->GetPort(port);
+    if (status != OKAY) {
+      std::cerr << "Failed to get port: " << ErrorMessage(status) << std::endl;
+      return 31;
+    }
+    StreamEndpoint endpoint(ip_address, port);
+    status = client->SendCommandPacket(CommandPacketCancelSubregion(camID, endpoint));
+    if (status != OKAY) {
+      std::cerr << "Failed to stop streaming images: " << ErrorMessage(status) << std::endl;
+      return 32;
+    }
+  }
+  cameras.clear();
+  cameraIDs.clear();
+
+  // If we have a depth thread, shut it down and then join it.
+  if (depthContext) {
+    g_runDepthThread = false;
+    if (g_depthThread.joinable()) {
+      g_depthThread.join();
+    }
+    depthContext.reset();
+  }
+
+  // Set done and wait for all of our GPU data threads to join.
+  done = true;
+  for (auto& thread : copyDataToGPUThreads) {
+    if (thread.joinable()) {
+      thread.join();
+    }
+  }
+  copyDataToGPUThreads.clear();
+
+  // Shut down any analysis thread.
+  g_runAnalysisThread = false;
+  if (analysisThread.joinable()) {
+    analysisThread.join();
+  }
+
+  // Now that all of the buffers have been returned to the buffer queue, join our receive-data threads.
+  for (auto& thread : receiveDataThreads) {
+    if (thread.joinable()) {
+      thread.join();
+    }
+  }
+  receiveDataThreads.clear();
+
+  // Shut down all of the UDP receivers now that the receiving threads have finished.
+  UDPReceivers.clear();
+
+  // Clear all remaining data from the queues now that the receivers are done.
+  // All of the receiving threads will also delete this before they exit, which will remove all of the
+  // references and push their buffers back onto their empty queues.
+  for (auto& queue : dataQueues) {
+    queue.reset();
+  }
+  dataQueues.clear();
+
+  cameraRenderInfos.clear();
+  glDeleteTextures(static_cast<GLsizei>(toneMapTextures.size()), toneMapTextures.data());
+
+  // Clean up the global objects.
+  g_pointCorrespondenceDisplay.reset();
+  g_visibleCameras.clear();
+  g_depthCameras.clear();
+  g_depthEstimator.reset();
+  g_composites.clear();
+
+  // We're done with the context.
+  if (!displayTexture->ReturnContext()) {
+    std::cerr << "Error returning context to displayTexture." << std::endl;
+    return 37;
+  }
+
+  return 0;
+}
+
+//=================================================================
+
+>>>>>>> e9ea131 (Adding --xSightG (for generic) command-line arguments to ASDP_Render_Module and Display_Test to support adjusting many parameters of the XSight independently, supporting a wide range of configurations. Fixed compiler warnings. Switched to command-line parsing that does not throw exceptions.)
 static void usage(std::string name)
 {
   std::cerr << "Usage: " << name << " [options] <ip_address>" << std::endl;
@@ -1369,8 +2167,14 @@ static void usage(std::string name)
   std::cerr << "  --enableCP                          Enable the cylindrical projection." << std::endl; // Added by Sang Yoon
   std::cerr << "  --enableOD                          Enable the display interface of overview plus detail view." << std::endl; // Added by Sang Yoon
   std::cerr << "  --openXR                            Use OpenXR for rendering. If set, overrides the following and sets lineBatchesPerGPUSend to 10000." << std::endl;
+<<<<<<< HEAD
   std::cerr << "  --xSight <ip of NIC to listen on> <display>   Render to XSight on specified NIC. If set, overrides the following." << std::endl;
   std::cerr << "  --xSight2 <ip of NIC to listen on> <display>  Render to a color, smaller XSight on specified NIC. If set, overrides the following." << std::endl;
+=======
+  std::cerr << "  --xSight <ip of NIC to listen on> <display>  Render to XSight on specified NIC. If set, overrides the following." << std::endl;
+  std::cerr << "  --xSight2 <ip of NIC to listen on> <display>  Render to a color, smaller XSight on specified NIC. If set, overrides the following." << std::endl;
+  std::cerr << "  --xSightG <ip> <display> <width> <height> <fps> <hFOV> <monochrome 'true'> <port>  Generic XSight" << std::endl;
+>>>>>>> e9ea131 (Adding --xSightG (for generic) command-line arguments to ASDP_Render_Module and Display_Test to support adjusting many parameters of the XSight independently, supporting a wide range of configurations. Fixed compiler warnings. Switched to command-line parsing that does not throw exceptions.)
   std::cerr << "  --width <width>                     The width of the window (default 1280)." << std::endl;
   std::cerr << "  --height <height>                   The height of the window (default 1024)." << std::endl;
   std::cerr << "  --hFOV <horizontal field of view>   The horizontal field of view in degrees (default 40)." << std::endl;
@@ -1430,28 +2234,28 @@ int main(int argc, char** argv)
         usage(argv[0]);
         return 2;
       }
-      frameStride = std::stoi(argv[i]);
+      frameStride = atoi(argv[i]);
     }
     else if (std::string("--width") == argv[i]) {
       if (++i >= argc) {
         usage(argv[0]);
         return 2;
       }
-      displayInfos.back().width = std::stoi(argv[i]);
+      displayInfos.back().width = atoi(argv[i]);
     }
     else if (std::string("--height") == argv[i]) {
       if (++i >= argc) {
         usage(argv[0]);
         return 2;
       }
-      displayInfos.back().height = std::stoi(argv[i]);
+      displayInfos.back().height = atoi(argv[i]);
     }
     else if (std::string("--hFOV") == argv[i]) {
       if (++i >= argc) {
         usage(argv[0]);
         return 2;
       }
-      displayInfos.back().hFOV = std::stof(argv[i]);
+      displayInfos.back().hFOV = static_cast<float>(atof(argv[i]));
     }
     else if (std::string("--openXR") == argv[i]) {
       displayInfos.back().useOpenXR = true;
@@ -1467,28 +2271,54 @@ int main(int argc, char** argv)
         usage(argv[0]);
         return 2;
       }
-      displayInfos.back().XSightDisplay = std::stoi(argv[i]);
+      displayInfos.back().XSightDisplay = atoi(argv[i]);
+      displayInfos.back().width = 2560;
+      displayInfos.back().height = 2048;
+      displayInfos.back().fps = 50.0f;
+      displayInfos.back().hFOV = 70.0f;
+      displayInfos.back().XSightMonochrome = true;
+      displayInfos.back().XSightPort = 5535;
     }
     else if (std::string("--xSight2") == argv[i]) {
       if (++i >= argc) {
         usage(argv[0]);
         return 2;
       }
-      displayInfos.back().XSight2NIC = argv[i];
+      displayInfos.back().XSightNIC = argv[i];
       if (++i >= argc) {
         usage(argv[0]);
         return 2;
       }
-      displayInfos.back().XSight2Display = std::stoi(argv[i]);
+      displayInfos.back().XSightDisplay = atoi(argv[i]);
+      displayInfos.back().width = 1920;
+      displayInfos.back().height = 1200;
+      displayInfos.back().fps = 50.0f;
+      displayInfos.back().hFOV = 70.0f;
+      displayInfos.back().XSightMonochrome = false;
+      displayInfos.back().XSightPort = 5540;
+    }
+    else if (std::string("--xSightG") == argv[i]) {
+      if (i + 7 >= argc) {
+        usage(argv[0]);
+        return 2;
+      }
+      displayInfos.back().XSightNIC = argv[++i];
+      displayInfos.back().XSightDisplay = atoi(argv[++i]);
+      displayInfos.back().width = atoi(argv[++i]);
+      displayInfos.back().height = atoi(argv[++i]);
+      displayInfos.back().fps = static_cast<float>(atof(argv[++i]));
+      displayInfos.back().hFOV = static_cast<float>(atof(argv[++i]));
+      displayInfos.back().XSightMonochrome = (std::string("true") == argv[++i]);
+      displayInfos.back().XSightPort = atoi(argv[++i]);
     }
     else if (std::string("--viewpointOffset") == argv[i]) {
       if (i + 3 >= argc) {
         usage(argv[0]);
         return 2;
       }
-      displayInfos.back().viewpointOffset[0] = std::stof(argv[++i]);
-      displayInfos.back().viewpointOffset[1] = std::stof(argv[++i]);
-      displayInfos.back().viewpointOffset[2] = std::stof(argv[++i]);
+      displayInfos.back().viewpointOffset[0] = static_cast<float>(atof(argv[++i]));
+      displayInfos.back().viewpointOffset[1] = static_cast<float>(atof(argv[++i]));
+      displayInfos.back().viewpointOffset[2] = static_cast<float>(atof(argv[++i]));
     }
     else if (std::string("--fullScreen") == argv[i]) {
       if (++i >= argc) {
@@ -1496,13 +2326,13 @@ int main(int argc, char** argv)
         return 2;
       }
       displayInfos.back().fullScreen = true;
-      displayInfos.back().fullScreenDisplay = std::stoi(argv[i]);
+      displayInfos.back().fullScreenDisplay = atoi(argv[i]);
     } else if (std::string("--fps") == argv[i]) {
       if (++i >= argc) {
         usage(argv[0]);
         return 2;
       }
-      displayInfos.back().fps = std::stof(argv[i]);
+      displayInfos.back().fps = static_cast<float>(atof(argv[i]));
     } else if (std::string("--joystick") == argv[i]) {
       if (++i >= argc) {
         usage(argv[0]);
@@ -1514,7 +2344,7 @@ int main(int argc, char** argv)
         usage(argv[0]);
         return 2;
       }
-      lineBatchesPerGPUSend = std::stoi(argv[i]);
+      lineBatchesPerGPUSend = atoi(argv[i]);
     } else if (std::string("--toneMap") == argv[i]) {
       if (++i >= argc) {
         usage(argv[0]);
@@ -1564,7 +2394,7 @@ int main(int argc, char** argv)
         usage(argv[0]);
         return 2;
       }
-      replayStreamID = std::stoi(argv[i]);
+      replayStreamID = atoi(argv[i]);
       renderAheadFrames = 4.0; // This seemed best as of 6/20/2025; 3.5 caused wobble in 25-cams, 20-25 was not better than 4.0.
     } else if (std::string("--loopReplay") == argv[i]) {
       loopReplay = true;
@@ -1581,25 +2411,35 @@ int main(int argc, char** argv)
         usage(argv[0]);
         return 2;
       }
+<<<<<<< HEAD
       durationSeconds = std::stoi(argv[i]);
+=======
+      durationSeconds = atoi(argv[i]);
+    } else if (std::string("--kiosk") == argv[i]) {
+      if (++i >= argc) {
+        usage(argv[0]);
+        return 2;
+      }
+      kioskConfigFile = argv[i];
+>>>>>>> e9ea131 (Adding --xSightG (for generic) command-line arguments to ASDP_Render_Module and Display_Test to support adjusting many parameters of the XSight independently, supporting a wide range of configurations. Fixed compiler warnings. Switched to command-line parsing that does not throw exceptions.)
     } else if (std::string("--renderAheadMicroseconds") == argv[i]) {
       if (++i >= argc) {
         usage(argv[0]);
         return 2;
       }
-      renderAheadMicroseconds = std::stoi(argv[i]);
+      renderAheadMicroseconds = atoi(argv[i]);
     } else if (std::string("--triggerAheadMicroseconds") == argv[i]) {
       if (++i >= argc) {
         usage(argv[0]);
         return 2;
       }
-      triggerAheadMicroseconds = std::stoi(argv[i]);
+      triggerAheadMicroseconds = atoi(argv[i]);
     } else if (std::string("--depthAheadMicroseconds") == argv[i]) {
       if (++i >= argc) {
         usage(argv[0]);
         return 2;
       }
-      depthAheadMicroseconds = std::stoi(argv[i]);
+      depthAheadMicroseconds = atoi(argv[i]);
     } else if (std::string("--lockRotation") == argv[i]) {
       lockRotation = true;
     } else if (std::string("--disableLatencyCompensation") == argv[i]) {
@@ -1622,13 +2462,13 @@ int main(int argc, char** argv)
         usage(argv[0]);
         return 2;
       }
-      maxDepth = std::stof(argv[i]);
+      maxDepth = static_cast<float>(atof(argv[i]));
     } else if (std::string("--depthThreshold") == argv[i]) {
       if (++i >= argc) {
         usage(argv[0]);
         return 2;
       }
-      depthThreshold = std::stof(argv[i]);
+      depthThreshold = static_cast<float>(atof(argv[i]));
     } else if (std::string("--staticDepth") == argv[i]) {
       if (++i >= argc) {
         usage(argv[0]);
@@ -1665,22 +2505,32 @@ int main(int argc, char** argv)
         usage(argv[0]);
         return 2;
       }
+<<<<<<< HEAD
       maxCameras = std::stoi(argv[i]);
     }
     else if (std::string("--skipCamera") == argv[i]) {
+=======
+      maxCameras = atoi(argv[i]);
+    } else if (std::string("--skipCamera") == argv[i]) {
+>>>>>>> e9ea131 (Adding --xSightG (for generic) command-line arguments to ASDP_Render_Module and Display_Test to support adjusting many parameters of the XSight independently, supporting a wide range of configurations. Fixed compiler warnings. Switched to command-line parsing that does not throw exceptions.)
       if (++i >= argc) {
         std::cerr << "--skipCamera requires a camera ID" << std::endl;
         usage(argv[0]);
         return 2;
       }
+<<<<<<< HEAD
       skipCameras.insert(std::stoi(argv[i]));
     }
     else if (std::string("--serial") == argv[i]) {
+=======
+      skipCameras.insert(atoi(argv[i]));
+    } else if (std::string("--serial") == argv[i]) {
+>>>>>>> e9ea131 (Adding --xSightG (for generic) command-line arguments to ASDP_Render_Module and Display_Test to support adjusting many parameters of the XSight independently, supporting a wide range of configurations. Fixed compiler warnings. Switched to command-line parsing that does not throw exceptions.)
       if (++i >= argc) {
         usage(argv[0]);
         return 2;
       }
-      serialNumber = std::stoi(argv[i]);
+      serialNumber = atoi(argv[i]);
     } else if (std::string("--version") == argv[i]) {
       std::cout << "ASDP Render Module version " << VERSION + "-" + BUILD_TYPE << std::endl;
       return 0;
@@ -1702,6 +2552,54 @@ int main(int argc, char** argv)
     return 2;
   }
 
+<<<<<<< HEAD
+=======
+  // Verify that none of the displays have a horizontal field of view greater than 360 degrees
+  // or equal to or greater than 180 degrees unless --enableCP is set for that display.
+  for (size_t i = 0; i < displayInfos.size(); i++) {
+    if (displayInfos[i].hFOV > 360.0f) {
+      std::cerr << "Error: Display " << i << " has a horizontal field of view greater than 360 degrees." << std::endl;
+      return 2;
+    }
+    if (displayInfos[i].hFOV <= 0.0f) {
+      std::cerr << "Error: Display " << i << " has a horizontal field of view less than 0 degrees." << std::endl;
+      return 2;
+    }
+    if (displayInfos[i].hFOV >= 180.0f && !displayInfos[i].enableCP) {
+      std::cerr << "Error: Display " << i << " has a horizontal field of view equal to or greater than 180 degrees without --enableCP." << std::endl;
+      return 2;
+    }
+  }
+
+  //======================================
+  // Added by Sang Yoon to enable the display interface of overview plus detail view.
+  if (enableOD) {
+    // Determine overview window and detail view window.
+    // Where the number of displays is greater than 1, the widest window is considered as an overview window,
+    // and the narrowest window is considered as a detail view window.
+    int overview_displayID = -1; // display ID of overview window
+    int detailed_view_displayID = -1; // display ID of detailed view window
+
+    if (displayInfos.size() > 1) {
+      float widest_hFOV = 0.0f;
+      float narrowest_hFOV = 360.0f;
+      for (int i = 0; i < displayInfos.size(); i++) {
+        if (displayInfos[i].hFOV >= widest_hFOV) {
+          widest_hFOV = displayInfos[i].hFOV;
+          overview_displayID = i;
+        }
+        if (displayInfos[i].hFOV < narrowest_hFOV || displayInfos[i].useOpenXR) {
+          narrowest_hFOV = displayInfos[i].hFOV;
+          detailed_view_displayID = i;
+        }
+      }
+      displayInfos[overview_displayID].overview = true;
+      displayInfos[detailed_view_displayID].detailed_view = true;
+    }
+  }
+  //======================================
+
+>>>>>>> e9ea131 (Adding --xSightG (for generic) command-line arguments to ASDP_Render_Module and Display_Test to support adjusting many parameters of the XSight independently, supporting a wide range of configurations. Fixed compiler warnings. Switched to command-line parsing that does not throw exceptions.)
   // If we are connected to one or more analysis modules, increment the rendering start time by 1ms.
   if (!analysisModuleURLs.empty()) {
     std::cout << "Moving rendering forwards by 1ms to allow time for analysis display." << std::endl;
@@ -2223,6 +3121,7 @@ int main(int argc, char** argv)
           renderAheadMicroseconds,
           handlers, nullptr,
           (i == 0) ? (&g_timingInfo) : nullptr, replayStreamID != 0,
+<<<<<<< HEAD
           displayInfos[i].XSightDisplay
         ));
       } else if (!displayInfos[i].XSight2NIC.empty()) {
@@ -2235,6 +3134,11 @@ int main(int argc, char** argv)
           displayInfos[i].XSight2Display,
           1920, 1200, 50, 70.0f,
           false
+=======
+          displayInfos[i].XSightDisplay,
+          displayInfos[i].width, displayInfos[i].height, displayInfos[i].fps, displayInfos[i].hFOV,
+          displayInfos[i].XSightMonochrome, displayInfos[i].XSightPort
+>>>>>>> e9ea131 (Adding --xSightG (for generic) command-line arguments to ASDP_Render_Module and Display_Test to support adjusting many parameters of the XSight independently, supporting a wide range of configurations. Fixed compiler warnings. Switched to command-line parsing that does not throw exceptions.)
         ));
       } else {
         displays.push_back(std::make_shared<DisplayWindow>("ASDP Render Module " + std::to_string(i),
@@ -2807,8 +3711,8 @@ int main(int argc, char** argv)
         // it. Otherwise, don't put anything.
         if (i < g_timingInfo.renderSubmitTimes.size()) {
           auto t = g_timingInfo.renderSubmitTimes[i];
-          int index = g_timingInfo.depthComputeEndTimes.size();
-          for (int j = g_timingInfo.depthComputeEndTimes.size() - 1; j >= 0; j--) {
+          int index = static_cast<int>(g_timingInfo.depthComputeEndTimes.size());
+          for (int j = static_cast<int>(g_timingInfo.depthComputeEndTimes.size()) - 1; j >= 0; j--) {
             if (g_timingInfo.depthComputeEndTimes[j] < t) {
               index = j;
               break;
