@@ -27,6 +27,7 @@
 #include <atomic>
 #include <memory>
 #include <algorithm>
+#include <cstdlib>
 #include <ASDP_Core_API.h>
 #include <ASDP_SpinFreeQueue.hpp>
 #include <ASDP_BufferPool.h>
@@ -56,7 +57,7 @@ using namespace asdp::render;
 using namespace asdp::analysis;
 using json = nlohmann::json;
 
-static std::string VERSION = "3.46.0";
+static std::string VERSION = "3.47.0";
 
 /// @brief The path to the configuration file. Defined in the CMakeLists file.
 std::filesystem::path g_dirPath = CONFIG_FILE_PATH;
@@ -348,12 +349,12 @@ static std::vector< std::array<uint16_t, 2> > GetRawPixelValues(
   // Read back both images from texture memory to CPU memory.  These have already been adjusted by
   // the offset and gain on the way to being written to the texture.
   std::array<std::vector<uint16_t>, imageData.size()> imagePixels;
-  GLenum ret;
   for (int i = 0; i < imagePixels.size(); i++) {
     imagePixels[i].resize(widths[i] * heights[i]);
     glBindTexture(GL_TEXTURE_2D, imageData[i]->texture);
     glGetTexImage(GL_TEXTURE_2D, 0, GL_RED, GL_UNSIGNED_SHORT, imagePixels[i].data());
 #if !defined(NDEBUG)
+    GLenum ret;
     ret = glGetError();
     if (ret != GL_NO_ERROR) {
       std::cerr << "GetRawPixelValues(): Error: glGetTexImage() failed for image " << i
@@ -424,8 +425,8 @@ static float ComputeNewColorOffset(
     sum1 += (pixelPair[0] + offset1) * gain1;
     sum2 += (pixelPair[1] + offset2) * gain2;
   }
-  float avg1 = sum1 / rawPixels.size();
-  float avg2 = sum2 / rawPixels.size();
+  float avg1 = static_cast<float>(sum1 / rawPixels.size());
+  float avg2 = static_cast<float>(sum2 / rawPixels.size());
 
   // Compute the new offset for the second camera to make its average match the first camera's average.
   // We want to know how much and in which direction to shift the second camera's pixel values.  The
@@ -534,10 +535,10 @@ static std::array<float, 2> ComputeNewColorOffsetGain(
   // Compute the best-fit line through the points.
   float sumX = 0.0f, sumY = 0.0f, sumXY = 0.0f, sumXX = 0.0f;
   for (const auto& pt : adjustedPoints) {
-    sumX += pt[0];
-    sumY += pt[1];
-    sumXY += pt[0] * pt[1];
-    sumXX += pt[0] * pt[0];
+    sumX += static_cast<float>(pt[0]);
+    sumY += static_cast<float>(pt[1]);
+    sumXY += static_cast<float>(pt[0] * pt[1]);
+    sumXX += static_cast<float>(pt[0] * pt[0]);
   }
   float n = static_cast<float>(adjustedPoints.size());
   float slope = (n * sumXY - sumX * sumY) / (n * sumXX - sumX * sumX);
@@ -560,8 +561,8 @@ static std::array<float, 2> ComputeNewColorOffsetGain(
   // Find the average pixel value for each camera in the adjusted point set.
   float sum1 = 0.0, sum2 = 0.0;
   for (const auto& pt : adjustedPoints) {
-    sum1 += pt[0];
-    sum2 += pt[1];
+    sum1 += static_cast<float>(pt[0]);
+    sum2 += static_cast<float>(pt[1]);
   }
   float avg1 = sum1 / adjustedPoints.size();
   float avg2 = sum2 / adjustedPoints.size();
@@ -988,8 +989,8 @@ struct DisplayInfo
   bool useOpenXR = false;       ///< Use OpenXR for rendering? If so, overrides all of the following.
   std::string XSightNIC = "";   ///< NIC to listen to XSight on for rendering. If not empty, overrides all of the following.
   int XSightDisplay = 1;        ///< The display to use for XSight rendering.
-  std::string XSight2NIC = "";  ///< NIC to listen to XSight2 on for rendering. If not empty, overrides all of the following.
-  int XSight2Display = 1;       ///< The display to use for XSight2 rendering.
+  bool XSightMonochrome = true; ///< Render XSight in monochrome mode.
+  uint16_t XSightPort = 5535;   ///< The port to listen to XSight on for rendering.
   int width = 1280;             ///< The width of the display.
   int height = 1024;            ///< The height of the display.
   float hFOV = 40.0f;           ///< The horizontal field of view in degrees.
@@ -1176,7 +1177,7 @@ std::vector<CompositeCameras::Annotation> AnnotationCallbackHandler(Time time, v
       float dt = 0;
       if (report->Timestamp < time) {
         Time delta = time - report->Timestamp;
-        dt = delta.seconds + delta.microseconds * 1e-6;
+        dt = delta.seconds + delta.microseconds * 1e-6f;
       }
       float opacity = 1.0f - dt / g_analysisFadeTimeSeconds;
       if (opacity <= 0.0f) {
@@ -1322,7 +1323,9 @@ void HandleAnalysisThread(std::vector<std::string> analysisModuleURLs, std::shar
       for (auto it = rm.begin(); it != rm.end();) {
         auto& series = it->second;
         // Remove old reports from the back of the series.
-        while (!series.empty() && series.back().Timestamp + Time(g_analysisFadeTimeSeconds, 0) < now) {
+        uint32_t seconds = static_cast<uint32_t>(g_analysisFadeTimeSeconds);
+        uint32_t microseconds = static_cast<uint32_t>((g_analysisChanceThreshold - seconds) * 1000000);
+        while (!series.empty() && series.back().Timestamp + Time(seconds, microseconds) < now) {
           series.pop_back();
         }
         if (series.empty()) {
@@ -1516,7 +1519,7 @@ int spin_up(std::shared_ptr<CoreClient> client, int &serialNumber, std::shared_p
   // Remove any cameras that we are to skip from cameras, cameraInfos and NUCInfos.
   std::vector<CameraRenderInfo> filteredCameraRenderInfos;
   std::vector<CameraInfo> filteredCameras;
-  for (size_t i = 0; i < cameras.size(); i++) {
+  for (int i = 0; i < cameras.size(); i++) {
     if (skipCameras.find(i + 1) == skipCameras.end()) {
       filteredCameras.push_back(cameras[i]);
     }
@@ -1725,7 +1728,7 @@ int spin_up(std::shared_ptr<CoreClient> client, int &serialNumber, std::shared_p
     // Determine the range of depths to use for the depth estimater and then construct it.
     std::vector<float> depths(7);
     depths[depths.size() - 1] = maxDepth;
-    for (int i = depths.size() - 2; i >= 0; i--) {
+    for (long i = static_cast<long>(depths.size()) - 2; i >= 0; i--) {
       depths[i] = depths[i + 1] / 2;
     }
     /// @todo Because we have visible-light depth cameras even when using IR cameras, we avoid
@@ -1771,11 +1774,11 @@ int spin_up(std::shared_ptr<CoreClient> client, int &serialNumber, std::shared_p
     // can cache consistent camera images for the whole frame while views are being rendered.
     // Two displays cannot share a SetupRenderFrame() call because they may have different frame rates.
     // Rendering offset based on how many frames we want to render ahead.
-    uint32_t renderOffsetMicroseconds = renderAheadFrames * (1000000 / cameraFPS);
+    uint32_t renderOffsetMicroseconds = static_cast<uint32_t>(renderAheadFrames * (1000000 / cameraFPS));
     g_composites.push_back(std::make_shared<CompositeCameras>(
-      g_visibleCameras, toneMapTexture, poseAdjuster, Time(1 / cameraFPS),
+      g_visibleCameras, toneMapTexture, poseAdjuster, Time(static_cast<float>(1 / cameraFPS)),
       renderOffsetMicroseconds,
-      Time(0, 1000000 / displayInfos[i].fps), (i == 0) ? (&g_timingInfo) : nullptr,
+      Time(0, static_cast<uint32_t>(1000000 / displayInfos[i].fps)), (i == 0) ? (&g_timingInfo) : nullptr,
       rangeEstimator, staticDepth, AnnotationCallbackHandler, nullptr));
 
     //======================================
@@ -1974,7 +1977,7 @@ int spin_up(std::shared_ptr<CoreClient> client, int &serialNumber, std::shared_p
     ti.mode = 3;
     ti.period = 1 / cameraFPS;
     ti.offset = 0;
-    ti.trackingFactor = 0.005;
+    ti.trackingFactor = 0.005f;
     ti.externalID = camera.trigger;
     status = client->SendCommandPacket(CommandPacketConfigureTrigger(ti));
     if (status != OKAY) {
@@ -2126,7 +2129,7 @@ int spin_down(std::shared_ptr<CoreClient> client, std::atomic<bool>& done,
   dataQueues.clear();
 
   cameraRenderInfos.clear();
-  glDeleteTextures(toneMapTextures.size(), toneMapTextures.data());
+  glDeleteTextures(static_cast<GLsizei>(toneMapTextures.size()), toneMapTextures.data());
 
   // Clean up the global objects.
   g_pointCorrespondenceDisplay.reset();
@@ -2182,8 +2185,9 @@ static void usage(std::string name)
   std::cerr << "  --enableCP                          Enable the cylindrical projection." << std::endl; // Added by Sang Yoon
   std::cerr << "  --enableOD                          Enable the display interface of overview plus detail view." << std::endl; // Added by Sang Yoon
   std::cerr << "  --openXR                            Use OpenXR for rendering. If set, overrides the following and sets lineBatchesPerGPUSend to 10000." << std::endl;
-  std::cerr << "  --xSight <ip of NIC to listen on>   <display> Render to XSight on specified NIC. If set, overrides the following." << std::endl;
-  std::cerr << "  --xSight2 <ip of NIC to listen on>  <display> Render to a color, smaller XSight on specified NIC. If set, overrides the following." << std::endl;
+  std::cerr << "  --xSight <ip of NIC to listen on> <display>  Render to XSight on specified NIC. If set, overrides the following." << std::endl;
+  std::cerr << "  --xSight2 <ip of NIC to listen on> <display>  Render to a color, smaller XSight on specified NIC. If set, overrides the following." << std::endl;
+  std::cerr << "  --xSightG <ip> <display> <width> <height> <fps> <hFOV> <monochrome 'true'> <port>  Generic XSight" << std::endl;
   std::cerr << "  --width <width>                     The width of the window (default 1280)." << std::endl;
   std::cerr << "  --height <height>                   The height of the window (default 1024)." << std::endl;
   std::cerr << "  --hFOV <horizontal field of view>   The horizontal field of view in degrees (default 40)." << std::endl;
@@ -2244,28 +2248,28 @@ int main(int argc, char** argv)
         usage(argv[0]);
         return 2;
       }
-      frameStride = std::stoi(argv[i]);
+      frameStride = atoi(argv[i]);
     }
     else if (std::string("--width") == argv[i]) {
       if (++i >= argc) {
         usage(argv[0]);
         return 2;
       }
-      displayInfos.back().width = std::stoi(argv[i]);
+      displayInfos.back().width = atoi(argv[i]);
     }
     else if (std::string("--height") == argv[i]) {
       if (++i >= argc) {
         usage(argv[0]);
         return 2;
       }
-      displayInfos.back().height = std::stoi(argv[i]);
+      displayInfos.back().height = atoi(argv[i]);
     }
     else if (std::string("--hFOV") == argv[i]) {
       if (++i >= argc) {
         usage(argv[0]);
         return 2;
       }
-      displayInfos.back().hFOV = std::stof(argv[i]);
+      displayInfos.back().hFOV = static_cast<float>(atof(argv[i]));
     }
     else if (std::string("--openXR") == argv[i]) {
       displayInfos.back().useOpenXR = true;
@@ -2281,28 +2285,54 @@ int main(int argc, char** argv)
         usage(argv[0]);
         return 2;
       }
-      displayInfos.back().XSightDisplay = std::stoi(argv[i]);
+      displayInfos.back().XSightDisplay = atoi(argv[i]);
+      displayInfos.back().width = 2560;
+      displayInfos.back().height = 2048;
+      displayInfos.back().fps = 50.0f;
+      displayInfos.back().hFOV = 70.0f;
+      displayInfos.back().XSightMonochrome = true;
+      displayInfos.back().XSightPort = 5535;
     }
     else if (std::string("--xSight2") == argv[i]) {
       if (++i >= argc) {
         usage(argv[0]);
         return 2;
       }
-      displayInfos.back().XSight2NIC = argv[i];
+      displayInfos.back().XSightNIC = argv[i];
       if (++i >= argc) {
         usage(argv[0]);
         return 2;
       }
-      displayInfos.back().XSight2Display = std::stoi(argv[i]);
+      displayInfos.back().XSightDisplay = atoi(argv[i]);
+      displayInfos.back().width = 1920;
+      displayInfos.back().height = 1200;
+      displayInfos.back().fps = 50.0f;
+      displayInfos.back().hFOV = 70.0f;
+      displayInfos.back().XSightMonochrome = false;
+      displayInfos.back().XSightPort = 5540;
+    }
+    else if (std::string("--xSightG") == argv[i]) {
+      if (i + 7 >= argc) {
+        usage(argv[0]);
+        return 2;
+      }
+      displayInfos.back().XSightNIC = argv[++i];
+      displayInfos.back().XSightDisplay = atoi(argv[++i]);
+      displayInfos.back().width = atoi(argv[++i]);
+      displayInfos.back().height = atoi(argv[++i]);
+      displayInfos.back().fps = static_cast<float>(atof(argv[++i]));
+      displayInfos.back().hFOV = static_cast<float>(atof(argv[++i]));
+      displayInfos.back().XSightMonochrome = (std::string("true") == argv[++i]);
+      displayInfos.back().XSightPort = atoi(argv[++i]);
     }
     else if (std::string("--viewpointOffset") == argv[i]) {
       if (i + 3 >= argc) {
         usage(argv[0]);
         return 2;
       }
-      displayInfos.back().viewpointOffset[0] = std::stof(argv[++i]);
-      displayInfos.back().viewpointOffset[1] = std::stof(argv[++i]);
-      displayInfos.back().viewpointOffset[2] = std::stof(argv[++i]);
+      displayInfos.back().viewpointOffset[0] = static_cast<float>(atof(argv[++i]));
+      displayInfos.back().viewpointOffset[1] = static_cast<float>(atof(argv[++i]));
+      displayInfos.back().viewpointOffset[2] = static_cast<float>(atof(argv[++i]));
     }
     else if (std::string("--fullScreen") == argv[i]) {
       if (++i >= argc) {
@@ -2310,13 +2340,13 @@ int main(int argc, char** argv)
         return 2;
       }
       displayInfos.back().fullScreen = true;
-      displayInfos.back().fullScreenDisplay = std::stoi(argv[i]);
+      displayInfos.back().fullScreenDisplay = atoi(argv[i]);
     } else if (std::string("--fps") == argv[i]) {
       if (++i >= argc) {
         usage(argv[0]);
         return 2;
       }
-      displayInfos.back().fps = std::stof(argv[i]);
+      displayInfos.back().fps = static_cast<float>(atof(argv[i]));
     } else if (std::string("--joystick") == argv[i]) {
       if (++i >= argc) {
         usage(argv[0]);
@@ -2328,7 +2358,7 @@ int main(int argc, char** argv)
         usage(argv[0]);
         return 2;
       }
-      lineBatchesPerGPUSend = std::stoi(argv[i]);
+      lineBatchesPerGPUSend = atoi(argv[i]);
     } else if (std::string("--toneMap") == argv[i]) {
       if (++i >= argc) {
         usage(argv[0]);
@@ -2378,7 +2408,7 @@ int main(int argc, char** argv)
         usage(argv[0]);
         return 2;
       }
-      replayStreamID = std::stoi(argv[i]);
+      replayStreamID = atoi(argv[i]);
       renderAheadFrames = 4.0; // This seemed best as of 6/20/2025; 3.5 caused wobble in 25-cams, 20-25 was not better than 4.0.
     } else if (std::string("--loopReplay") == argv[i]) {
       loopReplay = true;
@@ -2395,7 +2425,7 @@ int main(int argc, char** argv)
         usage(argv[0]);
         return 2;
       }
-      durationSeconds = std::stoi(argv[i]);
+      durationSeconds = atoi(argv[i]);
     } else if (std::string("--kiosk") == argv[i]) {
       if (++i >= argc) {
         usage(argv[0]);
@@ -2407,19 +2437,19 @@ int main(int argc, char** argv)
         usage(argv[0]);
         return 2;
       }
-      renderAheadMicroseconds = std::stoi(argv[i]);
+      renderAheadMicroseconds = atoi(argv[i]);
     } else if (std::string("--triggerAheadMicroseconds") == argv[i]) {
       if (++i >= argc) {
         usage(argv[0]);
         return 2;
       }
-      triggerAheadMicroseconds = std::stoi(argv[i]);
+      triggerAheadMicroseconds = atoi(argv[i]);
     } else if (std::string("--depthAheadMicroseconds") == argv[i]) {
       if (++i >= argc) {
         usage(argv[0]);
         return 2;
       }
-      depthAheadMicroseconds = std::stoi(argv[i]);
+      depthAheadMicroseconds = atoi(argv[i]);
     } else if (std::string("--lockRotation") == argv[i]) {
       lockRotation = true;
     } else if (std::string("--disableLatencyCompensation") == argv[i]) {
@@ -2442,13 +2472,13 @@ int main(int argc, char** argv)
         usage(argv[0]);
         return 2;
       }
-      maxDepth = std::stof(argv[i]);
+      maxDepth = static_cast<float>(atof(argv[i]));
     } else if (std::string("--depthThreshold") == argv[i]) {
       if (++i >= argc) {
         usage(argv[0]);
         return 2;
       }
-      depthThreshold = std::stof(argv[i]);
+      depthThreshold = static_cast<float>(atof(argv[i]));
     } else if (std::string("--staticDepth") == argv[i]) {
       if (++i >= argc) {
         usage(argv[0]);
@@ -2483,20 +2513,20 @@ int main(int argc, char** argv)
         usage(argv[0]);
         return 2;
       }
-      maxCameras = std::stoi(argv[i]);
+      maxCameras = atoi(argv[i]);
     } else if (std::string("--skipCamera") == argv[i]) {
       if (++i >= argc) {
         std::cerr << "--skipCamera requires a camera ID" << std::endl;
         usage(argv[0]);
         return 2;
       }
-      skipCameras.insert(std::stoi(argv[i]));
+      skipCameras.insert(atoi(argv[i]));
     } else if (std::string("--serial") == argv[i]) {
       if (++i >= argc) {
         usage(argv[0]);
         return 2;
       }
-      serialNumber = std::stoi(argv[i]);
+      serialNumber = atoi(argv[i]);
     } else if (std::string("--version") == argv[i]) {
       std::cout << "ASDP Render Module version " << VERSION + "-" + BUILD_TYPE << std::endl;
       return 0;
@@ -2546,7 +2576,7 @@ int main(int argc, char** argv)
     if (displayInfos.size() > 1) {
       float widest_hFOV = 0.0f;
       float narrowest_hFOV = 360.0f;
-      for (size_t i = 0; i < displayInfos.size(); i++) {
+      for (int i = 0; i < displayInfos.size(); i++) {
         if (displayInfos[i].hFOV >= widest_hFOV) {
           widest_hFOV = displayInfos[i].hFOV;
           overview_displayID = i;
@@ -2739,18 +2769,9 @@ int main(int argc, char** argv)
           renderAheadMicroseconds,
           handlers, nullptr,
           (i == 0) ? (&g_timingInfo) : nullptr, replayStreamID != 0,
-          displayInfos[i].XSightDisplay
-        ));
-      } else if (!displayInfos[i].XSight2NIC.empty()) {
-        displays.push_back(std::make_shared<DisplayXSight>(displayInfos[i].XSight2NIC, g_composites[i], displayTexture.get(),
-          client, triggerID, triggerAheadMicroseconds,
-          depthAheadMicroseconds, displayInfos[i].viewpointOffset,
-          renderAheadMicroseconds,
-          handlers, nullptr,
-          (i == 0) ? (&g_timingInfo) : nullptr, replayStreamID != 0,
-          displayInfos[i].XSight2Display,
-          1920, 1200, 50, 70.0f,
-          false
+          displayInfos[i].XSightDisplay,
+          displayInfos[i].width, displayInfos[i].height, displayInfos[i].fps, displayInfos[i].hFOV,
+          displayInfos[i].XSightMonochrome, displayInfos[i].XSightPort
         ));
       } else {
         displays.push_back(std::make_shared<DisplayWindow>("ASDP Render Module " + std::to_string(i),
@@ -3205,8 +3226,8 @@ int main(int argc, char** argv)
         // it. Otherwise, don't put anything.
         if (i < g_timingInfo.renderSubmitTimes.size()) {
           auto t = g_timingInfo.renderSubmitTimes[i];
-          int index = g_timingInfo.depthComputeEndTimes.size();
-          for (int j = g_timingInfo.depthComputeEndTimes.size() - 1; j >= 0; j--) {
+          int index = static_cast<int>(g_timingInfo.depthComputeEndTimes.size());
+          for (int j = static_cast<int>(g_timingInfo.depthComputeEndTimes.size()) - 1; j >= 0; j--) {
             if (g_timingInfo.depthComputeEndTimes[j] < t) {
               index = j;
               break;
