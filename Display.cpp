@@ -2851,8 +2851,9 @@ void DisplayXSight::DisplayThread(
       case 55:
         {
           // The description of this packet format was in a table on the second slide of a Powerpoint
-          // sent by Jacqueline Shortridge on 6/29/2026.
-          constexpr uint32_t expectedLength = 77;
+          // sent by Jacqueline Shortridge on 6/29/2026. The 111 length was determined by looking at
+          // received packets.
+          constexpr uint32_t expectedLength = 111;
           if (length != expectedLength) {
             m_status = "Received packet of unexpected length (" + std::to_string(length) +
               " received, " + std::to_string(expectedLength) + " expected)";
