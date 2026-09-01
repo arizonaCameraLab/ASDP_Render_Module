@@ -50,7 +50,7 @@ int main(int argc, char** argv)
   std::cout << "Receiving from " << xSightMulticastAddress << " on port " << xSightPort << " on NIC " << xSightNICName << std::endl;
   {
     // Open a ReceiverUDP to read from the XSight multicast address on the specified NIC.
-    asdp::ReceiverUDP receiver(xSightNICName, xSightPort, 9000, true, xSightMulticastAddress);
+    asdp::ReceiverUDP receiver(xSightNICName, xSightPort, 9000, false, xSightMulticastAddress);
     asdp::Status status = receiver.GetConstructorStatus();
     if (status != asdp::Status::OKAY) {
       std::cerr << "Failed to construct the ReceiverUDP object: " << asdp::ErrorMessage(status) << std::endl;
