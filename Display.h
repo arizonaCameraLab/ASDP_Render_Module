@@ -381,7 +381,10 @@ protected:
       /// @brief Constructor
       /// @param NICName The name of the NIC to use listen for UDP packets from the XSight HMD.
       /// For some networking environments, this is the address of the NIC to listen on. For others,
-      /// this should be set to 0.0.0.0 to listen on this port on all NICS.
+      /// this should be set to 0.0.0.0 to listen on this port on all NICS. Also note that some
+      /// Ubuntu computers must be connected to a router (even one that is not itself connected to
+      /// the Internet) to properly support multicast; otherwise, they may fail to open the ports and
+      /// may fail to receive packets from the XSight HMD.
       /// @param composite The Composite used to generate textured geometry.  The DisplayXSight object will
       /// reset this pointer just before closing the window, and the caller should reset the pointer passed
       /// in here so that it will be destroyed before the window closes.
