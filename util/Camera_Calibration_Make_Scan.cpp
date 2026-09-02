@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2025: Arizona Board of Regents on Behalf of the University of Arizona
+ * Copyright (C) 2025-2026: Arizona Board of Regents on Behalf of the University of Arizona
  */
 
 /**
@@ -27,7 +27,7 @@ using namespace asdp;
 using namespace asdp::render;
 using namespace asdp::render::calibration;
 
-static std::string VERSION = "2.5.0";
+static std::string VERSION = "2.6.0";
 
 void usage(std::string name)
 {
@@ -62,9 +62,14 @@ static void RunAlongLine(std::ofstream& outFile, int& frameIndex,
     double x = startX + i * stepX;
     double y = startY + i * stepY;
 
+    // Apply the specified distortion, producing the ideal-camera location that we will aim at.
+    std::array<double, 3> distortedPoint = { x, y, -1.0 };
+    std::array<double, 3> idealPoint = cri.m_distortion->MapPoint(distortedPoint);
+
     // Compute the gimbal angles to point the camera at the target point.
+    // We use the undistorted ideal location here but the original undistorted location below.
     double xRotationDegrees, zRotationDegrees;
-    PointPixelAtTargetNoDistortion(cri, x, y, gimbalInfo.minPitchDegrees, gimbalInfo.maxPitchDegrees,
+    PointPixelAtTargetNoDistortion(cri, idealPoint[0], idealPoint[1], gimbalInfo.minPitchDegrees, gimbalInfo.maxPitchDegrees,
       targetPoint, gimbalInfo.pitchFirst,
       zRotationDegrees, xRotationDegrees);
 
