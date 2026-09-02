@@ -62,14 +62,16 @@ static void RunAlongLine(std::ofstream& outFile, int& frameIndex,
     double x = startX + i * stepX;
     double y = startY + i * stepY;
 
-    // Apply the specified distortion, producing the ideal-camera location that we will aim at.
-    std::array<double, 3> distortedPoint = { x, y, -1.0 };
+    // Apply the specified distortion, producing the ideal-camera pixel that we will aim at.
+    std::array<double, 2> pointInPlane = PlaneIntersectionForPixelNoDistortion(cri, { x, y });
+    std::array<double, 3> distortedPoint = { pointInPlane[0], pointInPlane[1], -1.0};
     std::array<double, 3> idealPoint = cri.m_distortion->MapPoint(distortedPoint);
+    std::array<double, 2> idealPixel = { idealPoint[0], idealPoint[1] };
 
     // Compute the gimbal angles to point the camera at the target point.
     // We use the undistorted ideal location here but the original undistorted location below.
     double xRotationDegrees, zRotationDegrees;
-    PointPixelAtTargetNoDistortion(cri, idealPoint[0], idealPoint[1], gimbalInfo.minPitchDegrees, gimbalInfo.maxPitchDegrees,
+    PointPixelAtTargetNoDistortion(cri, idealPixel[0], idealPixel[1], gimbalInfo.minPitchDegrees, gimbalInfo.maxPitchDegrees,
       targetPoint, gimbalInfo.pitchFirst,
       zRotationDegrees, xRotationDegrees);
 
