@@ -982,6 +982,8 @@ void Gimbal_iOptron::MoveAbsoluteRaw(double yawAdjusted, double pitchAdjusted, s
   }
 
   // Disable tracking, which the slew command re-enables every time.
+  // Wait briefly to try and avoid overloading the command buffer.
+  std::this_thread::sleep_for(std::chrono::milliseconds(3));
   if (!m_impl->sendCommandCheckReponseAndFail(":ST0#", "1")) {
     throw std::runtime_error("Unable to send stop-tracking command");
   }
