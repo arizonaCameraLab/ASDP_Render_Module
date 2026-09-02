@@ -57,7 +57,7 @@ using namespace asdp::render;
 using namespace asdp::analysis;
 using json = nlohmann::json;
 
-static std::string VERSION = "3.47.0";
+static std::string VERSION = "3.47.1";
 
 /// @brief The path to the configuration file. Defined in the CMakeLists file.
 std::filesystem::path g_dirPath = CONFIG_FILE_PATH;
@@ -2185,8 +2185,8 @@ static void usage(std::string name)
   std::cerr << "  --enableCP                          Enable the cylindrical projection." << std::endl; // Added by Sang Yoon
   std::cerr << "  --enableOD                          Enable the display interface of overview plus detail view." << std::endl; // Added by Sang Yoon
   std::cerr << "  --openXR                            Use OpenXR for rendering. If set, overrides the following and sets lineBatchesPerGPUSend to 10000." << std::endl;
-  std::cerr << "  --xSight <ip of NIC to listen on> <display>  Render to XSight on specified NIC. If set, overrides the following." << std::endl;
-  std::cerr << "  --xSight2 <ip of NIC to listen on> <display>  Render to a color, smaller XSight on specified NIC. If set, overrides the following." << std::endl;
+  std::cerr << "  --xSight <ip of NIC to listen on> <display>  Render to XSight on specified NIC (may need to be 0.0.0.0). If set, overrides the following." << std::endl;
+  std::cerr << "  --xSight2 <ip of NIC to listen on> <display>  Render to a smaller XSight on specified NIC. If set, overrides the following." << std::endl;
   std::cerr << "  --xSightG <ip> <display> <width> <height> <fps> <hFOV> <monochrome 'true'> <port>  Generic XSight" << std::endl;
   std::cerr << "  --width <width>                     The width of the window (default 1280)." << std::endl;
   std::cerr << "  --height <height>                   The height of the window (default 1024)." << std::endl;

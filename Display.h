@@ -380,6 +380,8 @@ protected:
     public:
       /// @brief Constructor
       /// @param NICName The name of the NIC to use listen for UDP packets from the XSight HMD.
+      /// For some networking environments, this is the address of the NIC to listen on. For others,
+      /// this should be set to 0.0.0.0 to listen on this port on all NICS.
       /// @param composite The Composite used to generate textured geometry.  The DisplayXSight object will
       /// reset this pointer just before closing the window, and the caller should reset the pointer passed
       /// in here so that it will be destroyed before the window closes.
