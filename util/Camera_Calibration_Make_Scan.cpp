@@ -105,7 +105,7 @@ static void RunAlongLine(std::ofstream& outFile, int& frameIndex,
       // If we're not in the same camera, check for this camera's margin.
       // In these calculations, we use the angles computed for the distorted locations.
       if (camera.m_ID != cri.m_ID) {
-        TargetProjectedLocationNoDistortion(camera, gimbalInfo.pitchFirst, zRotationDegrees, xRotationDegrees, targetPoint,
+        TargetProjectedLocationNoDistortion(camera, gimbalInfo.pitchFirst, zRotationDegreesDist, xRotationDegreesDist, targetPoint,
           xPixels, yPixels);
         if (!(xPixels >= leftMarginPixels &&
               xPixels <= (camera.m_resolutionPixels[0] - 1) - rightMarginPixels &&
@@ -117,8 +117,8 @@ static void RunAlongLine(std::ofstream& outFile, int& frameIndex,
         }
       }
 
-      // Write the pose to the file.
-      outFile << frameIndex << "," << zRotationDegrees << "," << xRotationDegrees << ","
+      // Write the pose to the file, using the distorted degrees.
+      outFile << frameIndex << "," << zRotationDegreesDist << "," << xRotationDegreesDist << ","
         << camera.m_ID << "," << numFrames << "," << targetID << std::endl;
     }
   }
