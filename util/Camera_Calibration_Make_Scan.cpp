@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2025: Arizona Board of Regents on Behalf of the University of Arizona
+ * Copyright (C) 2025-2026: Arizona Board of Regents on Behalf of the University of Arizona
  */
 
 /**
@@ -27,7 +27,7 @@ using namespace asdp;
 using namespace asdp::render;
 using namespace asdp::render::calibration;
 
-static std::string VERSION = "2.5.0";
+static std::string VERSION = "2.6.0";
 
 void usage(std::string name)
 {
@@ -62,11 +62,24 @@ static void RunAlongLine(std::ofstream& outFile, int& frameIndex,
     double x = startX + i * stepX;
     double y = startY + i * stepY;
 
-    // Compute the gimbal angles to point the camera at the target point.
+    // Compute the gimbal angles to point the camera at the target point with no distortion.
     double xRotationDegrees, zRotationDegrees;
     PointPixelAtTargetNoDistortion(cri, x, y, gimbalInfo.minPitchDegrees, gimbalInfo.maxPitchDegrees,
       targetPoint, gimbalInfo.pitchFirst,
       zRotationDegrees, xRotationDegrees);
+
+    // Apply the specified distortion, producing the ideal-camera pixel that we will aim at.
+    std::array<double, 2> pointInPlane = PlaneIntersectionForPixelNoDistortion(cri, { x, y });
+    std::array<double, 3> distortedPoint = { pointInPlane[0], pointInPlane[1], -1.0};
+    std::array<double, 3> idealPoint = cri.m_distortion->MapPoint(distortedPoint);
+    std::array<double, 2> idealPixel = PixelForPlaneIntersectionNoDistortion(cri, { idealPoint[0], idealPoint[1] });
+
+    // Compute the gimbal angles to point the camera at the target point.
+    // We use the undistorted ideal location here but the original undistorted location below.
+    double xRotationDegreesDist, zRotationDegreesDist;
+    PointPixelAtTargetNoDistortion(cri, idealPixel[0], idealPixel[1], gimbalInfo.minPitchDegrees, gimbalInfo.maxPitchDegrees,
+      targetPoint, gimbalInfo.pitchFirst,
+      zRotationDegreesDist, xRotationDegreesDist);
 
     // Check each camera to see if it can see the target within its margin.
     // If so, write the pose to the file.  We bump the frame index once for
@@ -75,21 +88,38 @@ static void RunAlongLine(std::ofstream& outFile, int& frameIndex,
     ++frameIndex;
     for (auto const& camera : cameraRenderInfos) {
       double xPixels, yPixels;
-      TargetProjectedLocationNoDistortion(camera, gimbalInfo.pitchFirst, zRotationDegrees, xRotationDegrees, targetPoint,
-        xPixels, yPixels);
+
+      // For the same camera, verify that the undistorted pixels location is within our sensor.
       if (camera.m_ID == cri.m_ID) {
-        if (std::sqrt( (xPixels - x)*(xPixels - x) + (yPixels - y)*(yPixels - y) ) > 1) {
-          std::cerr << "Warning: Camera " << camera.m_ID << " unable to point pixel at target " << targetID
-            << " at pixel " << x << "," << y << " (got " << xPixels << "," << yPixels << "), frame " << frameIndex << std::endl;
+        TargetProjectedLocationNoDistortion(camera, gimbalInfo.pitchFirst, zRotationDegrees, xRotationDegrees, targetPoint,
+          xPixels, yPixels);
+        if (camera.m_ID == cri.m_ID) {
+          if (std::sqrt((xPixels - x) * (xPixels - x) + (yPixels - y) * (yPixels - y)) > 1) {
+            std::cerr << "Warning: Camera " << camera.m_ID << " unable to point pixel at target " << targetID
+              << " at pixel " << x << "," << y << " (got " << xPixels << "," << yPixels << "), frame " << frameIndex << std::endl;
+            continue;
+          }
+        }
+      }
+
+      // If we're not in the same camera, check for this camera's margin.
+      // In these calculations, we use the angles computed for the distorted locations.
+      if (camera.m_ID != cri.m_ID) {
+        TargetProjectedLocationNoDistortion(camera, gimbalInfo.pitchFirst, zRotationDegreesDist, xRotationDegreesDist, targetPoint,
+          xPixels, yPixels);
+        if (!(xPixels >= leftMarginPixels &&
+              xPixels <= (camera.m_resolutionPixels[0] - 1) - rightMarginPixels &&
+              yPixels >= topMarginPixels &&
+              yPixels <= (camera.m_resolutionPixels[1] - 1) - bottomMarginPixels)
+            ) {
+          // This point is not within our undistorted margin, so we skip it.
           continue;
         }
       }
-      // If we're in the same camera and didn't skip above, we are good to go.  Otherwise, check for this camera's margin.
-      if (camera.m_ID == cri.m_ID || (xPixels >= leftMarginPixels && xPixels <= (camera.m_resolutionPixels[0] - 1) - rightMarginPixels &&
-          yPixels >= topMarginPixels  && yPixels <= (camera.m_resolutionPixels[1] - 1) - bottomMarginPixels)) {
-        outFile << frameIndex << "," << zRotationDegrees << "," << xRotationDegrees << ","
-          << camera.m_ID << "," << numFrames << "," << targetID << std::endl;
-      }
+
+      // Write the pose to the file, using the distorted degrees.
+      outFile << frameIndex << "," << zRotationDegreesDist << "," << xRotationDegreesDist << ","
+        << camera.m_ID << "," << numFrames << "," << targetID << std::endl;
     }
   }
 }

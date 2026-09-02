@@ -161,6 +161,16 @@ bool TargetProjectedLocationNoDistortion(const asdp::render::CameraRenderInfo& c
 std::array<double, 2> PlaneIntersectionForPixelNoDistortion(const asdp::render::CameraRenderInfo& cri,
   std::array<double, 2> locPixels);
 
+/// @brief Compute the pixel location of the intersection of a ray through the specified plane location.
+/// @details This maps from a location in the plane at Z = -1 in a right-handed coordinate system with
+/// the camera looking from the origin down the -Z axis with the Y axis up to the pixel coordinates
+/// (center of upper-left pixel is (0,0)).
+/// @param cri The camera render information.
+/// @param locPlane The location in the plane at Z = -1.
+/// @return The pixel location in the image, need not be centered on a pixel.
+std::array<double, 2> PixelForPlaneIntersectionNoDistortion(const asdp::render::CameraRenderInfo& cri,
+  std::array<double, 2> locPlane);
+
 /// @brief Rotate a 3D point by the inverse of the specified gimbal angles to take a point from
 /// helicopter coordinates to rotated ball coordinates.
 /// @param point The 3D point to rotate.
