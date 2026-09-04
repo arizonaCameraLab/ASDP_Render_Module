@@ -880,7 +880,6 @@ public:
         for (size_t b = 0; b < 2; b++) {
 #if 0
           // Read back the texture to a CPU buffer.
-          // Write a debugging PPM file named for the camera pair, depth, and camera.
           {
             // Check for OpenGL errors.
             GLenum err = glGetError();
@@ -893,17 +892,28 @@ public:
             glBindTexture(GL_TEXTURE_2D, pd.m_colorBuffers[b]);
             glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
             glBindTexture(GL_TEXTURE_2D, 0);
-            std::ofstream ppmFile("depthEstimator" + std::to_string(c) + "_" + std::to_string(d) + "_" + std::to_string(b) + ".ppm");
-            ppmFile << "P3\n" << cpi.m_pixelCounts[0] << " " << cpi.m_pixelCounts[1] << "\n255\n";
+
+            // Write a binary PPM (P6) file named for the camera pair, depth, and camera.
+            std::ofstream ppmFile("depthEstimator" + std::to_string(c) + "_" + std::to_string(d) + "_" + std::to_string(b) + ".ppm", std::ios::binary);
+            ppmFile << "P6\n" << cpi.m_pixelCounts[0] << " " << cpi.m_pixelCounts[1] << "\n255\n";
+
+            // Reuse a single row buffer to avoid per-pixel I/O
+            std::vector<unsigned char> rowBuf;
+            rowBuf.resize(static_cast<size_t>(cpi.m_pixelCounts[0]) * 3);
+
             for (size_t y = 0; y < cpi.m_pixelCounts[1]; y++) {
               // The texture has lower-left corner first, but the PPM file has upper-left first.
               size_t flipY = (cpi.m_pixelCounts[1] - 1) - y;
               for (size_t x = 0; x < cpi.m_pixelCounts[0]; x++) {
                 uchar4 val = pixels[x + flipY * cpi.m_pixelCounts[0]];
-                ppmFile << (int)val.x << " " << (int)val.y << " " << (int)val.z << " ";
+                size_t idx = x * 3;
+                rowBuf[idx + 0] = static_cast<unsigned char>(val.x); // R
+                rowBuf[idx + 1] = static_cast<unsigned char>(val.y); // G
+                rowBuf[idx + 2] = static_cast<unsigned char>(val.z); // B
               }
-              ppmFile << "\n";
+              ppmFile.write(reinterpret_cast<const char*>(rowBuf.data()), rowBuf.size());
             }
+            ppmFile.close();
           }
 #endif
 
