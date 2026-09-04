@@ -143,8 +143,8 @@ void ReorientCameraLocallyToPointPixelAtTargetNoDistortion(
 /// @param zRotationDegrees The gimbal rotation around the Z axis in degrees.
 /// @param xRotationDegrees The gimbal rotation around the X axis in degrees.
 /// @param targetPoint The target point in world (gimbal helicopter) coordinates.
-/// @param xPixels The X pixel coordinate, might not be centered on a pixel; -1e6 if outside image.
-/// @param yPixels The Y pixel coordinate, might not be centered on a pixel; -1e6 if outside image.
+/// @param xPixels The X pixel coordinate, might not be centered on a pixel; -1e6 if behind eye.
+/// @param yPixels The Y pixel coordinate, might not be centered on a pixel; -1e6 if behind eye.
 /// @return True if the target is within the view frustum, false otherwise.
 bool TargetProjectedLocationNoDistortion(const asdp::render::CameraRenderInfo& cri,
   bool rotateXFirst,

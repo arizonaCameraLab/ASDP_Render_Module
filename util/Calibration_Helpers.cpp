@@ -656,6 +656,7 @@ bool asdp::render::calibration::TargetProjectedLocationNoDistortion(
   targetPointInCamera.z = -temp.y;
 
   // If the target is at or behind the camera (along +Z), it is not in the frustum.
+  // In this case, leave the pixel coordinates at their default values and return false.
   if (targetPointInCamera.z >= 0) {
     return false;
   }
@@ -679,11 +680,6 @@ bool asdp::render::calibration::TargetProjectedLocationNoDistortion(
   double xFrac = (targetPointInCamera.x - minX) / (maxX - minX);
   double yFrac = (targetPointInCamera.y - minY) / (maxY - minY);
 
-  if (xFrac < 0 || xFrac > 1 || yFrac < 0 || yFrac > 1) {
-    // The target point is outside the camera frustum.
-    return false;
-  }
-
   // Compute the pixel coordinates of the target point.
   // The pixel center coordinates are in the range [0, width-1] and [0, height-1]
   // but the pixel centers are half a pixel from the frustum edges.
@@ -692,6 +688,12 @@ bool asdp::render::calibration::TargetProjectedLocationNoDistortion(
   // so the range from 0 to 1 is width.
   xPixels = -0.5 + xFrac * (cri.m_resolutionPixels[0]);
   yPixels = -0.5 + yFrac * (cri.m_resolutionPixels[1]);
+
+  // Return false if outside the frustum, true if inside.
+  if (xFrac < 0 || xFrac > 1 || yFrac < 0 || yFrac > 1) {
+    // The target point is outside the camera frustum.
+    return false;
+  }
   return true;
 }
 
@@ -1203,13 +1205,13 @@ std::string asdp::render::calibration::Test()
         if (TargetProjectedLocationNoDistortion(cri, false, 0, 0, { 0, -3, 0 }, xPixel, yPixel)) {
           return "Test failed: TargetProjectedLocationNoDistortion() center of image no rotation behind.";
         }
-        if (TargetProjectedLocationNoDistortion(cri, false, 0, 0, { 0, 3, 4 }, xPixel, yPixel)) {
+        if (TargetProjectedLocationNoDistortion(cri, false, 0, 0, { 0, 3, 3 }, xPixel, yPixel)) {
           return "Test failed: TargetProjectedLocationNoDistortion() center of image no rotation out of range.";
         }
-        if (fabs(xPixel - (-1e6)) > 0.01) {
+        if (fabs(xPixel - 511.5) > 0.01) {
           return "Test failed: TargetProjectedLocationNoDistortion() center of image no rotation out of range X.";
         }
-        if (fabs(yPixel - (-1e6)) > 0.01) {
+        if (fabs(yPixel - (-0.5)) > 0.01) {
           return "Test failed: TargetProjectedLocationNoDistortion() center of image no rotation out of range Y.";
         }
 
