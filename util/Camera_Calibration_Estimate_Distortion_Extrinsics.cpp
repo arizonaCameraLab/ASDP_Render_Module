@@ -257,9 +257,12 @@ public:
       // The below flag fixes the principal point at the center of the image.
       //flags |= cv::CALIB_FIX_PRINCIPAL_POINT;
       // The below enables the rational distortion model, which supports k4-k6 coefficients.
+      // When we turn this on for wFOV cameras that have points near the edges, we get wrapped-around
+      // distortion that is not physically correct, so we don't use it even though it provides slightly lower
+      // RMS errors because it can do more fitting.
       //flags |= cv::CALIB_RATIONAL_MODEL;
       std::vector<int> protocol = {
-        cv::CALIB_USE_INTRINSIC_GUESS | cv::CALIB_RATIONAL_MODEL
+        cv::CALIB_USE_INTRINSIC_GUESS // | cv::CALIB_RATIONAL_MODEL
         /*
         cv::CALIB_USE_INTRINSIC_GUESS | cv::CALIB_USE_EXTRINSIC_GUESS | cv::CALIB_FIX_K1 | cv::CALIB_FIX_K2 | cv::CALIB_FIX_K3
           | cv::CALIB_FIX_K4 | cv::CALIB_FIX_K5 | cv::CALIB_FIX_K6,
@@ -728,7 +731,7 @@ int main(int argc, char** argv)
         // Add the mapping to the appropriate bag of mappings for the appropriate target.
         // We map from the actual (as seen) position to the ideal (expected) position.
         int whichCamera = -1;
-        for (size_t i = 0; i < cameraRenderInfos.size(); ++i) {
+        for (int i = 0; i < cameraRenderInfos.size(); ++i) {
           if (cameraRenderInfos[i].m_ID == cameraID) {
             whichCamera = i;
             break;
@@ -861,11 +864,15 @@ int main(int argc, char** argv)
         double scaledOffsetThreshold = offsetThresholdPixels * (40.0 / cri->m_fovDegrees[0]);
 
         // Find the expected location of the target in the image in pixels based on ideal camera parameters.
+        // Ignore the return value here -- it is expected that the target may be outside of the view
+        // frustum for the ideal camera because of the distortion correction pushing it away from the
+        // image center.
         std::array<double, 2> expectedLocation;
-        if (!TargetProjectedLocationNoDistortion(*cri, gimbalInfo.pitchFirst,
-            pose.zRotationDegrees, pose.xRotationDegrees, target->position,
-            expectedLocation[0], expectedLocation[1])) {
-          // The target does not hit the image plane, there is a problem.
+        TargetProjectedLocationNoDistortion(*cri, gimbalInfo.pitchFirst,
+          pose.zRotationDegrees, pose.xRotationDegrees, target->position,
+          expectedLocation[0], expectedLocation[1]);
+        if (expectedLocation[0] < -9e5) {
+          // The target was behind the camera viewpoint, there is a problem.
           std::cerr << "Error: Target " << target->id << " does not hit the image plane for camera "
             << pose.cameraID << " at pose " << pose.frameIndex << std::endl;
           std::cerr << "  Expected location: (" << expectedLocation[0] << ", " << expectedLocation[1] << ")" << std::endl;
