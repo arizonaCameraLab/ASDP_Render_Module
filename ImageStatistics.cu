@@ -1,8 +1,10 @@
 /*
- * Copyright (C) 2025: Arizona Board of Regents on Behalf of the University of Arizona
+ * Copyright (C) 2025-2026: Arizona Board of Regents on Behalf of the University of Arizona
  */
 
 #include <iostream>
+#include <fstream>
+#include <sstream>
 #include <chrono>
 #include <memory>
 #include <thread>
@@ -10,59 +12,104 @@
 #include <GLFW/glfw3.h>
 #include <ImageStatistics.h>
 #include <Display.h>
-#include <cuda.h>
-#include <cuda_runtime.h>
-#include <cuda_gl_interop.h>
 using namespace asdp;
 using namespace asdp::render;
 using namespace asdp::render::imageStatistics;
 
-/// Maximum block size for the CUDA kernel.
-/// This is the portion of the image that each block of threads will process.
+/// Maximum block size for the compute shader work group.
+/// This is the portion of the image that each work group of invocations will process.
 static const size_t BLOCK_SIZE = 32;
 
-/// @brief CUDA kernel to compute the mean and standard deviation of an image.
-/// @details This kernel sums across the entire block and then reduces the sums to a single value each.
-/// It then does an atomic add to accumulate them into the final sum and sum of squares.
-/// NOTE: The blockDim.x and blockDim.y must evenly divide the width and height of the image.
-/// @param surface The surface object for the image.
-/// @param outSum The sum of the pixel values.
-/// @param outSumOfSquares The sum of the squares of the pixel values.
-__global__ void ComputeMeanStdKernel(cudaSurfaceObject_t surface, unsigned long long* outSum, unsigned long long* outSumOfSquares)
+/// @brief Load and compile the MeanStd compute shader, returning the linked program.
+/// @param status [out] Set to an error string on failure, empty on success.
+/// @return The compiled/linked GL program, or 0 on failure.
+static GLuint BuildMeanStdComputeProgram(std::string& status)
 {
-  /// Block of memory to store the within-block results.
-  __shared__ unsigned long long sharedSum[BLOCK_SIZE * BLOCK_SIZE];
-  __shared__ unsigned long long sharedSquareSum[BLOCK_SIZE * BLOCK_SIZE];
+  static const char* kComputeSource =
+    R"(#version 430
 
-  // Global coordinates in the surface.
-  int idx = blockIdx.x * blockDim.x + threadIdx.x;
-  int idy = blockIdx.y * blockDim.y + threadIdx.y;
-  int tid = threadIdx.y * blockDim.x + threadIdx.x;
+// Must match BLOCK_SIZE in ImageStatistics.cu / MeanStdImpl.
+layout(local_size_x = 32, local_size_y = 32) in;
 
-  // Read the 16-but pixel value. We must multiply by pixel size in X because it is indexed in bytes
-  uint16_t pixelValue;
-  surf2Dread(&pixelValue, surface, idx * sizeof(pixelValue), idy);
-  // Compute the square of the pixel value.
-  unsigned long long pixelValueSquared = ((unsigned long long)(pixelValue)) * pixelValue;
-  sharedSum[tid] = pixelValue;
-  sharedSquareSum[tid] = pixelValueSquared;
+// Bound via glTextureView() to the same texel storage as the source GL_R16 texture,
+// reinterpreted as r16ui so imageLoad() returns the raw unsigned 16-bit value.
+layout(r16ui, binding = 0) uniform readonly uimage2D uImage;
 
-  __syncthreads();
+// Each workgroup writes its own partial sum/sumOfSquares to a unique slot, indexed by
+// workgroup ID. No atomics are needed because every workgroup owns a distinct pair of
+// slots. The CPU (or a second reduction pass) sums these partials afterward.
+// Using two 32-bit components (.xy) per accumulator to avoid needing 64-bit integer
+// support in the shader at all: we accumulate in double-precision floating point
+// instead, which comfortably holds exact integer sums for the pixel-count/value
+// ranges involved (16-bit pixel values, workgroups up to 1024 pixels each).
+layout(std430, binding = 1) buffer PartialSums {
+  dvec2 partials[]; // partials[i].x = sum, partials[i].y = sumOfSquares, for workgroup i
+};
 
-  // Reduce within block
-  for (int stride = blockDim.x * blockDim.y / 2; stride > 0; stride >>= 1) {
+shared double sharedSum[32 * 32];
+shared double sharedSumOfSquares[32 * 32];
+
+void main() {
+  ivec2 coord = ivec2(gl_GlobalInvocationID.xy);
+  uint tid = gl_LocalInvocationIndex;
+
+  uint pixelValue = imageLoad(uImage, coord).r;
+  double pixelValueSquared = double(pixelValue) * double(pixelValue);
+
+  sharedSum[tid] = double(pixelValue);
+  sharedSumOfSquares[tid] = pixelValueSquared;
+
+  barrier();
+
+  // Reduce within the workgroup (same tree reduction as ComputeMeanStdKernel in ImageStatistics.cu).
+  for (uint stride = (32u * 32u) / 2u; stride > 0u; stride >>= 1u) {
     if (tid < stride) {
       sharedSum[tid] += sharedSum[tid + stride];
-      sharedSquareSum[tid] += sharedSquareSum[tid + stride];
+      sharedSumOfSquares[tid] += sharedSumOfSquares[tid + stride];
     }
-    __syncthreads();
+    barrier();
   }
 
-  // One thread per block writes the result to global memory
-  if (tid == 0) {
-    atomicAdd(outSum, sharedSum[0]);
-    atomicAdd(outSumOfSquares, sharedSquareSum[0]);
+  if (tid == 0u) {
+    uint groupIndex = gl_WorkGroupID.y * gl_NumWorkGroups.x + gl_WorkGroupID.x;
+    partials[groupIndex] = dvec2(sharedSum[0], sharedSumOfSquares[0]);
   }
+})";
+
+  GLuint shader = glCreateShader(GL_COMPUTE_SHADER);
+  glShaderSource(shader, 1, &kComputeSource, nullptr);
+  glCompileShader(shader);
+
+  GLint compiled = GL_FALSE;
+  glGetShaderiv(shader, GL_COMPILE_STATUS, &compiled);
+  if (compiled != GL_TRUE) {
+    GLint logLen = 0;
+    glGetShaderiv(shader, GL_INFO_LOG_LENGTH, &logLen);
+    std::string log(logLen, '\0');
+    glGetShaderInfoLog(shader, logLen, nullptr, log.data());
+    glDeleteShader(shader);
+    status = "MeanStd compute shader failed to compile: " + log;
+    return 0;
+  }
+
+  GLuint program = glCreateProgram();
+  glAttachShader(program, shader);
+  glLinkProgram(program);
+  glDeleteShader(shader);
+
+  GLint linked = GL_FALSE;
+  glGetProgramiv(program, GL_LINK_STATUS, &linked);
+  if (linked != GL_TRUE) {
+    GLint logLen = 0;
+    glGetProgramiv(program, GL_INFO_LOG_LENGTH, &logLen);
+    std::string log(logLen, '\0');
+    glGetProgramInfoLog(program, logLen, nullptr, log.data());
+    glDeleteProgram(program);
+    status = "MeanStd compute program failed to link: " + log;
+    return 0;
+  }
+
+  return program;
 }
 
 /// Provides implementation details for the MeanStd class
@@ -81,46 +128,81 @@ public:
     }
     m_width = camera->m_resolutionPixels[0];
     m_height = camera->m_resolutionPixels[1];
+    m_numWorkGroupsX = m_width / static_cast<GLuint>(BLOCK_SIZE);
+    m_numWorkGroupsY = m_height / static_cast<GLuint>(BLOCK_SIZE);
+    m_numWorkGroups = static_cast<size_t>(m_numWorkGroupsX) * static_cast<size_t>(m_numWorkGroupsY);
 
-    // Make an auto-deleted CUDA stream.
-    cudaStream_t* streamPtr = new cudaStream_t;
-    cudaError_t res = cudaStreamCreate(streamPtr);
-    if (res != cudaSuccess) {
-      m_constructorStatus = "cudaStreamCreate() failed: " + std::string(cudaGetErrorString(res));
-      delete streamPtr;
+    // Build (once) the compute program used for all instances/frames.
+    m_program = BuildMeanStdComputeProgram(m_constructorStatus);
+    if (m_program == 0) {
       return;
     }
-    std::shared_ptr<cudaStream_t> stream(streamPtr, [](cudaStream_t* ptr) { cudaStreamDestroy(*ptr); delete ptr; });
-    m_stream = stream;
 
-    // Allocate the output variables on the device side.
-    res = cudaMalloc(&m_sum, sizeof(unsigned long long));
-    if (res != cudaSuccess) {
-      m_constructorStatus = "cudaMalloc() failed: " + std::string(cudaGetErrorString(res));
-      return;
-    }
-    res = cudaMalloc(&m_sumOfSquares, sizeof(unsigned long long));
-    if (res != cudaSuccess) {
-      m_constructorStatus = "cudaMalloc() failed: " + std::string(cudaGetErrorString(res));
+    // Allocate the SSBO that holds one (sum, sumOfSquares) pair per workgroup.
+    glGenBuffers(1, &m_ssbo);
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, m_ssbo);
+    glBufferData(GL_SHADER_STORAGE_BUFFER, m_numWorkGroups * 2 * sizeof(double), nullptr, GL_DYNAMIC_COPY);
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+
+    // Reusable CPU-side staging buffer for reading back the partial sums.
+    m_partialSumsCPU.resize(m_numWorkGroups * 2);
+
+    GLenum err = glGetError();
+    if (err != GL_NO_ERROR) {
+      m_constructorStatus = "Failed to allocate MeanStd SSBO: GL error " + std::to_string(err);
       return;
     }
   }
 
   ~MeanStdImpl()
   {
-    // Free our resources
-    if (m_sumOfSquares) {
-      cudaFree(m_sumOfSquares);
+    // Free the cached texture view for whichever texture we last bound, if any.
+    if (m_viewTexture != 0) {
+      glDeleteTextures(1, &m_viewTexture);
     }
-    if (m_sum) {
-      cudaFree(m_sum);
+    if (m_ssbo != 0) {
+      glDeleteBuffers(1, &m_ssbo);
     }
+    if (m_program != 0) {
+      glDeleteProgram(m_program);
+    }
+  }
+
+  /// @brief Ensure we have a r16ui texture view aliasing the given texture's storage.
+  /// @details glTextureView() requires the source texture to have been created with
+  /// glTexStorage2D() (immutable storage). If the camera's images are created with
+  /// glTexImage2D() instead, switch that call site to glTexStorage2D()+glTexSubImage2D()
+  /// so that texture views are legal. The view is cached and only rebuilt if the
+  /// source texture handle changes between calls.
+  std::string EnsureTextureView(GLuint sourceTexture)
+  {
+    if (m_viewTexture != 0 && m_viewSourceTexture == sourceTexture) {
+      return "";
+    }
+    if (m_viewTexture != 0) {
+      glDeleteTextures(1, &m_viewTexture);
+      m_viewTexture = 0;
+    }
+
+    glGenTextures(1, &m_viewTexture);
+    // Alias the storage of sourceTexture (internal format GL_R16) as GL_R16UI so that
+    // imageLoad() in the shader returns the raw 16-bit integer bit pattern.
+    glTextureView(m_viewTexture, GL_TEXTURE_2D, sourceTexture, GL_R16UI, 0, 1, 0, 1);
+
+    GLenum err = glGetError();
+    if (err != GL_NO_ERROR) {
+      glDeleteTextures(1, &m_viewTexture);
+      m_viewTexture = 0;
+      return "glTextureView() failed with GL error " + std::to_string(err)
+        + " (source texture must use immutable storage created with glTexStorage2D())";
+    }
+
+    m_viewSourceTexture = sourceTexture;
+    return "";
   }
 
   std::string Compute(double& mean, double& stddev) const
   {
-    cudaError_t res;
-
     if (m_constructorStatus != "") {
       return "Constructor failed: " + m_constructorStatus;
     }
@@ -132,95 +214,72 @@ public:
     }
 #endif
 
-    // Lock a texture for CUDA to use and then map it to CUDA.
+    // Lock the most-recent image from the camera.
     std::list< std::shared_ptr<ImageData> > images = m_camera->m_imageQueue->LockNewestImages(1);
     if (images.size() == 0) {
       return "No images available";
     }
     std::shared_ptr<ImageData> image = images.front();
 
-    cudaGraphicsResource* cgr;
-    res = cudaGraphicsGLRegisterImage(&cgr, image->texture, GL_TEXTURE_2D, cudaGraphicsRegisterFlagsReadOnly);
-    if (res != cudaSuccess) {
+    // Make (or reuse) the r16ui view aliasing the source texture's storage.
+    std::string viewStatus = const_cast<MeanStdImpl*>(this)->EnsureTextureView(image->texture);
+    if (viewStatus != "") {
       m_camera->m_imageQueue->UnlockImage(image);
-      return "cudaGraphicsGLRegisterImage() failed: " + std::string(cudaGetErrorString(res));
-    }
-    res = cudaGraphicsMapResources(1, &cgr, *m_stream);
-    if (res != cudaSuccess) {
-      m_camera->m_imageQueue->UnlockImage(image);
-      return "cudaGraphicsMapResources() failed: " + std::string(cudaGetErrorString(res));
-    }
-    cudaArray* array;
-    res = cudaGraphicsSubResourceGetMappedArray(&array, cgr, 0, 0);
-    if (res != cudaSuccess) {
-      m_camera->m_imageQueue->UnlockImage(image);
-      return "cudaGraphicsSubResourceGetMappedArray() failed: " + std::string(cudaGetErrorString(res));
-    }
-    cudaSurfaceObject_t surfObj;
-    cudaResourceDesc resDesc;
-    memset(&resDesc, 0, sizeof(resDesc));
-    resDesc.resType = cudaResourceTypeArray;
-    resDesc.res.array.array = array;
-    res = cudaCreateSurfaceObject(&surfObj, &resDesc);
-    if (res != cudaSuccess) {
-      m_camera->m_imageQueue->UnlockImage(image);
-      return "cudaCreateSurfaceObject() failed: " + std::string(cudaGetErrorString(res));
+      return viewStatus;
     }
 
-    // Zero the sum and sum of squares.
-    res = cudaMemsetAsync(m_sum, 0, sizeof(unsigned long long), *m_stream);
-    if (res != cudaSuccess) {
-      m_camera->m_imageQueue->UnlockImage(image);
-      return "cudaMemset() failed: " + std::string(cudaGetErrorString(res));
-    }
-    res = cudaMemsetAsync(m_sumOfSquares, 0, sizeof(unsigned long long), *m_stream);
-    if (res != cudaSuccess) {
-      m_camera->m_imageQueue->UnlockImage(image);
-      return "cudaMemset() failed: " + std::string(cudaGetErrorString(res));
-    }
+    // No need to zero the SSBO first: every workgroup unconditionally writes its own slot,
+    // so there is no partial/stale-data concern.
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, m_ssbo);
 
-    // Run the kernel on the stream.
-    dim3 blockSize(BLOCK_SIZE, BLOCK_SIZE);
-    dim3 gridSize(m_width / BLOCK_SIZE, m_height / BLOCK_SIZE);
-    ComputeMeanStdKernel << <gridSize, blockSize, 0, *m_stream >> > (surfObj, m_sum, m_sumOfSquares);
+    // Bind the texture view as an image and dispatch the compute shader.
+    glBindImageTexture(0, m_viewTexture, 0, GL_FALSE, 0, GL_READ_ONLY, GL_R16UI);
+    glUseProgram(m_program);
+    glDispatchCompute(m_numWorkGroupsX, m_numWorkGroupsY, 1);
 
-    // Unlock the image.
+    // We're done reading from the texture and the SSBO writes are enqueued; release the image lock now.
     m_camera->m_imageQueue->UnlockImage(image);
 
-    // Read back the results, waiting until they arrive.
-    unsigned long long sum, sumOfSquares;
-    res = cudaMemcpyAsync(&sum, m_sum, sizeof(unsigned long long), cudaMemcpyDeviceToHost, *m_stream);
-    if (res != cudaSuccess) {
-      return "cudaMemcpy() failed: " + std::string(cudaGetErrorString(res));
+    // Ensure shader writes to the SSBO are visible before we read them back, and create a
+    // fence so the CPU-side wait below only blocks on this dispatch (not the whole context).
+    glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+    GLsync fence = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
+    if (fence == nullptr) {
+      GLenum fenceErr = glGetError();
+      return "glFenceSync() failed: GL error " + std::to_string(fenceErr);
     }
-    res = cudaMemcpyAsync(&sumOfSquares, m_sumOfSquares, sizeof(unsigned long long), cudaMemcpyDeviceToHost, *m_stream);
-    if (res != cudaSuccess) {
-      return "cudaMemcpy() failed: " + std::string(cudaGetErrorString(res));
+
+    // Wait (with a generous timeout) for the dispatch to complete.
+    GLenum waitResult = glClientWaitSync(fence, GL_SYNC_FLUSH_COMMANDS_BIT, 1000000000 /* 1 second */);
+    glDeleteSync(fence);
+    if (waitResult != GL_ALREADY_SIGNALED && waitResult != GL_CONDITION_SATISFIED) {
+      return "glClientWaitSync() failed or timed out waiting for MeanStd dispatch: code " + std::to_string(waitResult);
     }
-    res = cudaStreamSynchronize(*m_stream);
-    if (res != cudaSuccess) {
-      return "cudaStreamSynchronize() failed: " + std::string(cudaGetErrorString(res));
+
+    // Read back all of the per-workgroup partial sums and finish the reduction on the CPU.
+    // This is cheap: e.g. a 1280x1024 image with 32x32 workgroups is only 40x32 = 1280 entries.
+    glGetBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, m_partialSumsCPU.size() * sizeof(double), m_partialSumsCPU.data());
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+
+    double sum = 0.0;
+    double sumOfSquares = 0.0;
+    for (size_t i = 0; i < m_numWorkGroups; i++) {
+      sum += m_partialSumsCPU[i * 2 + 0];
+      sumOfSquares += m_partialSumsCPU[i * 2 + 1];
     }
 
     // Compute the mean and standard deviation knowing the number of pixels.
-    double numPixels = m_width * m_height;
+    double numPixels = static_cast<double>(m_width) * static_cast<double>(m_height);
     mean = sum / numPixels;
     double variance = sumOfSquares / numPixels - mean * mean;
     stddev = sqrt(variance);
 
-    // Done with surface object and other CUDA objects.
-    res = cudaDestroySurfaceObject(surfObj);
-    if (res != cudaSuccess) {
-      return "cudaDestroySurfaceObject() failed: " + std::string(cudaGetErrorString(res));
+#if !defined(NDEBUG)
+    err = glGetError();
+    if (err != GL_NO_ERROR) {
+      return "OpenGL error at end of Compute(): " + std::to_string(err);
     }
-    res = cudaGraphicsUnmapResources(1, &cgr, *m_stream);
-    if (res != cudaSuccess) {
-      return "cudaGraphicsUnmapResources() failed: " + std::string(cudaGetErrorString(res));
-    }
-    res = cudaGraphicsUnregisterResource(cgr);
-    if (res != cudaSuccess) {
-      return "cudaGraphicsUnregisterResource() failed: " + std::string(cudaGetErrorString(res));
-    }
+#endif
 
     return "";
   }
@@ -231,11 +290,15 @@ public:
 
   uint16_t m_width = 0; ///< Width of the image, stored from the camera info.
   uint16_t m_height = 0; ///< Height of the image, stored from the camera info.
+  GLuint m_numWorkGroupsX = 0;    ///< Number of workgroups dispatched in X.
+  GLuint m_numWorkGroupsY = 0;    ///< Number of workgroups dispatched in Y.
+  size_t m_numWorkGroups = 0;     ///< Total number of workgroups (= m_numWorkGroupsX * m_numWorkGroupsY).
 
-  std::shared_ptr<cudaStream_t> m_stream; ///< CUDA stream to use.
-
-  unsigned long long* m_sum = nullptr; ///< Device poitner to sum of pixel values.
-  unsigned long long* m_sumOfSquares = nullptr; ///< Device pointer to sum of squares of pixel values.
+  GLuint m_program = 0;              ///< Compiled/linked compute shader program (built once per instance).
+  GLuint m_ssbo = 0;                 ///< Shader storage buffer holding one (sum, sumOfSquares) pair per workgroup.
+  mutable GLuint m_viewTexture = 0;         ///< Cached r16ui view aliasing the most recent source texture.
+  mutable GLuint m_viewSourceTexture = 0;   ///< Which source texture m_viewTexture currently aliases.
+  mutable std::vector<double> m_partialSumsCPU; ///< Reusable staging buffer for reading back per-workgroup partials.
 };
 
 MeanStd::MeanStd(std::shared_ptr<CameraRenderInfo> camera)
@@ -330,6 +393,13 @@ void MeanStdGroup::UpdateThread()
     std::this_thread::sleep_until(nextUpdate);
     nextUpdate += std::chrono::microseconds(durationMicroseconds);
 
+    // Borrow the context needed for our operations
+    if (!m_display->BorrowContext()) {
+      std::lock_guard<std::mutex> lock(m_mutex);
+      m_status = "MeanStdGroup::UpdateThread(): BorrowContext() failed";
+      break;
+    }
+
     // Find out which is the next camera to update. If we have fewer entries than cameras, add a new one.
     // Otherwise, loop through the cameras.
     nextCamera = (nextCamera + 1) % m_cameras.size();
@@ -342,12 +412,7 @@ void MeanStdGroup::UpdateThread()
       m_meanStds.push_back(std::make_shared<MeanStd>(m_cameras[nextCamera]));
     }
 
-    // Compute the mean and standard deviation for the camera, borrowing the context needed
-    if (!m_display->BorrowContext()) {
-      std::lock_guard<std::mutex> lock(m_mutex);
-      m_status = "MeanStdGroup::UpdateThread(): BorrowContext() failed";
-      break;
-    }
+    // Compute the mean and standard deviation for the camera
     double mean, stddev;
     std::string res = m_meanStds[nextCamera]->Compute(mean, stddev);
     if (res != "") {
@@ -355,6 +420,8 @@ void MeanStdGroup::UpdateThread()
       m_status = "MeanStdGroup::UpdateThread(): MeanStd::Compute() failed: " + res;
       break;
     }
+
+    // Done with the context
     if (!m_display->ReturnContext()) {
       std::lock_guard<std::mutex> lock(m_mutex);
       m_status = "MeanStdGroup::UpdateThread(): ReturnContext() failed";
@@ -427,7 +494,8 @@ float MeanStd::SpeedTestSingleCalculation(uint16_t width, uint16_t height)
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-  glTexImage2D(GL_TEXTURE_2D, 0, GL_R16, width, height, 0, GL_RED, GL_UNSIGNED_SHORT, blankImage.data());
+  glTexStorage2D(GL_TEXTURE_2D, 1, GL_R16, width, height);
+  glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height, GL_RED, GL_UNSIGNED_SHORT, blankImage.data());
   glBindTexture(GL_TEXTURE_2D, 0);
   std::shared_ptr<ImageData> image(new ImageData);
   image->texture = texture;
@@ -500,7 +568,8 @@ std::string MeanStd::Test()
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_R16, width, height, 0, GL_RED, GL_UNSIGNED_SHORT, blankImage.data());
+    glTexStorage2D(GL_TEXTURE_2D, 1, GL_R16, width, height);
+    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height, GL_RED, GL_UNSIGNED_SHORT, blankImage.data());
     glBindTexture(GL_TEXTURE_2D, 0);
     std::shared_ptr<ImageData> image(new ImageData);
     image->texture = texture;
@@ -526,7 +595,7 @@ std::string MeanStd::Test()
     }
     queue->GetOldestImage();
     glBindTexture(GL_TEXTURE_2D, texture);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_R16, width, height, 0, GL_RED, GL_UNSIGNED_SHORT, halfBlackHalfWhite.data());
+    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height, GL_RED, GL_UNSIGNED_SHORT, halfBlackHalfWhite.data());
     glBindTexture(GL_TEXTURE_2D, 0);
     queue->InsertImage(image);
     res = meanStd.Compute(mean, stddev);
@@ -591,7 +660,6 @@ std::string MeanStdGroup::Test()
     return "Display::BorrowContext() failed";
   }
 
-
   // Make four cameras with different offsets and gains and with different distributions of pixel values.
   // The first camera has a constant image of 10000 with an offset of 0 and gain of 1.
   // The second has a constant image of 20000 with an offset of 10000 and gain of 1 (making its values 30000).
@@ -624,7 +692,8 @@ std::string MeanStdGroup::Test()
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_R16, width, height, 0, GL_RED, GL_UNSIGNED_SHORT, image10K.data());
+    glTexStorage2D(GL_TEXTURE_2D, 1, GL_R16, width, height);
+    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height, GL_RED, GL_UNSIGNED_SHORT, image10K.data());
     glBindTexture(GL_TEXTURE_2D, 0);
     image1->texture = texture1;
     queue1->InsertImage(image1);
@@ -646,7 +715,8 @@ std::string MeanStdGroup::Test()
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_R16, width, height, 0, GL_RED, GL_UNSIGNED_SHORT, image20K.data());
+    glTexStorage2D(GL_TEXTURE_2D, 1, GL_R16, width, height);
+    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height, GL_RED, GL_UNSIGNED_SHORT, image20K.data());
     glBindTexture(GL_TEXTURE_2D, 0);
     image2->texture = texture2;
     queue2->InsertImage(image2);
@@ -668,7 +738,8 @@ std::string MeanStdGroup::Test()
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_R16, width, height, 0, GL_RED, GL_UNSIGNED_SHORT, image2K.data());
+    glTexStorage2D(GL_TEXTURE_2D, 1, GL_R16, width, height);
+    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height, GL_RED, GL_UNSIGNED_SHORT, image2K.data());
     glBindTexture(GL_TEXTURE_2D, 0);
     image3->texture = texture3;
     queue3->InsertImage(image3);
@@ -693,7 +764,8 @@ std::string MeanStdGroup::Test()
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_R16, width, height, 0, GL_RED, GL_UNSIGNED_SHORT, image40K20K.data());
+    glTexStorage2D(GL_TEXTURE_2D, 1, GL_R16, width, height);
+    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height, GL_RED, GL_UNSIGNED_SHORT, image40K20K.data());
     glBindTexture(GL_TEXTURE_2D, 0);
     image4->texture = texture4;
     queue4->InsertImage(image4);
