@@ -1608,7 +1608,8 @@ int spin_up(std::shared_ptr<CoreClient> client, int &serialNumber, std::shared_p
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
         // Load image into the texture
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_R16, width, height, 0, GL_RED, GL_UNSIGNED_SHORT, image.data());
+        glTexStorage2D(GL_TEXTURE_2D, 1, GL_R16, width, height);
+        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height, GL_RED, GL_UNSIGNED_SHORT, image.data());
         glBindTexture(GL_TEXTURE_2D, 0);
 
         imageData->texture = texture;
