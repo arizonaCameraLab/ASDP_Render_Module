@@ -1174,12 +1174,13 @@ static double TimeDiffMagnitude(asdp::Time t1, asdp::Time t2) {
 void CompositeCameras::SetupRenderFrame(asdp::Time scanOutTime)
 {
   // Figure out how many frames we must grab to cover the requested render-ahead time.
-  // Grab an additional one to handle slight frame shifts.
+  // Grab an additional one to handle slight frame shifts during renderAhead.
+  // When the render-ahead time is zero, we will grab one frame.
   size_t framesToGrab = 1 + static_cast<size_t>(m_renderOffsetMicroseconds /
     (m_cameraFrameInterval.seconds * 1e6 + m_cameraFrameInterval.microseconds));
 
   // To ensure that the set of images from all cameras are synchronized, we pull the first
-  // two images from each queue and then select a set of consistent ones.
+  // N images from each queue and then select a set of consistent ones.
   std::vector< std::list< std::shared_ptr<ImageData> > > images;
   for (auto const& cameraRenderInfo : m_cameraRenderInfos) {
     images.push_back(cameraRenderInfo->m_imageQueue->LockNewestImages(framesToGrab));
@@ -1225,12 +1226,13 @@ void CompositeCameras::SetupRenderFrame(asdp::Time scanOutTime)
   }
 
   // Find the image from each list that is closest to the desired time.  Push it into the m_images
-  // array and return the other images+/ to the queue.
+  // array and return the other images to the queue.
   for (size_t i = 0; i < images.size(); i++) {
     auto& imList = images[i];
-    auto best = imList.begin();
-    double bestDiff = TimeDiffMagnitude((*best)->imageCenterTime, desiredTime);
-    for (auto it = imList.begin(); it != imList.end(); ++it) {
+    auto it = imList.begin();
+    double bestDiff = TimeDiffMagnitude((*it)->imageCenterTime, desiredTime);
+    auto best = it;
+    while (++it != imList.end()) {
       double diff = TimeDiffMagnitude((*it)->imageCenterTime, desiredTime);
       if (diff < bestDiff) {
         best = it;
