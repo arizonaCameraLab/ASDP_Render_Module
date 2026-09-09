@@ -187,7 +187,7 @@ public:
     // Unlock the image.
     m_camera->m_imageQueue->UnlockImage(image);
 
-    // Read back the results.
+    // Read back the results, waiting until they arrive.
     unsigned long long sum, sumOfSquares;
     res = cudaMemcpyAsync(&sum, m_sum, sizeof(unsigned long long), cudaMemcpyDeviceToHost, *m_stream);
     if (res != cudaSuccess) {
@@ -196,6 +196,10 @@ public:
     res = cudaMemcpyAsync(&sumOfSquares, m_sumOfSquares, sizeof(unsigned long long), cudaMemcpyDeviceToHost, *m_stream);
     if (res != cudaSuccess) {
       return "cudaMemcpy() failed: " + std::string(cudaGetErrorString(res));
+    }
+    res = cudaStreamSynchronize(*m_stream);
+    if (res != cudaSuccess) {
+      return "cudaStreamSynchronize() failed: " + std::string(cudaGetErrorString(res));
     }
 
     // Compute the mean and standard deviation knowing the number of pixels.
