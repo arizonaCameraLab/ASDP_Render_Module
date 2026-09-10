@@ -1377,12 +1377,12 @@ void CompositeCameras::RenderView(asdp::Time scanOutTime, const float* viewProje
   for (size_t c = 0; c < m_cameraRenderInfos.size(); c++) {
     float scale = 1.0f;
     float exposure = 0;
-    if (m_images[c] != nullptr) { exposure = m_images[c]->exposure; }
+    if (m_images.size() > c && m_images[c] != nullptr) { exposure = m_images[c]->exposure; }
     if (exposure != 0) {
       scale *= exposure;
     }
     float gain = 0;
-    if (m_images[c] != nullptr) { gain = m_images[c]->gain; }
+    if (m_images.size() > c && m_images[c] != nullptr) { gain = m_images[c]->gain; }
     if (gain != 0) {
       scale *= gain;
     }
@@ -1434,7 +1434,7 @@ void CompositeCameras::RenderView(asdp::Time scanOutTime, const float* viewProje
     // If there is no texture, bind the default texture for the image to texture unit 0.
     // Otherwise, bind the stored texture.
     GLuint texture = 0;
-    if (m_images[c] != nullptr) {
+    if (m_images.size() > c && m_images[c] != nullptr) {
       texture = m_images[c]->texture;
     }
     glActiveTexture(GL_TEXTURE0);
@@ -1442,7 +1442,7 @@ void CompositeCameras::RenderView(asdp::Time scanOutTime, const float* viewProje
     glUniform1i(m_imageTextureId, 0);
 
     // Fill in the frame time based on the information from the camera if it is nonzero.
-    if (m_images[c] != nullptr && m_images[c]->imageDurationMicroseconds != 0) {
+    if (m_images.size() > c && m_images[c] != nullptr && m_images[c]->imageDurationMicroseconds != 0) {
       frameTime = m_images[c]->imageDurationMicroseconds * 1.0e-6;
     }
 
@@ -1454,7 +1454,7 @@ void CompositeCameras::RenderView(asdp::Time scanOutTime, const float* viewProje
     Time renderOffsetTime(m_renderOffsetMicroseconds / 1000000, m_renderOffsetMicroseconds % 1000000);
     if (scanOutTime > renderOffsetTime) {
       Time imageTime;
-      if (m_images[c] != nullptr) {
+      if (m_images.size() > c && m_images[c] != nullptr) {
         imageTime = m_images[c]->imageCenterTime;
         if (imageTime > maxImageCenterTime) {
           maxImageCenterTime = imageTime;
@@ -1471,7 +1471,7 @@ void CompositeCameras::RenderView(asdp::Time scanOutTime, const float* viewProje
     // Construct the differential shift matrix to adjust the camera points to the scan-out time.
     // These must all be in the helicopter coordinate system but scaled to a single frame time.
     PoseAdjuster::VelocityEstimate velocity;
-    if (m_images[c] != nullptr) velocity = m_poseAdjuster->EstimateVelocity(m_images[c]->imageCenterTime);
+    if (m_images.size() > c && m_images[c] != nullptr) velocity = m_poseAdjuster->EstimateVelocity(m_images[c]->imageCenterTime);
 
     std::array<GLfloat, 3> fVelocity = { velocity.vel[0] * frameTime, velocity.vel[1] * frameTime,
                                          velocity.vel[2] * frameTime };
@@ -1492,12 +1492,12 @@ void CompositeCameras::RenderView(asdp::Time scanOutTime, const float* viewProje
     // and longer exposure both brighten the values in the pixels, so we must darken the image to mix
     // with other cameras.
     float exposureValue = 0;
-    if (m_images[c] != nullptr) { exposureValue = m_images[c]->exposure; }
+    if (m_images.size() > c && m_images[c] != nullptr) { exposureValue = m_images[c]->exposure; }
     if (exposureValue != 0) {
       gain /= exposureValue;
     }
     float gainValue = 0;
-    if (m_images[c] != nullptr) { gainValue = m_images[c]->gain; }
+    if (m_images.size() > c && m_images[c] != nullptr) { gainValue = m_images[c]->gain; }
     if (gainValue != 0) {
       gain /= gainValue;
     }
@@ -1704,7 +1704,7 @@ void CompositeCameras::TearDownRenderFrame()
   glFinish();
   for (size_t i = 0; i < m_cameraRenderInfos.size(); i++) {
     CameraRenderInfo const& CRI = *m_cameraRenderInfos[i];
-    if (m_images[i] != nullptr) {
+    if (m_images.size() > i && m_images[i] != nullptr) {
       CRI.m_imageQueue->UnlockImage(m_images[i]);
     }
   }
