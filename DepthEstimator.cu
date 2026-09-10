@@ -278,8 +278,7 @@ public:
       depth1->m_imageQueue = std::make_shared<asdp::render::ImageQueue>();
       depthInfo.m_imageQueues[0] = depth1->m_imageQueue;
       depth1->m_imageQueue->InsertImage(MakeBlankImage(depth1->m_resolutionPixels[0], depth1->m_resolutionPixels[1]));
-      // Sufficient mesh resolution to capture curvature near image edges and corners
-      depth1->ComputePlanarCameraMeshInfo(300, 300, depth);
+      depth1->ComputePlanarCameraMeshInfo(100, 100, depth);
       std::vector< std::shared_ptr<CameraRenderInfo> > composites1;
       composites1.push_back(depth1);
       depthInfo.m_composites[0] = std::make_shared<CompositeCameras>(composites1, m_toneMapTexture,
@@ -289,8 +288,7 @@ public:
       depth2->m_imageQueue = std::make_shared<asdp::render::ImageQueue>();
       depthInfo.m_imageQueues[1] = depth2->m_imageQueue;
       depth2->m_imageQueue->InsertImage(MakeBlankImage(depth2->m_resolutionPixels[0], depth2->m_resolutionPixels[1]));
-      // Sufficient mesh resolution to capture curvature near image edges and corners
-      depth2->ComputePlanarCameraMeshInfo(300, 300, depth);
+      depth2->ComputePlanarCameraMeshInfo(100, 100, depth);
       std::vector< std::shared_ptr<CameraRenderInfo> > composites2;
       composites2.push_back(depth2);
       depthInfo.m_composites[1] = std::make_shared<CompositeCameras>(composites2, m_toneMapTexture,
