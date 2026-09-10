@@ -57,7 +57,7 @@ using namespace asdp::render;
 using namespace asdp::analysis;
 using json = nlohmann::json;
 
-static std::string VERSION = "3.50.0";
+static std::string VERSION = "3.51.0";
 
 /// @brief The path to the configuration file. Defined in the CMakeLists file.
 std::filesystem::path g_dirPath = CONFIG_FILE_PATH;
@@ -1475,12 +1475,15 @@ int spin_up(std::shared_ptr<CoreClient> client, int &serialNumber, std::shared_p
   int NUM_TEXTURE_THREADS = 2;
   if (cameras.size() > 21) {
     // We need larger batches of lines to keep up with more than 21 cameras. The jump from
-    // default 110 to 330 has both cases ending at 990, which is just below the 1024 limit so will make
+    // default 112 to 336 has both cases ending at 1008, which is just below the 1024 limit so will make
     // a small final batch, reducing the latency from the end of the frame receipt to texture upload.s
     // NOTE: Originally, we could keep up on Linux by bumping our number of threads to 3 and leaving
     // the line batches the same. As of 4/24, this no longer works -- but depth estimation is now
     // taking much longer than it used to.  We collapsed to a common solution of more batches because
     // it keeps a small final batch, still reducing the latency with fewer threads.
+    // We later collapsed to a common number of lines per send of 112 for both Linux and Windows;
+    // earlier versions had it at 16 for Linux, but that was not a large enough bump when depth
+    // calculation was added.
     lineBatchesPerGPUSend *= 3;
   }
 
@@ -2082,7 +2085,7 @@ static void usage(std::string name)
   std::cerr << "  --NUCInfo <directory> <tempType>    Add the directory containing the NUC information and the temperature type to use (sensor or core)." << std::endl;
   std::cerr << "  --replay <stream id>                ID of the stream to replay (1+)." << std::endl;
   std::cerr << "  --loopReplay                        Loop the replay (default not)." << std::endl;
-  std::cerr << "  --lineBatchesPerGPUSend <int>       The number of batches of lines to group (default 16 Linux, 110 Windows)" << std::endl;
+  std::cerr << "  --lineBatchesPerGPUSend <int>       The number of batches of lines to group (default 112)" << std::endl;
   std::cerr << "  --noPoses                           Do not stream poses from the server, so no latency adjustment." << std::endl;
   std::cerr << "  --dumpTiming <file name base>       Write timing on quit to CSV files with the specified base name." << std::endl;
   std::cerr << "  --duration <seconds>                The duration to run before quitting (default 0 means run until user quits)." << std::endl;
@@ -2126,13 +2129,7 @@ int main(int argc, char** argv)
   uint32_t replayStreamID = 0;  ///< The stream ID to replay, 0 for live.
   double renderAheadFrames = 0; ///< The number of frames to render ahead of the current frame, set nonzero for replay.
   bool loopReplay = false;      ///< Loop the replay when it reaches the end if this is true.
-#ifdef _WIN32
-  // On Windows, throughput tests when receiving data from the network show that we must be larger
-  // to keep up.  Linux is more efficient here, and can handle 16 batches at a time.
-  int lineBatchesPerGPUSend = 110; ///< The number of batches of lines to group for sending to the GPU.
-#else
-  int lineBatchesPerGPUSend = 16; ///< The number of batches of lines to group for sending to the GPU.
-#endif
+  int lineBatchesPerGPUSend = 112; ///< The number of batches of lines to group for sending to the GPU.
   bool doStreamPoses = true;      ///< Stream poses from the server, so we can adjust for latency.
   std::string dumpTimingFileName; ///< The base name for the timing files.
   unsigned triggerAheadMicroseconds = 22000;  ///< Microseconds ahead of render to trigger camera.
