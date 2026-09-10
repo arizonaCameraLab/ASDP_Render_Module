@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2024: Arizona Board of Regents on Behalf of the University of Arizona
+ * Copyright (C) 2024-2026: Arizona Board of Regents on Behalf of the University of Arizona
  */
 
 #include <iostream>
@@ -217,6 +217,30 @@ __global__ void CompareSurfacesKernel(cudaSurfaceObject_t surface1, cudaSurfaceO
   }
 }
 
+static std::shared_ptr<ImageData> MakeBlankImage(int width, int height)
+{
+  std::vector<uint16_t> image(width * height, 32767);
+  std::shared_ptr<ImageData> imageData = std::make_shared<ImageData>();
+
+  unsigned int texture;
+  glGenTextures(1, &texture);
+  glBindTexture(GL_TEXTURE_2D, texture);
+  // Set the texture wrapping parameters
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+  // Set texture filtering parameters
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+  // Load image into the texture
+  glTexStorage2D(GL_TEXTURE_2D, 1, GL_R16, width, height);
+  glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height, GL_RED, GL_UNSIGNED_SHORT, image.data());
+  glBindTexture(GL_TEXTURE_2D, 0);
+
+  imageData->texture = texture;
+  return imageData;
+}
+
 /// @brief Encapsulates the multiple depths for each camera pair.
 /// @details Generate two sets of CompositeCameras covering all depths for each pair of cameras,
 /// one set for the left camera and one for the right camera. 
@@ -246,7 +270,14 @@ public:
       depthInfo.m_depth = depth;
 
       // We make a copy of each camera and then adjust the copy to the specific depth it is to use.
+      // Also construct a new image queue for each; we will push a consistent pair of images from
+      // the two cameras into the queues for each camera and clear out any old images in the queue.
+      // We need to put a single image into each queue so that there will be something to grab
+      // until we put an actual image in place.
       std::shared_ptr<CameraRenderInfo> depth1(new CameraRenderInfo(*camera1));
+      depth1->m_imageQueue = std::make_shared<asdp::render::ImageQueue>();
+      depthInfo.m_imageQueues[0] = depth1->m_imageQueue;
+      depth1->m_imageQueue->InsertImage(MakeBlankImage(depth1->m_resolutionPixels[0], depth1->m_resolutionPixels[1]));
       depth1->ComputePlanarCameraMeshInfo(100, 100, depth);
       std::vector< std::shared_ptr<CameraRenderInfo> > composites1;
       composites1.push_back(depth1);
@@ -254,6 +285,9 @@ public:
         m_poseAdjuster, cameraFrameInterval, 0, Time(), nullptr, rangeEstimator);
 
       std::shared_ptr<CameraRenderInfo> depth2(new CameraRenderInfo(*camera2));
+      depth2->m_imageQueue = std::make_shared<asdp::render::ImageQueue>();
+      depthInfo.m_imageQueues[1] = depth2->m_imageQueue;
+      depth2->m_imageQueue->InsertImage(MakeBlankImage(depth2->m_resolutionPixels[0], depth2->m_resolutionPixels[1]));
       depth2->ComputePlanarCameraMeshInfo(100, 100, depth);
       std::vector< std::shared_ptr<CameraRenderInfo> > composites2;
       composites2.push_back(depth2);
@@ -351,6 +385,11 @@ public:
     cudaStream_t* m_stream = nullptr;
     /// @todo Consider pulling these out into yet another structure, making an array of 2 of them.
     std::array< std::shared_ptr<CompositeCameras>, 2> m_composites = {};
+    /// Per-camera custom image queue for each depth. This is a bit of a complicated scheme.
+    /// We determine consistent-timed frames from the two real cameras in each pair and then
+    /// copy these images into the custom ImageQueues for all depths associated with that pair
+    /// so that they will always be generating depths from consistent values across all depths.
+    std::array< std::shared_ptr<ImageQueue>, 2> m_imageQueues = {};
     std::array<GLuint, 2> m_frameBuffers = {};
     std::array<GLuint, 2> m_colorBuffers = {};
     std::array<GLuint, 2> m_depthBuffers = {};
@@ -781,6 +820,39 @@ public:
       return "OpenGL error at start of ComputeDepthEstimate(): " + std::to_string(err);
     }
 #endif
+    // Push consistent images from both cameras onto their custom queue so that they
+    // will use consistent images to determine depth.
+    // Clear the image that we're finished with from the custom queues for the cameras.
+    std::map< std::shared_ptr<CameraPairInfo>,
+              std::pair< std::vector< std::shared_ptr<ImageData> >,
+                         std::vector< std::shared_ptr<asdp::render::CameraRenderInfo> > > > consistentImageSets;
+    for (auto& pair : m_cameraPairs) {
+      std::shared_ptr<CameraRenderInfo> camera0 = pair->m_cameras[0];
+      std::shared_ptr<CameraRenderInfo> camera1 = pair->m_cameras[1];
+
+      // Push consistent images from both actual cameras onto the custom queues
+      // of all depth cameras so that they will use consistent images to determine depth.
+      // Clear a previous image that we're finished with from the custom queues for the cameras.
+      std::vector< std::shared_ptr<asdp::render::CameraRenderInfo> > cameras = { camera0, camera1 };
+      std::vector< std::shared_ptr<ImageData> > images = GetConsistentImageSet(cameras);
+      if (images.size() == 2) {
+        for (auto depth : pair->m_perDepths) {
+          depth.m_imageQueues[0]->InsertImage(images[0]);
+          depth.m_imageQueues[0]->GetOldestImage();
+          depth.m_imageQueues[1]->InsertImage(images[1]);
+          depth.m_imageQueues[1]->GetOldestImage();
+        }
+      } else {
+        return "Failed to get consistent images for cameras.";
+      }
+
+      // Keep track of the images and cameras for this pair so that we can unlock them
+      // after we're done with them.
+      consistentImageSets[pair].first.push_back(images[0]);
+      consistentImageSets[pair].second.push_back(camera0);
+      consistentImageSets[pair].first.push_back(images[1]);
+      consistentImageSets[pair].second.push_back(camera1);
+    }
 
     // OpenGL fence objects to let us ensure that we're done with OpenGL rendering before we
     // start to map the buffers to CUDA and do the depth estimation.  There is one entry
@@ -1063,6 +1135,13 @@ public:
         }
         //std::cout << "XXX, " << c << ", " << i % m_nx << ", " << i / m_nx << ", " << bestDepthValues[i] << ", " << worstDepthValues[i] << ", " << cpi.m_depths[i] << std::endl;
       }
+    }
+
+    // Unlock the consistent images that we used for the depth estimation.
+    for (auto& pair : m_cameraPairs) {
+
+      // Done with the images.
+      UnlockConsistentImageSet(consistentImageSets[pair].first, consistentImageSets[pair].second);
     }
 
     return "";
