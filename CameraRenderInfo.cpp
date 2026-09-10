@@ -14,6 +14,18 @@
 #include "CameraRenderInfo.h"
 #include <iostream>
 
+static double TimeDiffMagnitude(asdp::Time t1, asdp::Time t2)
+{
+  asdp::Time diff;
+  if (t1 > t2) {
+    diff = t1 - t2;
+  }
+  else {
+    diff = t2 - t1;
+  }
+  return diff.seconds + diff.microseconds * 1.0e-6;
+}
+
 using namespace asdp::render;
 
 void CameraRenderInfo::ComputePlanarCameraMeshInfo(size_t nx, size_t ny, float depth)
@@ -167,4 +179,83 @@ glm::vec3 CameraRenderInfo::WorldSpaceFromUV(float u, float v, float depth) cons
   // to point them in the direction that the camera is looking.
   glm::vec3 point(xh, yh, zh);
   return glm::vec3(rotation * glm::vec4(point, 1.0f));
+}
+
+/// @brief Get a consistent set of images from all visible cameras for color offset adjustment.
+/// @param cameras Vector of shared pointers to CameraRenderInfo objects for the visible cameras
+/// ti get tge consistent set for.
+/// @return Vector of shared pointers to ImageData objects, one from each camera.  The
+/// caller is responsible for unlocking the images when done using them by calling
+/// UnlockConsistentImageSet() and passing it this return vector.
+/// Note: If not enough images are available, an empty vector is returned.
+
+std::vector< std::shared_ptr<ImageData> > asdp::render::GetConsistentImageSet(
+  std::vector< std::shared_ptr<asdp::render::CameraRenderInfo> > cameras)
+{
+  std::vector< std::shared_ptr<ImageData> > imageSet;
+
+  // Pull the first two images from each queue and then select a set of consistent ones.
+  std::vector< std::list< std::shared_ptr<ImageData> > > images;
+  for (auto const& cameraRenderInfo : cameras) {
+    images.push_back(cameraRenderInfo->m_imageQueue->LockNewestImages(2));
+    if (images.back().size() != 2) {
+      for (auto const& imList : images) {
+        for (auto const& image : imList) {
+          cameraRenderInfo->m_imageQueue->UnlockImage(image);
+        }
+      }
+      return imageSet;
+    }
+  }
+
+  // Find the time of the oldest image among the first (newest) image from
+  // all cameras and then selecting from each pair the one whose time is closest to the
+  // selected time.
+  asdp::Time desiredTime = images[0].front()->imageCenterTime;
+  for (size_t i = 1; i < images.size(); i++) {
+    if (images[i].front()->imageCenterTime < desiredTime) {
+      desiredTime = images[i].front()->imageCenterTime;
+    }
+  }
+
+  // Find the image from each list that is closest to the desired time.  Push it into the m_images
+  // array and return the other images+/ to the queue.
+  for (size_t i = 0; i < images.size(); i++) {
+    auto& imList = images[i];
+    auto best = imList.begin();
+    double bestDiff = TimeDiffMagnitude((*best)->imageCenterTime, desiredTime);
+    for (auto it = imList.begin(); it != imList.end(); ++it) {
+      double diff = TimeDiffMagnitude((*it)->imageCenterTime, desiredTime);
+      if (diff < bestDiff) {
+        best = it;
+        bestDiff = diff;
+      }
+    }
+
+    for (auto it = imList.begin(); it != imList.end(); ++it) {
+      if (it == best) {
+        // Use this image
+        imageSet.push_back(*it);
+      }
+      else {
+        // Unlock the images that are not selected.
+        cameras[i]->m_imageQueue->UnlockImage(*it);
+      }
+    }
+  }
+
+  return imageSet;
+}
+
+/// @brief Unlock a consistent set of images previously obtained by calling GetConsistentImageSet().
+/// @param imageSet The vector of shared pointers to ImageData objects obtained from GetConsistentImageSet().
+/// @param cameras The vector of shared pointers to CameraRenderInfo objects corresponding to the
+/// images in imageSet. This must be the same vector passed to GetConsistentImageSet() when obtaining
+/// imageSet.
+void asdp::render::UnlockConsistentImageSet(const std::vector< std::shared_ptr<ImageData> >& imageSet,
+  std::vector< std::shared_ptr<asdp::render::CameraRenderInfo> > cameras)
+{
+  for (size_t i = 0; i < imageSet.size(); i++) {
+    cameras[i]->m_imageQueue->UnlockImage(imageSet[i]);
+  }
 }

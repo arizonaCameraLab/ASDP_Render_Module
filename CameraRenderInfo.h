@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2025: Arizona Board of Regents on Behalf of the University of Arizona
+ * Copyright (C) 2025-2026: Arizona Board of Regents on Behalf of the University of Arizona
  */
 
  /**
@@ -18,6 +18,7 @@
 #include <cstdint>
 #include <memory>
 #include <mutex>
+#include <atomic>
 #ifdef WIN32
 #include <windows.h>
 #endif
@@ -155,6 +156,25 @@ namespace asdp {
       float m_colorOffset = 0;         ///< Color = (original + offset) * gain.
       float m_colorGain = 1;           ///< Color = (original + offset) * gain.
     };
+
+
+    /// @brief Get a consistent set of images from all visible cameras for color offset adjustment.
+    /// @param cameras Vector of shared pointers to CameraRenderInfo objects for the visible cameras
+    /// to get the consistent set for.
+    /// @return Vector of shared pointers to ImageData objects, one from each camera.  The
+    /// caller is responsible for unlocking the images when done using them by calling
+    /// UnlockConsistentImageSet() and passing it this return vector.
+    /// Note: If not enough images are available, an empty vector is returned.
+    std::vector< std::shared_ptr<ImageData> > GetConsistentImageSet(
+      std::vector< std::shared_ptr<asdp::render::CameraRenderInfo> > cameras);
+
+    /// @brief Unlock a consistent set of images previously obtained by calling GetConsistentImageSet().
+    /// @param imageSet The vector of shared pointers to ImageData objects obtained from GetConsistentImageSet().
+    /// @param cameras The vector of shared pointers to CameraRenderInfo objects corresponding to the
+    /// images in imageSet. This must be the same vector passed to GetConsistentImageSet() when obtaining
+    /// imageSet.
+    void UnlockConsistentImageSet(const std::vector< std::shared_ptr<ImageData> >& imageSet,
+      std::vector< std::shared_ptr<asdp::render::CameraRenderInfo> > cameras);
 
   } // namespace render
 } // namespace asdp

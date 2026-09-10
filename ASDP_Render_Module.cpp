@@ -244,89 +244,6 @@ static void ResetActiveCameraGainOffset(void* /* unused */)
   std::cout << "Reset camera ID " << cri->m_ID << " color gain to 1 and offset to 0." << std::endl;
 }
 
-static double TimeDiffMagnitude(asdp::Time t1, asdp::Time t2)
-{
-  asdp::Time diff;
-  if (t1 > t2) {
-    diff = t1 - t2;
-  } else {
-    diff = t2 - t1;
-  }
-  return diff.seconds + diff.microseconds * 1.0e-6;
-}
-
-/// @brief Get a consistent set of images from all visible cameras for color offset adjustment.
-/// @return Vector of shared pointers to ImageData objects, one from each visible camera.  The
-/// caller is responsible for unlocking the images when done using them by calling
-/// UnlockConsistentImageSet() and passing it this return vector.
-/// Note: If not enough images are available, an empty vector is returned.
-
-static std::vector< std::shared_ptr<ImageData> > GetConsistentImageSet()
-{
-  std::vector< std::shared_ptr<ImageData> > imageSet;
-
-  // Pull the first two images from each queue and then select a set of consistent ones.
-  std::vector< std::list< std::shared_ptr<ImageData> > > images;
-  for (auto const& cameraRenderInfo : g_visibleCameras) {
-    images.push_back(cameraRenderInfo->m_imageQueue->LockNewestImages(2));
-    if (images.back().size() != 2) {
-      std::cerr << "GetConsistentImageSet(): Could not get all needed images, skipping frame" << std::endl;
-      for (auto const& imList : images) {
-        for (auto const& image : imList) {
-          cameraRenderInfo->m_imageQueue->UnlockImage(image);
-        }
-      }
-      return imageSet;
-    }
-  }
-
-  // Find the time of the oldest image among the first (newest) image from
-  // all cameras and then selecting from each pair the one whose time is closest to the
-  // selected time.
-  asdp::Time desiredTime = images[0].front()->imageCenterTime;
-  for (size_t i = 1; i < images.size(); i++) {
-    if (images[i].front()->imageCenterTime < desiredTime) {
-      desiredTime = images[i].front()->imageCenterTime;
-    }
-  }
-
-  // Find the image from each list that is closest to the desired time.  Push it into the m_images
-  // array and return the other images+/ to the queue.
-  for (size_t i = 0; i < images.size(); i++) {
-    auto& imList = images[i];
-    auto best = imList.begin();
-    double bestDiff = TimeDiffMagnitude((*best)->imageCenterTime, desiredTime);
-    for (auto it = imList.begin(); it != imList.end(); ++it) {
-      double diff = TimeDiffMagnitude((*it)->imageCenterTime, desiredTime);
-      if (diff < bestDiff) {
-        best = it;
-        bestDiff = diff;
-      }
-    }
-
-    for (auto it = imList.begin(); it != imList.end(); ++it) {
-      if (it == best) {
-        // Use this image
-        imageSet.push_back(*it);
-      } else {
-        // Unlock the images that are not selected.
-        g_visibleCameras[i]->m_imageQueue->UnlockImage(*it);
-      }
-    }
-  }
-
-  return imageSet;
-}
-
-/// @brief Unlock a consistent set of images previously obtained by calling GetConsistentImageSet().
-/// @param imageSet The vector of shared pointers to ImageData objects obtained from GetConsistentImageSet().
-static void UnlockConsistentImageSet(const std::vector< std::shared_ptr<ImageData> >& imageSet)
-{
-  for (size_t i = 0; i < imageSet.size(); i++) {
-    g_visibleCameras[i]->m_imageQueue->UnlockImage(imageSet[i]);
-  }
-}
-
 /// @brief Make a vector of pairs of pixel values, one from each image, read at the specified correspondence locations.
 /// @param correspondences Locations from first and second image to read.
 /// @param widths Array of 2 image widths.
@@ -446,9 +363,9 @@ static void AutoUpdateColorOffsets(void* /* unused */)
   }
 
   // Get a consistent set of images to use for the adjustment.
-  std::vector< std::shared_ptr<ImageData> > imageSet = GetConsistentImageSet();
+  std::vector< std::shared_ptr<ImageData> > imageSet = GetConsistentImageSet(g_visibleCameras);
   if (imageSet.size() != g_visibleCameras.size()) {
-    UnlockConsistentImageSet(imageSet);
+    UnlockConsistentImageSet(imageSet, g_visibleCameras);
     std::cerr << "AutoUpdateColorOffsets(): Error: Could not get consistent image set." << std::endl;
     return;
   }
@@ -494,7 +411,7 @@ static void AutoUpdateColorOffsets(void* /* unused */)
   }
 
   // Done with the images, unlock them.
-  UnlockConsistentImageSet(imageSet);
+  UnlockConsistentImageSet(imageSet, g_visibleCameras);
 }
 
 /// @brief Compute the color offset adjustment needed for the second camera in a pair based on the first.
@@ -585,9 +502,9 @@ static void AutoUpdateColorOffsetsAndGains(void* /* unused */)
   }
 
   // Get a consistent set of images to use for the adjustment.
-  std::vector< std::shared_ptr<ImageData> > imageSet = GetConsistentImageSet();
+  std::vector< std::shared_ptr<ImageData> > imageSet = GetConsistentImageSet(g_visibleCameras);
   if (imageSet.size() != g_visibleCameras.size()) {
-    UnlockConsistentImageSet(imageSet);
+    UnlockConsistentImageSet(imageSet, g_visibleCameras);
     std::cerr << "AutoUpdateColorOffsetsAndGains(): Error: Could not get consistent image set." << std::endl;
     return;
   }
@@ -631,7 +548,7 @@ static void AutoUpdateColorOffsetsAndGains(void* /* unused */)
   }
 
   // Done with the images, unlock them.
-  UnlockConsistentImageSet(imageSet);
+  UnlockConsistentImageSet(imageSet, g_visibleCameras);
 }
 
 /// @brief Callback handler to save the camera configuration to a file.
@@ -711,8 +628,8 @@ static void DepthThreadFunction(std::shared_ptr<Timer> timer, std::shared_ptr<Di
       std::cerr << "Failed to get time: " << ErrorMessage(status) << std::endl;
       return;
     }
-    /// @todo Consider another approach to finding the time for the estimate.
     try {
+      /// @todo Consider another approach to finding the time for the estimate.
       std::string ret = g_depthEstimator->ComputeDepthEstimate(now);
       if (ret != "") {
         std::cerr << "Error computing depth estimate: " << ret << std::endl;
