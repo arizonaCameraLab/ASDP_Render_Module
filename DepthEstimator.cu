@@ -1734,9 +1734,11 @@ void DepthEstimator::BuildGradientImages(DepthEstimator& de, uint16_t width, uin
     glBindTexture(GL_TEXTURE_2D, 0);
 
     // Add three copies of the image to the image queue after constructing the ImageData object to hold it.
+    // Their times must be nonzero so that they will replace the blank image in the queues.
     std::shared_ptr<ImageData> id(new ImageData);
     id->texture = texture;
     id->exposure = cameraFrameInterval;
+    id->imageCenterTime = { 10, 0 };
     for (size_t i = 0; i < 3; i++) {
       de.m_impl->m_cameraPairs[0]->m_cameras[c]->m_imageQueue->InsertImage(id);
     }
