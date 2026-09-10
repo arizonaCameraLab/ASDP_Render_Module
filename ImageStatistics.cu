@@ -189,6 +189,7 @@ public:
     // imageLoad() in the shader returns the raw 16-bit integer bit pattern.
     glTextureView(m_viewTexture, GL_TEXTURE_2D, sourceTexture, GL_R16UI, 0, 1, 0, 1);
 
+#if !defined(NDEBUG)
     GLenum err = glGetError();
     if (err != GL_NO_ERROR) {
       glDeleteTextures(1, &m_viewTexture);
@@ -196,6 +197,7 @@ public:
       return "glTextureView() failed with GL error " + std::to_string(err)
         + " (source texture must use immutable storage created with glTexStorage2D())";
     }
+#endif
 
     m_viewSourceTexture = sourceTexture;
     return "";
@@ -244,10 +246,12 @@ public:
     // fence so the CPU-side wait below only blocks on this dispatch (not the whole context).
     glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
     GLsync fence = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
+#if !defined(NDEBUG)
     if (fence == nullptr) {
       GLenum fenceErr = glGetError();
       return "glFenceSync() failed: GL error " + std::to_string(fenceErr);
     }
+#endif
 
     // Wait (with a generous timeout) for the dispatch to complete.
     GLenum waitResult = glClientWaitSync(fence, GL_SYNC_FLUSH_COMMANDS_BIT, 1000000000 /* 1 second */);
