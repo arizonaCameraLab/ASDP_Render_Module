@@ -6,7 +6,7 @@
 #include <vector>
 #include <chrono>
 #include <memory>
-#include <GLAD/gl.h>
+#include <glad/gl.h>
 #include <RenderText.h>
 #include <GLFW/glfw3.h>
 
