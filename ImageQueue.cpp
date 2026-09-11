@@ -246,5 +246,8 @@ std::string ImageQueue::Test()
     return "Failed to get image from queue with hand-locked last element.";
   }
 
+  // Now hand-unlock the image we have locked so the destructor can clean it up.
+  imageQueue.m_images.back().refCount = 0;
+
   return "";
 }
