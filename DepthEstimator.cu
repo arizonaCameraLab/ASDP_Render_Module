@@ -16,6 +16,7 @@
 #include <cuda.h>
 #include <cuda_runtime.h>
 #include <cuda_gl_interop.h>
+#include "glewInitWrapper.h"
 using namespace asdp;
 using namespace asdp::render;
 
@@ -1759,10 +1760,11 @@ float DepthEstimator::SpeedTestSingleEstimation(uint16_t width, uint16_t height,
   glfwMakeContextCurrent(window.get());
 
   // Initialize GLEW in our context. It is okay to initialize it more than once.
-  glewExperimental = true;
-  if (glewInit() != GLEW_OK) {
+  std::string ret = glewInitWrapper();
+  if (!ret.empty()) {
     return -1;
   }
+
   // Clear any GL error that Glew caused.  Apparently on Non-Windows
   // platforms, this can cause a spurious error 1280.
   glGetError();
@@ -2140,10 +2142,11 @@ std::string DepthEstimator::Test()
     glfwMakeContextCurrent(window.get());
 
     // Initialize GLEW in our context. It is okay to initialize it more than once.
-    glewExperimental = true;
-    if (glewInit() != GLEW_OK) {
-      return "Failed to initialize GLEW";
+    std::string ret = glewInitWrapper();
+    if (!ret.empty()) {
+      return "Failed to initialize GLEW: " + ret;
     }
+
     // Clear any GL error that Glew caused.  Apparently on Non-Windows
     // platforms, this can cause a spurious error 1280.
     glGetError();

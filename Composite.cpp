@@ -16,6 +16,7 @@
 #include <glm/gtx/quaternion.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include "Composite.h"
+#include "glewInitWrapper.h"
 
 using namespace asdp::render;
 
@@ -619,9 +620,9 @@ CompositeCube::CompositeCube(double radius)
 bool CompositeCube::SetupRendering()
 {
   // Initialize GLEW in our context. It is okay to initialize it more than once.
-  glewExperimental = true;
-  if (glewInit() != GLEW_OK) {
-    std::cerr << "CompositeCube::CompositeCube(): Failed to initialize GLEW" << std::endl;
+  std::string ret = glewInitWrapper();
+  if (!ret.empty()) {
+    std::cerr << "CompositeCube::CompositeCube(): Failed to initialize GLEW: " << ret << std::endl;
     return false;
   }
 
@@ -930,12 +931,12 @@ bool CompositeCameras::SetupRendering()
   // Initialize GLEW in our context. It is okay to initialize it more than once.
   // NOTE: SetupRendering() is only called once for each object if it works, so we won't be initializing
   // GLEW every render frame here, only once per CompositeCameras object.
-  glewExperimental = true;
-  GLenum ret = glewInit();
-  if (ret != GLEW_OK) {
+  std::string ret = glewInitWrapper();
+  if (!ret.empty()) {
     std::cerr << "CompositeCameras::SetupRendering(): Failed to initialize GLEW: " << ret << std::endl;
     return false;
   }
+
   // Clear any GL error that Glew caused.  Apparently on Non-Windows
   // platforms, this can cause a spurious error 1280.
   glGetError();
@@ -2050,11 +2051,11 @@ CompositeLineRawData::CompositeLineRawData(GLfloat x0, GLfloat y0, GLfloat x1, G
   m_doClear = false;
 
   // Initialize GLEW in our context. It is okay to initialize it more than once.
-  glewExperimental = true;
-  GLenum ret = glewInit();
-  if (ret != GLEW_OK) {
+  std::string ret = glewInitWrapper();
+  if (!ret.empty()) {
     throw std::runtime_error("CompositeLineRawData::CompositeLineRawData(): Failed to initialize GLEW: " + ret);
   }
+
   // Clear any GL error that Glew caused.  Apparently on Non-Windows
   // platforms, this can cause a spurious error 1280.
   glGetError();
@@ -2311,11 +2312,11 @@ CompositePackXSightFrame::CompositePackXSightFrame(GLuint inputTexture, int disp
   }
 
   // Initialize GLEW in our context. It is okay to initialize it more than once.
-  glewExperimental = true;
-  GLenum ret = glewInit();
-  if (ret != GLEW_OK) {
-    throw std::runtime_error("Failed to initialize GLEW: " + ret);
+  std::string ret = glewInitWrapper();
+  if (!ret.empty()) {
+    throw std::runtime_error("CompositePackXSightFrame::CompositePackXSightFrame(): Failed to initialize GLEW: " + ret);
   }
+
   // Clear any GL error that Glew caused.  Apparently on Non-Windows
   // platforms, this can cause a spurious error 1280.
   glGetError();

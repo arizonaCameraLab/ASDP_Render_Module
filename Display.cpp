@@ -25,6 +25,7 @@
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
 #include "Display.h"
+#include "glewInitWrapper.h"
 
 using namespace asdp::render;
 
@@ -474,11 +475,12 @@ void DisplayWindow::DisplayThread(std::string windowName,
     glfwMakeContextCurrent(Display::m_impl->m_window);
 
     // Initialize GLEW in our context. It is okay to initialize it more than once.
-    glewExperimental = true;
-    if (glewInit() != GLEW_OK) {
-      m_status = "Failed to initialize GLEW";
+    std::string ret = glewInitWrapper();
+    if (!ret.empty()) {
+      m_status = "Failed to initialize GLEW: " + ret;
       return;
     }
+
     // Clear any GL error that Glew caused.  Apparently on Non-Windows
     // platforms, this can cause a spurious error 1280.
     glGetError();
@@ -1041,11 +1043,12 @@ DisplayTexture::DisplayTexture(Display* sharedWindow)
   glfwMakeContextCurrent(Display::m_impl->m_window);
 
   // Initialize GLEW in our context. It is okay to initialize it more than once.
-  glewExperimental = true;
-  if (glewInit() != GLEW_OK) {
-    m_status = "Failed to initialize GLEW";
+  std::string ret = glewInitWrapper();
+  if (!ret.empty()) {
+    m_status = "Failed to initialize GLEW: " + ret;
     return;
   }
+
   // Clear any GL error that Glew caused.  Apparently on Non-Windows
   // platforms, this can cause a spurious error 1280.
   glGetError();
@@ -2667,11 +2670,12 @@ void DisplayXSight::DisplayThread(
     glfwMakeContextCurrent(Display::m_impl->m_window);
 
     // Initialize GLEW in our context. It is okay to initialize it more than once.
-    glewExperimental = true;
-    if (glewInit() != GLEW_OK) {
-      m_status = "Failed to initialize GLEW";
+    std::string ret = glewInitWrapper();
+    if (!ret.empty()) {
+      m_status = "Failed to initialize GLEW: " + ret;
       return;
     }
+
     // Clear any GL error that Glew caused.  Apparently on Non-Windows
     // platforms, this can cause a spurious error 1280.
     glGetError();

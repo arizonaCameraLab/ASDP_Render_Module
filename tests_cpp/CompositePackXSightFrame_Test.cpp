@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <memory>
 #include <GL/glew.h>
+#include "glewInitWrapper.h"
 #include <ToneMap.h>
 #include <Composite.h>
 #include <RangeEstimator.h>
@@ -97,9 +98,9 @@ int main()
   glfwMakeContextCurrent(window);
 
   // Initialize GLEW in our context. It is okay to initialize it more than once.
-  glewExperimental = true;
-  if (glewInit() != GLEW_OK) {
-    std::cerr << "Failed to initialize GLEW" << std::endl;
+  std::string ret = asdp::render::glewInitWrapper();
+  if (!ret.empty()) {
+    std::cerr << "Failed to initialize GLEW: " << ret << std::endl;
     return 4;
   }
   // Clear any GL error that Glew caused.  Apparently on Non-Windows

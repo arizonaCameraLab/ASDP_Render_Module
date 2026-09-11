@@ -1,4 +1,5 @@
 #include <GL/glew.h>
+#include "glewInitWrapper.h"
 #include <GLFW/glfw3.h>
 #include <iostream>
 
@@ -104,9 +105,10 @@ int main()
   glfwMakeContextCurrent(window);
 
   // Initialize GLEW
-  if (glewInit() != GLEW_OK)
+  std::string ret = asdp::render::glewInitWrapper();
+  if (!ret.empty())
   {
-    std::cerr << "Failed to initialize GLEW" << std::endl;
+    std::cerr << "Failed to initialize GLEW: " << ret << std::endl;
     return -1;
   }
   // Clear any GL error that Glew caused.  Apparently on Non-Windows

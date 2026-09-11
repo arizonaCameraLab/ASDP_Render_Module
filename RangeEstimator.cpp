@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2025: Arizona Board of Regents on Behalf of the University of Arizona
+ * Copyright (C) 2025-2026: Arizona Board of Regents on Behalf of the University of Arizona
  */
 
  /**
@@ -17,6 +17,7 @@
 
 #include <algorithm>
 #include "RangeEstimator.h"
+#include "glewInitWrapper.h"
 
 using namespace asdp::render;
 using namespace asdp::render::imageStatistics;
@@ -121,10 +122,11 @@ std::string RangeEstimator::Test()
   glfwMakeContextCurrent(window.get());
 
   // Initialize GLEW in our context. It is okay to initialize it more than once.
-  glewExperimental = true;
-  if (glewInit() != GLEW_OK) {
-    return "Could not initialize GLEW";
+  std::string ret = glewInitWrapper();
+  if (!ret.empty()) {
+    return "Could not initialize GLEW: " + ret;
   }
+
   // Clear any GL error that Glew caused.  Apparently on Non-Windows
   // platforms, this can cause a spurious error 1280.
   glGetError();

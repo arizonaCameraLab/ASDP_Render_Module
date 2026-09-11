@@ -6,6 +6,7 @@
 #include <ASDP_ImageSource.h>
 #include <CPUDataToTextureHandler.h>
 #include <GL/glew.h>
+#include "glewInitWrapper.h"
 #include <GLFW/glfw3.h>
 #include <Display.h>
 #include <string.h>
@@ -220,9 +221,9 @@ int main()
   glfwMakeContextCurrent(window);
 
   // Initialize GLEW in our context. It is okay to initialize it more than once.
-  glewExperimental = true;
-  if (glewInit() != GLEW_OK) {
-    std::cerr << "Composite::Composite(): Failed to initialize GLEW" << std::endl;
+  std::string ret = glewInitWrapper();
+  if (!ret.empty()) {
+    std::cerr << "Composite::Composite(): Failed to initialize GLEW: " << ret << std::endl;
     return 4;
   }
   // Clear any GL error that Glew caused.  Apparently on Non-Windows

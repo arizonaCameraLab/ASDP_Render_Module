@@ -5,6 +5,7 @@
 #include "RenderText.h"
 
 #include <GL/glew.h>
+#include "glewInitWrapper.h"
 #ifdef WIN32
 #include <windows.h>
 #endif
@@ -146,10 +147,9 @@ RenderText::Impl::Impl(int windowWidth, int windowHeight)
   , m_face(nullptr)
 {
   // Initialize GLEW in our context. It is okay to initialize it more than once.
-  glewExperimental = true;
-  GLenum ret = glewInit();
-  if (ret != GLEW_OK) {
-    throw std::runtime_error("RenderText::Impl(): Failed to initialize GLEW: " + std::to_string(ret));
+  std::string ret = glewInitWrapper();
+  if (!ret.empty()) {
+    throw std::runtime_error("RenderText::Impl(): Failed to initialize GLEW: " + ret);
   }
   // Clear any GL error that Glew caused.  Apparently on Non-Windows
   // platforms, this can cause a spurious error 1280.

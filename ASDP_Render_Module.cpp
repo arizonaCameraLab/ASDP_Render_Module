@@ -51,6 +51,7 @@
 #include <cuda.h>
 #include <cuda_runtime.h>
 #include <cuda_gl_interop.h>
+#include "glewInitWrapper.h"
 
 using namespace asdp;
 using namespace asdp::render;
@@ -1638,9 +1639,9 @@ int spin_up(std::shared_ptr<CoreClient> client, int &serialNumber, std::shared_p
     }
 
     // Initialize GLEW in our context. It is okay to initialize it more than once.
-    glewExperimental = true;
-    if (glewInit() != GLEW_OK) {
-      std::cerr << "Failed to initialize GLEW before DepthTexture" << std::endl;
+    std::string ret = glewInitWrapper();
+    if (!ret.empty()) {
+      std::cerr << "Failed to initialize GLEW before DepthTexture: " << ret << std::endl;
       return 103;
     }
     // Clear any GL error that Glew caused.  Apparently on Non-Windows

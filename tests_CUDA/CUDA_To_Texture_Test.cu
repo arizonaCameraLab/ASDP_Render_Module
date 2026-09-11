@@ -10,6 +10,7 @@
 #include <thread>
 #include <atomic>
 #include <GL/glew.h>
+#include "glewInitWrapper.h"
 #include <GLFW/glfw3.h>
 #include <Composite.h>
 #include <ASDP_Core_API.h>
@@ -246,9 +247,9 @@ int main()
   glfwMakeContextCurrent(window);
 
   // Initialize GLEW in our context. It is okay to initialize it more than once.
-  glewExperimental = true;
-  if (glewInit() != GLEW_OK) {
-    std::cerr << "Composite::Composite(): Failed to initialize GLEW" << std::endl;
+  std::string ret = asdp::render::glewInitWrapper();
+  if (!ret.empty()) {
+    std::cerr << "Failed to initialize GLEW: " << ret << std::endl;
     return 4;
   }
   // Clear any GL error that Glew caused.  Apparently on Non-Windows

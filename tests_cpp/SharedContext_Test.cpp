@@ -8,6 +8,7 @@
 #include <atomic>
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
+#include "glewInitWrapper.h"
 
 /// @brief Make an image whose brightness varies from the top of the image to the bottom.
 /// @details The image will be a gradient from the minimum value at the bottom to the
@@ -139,9 +140,9 @@ int main()
   glfwMakeContextCurrent(window);
 
   // Initialize GLEW in our context. It is okay to initialize it more than once.
-  glewExperimental = true;
-  if (glewInit() != GLEW_OK) {
-    std::cerr << "Failed to initialize GLEW" << std::endl;
+  std::string ret = asdp::render::glewInitWrapper();
+  if (!ret.empty()) {
+    std::cerr << "Failed to initialize GLEW: " << ret << std::endl;
     return 4;
   }
   // Clear any GL error that Glew caused.  Apparently on Non-Windows

@@ -12,6 +12,7 @@
 #include <GLFW/glfw3.h>
 #include <ImageStatistics.h>
 #include <Display.h>
+#include "glewInitWrapper.h"
 using namespace asdp;
 using namespace asdp::render;
 using namespace asdp::render::imageStatistics;
@@ -465,10 +466,11 @@ float MeanStd::SpeedTestSingleCalculation(uint16_t width, uint16_t height)
   glfwMakeContextCurrent(window.get());
 
   // Initialize GLEW in our context. It is okay to initialize it more than once.
-  glewExperimental = true;
-  if (glewInit() != GLEW_OK) {
+  std::string ret = glewInitWrapper();
+  if (!ret.empty()) {
     return -1;
   }
+
   // Clear any GL error that Glew caused.  Apparently on Non-Windows
   // platforms, this can cause a spurious error 1280.
   glGetError();
@@ -535,10 +537,11 @@ std::string MeanStd::Test()
   glfwMakeContextCurrent(window.get());
 
   // Initialize GLEW in our context. It is okay to initialize it more than once.
-  glewExperimental = true;
-  if (glewInit() != GLEW_OK) {
-    return "Could not initialize GLEW";
+  std::string ret = glewInitWrapper();
+  if (!ret.empty()) {
+    return "Could not initialize GLEW: " + ret;
   }
+
   // Clear any GL error that Glew caused.  Apparently on Non-Windows
   // platforms, this can cause a spurious error 1280.
   glGetError();
@@ -650,10 +653,11 @@ std::string MeanStdGroup::Test()
   glfwMakeContextCurrent(window.get());
 
   // Initialize GLEW in our context. It is okay to initialize it more than once.
-  glewExperimental = true;
-  if (glewInit() != GLEW_OK) {
-    return "Could not initialize GLEW";
+  std::string ret = glewInitWrapper();
+  if (!ret.empty()) {
+    return "Could not initialize GLEW: " + ret;
   }
+
   // Clear any GL error that Glew caused.  Apparently on Non-Windows
   // platforms, this can cause a spurious error 1280.
   glGetError();
