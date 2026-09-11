@@ -28,7 +28,7 @@ namespace asdp {
     /// can then be queried based on rays to determine the distance from the ray start to an object in the
     /// world.
     /// NOTE: The caller must have the same current OpenGL context on the calling thread when calling any of the
-    /// functions in this class, including the constructor. This context must have had glewInit() called on it.
+    /// functions in this class, including the constructor. This context must have had GL extensions loaded.
     class DepthEstimator {
     public:
       /// brief Construct the estimator with a list of cameras.

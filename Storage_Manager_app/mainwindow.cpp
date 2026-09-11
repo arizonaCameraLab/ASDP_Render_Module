@@ -2,7 +2,7 @@
  * Copyright (C) 2024-2026: Arizona Board of Regents on Behalf of the University of Arizona
  */
 
-#include <GL/glew.h>
+#include <glad/gl.h>
 
 #ifdef _WIN32
 #include <winsock2.h>

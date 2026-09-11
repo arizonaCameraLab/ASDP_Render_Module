@@ -10,14 +10,13 @@
  * @date January 29, 2025.
  */
 
-#include <GL/glew.h>
+#include <glad/gl.h>
 #include <GLFW/glfw3.h>
 #include <Display.h>
 #include <ImageStatistics.h>
 
 #include <algorithm>
 #include "RangeEstimator.h"
-#include "glewInitWrapper.h"
 
 using namespace asdp::render;
 using namespace asdp::render::imageStatistics;
@@ -121,10 +120,9 @@ std::string RangeEstimator::Test()
   }
   glfwMakeContextCurrent(window.get());
 
-  // Initialize GLEW in our context. It is okay to initialize it more than once.
-  std::string ret = glewInitWrapper();
-  if (!ret.empty()) {
-    return "Could not initialize GLEW: " + ret;
+  // Initialize GLAD in our context. It must be initialized exactly once per context.
+  if (!gladLoadGL(glfwGetProcAddress)) {
+    return "Could not initialize GLAD";
   }
 
   // Make the display object that we'll use and borrow its context.

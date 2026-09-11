@@ -4,9 +4,8 @@
 
 #include <iostream>
 #include <vector>
-#include <GL/glew.h>
+#include <glad/gl.h>
 #include <GLFW/glfw3.h>
-#include "glewInitWrapper.h"
 #include <ToneMap.h>
 
 // Vertex data for a full-screen quad with 3 spatial coordinates and 2 texture coordinates per vertex
@@ -66,10 +65,10 @@ int main()
   // Make the window's context current
   glfwMakeContextCurrent(window);
 
-  // Initialize GLEW in our context. It is okay to initialize it more than once.
-  std::string ret = asdp::render::glewInitWrapper();
-  if (!ret.empty()) {
-    std::cerr << "Failed to initialize GLEW: " << ret << std::endl;
+  // Initialize GLAD in our context. It must be initialized exactly once per context.
+  if (!gladLoadGL(glfwGetProcAddress)) {
+    std::cerr << "Failed to initialize GLAD" << std::endl;
+    glfwTerminate();
     return 4;
   }
 

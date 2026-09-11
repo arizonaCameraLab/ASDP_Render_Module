@@ -7,8 +7,7 @@
 #include <chrono>
 #include <cstdint>
 #include <memory>
-#include <GL/glew.h>
-#include "glewInitWrapper.h"
+#include <glad/gl.h>
 #include <ToneMap.h>
 #include <Composite.h>
 #include <RangeEstimator.h>
@@ -97,10 +96,10 @@ int main()
   // Make the window's context current
   glfwMakeContextCurrent(window);
 
-  // Initialize GLEW in our context. It is okay to initialize it more than once.
-  std::string ret = asdp::render::glewInitWrapper();
-  if (!ret.empty()) {
-    std::cerr << "Failed to initialize GLEW: " << ret << std::endl;
+  // Initialize GLAD in our context. It must be initialized exactly once per context.
+  if (!gladLoadGL(glfwGetProcAddress)) {
+    std::cerr << "Failed to initialize GLAD" << std::endl;
+    glfwTerminate();
     return 4;
   }
 

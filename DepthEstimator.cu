@@ -8,7 +8,7 @@
 #include <map>
 #include <random>
 #include <cstddef>
-#include <GL/glew.h>
+#include <glad/gl.h>
 #include <GLFW/glfw3.h>
 #include <ToneMap.h>
 #include <DepthEstimator.h>
@@ -16,7 +16,6 @@
 #include <cuda.h>
 #include <cuda_runtime.h>
 #include <cuda_gl_interop.h>
-#include "glewInitWrapper.h"
 using namespace asdp;
 using namespace asdp::render;
 
@@ -354,7 +353,7 @@ public:
     // Delete the tone map texture.
     glDeleteTextures(1, &m_toneMapTexture);
 
-    // Delete the frame bufffers, color buffers, and depth buffers.
+    // Delete the frame buffers, color buffers, and depth buffers.
     // Unmap the CUDA graphics resources for the color buffers.
     // Delete the CUDA streams.
     // Free the GPU memory for the depth buffers.
@@ -1759,9 +1758,8 @@ float DepthEstimator::SpeedTestSingleEstimation(uint16_t width, uint16_t height,
   }
   glfwMakeContextCurrent(window.get());
 
-  // Initialize GLEW in our context. It is okay to initialize it more than once.
-  std::string ret = glewInitWrapper();
-  if (!ret.empty()) {
+  // Initialize GLAD in our context. It must be initialized exactly once per context.
+  if (!gladLoadGL(glfwGetProcAddress)) {
     return -1;
   }
 
@@ -1828,6 +1826,22 @@ static bool VecClose(const Vec3& a, const Vec3& b, float eps = 1e-4f) {
 
 std::string DepthEstimator::Test()
 {
+  // Create a window and OpenGL context.
+  if (!glfwInit()) {
+    return "Failed to initialize GLFW";
+  }
+  glfwWindowHint(GLFW_VISIBLE, false);
+  std::shared_ptr<GLFWwindow> window(glfwCreateWindow(640, 480, "DepthEstimator Test", NULL, NULL), glfwDestroyWindow);
+  if (!window) {
+    return "Failed to create GLFW window";
+  }
+  glfwMakeContextCurrent(window.get());
+
+  // Initialize GLAD in our context. It must be initialized exactly once per context.
+  if (!gladLoadGL(glfwGetProcAddress)) {
+    return "Failed to initialize GLAD";
+  }
+
   // Test Vec3 and Quat classes
   {
     Vec3 v1(1.0, 2.0, 3.0);
@@ -2126,23 +2140,6 @@ std::string DepthEstimator::Test()
 
   /// Test the DepthEstimator class.
   {
-    // Create a window and OpenGL context.
-    if (!glfwInit()) {
-      return "Failed to initialize GLFW";
-    }
-    glfwWindowHint(GLFW_VISIBLE, false);
-    std::shared_ptr<GLFWwindow> window(glfwCreateWindow(640, 480, "DepthEstimator Test", NULL, NULL), glfwDestroyWindow);
-    if (!window) {
-      return "Failed to create GLFW window";
-    }
-    glfwMakeContextCurrent(window.get());
-
-    // Initialize GLEW in our context. It is okay to initialize it more than once.
-    std::string ret = glewInitWrapper();
-    if (!ret.empty()) {
-      return "Failed to initialize GLEW: " + ret;
-    }
-
     // Put into a block so that we destroy things in here before we destroy the context.
     {
       uint16_t nx = 12;   ///< Number of points to create in the X direction.  Must be divisible by 4 for our tests below.

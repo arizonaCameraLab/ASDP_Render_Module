@@ -34,7 +34,7 @@
 #include <ASDP_ClockSynchronizer.h>
 #include "CUDABufferPool.h"
 #include <nlohmann/json.hpp>
-#include <GL/glew.h>
+#include <glad/gl.h>
 #include <ToneMap.h>
 #include <RenderTimingInfo.h>
 #include <CameraRenderInfo.h>
@@ -51,14 +51,13 @@
 #include <cuda.h>
 #include <cuda_runtime.h>
 #include <cuda_gl_interop.h>
-#include "glewInitWrapper.h"
 
 using namespace asdp;
 using namespace asdp::render;
 using namespace asdp::analysis;
 using json = nlohmann::json;
 
-static std::string VERSION = "3.52.0";
+static std::string VERSION = "3.53.0";
 
 /// @brief The path to the configuration file. Defined in the CMakeLists file.
 std::filesystem::path g_dirPath = CONFIG_FILE_PATH;
@@ -1638,13 +1637,6 @@ int spin_up(std::shared_ptr<CoreClient> client, int &serialNumber, std::shared_p
       return 102;
     }
 
-    // Initialize GLEW in our context. It is okay to initialize it more than once.
-    std::string ret = glewInitWrapper();
-    if (!ret.empty()) {
-      std::cerr << "Failed to initialize GLEW before DepthTexture: " << ret << std::endl;
-      return 103;
-    }
-
     // Determine the range of depths to use for the depth estimater and then construct it.
     std::vector<float> depths(7);
     depths[depths.size() - 1] = maxDepth;
@@ -1659,7 +1651,7 @@ int spin_up(std::shared_ptr<CoreClient> client, int &serialNumber, std::shared_p
       depths, depthThreshold);
     std::cout << "Constructed DepthEstimator with " << cameras.size() << " camera pairs." << std::endl;
 
-    // Compute a depth estimate to get all of the machinery set up and GLEW initialized on this thread.
+    // Compute a depth estimate to get all of the machinery set up.
     g_depthEstimator->ComputeDepthEstimate(0);
 
     if (!depthContext->ReturnContext()) {

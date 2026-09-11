@@ -4,8 +4,7 @@
 
 #include "RenderHaloedLines.h"
 
-#include <GL/glew.h>
-#include "glewInitWrapper.h"
+#include <glad/gl.h>
 #ifdef WIN32
 #include <windows.h>
 #endif
@@ -70,7 +69,7 @@ static bool checkProgramError(GLuint programId, std::string& errMsg)
 class RenderHaloedLines::Impl {
 public:
   /// @brief Constructor
-  /// @details Note: An OpenGL context must be current when this is called.  GLEW must also be initialized.
+  /// @details Note: An OpenGL context must be current when this is called.  GL extensions must be loaded.
   Impl();
 
   /// @brief Destructor
@@ -86,12 +85,6 @@ public:
 
 RenderHaloedLines::Impl::Impl()
 {
-  // Initialize GLEW in our context. It is okay to initialize it more than once.
-  std::string ret = glewInitWrapper();
-  if (!ret.empty()) {
-    throw std::runtime_error("RenderHaloedLines::Impl(): Failed to initialize GLEW: " + ret);
-  }
-
   // Create the vertex buffer object for rendering lines
   glGenBuffers(1, &m_vertexBuffer);
 
@@ -99,7 +92,7 @@ RenderHaloedLines::Impl::Impl()
   // simple texture-mapped shader that uses vertex colors.
   if (glCreateShader == nullptr) {
     throw std::runtime_error("RenderHaloedLines::Impl(): "
-      "Attempted to construct before glewInit() has been called.");
+      "Attempted to construct before GL extensions loaded.");
   }
 
   GLuint vertexShaderId = glCreateShader(GL_VERTEX_SHADER);

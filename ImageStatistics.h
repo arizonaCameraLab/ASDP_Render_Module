@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2025: Arizona Board of Regents on Behalf of the University of Arizona
+ * Copyright (C) 2025-2026: Arizona Board of Regents on Behalf of the University of Arizona
  */
 
  /**
@@ -33,7 +33,7 @@ namespace asdp {
 
         /// @brief Construct the mean and standard deviation calculator.
         /// @details The caller must have a valid OpenGL context on the calling thread when calling any of the
-        /// functions in this class, including the constructor. This context must have had glewInit() called on it.
+        /// functions in this class, including the constructor. This context must have GL extensions loaded.
         /// @param camera Camera to use for the image.
         MeanStd(std::shared_ptr<CameraRenderInfo> camera);
 
@@ -75,7 +75,7 @@ namespace asdp {
 
         /// @brief Construct the mean and standard deviation calculator for a set of images.
         /// @details The caller must have a valid OpenGL context on the calling thread when calling any of the
-        /// functions in this class, including the constructor. This context must have had glewInit() called on it.
+        /// functions in this class, including the constructor. This context must have GL extensions loaded.
         /// This class will start a thread that updates the estimated values on one camera at a time at the
         /// specified interval.  The thread will run until the destructor is called.
         /// It updates its internal mean and standard deviation values at the specified interval in a thread-safe

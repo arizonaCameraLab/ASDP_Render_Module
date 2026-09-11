@@ -6,9 +6,8 @@
 #include <vector>
 #include <thread>
 #include <atomic>
-#include <GL/glew.h>
+#include <glad/gl.h>
 #include <GLFW/glfw3.h>
-#include "glewInitWrapper.h"
 
 /// @brief Make an image whose brightness varies from the top of the image to the bottom.
 /// @details The image will be a gradient from the minimum value at the bottom to the
@@ -105,6 +104,13 @@ int main()
   // Make the window's context current
   glfwMakeContextCurrent(window);
 
+  // Initialize GLAD in our context. It must be initialized exactly once per context.
+  if (!gladLoadGL(glfwGetProcAddress)) {
+    std::cerr << "Failed to initialize GLAD" << std::endl;
+    glfwTerminate();
+    return -1;
+  }
+
   // Create a new shared context that we'll use to generate a texture into that
   // we'll use in the main context.  This will use a hidden window.
   glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
@@ -113,6 +119,12 @@ int main()
     std::cerr << "Failed to create hidden window\n";
     glfwTerminate();
     return -1;
+  }
+
+  // Initialize GLAD in our context. It must be initialized exactly once per context.
+  if (!gladLoadGL(glfwGetProcAddress)) {
+    std::cerr << "Failed to initialize GLAD" << std::endl;
+    return 4;
   }
 
   // Create a new thread that switches to the new context and generates a texture
@@ -138,13 +150,6 @@ int main()
 
   // Make the window's context current
   glfwMakeContextCurrent(window);
-
-  // Initialize GLEW in our context. It is okay to initialize it more than once.
-  std::string ret = asdp::render::glewInitWrapper();
-  if (!ret.empty()) {
-    std::cerr << "Failed to initialize GLEW: " << ret << std::endl;
-    return 4;
-  }
 
   // Generate and bind the vertex array
   GLuint vao;

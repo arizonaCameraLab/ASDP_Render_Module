@@ -5,6 +5,7 @@
 #include <iostream>
 #include <vector>
 #include <chrono>
+#include <glad/gl.h>
 #include <Composite.h>
 #include <ASDP_Core_API.h>
 #include <GLFW/glfw3.h>
@@ -40,6 +41,13 @@ int main()
 
   // Make the window's context current
   glfwMakeContextCurrent(window);
+
+  // Initialize GLAD to load OpenGL function pointers
+  if (!gladLoadGL(glfwGetProcAddress)) {
+    std::cerr << "Failed to initialize GLAD" << std::endl;
+    glfwTerminate();
+    return -1;
+  }
 
   // Create a CompositeCube object to render once the window is open and the context is active.
   asdp::render::CompositeCube composite(10);

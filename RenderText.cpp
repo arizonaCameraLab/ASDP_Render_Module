@@ -4,8 +4,7 @@
 
 #include "RenderText.h"
 
-#include <GL/glew.h>
-#include "glewInitWrapper.h"
+#include <glad/gl.h>
 #ifdef WIN32
 #include <windows.h>
 #endif
@@ -80,7 +79,7 @@ public:
   /// @brief Constructor
   /// @param windowWidth The width of the window in pixels.
   /// @param windowHeight The height of the window in pixels.
-  /// @details Note: An OpenGL context must be current when this is called.  GLEW must also be initialized.
+  /// @details Note: An OpenGL context must be current when this is called.  GL extensions must be loaded.
   Impl(int windowWidth, int windowHeight);
 
   /// @brief Destructor
@@ -146,12 +145,6 @@ RenderText::Impl::Impl(int windowWidth, int windowHeight)
   , m_ft(nullptr)
   , m_face(nullptr)
 {
-  // Initialize GLEW in our context. It is okay to initialize it more than once.
-  std::string ret = glewInitWrapper();
-  if (!ret.empty()) {
-    throw std::runtime_error("RenderText::Impl(): Failed to initialize GLEW: " + ret);
-  }
-
   // Initialize FreeType
   if (FT_Init_FreeType(&m_ft)) {
     throw std::runtime_error("RenderText::Impl(): Could not initialize FreeType library");
@@ -177,7 +170,7 @@ RenderText::Impl::Impl(int windowWidth, int windowHeight)
   // simple texture-mapped shader that uses vertex colors.
   if (glCreateShader == nullptr) {
     throw std::runtime_error("RenderText::RenderText(): "
-      "Attempted to construct before glewInit() has been called.");
+      "Attempted to construct before GL extensions were loaded.");
   }
 
   GLuint vertexShaderId = glCreateShader(GL_VERTEX_SHADER);

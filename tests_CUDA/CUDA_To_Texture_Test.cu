@@ -9,8 +9,7 @@
 #include <memory>
 #include <thread>
 #include <atomic>
-#include <GL/glew.h>
-#include "glewInitWrapper.h"
+#include <glad/gl.h>
 #include <GLFW/glfw3.h>
 #include <Composite.h>
 #include <ASDP_Core_API.h>
@@ -212,12 +211,26 @@ int main()
   // Make the window's context current
   glfwMakeContextCurrent(window);
 
+  // Initialize GLAD in our context. It must be initialized exactly once per context.
+  if (!gladLoadGL(glfwGetProcAddress)) {
+    std::cerr << "Failed to initialize GLAD" << std::endl;
+    glfwTerminate();
+    return 4;
+  }
+
   // Create a new shared context that we'll use to generate a texture into that
   // we'll use in the main context.  This will use a hidden window.
   glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
   GLFWwindow* window2 = glfwCreateWindow(windowSize, windowSize, "Hidden", NULL, window);
   if (!window2) {
     std::cerr << "Failed to create hidden window\n";
+    glfwTerminate();
+    return -1;
+  }
+
+  // Initialize GLAD in our context. It must be initialized exactly once per context.
+  if (!gladLoadGL(glfwGetProcAddress)) {
+    std::cerr << "Failed to initialize GLAD" << std::endl;
     glfwTerminate();
     return -1;
   }
@@ -245,13 +258,6 @@ int main()
 
   // Make the window's context current
   glfwMakeContextCurrent(window);
-
-  // Initialize GLEW in our context. It is okay to initialize it more than once.
-  std::string ret = asdp::render::glewInitWrapper();
-  if (!ret.empty()) {
-    std::cerr << "Failed to initialize GLEW: " << ret << std::endl;
-    return 4;
-  }
 
   // Generate and bind the vertex array
   GLuint vao;

@@ -4,8 +4,7 @@
 
 #include <ASDP_Core_API.h>
 #include <ASDP_ImageSource.h>
-#include <GL/glew.h>
-#include "glewInitWrapper.h"
+#include <glad/gl.h>
 #include <CPUDataToTextureHandler.h>
 #include <GLFW/glfw3.h>
 #include <Display.h>
@@ -174,6 +173,13 @@ int main()
   // Make the window's context current
   glfwMakeContextCurrent(window);
 
+  // Initialize GLAD in our context. It must be initialized exactly once per context.
+  if (!gladLoadGL(glfwGetProcAddress)) {
+    std::cerr << "Failed to initialize GLAD" << std::endl;
+    glfwTerminate();
+    return -1;
+  }
+
   // Make the image queue that will hold the textures to be filled in by the thread and
   // rendered by the main thread.  Initially fill all of the images with gray and time zero.
   std::shared_ptr<ImageQueue> imageQueue = std::make_shared<ImageQueue>();
@@ -211,6 +217,14 @@ int main()
     return -1;
   }
 
+  // Initialize GLAD in our context. It must be initialized exactly once per context.
+  glfwMakeContextCurrent(window2);
+  if (!gladLoadGL(glfwGetProcAddress)) {
+    std::cerr << "Failed to initialize GLAD in hidden window" << std::endl;
+    glfwTerminate();
+    return -1;
+  }
+
   // Create a new thread that switches to the new context and generates a texture
   // in that context.
   std::atomic<GLuint> texture{ 0 };
@@ -220,10 +234,10 @@ int main()
   // Make the window's context current
   glfwMakeContextCurrent(window);
 
-  // Initialize GLEW in our context. It is okay to initialize it more than once.
-  std::string ret = glewInitWrapper();
-  if (!ret.empty()) {
-    std::cerr << "Composite::Composite(): Failed to initialize GLEW: " << ret << std::endl;
+  // Initialize GLAD in our context. It must be initialized exactly once per context.
+  if (!gladLoadGL(glfwGetProcAddress)) {
+    std::cerr << "Failed to initialize GLAD" << std::endl;
+    glfwTerminate();
     return 4;
   }
 

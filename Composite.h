@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2024-2025: Arizona Board of Regents on Behalf of the University of Arizona
+ * Copyright (C) 2024-2026: Arizona Board of Regents on Behalf of the University of Arizona
  */
 
  /**
@@ -141,7 +141,9 @@ namespace asdp {
 
       /// @brief Set up state needed for rendering, perhaps including the shader program and geometry/textures.
       /// @details This function is called during the first call to Render().  If it fails, rendering is not
-      /// done that frame and it tries again the next.
+      /// done that frame and it tries again the next. The caller must have made an OpenGL context
+      /// current before calling this function, and that context must have the OpenGL extensions
+      /// loaded.
       virtual bool SetupRendering() = 0;
 
       /// @brief Set up state needed for rendering, perhaps including the shader program and geometry/textures.

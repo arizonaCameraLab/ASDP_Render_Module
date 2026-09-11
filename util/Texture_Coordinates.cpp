@@ -1,5 +1,4 @@
-#include <GL/glew.h>
-#include "glewInitWrapper.h"
+#include <glad/gl.h>
 #include <GLFW/glfw3.h>
 #include <iostream>
 
@@ -104,11 +103,9 @@ int main()
   }
   glfwMakeContextCurrent(window);
 
-  // Initialize GLEW
-  std::string ret = asdp::render::glewInitWrapper();
-  if (!ret.empty())
-  {
-    std::cerr << "Failed to initialize GLEW: " << ret << std::endl;
+  // Initialize GLAD
+  if (!gladLoadGL((GLADloadfunc)glfwGetProcAddress)) {
+    std::cerr << "Failed to initialize GLAD" << std::endl;
     return -1;
   }
 

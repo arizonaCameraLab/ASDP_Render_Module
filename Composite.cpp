@@ -9,14 +9,13 @@
 #include <string>
 #include <iostream>
 #include <algorithm>
-#include <GL/glew.h>
+#include <glad/gl.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtx/quaternion.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include "Composite.h"
-#include "glewInitWrapper.h"
 
 using namespace asdp::render;
 
@@ -619,13 +618,6 @@ CompositeCube::CompositeCube(double radius)
 
 bool CompositeCube::SetupRendering()
 {
-  // Initialize GLEW in our context. It is okay to initialize it more than once.
-  std::string ret = glewInitWrapper();
-  if (!ret.empty()) {
-    std::cerr << "CompositeCube::CompositeCube(): Failed to initialize GLEW: " << ret << std::endl;
-    return false;
-  }
-
   try {
     // Construct the shader programs.
     GLuint vertexShaderId = glCreateShader(GL_VERTEX_SHADER);
@@ -924,15 +916,6 @@ CompositeCameras::CompositeCameras(std::vector< std::shared_ptr<CameraRenderInfo
 
 bool CompositeCameras::SetupRendering()
 {
-  // Initialize GLEW in our context. It is okay to initialize it more than once.
-  // NOTE: SetupRendering() is only called once for each object if it works, so we won't be initializing
-  // GLEW every render frame here, only once per CompositeCameras object.
-  std::string ret = glewInitWrapper();
-  if (!ret.empty()) {
-    std::cerr << "CompositeCameras::SetupRendering(): Failed to initialize GLEW: " << ret << std::endl;
-    return false;
-  }
-
   // Construct a RenderText and RenderHaloedLines object for drawing text annotations.
   try {
     // Set the width and height to something small; we will resize it later.
@@ -2042,12 +2025,6 @@ CompositeLineRawData::CompositeLineRawData(GLfloat x0, GLfloat y0, GLfloat x1, G
   // We do not clear the buffers because we're an overlay.
   m_doClear = false;
 
-  // Initialize GLEW in our context. It is okay to initialize it more than once.
-  std::string ret = glewInitWrapper();
-  if (!ret.empty()) {
-    throw std::runtime_error("CompositeLineRawData::CompositeLineRawData(): Failed to initialize GLEW: " + ret);
-  }
-
   // Create the 1D texture from the RGB values
   glGenTextures(1, &m_texture);
   if (m_texture == 0) {
@@ -2297,12 +2274,6 @@ CompositePackXSightFrame::CompositePackXSightFrame(GLuint inputTexture, int disp
   }
   if (displayWidth <= 0) {
     throw std::runtime_error("Invalid display width");
-  }
-
-  // Initialize GLEW in our context. It is okay to initialize it more than once.
-  std::string ret = glewInitWrapper();
-  if (!ret.empty()) {
-    throw std::runtime_error("CompositePackXSightFrame::CompositePackXSightFrame(): Failed to initialize GLEW: " + ret);
   }
 
   // Create the vertex buffer object for the line.

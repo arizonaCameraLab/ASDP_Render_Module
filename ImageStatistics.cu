@@ -8,11 +8,10 @@
 #include <chrono>
 #include <memory>
 #include <thread>
-#include <GL/glew.h>
+#include <glad/gl.h>
 #include <GLFW/glfw3.h>
 #include <ImageStatistics.h>
 #include <Display.h>
-#include "glewInitWrapper.h"
 using namespace asdp;
 using namespace asdp::render;
 using namespace asdp::render::imageStatistics;
@@ -465,9 +464,8 @@ float MeanStd::SpeedTestSingleCalculation(uint16_t width, uint16_t height)
   }
   glfwMakeContextCurrent(window.get());
 
-  // Initialize GLEW in our context. It is okay to initialize it more than once.
-  std::string ret = glewInitWrapper();
-  if (!ret.empty()) {
+  // Initialize GLAD in our context. It must be initialized exactly once per context.
+  if (!gladLoadGL((GLADloadfunc)glfwGetProcAddress)) {
     return -1;
   }
 
@@ -532,10 +530,9 @@ std::string MeanStd::Test()
   }
   glfwMakeContextCurrent(window.get());
 
-  // Initialize GLEW in our context. It is okay to initialize it more than once.
-  std::string ret = glewInitWrapper();
-  if (!ret.empty()) {
-    return "Could not initialize GLEW: " + ret;
+  // Initialize GLAD in our context. It must be initialized exactly once per context.
+  if (!gladLoadGL((GLADloadfunc)glfwGetProcAddress)) {
+    return "Could not initialize GLAD";
   }
 
   // Test the constructor and Compute() function.
@@ -644,10 +641,9 @@ std::string MeanStdGroup::Test()
   }
   glfwMakeContextCurrent(window.get());
 
-  // Initialize GLEW in our context. It is okay to initialize it more than once.
-  std::string ret = glewInitWrapper();
-  if (!ret.empty()) {
-    return "Could not initialize GLEW: " + ret;
+  // Initialize GLAD in our context. It must be initialized exactly once.
+  if (!gladLoadGL((GLADloadfunc)glfwGetProcAddress)) {
+    return "Could not initialize GLAD";
   }
 
   // Make the display object that we'll use and borrow its context.

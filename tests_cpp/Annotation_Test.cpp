@@ -7,8 +7,7 @@
 #include <chrono>
 #include <cstdint>
 #include <memory>
-#include <GL/glew.h>
-#include "glewInitWrapper.h"
+#include <glad/gl.h>
 #include <ToneMap.h>
 #include <Composite.h>
 #include <RangeEstimator.h>
@@ -120,11 +119,10 @@ int main()
   // Make the window's context current
   glfwMakeContextCurrent(window);
 
-  // Initialize GLEW in our context. It is okay to initialize it more than once.
-  std::string ret = glewInitWrapper();
-  if (!ret.empty()) {
-    std::cerr << "Failed to initialize GLEW: " << ret << std::endl;
-    return 4;
+  // Load OpenGL functions using GLAD
+  if (!gladLoadGL(glfwGetProcAddress)) {
+    std::cerr << "Failed to initialize GLAD" << std::endl;
+    return -1;
   }
 
   // Make a camera to show the annotations on.

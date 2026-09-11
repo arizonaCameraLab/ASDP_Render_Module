@@ -16,16 +16,15 @@
 #include <chrono>
 #include <map>
 #include <algorithm>
+#include <glad/gl.h>
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/quaternion.hpp>
 #include <glm/gtx/euler_angles.hpp>
 #include <glm/gtx/matrix_decompose.hpp>
-#include <GL/glew.h>
 #include <GLFW/glfw3.h>
 #include "Display.h"
-#include "glewInitWrapper.h"
 
 using namespace asdp::render;
 
@@ -474,10 +473,9 @@ void DisplayWindow::DisplayThread(std::string windowName,
     std::lock_guard<std::mutex> lock(Display::m_impl->m_contextMutex);
     glfwMakeContextCurrent(Display::m_impl->m_window);
 
-    // Initialize GLEW in our context. It is okay to initialize it more than once.
-    std::string ret = glewInitWrapper();
-    if (!ret.empty()) {
-      m_status = "Failed to initialize GLEW: " + ret;
+    // Initialize GLAD in our context. It must be initialized exactly once per context.
+    if (!gladLoadGL((GLADloadfunc)glfwGetProcAddress)) {
+      m_status = "Failed to initialize GLAD";
       return;
     }
 
@@ -1038,10 +1036,9 @@ DisplayTexture::DisplayTexture(Display* sharedWindow)
   std::lock_guard<std::mutex> lock(Display::m_impl->m_contextMutex);
   glfwMakeContextCurrent(Display::m_impl->m_window);
 
-  // Initialize GLEW in our context. It is okay to initialize it more than once.
-  std::string ret = glewInitWrapper();
-  if (!ret.empty()) {
-    m_status = "Failed to initialize GLEW: " + ret;
+  // Initialize GLAD in our context. It must be initialized exactly once per context.
+  if (!gladLoadGL((GLADloadfunc)glfwGetProcAddress)) {
+    m_status = "Failed to initialize GLAD";
     return;
   }
 
@@ -2661,10 +2658,9 @@ void DisplayXSight::DisplayThread(
     std::lock_guard<std::mutex> lock(Display::m_impl->m_contextMutex);
     glfwMakeContextCurrent(Display::m_impl->m_window);
 
-    // Initialize GLEW in our context. It is okay to initialize it more than once.
-    std::string ret = glewInitWrapper();
-    if (!ret.empty()) {
-      m_status = "Failed to initialize GLEW: " + ret;
+    // Initialize GLAD in our context. It must be initialized exactly once per context.
+    if (!gladLoadGL((GLADloadfunc)glfwGetProcAddress)) {
+      m_status = "Failed to initialize GLAD";
       return;
     }
 

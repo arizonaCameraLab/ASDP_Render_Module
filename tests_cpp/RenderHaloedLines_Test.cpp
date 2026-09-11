@@ -6,6 +6,7 @@
 #include <vector>
 #include <chrono>
 #include <memory>
+#include <glad/gl.h>
 #include <RenderHaloedLines.h>
 #include <GLFW/glfw3.h>
 
@@ -30,6 +31,13 @@ int main()
 
   // Make the window's context current
   glfwMakeContextCurrent(window);
+
+  // Initialize GLAD in our context. It must be initialized exactly once per context.
+  if (!gladLoadGL(glfwGetProcAddress)) {
+    std::cerr << "Failed to initialize GLAD" << std::endl;
+    glfwTerminate();
+    return -1;
+  }
 
   try {
     // Create a RenderHaloedLines object.
