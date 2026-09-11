@@ -221,7 +221,7 @@ public:
   std::vector<asdp::render::ViewRenderInfo> m_views;
 
   /// Angles of rotation in degrees based on keyboard and/or joystick input.
-  /// rotation is around the original Z axis, then the original Z axis.
+  /// rotation is around the original Z axis, then the original X axis.
   float m_rotationZDegrees {0.0f};
   float m_rotationXDegrees = {0.0f};
 
