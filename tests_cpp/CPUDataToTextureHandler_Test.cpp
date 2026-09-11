@@ -123,8 +123,10 @@ void TextureThread(int width, int height, std::atomic_bool& done,
       if (top + 3 > height) {
         myHeight = height - top;
       }
-      memcpy(cpuPinnedImageBuffer + top * width*2, &(*image->getData())[top * width/2], width * myHeight * sizeof(uint16_t));
-      ret = handler.ProcessImageSubset(0, top, width-1, top + myHeight - 1);
+      memcpy(cpuPinnedImageBuffer + top * width*2, &(*image->getData())[top * width/2],
+        width * myHeight * sizeof(uint16_t));
+      ret = handler.ProcessImageSubset(0, top,
+        static_cast<uint16_t>(width-1), static_cast<uint16_t>(top + myHeight - 1));
       if (ret.size() > 0) {
         std::cerr << "Error in CPUDataToTextureHandler::ProcessImageSubset(): " << ret << std::endl;
         return;

@@ -97,12 +97,12 @@ int main(int argc, char** argv)
         usage(argv[0]);
         return 1;
       }
-      xSightFPS = atof(argv[i]);
+      xSightFPS = static_cast<float>(atof(argv[i]));
       if (++i >= argc) {
         usage(argv[0]);
         return 1;
       }
-      xSightHorizontalFOV = atof(argv[i]);
+      xSightHorizontalFOV = static_cast<float>(atof(argv[i]));
       if (++i >= argc) {
         usage(argv[0]);
         return 1;
@@ -161,7 +161,7 @@ int main(int argc, char** argv)
       // Create a Display window to show the CompositeCube object that shares objects with the texWindow.
       // Control it using joystick 0.
       displays.push_back(std::make_shared<asdp::render::DisplayWindow>("Display_Test", composite, client,
-        0, 0, 0, viewpointOffset, viewpointRotation, 60.0f, 2500, width, height, 90, "GLFW::0", &texWindow));
+        0, 0, 0, viewpointOffset, viewpointRotation, 60.0f, 2500, width, height, 90.0f, "GLFW::0", &texWindow));
       if (displays.back()->GetStatus() != "") {
         std::cerr << "Error opening first display: " << displays.back()->GetStatus() << std::endl;
         return 1;
@@ -174,7 +174,7 @@ int main(int argc, char** argv)
       std::shared_ptr<asdp::render::CompositeCube> composite2 = std::make_shared<asdp::render::CompositeCube>(10);
       displays.push_back(std::make_shared<asdp::render::DisplayWindow>("Display_Test2", composite2, client,
         0, 0, 0, viewpointOffset, viewpointRotation, 60.0f, 2500, width, height,
-        90, "GLFW::1", &texWindow));
+        90.0f, "GLFW::1", &texWindow));
       if (displays.back()->GetStatus() != "") {
         std::cerr << "Error opening second display: " << displays.back()->GetStatus() << std::endl;
         return 2;

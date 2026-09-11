@@ -115,7 +115,8 @@ void CameraRenderInfo::ComputePlanarCameraMeshInfo(size_t nx, size_t ny, float d
       vertex.vignetteGain = 1.0;
       if (m_vignette != nullptr) {
         // Compute the vignette gain at the point (xn, yn)
-        vertex.vignetteGain = m_vignette->EvaluateAtPoint({ static_cast<float>(xn), static_cast<float>(yn) });
+        vertex.vignetteGain = static_cast<float>(
+          m_vignette->EvaluateAtPoint({ static_cast<float>(xn), static_cast<float>(yn) }));
       }
       vertices.push_back(vertex);
     }

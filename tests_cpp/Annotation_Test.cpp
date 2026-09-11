@@ -70,7 +70,7 @@ std::vector<CompositeCameras::Annotation> AnnotationCallbackHandler(asdp::Time t
   cameraAnnotations.push_back(annotation);
 
   // Add a rectangle annotation near a corner of the image for camera ID 1.
-  annotation.uv = { 0.1, 0.1 };       // Top-left corner of the image
+  annotation.uv = { 0.1f, 0.1f };       // Top-left corner of the image
   annotation.color = { 0.0f, 1.0f, 0.0f, 1.0f };  // Green and fully opaque
   annotation.cameraID = 1;
   annotation.label = "Rectangle\n  with two lines of text";

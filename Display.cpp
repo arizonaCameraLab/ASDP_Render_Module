@@ -8,6 +8,7 @@
 #include <arpa/inet.h>		// For ntohl()
 #endif
 #include <cmath>
+#include <cstdio>
 #include <iostream>
 #include <thread>
 #include <atomic>
@@ -374,8 +375,8 @@ void DisplayWindow::SetViewportSizeAndFOVs(ViewRenderInfo& viewInfo, int width, 
       halfAngle = m_impl->m_horizontalFOVDegrees / 2.0 * aspectRatio;
   //======================================
 
-  viewInfo.bottomHalfFOV = -halfAngle;
-  viewInfo.topHalfFOV = halfAngle;
+  viewInfo.bottomHalfFOV = static_cast<float>(-halfAngle);
+  viewInfo.topHalfFOV = static_cast<float>(halfAngle);
 }
 
 void DisplayWindow::DisplayThread(std::string windowName,
@@ -443,7 +444,8 @@ void DisplayWindow::DisplayThread(std::string windowName,
 
     // If we're displaying full-screen engage that here along with specifying the refresh rate.
     if (fullScreenMonitor) {
-      glfwSetWindowMonitor(Display::m_impl->m_window, fullScreenMonitor, 0, 0, desiredWidth, desiredHeight, fps);
+      glfwSetWindowMonitor(Display::m_impl->m_window, fullScreenMonitor, 0, 0,
+        desiredWidth, desiredHeight, static_cast<int>(fps));
     }
 
     // Open the joystick if there is one asked for and there is one present.
@@ -510,7 +512,7 @@ void DisplayWindow::DisplayThread(std::string windowName,
       double frameTime = 1.0 / fps;
       double middleOfNextFrameOffset = frameTime / 2.0 + renderAheadMicroseconds / 1e6;
       uint32_t seconds = static_cast<uint32_t>(middleOfNextFrameOffset);
-      uint32_t microseconds = (middleOfNextFrameOffset - seconds) * 1e6;
+      uint32_t microseconds = static_cast<uint32_t>((middleOfNextFrameOffset - seconds) * 1e6);
       renderTime += Time(seconds, microseconds);
     }
 
@@ -634,10 +636,10 @@ void DisplayWindow::DisplayThread(std::string windowName,
       const float* axes = glfwGetJoystickAxes(m_impl->m_glfwJoystickIndex, &axisCount);
       if (axisCount >= 2) {
         if (fabs(axes[0]) > 0.2) {
-          m_impl->m_rotationZDegrees -= 90.0f * elapsed.count() * axes[0];
+          m_impl->m_rotationZDegrees -= 90.0f * static_cast<float>(elapsed.count()) * axes[0];
         }
         if (fabs(axes[1]) > 0.2) {
-          m_impl->m_rotationXDegrees -= 90.0f * elapsed.count() * axes[1] * m_impl->m_joystickScaleY;
+          m_impl->m_rotationXDegrees -= 90.0f * static_cast<float>(elapsed.count()) * axes[1] * m_impl->m_joystickScaleY;
         }
 
         //======================================
@@ -653,10 +655,10 @@ void DisplayWindow::DisplayThread(std::string windowName,
           float y_axis = axes[4];
 #endif
           if (fabs(x_axis) > 0.2) {
-            m_impl->m_rotationZDegrees -= 90.0f * elapsed.count() * x_axis;
+            m_impl->m_rotationZDegrees -= 90.0f * static_cast<float>(elapsed.count()) * x_axis;
           }
           if (fabs(y_axis) > 0.2) {
-            m_impl->m_rotationXDegrees -= 90.0f * elapsed.count() * y_axis * m_impl->m_joystickScaleY;
+            m_impl->m_rotationXDegrees -= 90.0f * static_cast<float>(elapsed.count()) * y_axis * m_impl->m_joystickScaleY;
           }
         }
         //======================================
@@ -916,8 +918,8 @@ void DisplayWindow::HandleMouse()
   // Handle the mouse movement with the button held down
   // We scale the deltas and increment the rotation angles so long as the button is held down.
   double MaxDegreesPerSecond = 45.0;
-  m_impl->m_rotationZDegrees -= MaxDegreesPerSecond * deltaX * elapsed.count();
-  m_impl->m_rotationXDegrees -= MaxDegreesPerSecond * deltaY * elapsed.count();
+  m_impl->m_rotationZDegrees -= static_cast<float>(MaxDegreesPerSecond * deltaX * elapsed.count());
+  m_impl->m_rotationXDegrees -= static_cast<float>(MaxDegreesPerSecond * deltaY * elapsed.count());
 }
 
 void DisplayWindow::ComputeAndClampViewOrientation()
@@ -1254,9 +1256,12 @@ void asdp::render::DisplayOpenXR::DisplayOpenXRImpl::OpenXRCreateInstance()
   createInfo.enabledExtensionCount = (uint32_t)extensions.size();
   createInfo.enabledExtensionNames = extensions.data();
 
-  strcpy(createInfo.applicationInfo.applicationName, "asdp::render::DisplayOpenXR");
+  std::snprintf(
+    createInfo.applicationInfo.applicationName,
+    sizeof(createInfo.applicationInfo.applicationName),
+    "%s",
+    "asdp::render::DisplayOpenXR");
   createInfo.applicationInfo.apiVersion = XR_CURRENT_API_VERSION;
-
   CHECK_XRCMD(xrCreateInstance(&createInfo, &m_instance));
 
 #ifdef XR_USE_PLATFORM_WIN32
@@ -2031,7 +2036,7 @@ bool asdp::render::DisplayOpenXR::DisplayOpenXRImpl::OpenXRRenderLayer(XrTime pr
     // The amount of binocular disparity adjustment is dependent on the resolution (proportional to pixel size or PPD).
     auto composite = std::atomic_load(&m_display->m_composite);
     if (composite && composite->m_CP_enabled) {
-      float shift_amount = 225.0 * vri.width / 5184 + 0.5;
+      float shift_amount = 225.0f * vri.width / 5184 + 0.5f;
       if (i == 0) {
         vri.x = (int)shift_amount;
       } else {
@@ -2081,7 +2086,7 @@ bool asdp::render::DisplayOpenXR::DisplayOpenXRImpl::OpenXRRenderLayer(XrTime pr
         }
         double seconds = static_cast<double>(diff) / static_cast<double>(frequency.QuadPart);
         Time dt;
-        dt.seconds = static_cast<uint64_t>(seconds);
+        dt.seconds = static_cast<uint32_t>(seconds);
         dt.microseconds = static_cast<uint32_t>((seconds - dt.seconds) * 1e6);
         // On the HTC Vive OpenXR implementation, this returns a time many seconds into the future, it is probably returning
         // the time since the epoch rather than the time since the start of the performance timer (boot).
@@ -2543,8 +2548,8 @@ void DisplayXSight::SetViewportSizeAndFOVs(ViewRenderInfo& viewInfo, int width, 
   double halfWidth = tan(glm::radians(m_impl->m_horizontalFOVDegrees / 2.0));
   double halfHeight = halfWidth * aspectRatio;
   double halfAngle = glm::degrees(atan(halfHeight));
-  viewInfo.bottomHalfFOV = -halfAngle;
-  viewInfo.topHalfFOV = halfAngle;
+  viewInfo.bottomHalfFOV = static_cast<float>(-halfAngle);
+  viewInfo.topHalfFOV = static_cast<float>(halfAngle);
 }
 
 /// @brief Embeds a 4-byte entity into four RGB pixels of an image.
@@ -2650,7 +2655,8 @@ void DisplayXSight::DisplayThread(
 
     // Engage full screen here along with specifying the refresh rate.  The width is half of that specified
     // because the final render pass will encode two monochrome pixels into each color pixel.
-    glfwSetWindowMonitor(Display::m_impl->m_window, fullScreenMonitor, 0, 0, width, desiredHeight, fps);
+    glfwSetWindowMonitor(Display::m_impl->m_window, fullScreenMonitor, 0, 0,
+      width, desiredHeight, static_cast<int>(fps));
 
     // Grab the context mutex for the duration of the setup.  Once we have it, we know
     // that the context is not active in another thread.
@@ -2749,7 +2755,7 @@ void DisplayXSight::DisplayThread(
       double frameTime = 1.0 / fps;
       double middleOfNextFrameOffset = frameTime / 2.0 + renderAheadMicroseconds / 1e6;
       uint32_t seconds = static_cast<uint32_t>(middleOfNextFrameOffset);
-      uint32_t microseconds = (middleOfNextFrameOffset - seconds) * 1e6;
+      uint32_t microseconds = static_cast<uint32_t>((middleOfNextFrameOffset - seconds) * 1e6);
       renderTime += Time(seconds, microseconds);
     }
 

@@ -64,8 +64,8 @@ int main()
     views[0].nearClip = 0.1f;
     views[0].farClip = 1000.0f;
     views[0].viewpoint[0] = -5;
-    float dx = glm::radians(angle/100); // Rotate 45 degrees around the X axis
-    float dz = glm::radians(angle); // Rotate 30 degrees around the Z axis
+    float dx = static_cast<float>(glm::radians(angle/100)); // Rotate a little around the X axis
+    float dz = static_cast<float>(glm::radians(angle)); // Rotate more around the Z axis
     glm::quat rotationX = glm::angleAxis(dx, glm::vec3(1.0f, 0.0f, 0.0f));
     glm::quat rotationZ = glm::angleAxis(dz, glm::vec3(0.0f, 0.0f, 1.0f));
     glm::quat combinedRotation = rotationX * rotationZ;

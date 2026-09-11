@@ -176,11 +176,11 @@ protected:
 
     // Clamp the bin to the valid range
     if (xi < 0) { xi = 0; }
-    if (xi >= static_cast<int>(m_binsPerSide)) { xi = m_binsPerSide - 1; }
+    if (xi >= static_cast<int>(m_binsPerSide)) { xi = static_cast<int>(m_binsPerSide) - 1; }
     if (yi < 0) { yi = 0; }
-    if (yi >= static_cast<int>(m_binsPerSide)) { yi = m_binsPerSide - 1; }
+    if (yi >= static_cast<int>(m_binsPerSide)) { yi = static_cast<int>(m_binsPerSide) - 1; }
 
-    std::array<size_t, 2> bin = { xi, yi };
+    std::array<size_t, 2> bin = { static_cast<size_t>(xi), static_cast<size_t>(yi) };
     return bin;
   }
 
@@ -260,7 +260,7 @@ DistortionBagOfMappings::DistortionBagOfMappings_impl::DistortionBagOfMappings_i
   }
 
   // Create a Delaunay triangulation in 2D from the "from" points in the mapping.
-  m_delaunay->set_vertices(m_bag.size(), m_points.data());
+  m_delaunay->set_vertices(static_cast<GEO::index_t>(m_bag.size()), m_points.data());
 
   /*
   // Write an OBJ file for debugging purposes that has all of the triangles in the Delaunay triangulation.
@@ -582,7 +582,7 @@ std::string Distortion::Test()
       GEO::initialize();
       GEO::Delaunay_var delaunay = GEO::Delaunay::create(2, "BDEL2d");
       std::vector<std::array<double, 2>> points = { {0, 0}, {1, 0}, {0, 1}, {1, 1} };
-      delaunay->set_vertices(points.size(), points[0].data());
+      delaunay->set_vertices(static_cast<GEO::index_t>(points.size()), points[0].data());
       NearbyTriangles nearby(delaunay, 2);
       std::set<GEO::index_t> triangles = nearby.GetTriangles(0.5, 0.5);
       if (triangles.size() != 2) {

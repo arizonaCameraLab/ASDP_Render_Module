@@ -323,22 +323,22 @@ int main(int argc, char** argv)
             gimbalInfo,
             topMarginPixels, bottomMarginPixels,
             leftMarginPixels, rightMarginPixels,
-            xMin, yMin, curStep, 0, numXSteps);
+            xMin, yMin, static_cast<int>(curStep), 0, numXSteps);
           RunAlongLine(outFile, frameIndex, camerasToImage, frames, cri, targetPoint, target.id,
             gimbalInfo,
             topMarginPixels, bottomMarginPixels,
             leftMarginPixels, rightMarginPixels,
-            xMax, yMin, 0, curStep, numYSteps);
+            xMax, yMin, 0, static_cast<int>(curStep), numYSteps);
           RunAlongLine(outFile, frameIndex, camerasToImage, frames, cri, targetPoint, target.id,
             gimbalInfo,
             topMarginPixels, bottomMarginPixels,
             leftMarginPixels, rightMarginPixels,
-            xMax, yMax, -curStep, 0, numXSteps);
+            xMax, yMax, -static_cast<int>(curStep), 0, numXSteps);
           RunAlongLine(outFile, frameIndex, camerasToImage, frames, cri, targetPoint, target.id,
             gimbalInfo,
             topMarginPixels, bottomMarginPixels,
             leftMarginPixels, rightMarginPixels,
-            xMin, yMax, 0, -curStep, numYSteps);
+            xMin, yMax, 0, -static_cast<int>(curStep), numYSteps);
 
           //===========================================================
           // Adjust the rectangle to be smaller and move towards the center and adjust the
@@ -348,10 +348,10 @@ int main(int argc, char** argv)
           double rangeScale;
           rangeScale = 1.0 - (i + 1) * 0.1;
           curStep *= densityScaleFactor;
-          xMin = xCenter - (xCenter - xMin) * rangeScale;
-          xMax = xCenter + (xMax - xCenter) * rangeScale;
-          yMin = yCenter - (yCenter - yMin) * rangeScale;
-          yMax = yCenter + (yMax - yCenter) * rangeScale;
+          xMin = static_cast<int>(xCenter - (xCenter - xMin) * rangeScale);
+          xMax = static_cast<int>(xCenter + (xMax - xCenter) * rangeScale);
+          yMin = static_cast<int>(yCenter - (yCenter - yMin) * rangeScale);
+          yMax = static_cast<int>(yCenter + (yMax - yCenter) * rangeScale);
         }
 
       } // End of loop over cameras.

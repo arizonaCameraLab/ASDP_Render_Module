@@ -9,7 +9,7 @@
 #include <atomic>
 #include <thread>
 #include <filesystem>
-#include <stdio.h>
+#include <cstdio>
 #include <string.h>
 #include <CameraRenderInfo.h>
 #include <Calibration_Helpers.h>
@@ -512,7 +512,7 @@ int main(int argc, char** argv)
       }
 
       // Request triggering on the cameras at their maximum rates from their associated ID.
-      for (size_t i = 0; i < cameras.size(); ++i) {
+      for (uint32_t i = 0; i < cameras.size(); ++i) {
         uint32_t camID = i + 1;
         CameraInfo& camera = cameras[i];
 
@@ -521,7 +521,7 @@ int main(int argc, char** argv)
         ti.mode = 1;
         ti.period = camera.minTriggerPeriod;
         ti.offset = 0;
-        ti.trackingFactor = 0.005;
+        ti.trackingFactor = 0.005f;
         status = client->SendCommandPacket(CommandPacketConfigureTrigger(ti));
         if (status != OKAY) {
           std::cerr << "Failed to configure trigger: " << ErrorMessage(status) << std::endl;
@@ -656,8 +656,8 @@ int main(int argc, char** argv)
         region.startTimeMicroseconds = 0;
         region.left = 0;
         region.top = 0;
-        region.right = width - 1;    ///< @todo This assumes all cameras are the same size.
-        region.bottom = height - 1;  ///< @todo This assumes all cameras are the same size.
+        region.right = static_cast<uint16_t>(width - 1);    ///< @todo This assumes all cameras are the same size.
+        region.bottom = static_cast<uint16_t>(height - 1);  ///< @todo This assumes all cameras are the same size.
         status = client->SendCommandPacket(CommandPacketStreamSubregion(endpoint, region));
         if (status != OKAY) {
           std::cerr << "Failed to stream images: " << ErrorMessage(status) << std::endl;
@@ -737,7 +737,7 @@ int main(int argc, char** argv)
                 if (!gotFrameBegin) { break; }
 
                 // Find out how many pixels are in the frame and sum their values.
-                uint16_t stride = width;
+                uint16_t stride = static_cast<uint16_t>(width);
                 uint16_t left, right, top, bottom;
                 status = frameData.GetLeft(left);
                 if (status != asdp::OKAY) {
@@ -851,8 +851,8 @@ int main(int argc, char** argv)
 
         FileInfo fileInfo;
         fileInfo.fileName = fileName;
-        fileInfo.width = width;
-        fileInfo.height = height;
+        fileInfo.width = static_cast<uint16_t>(width);
+        fileInfo.height = static_cast<uint16_t>(height);
         fileInfo.shift = shift;
         fileInfo.imageBuffer = imageBuffers[f];
         imageQueue.enqueue(fileInfo);

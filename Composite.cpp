@@ -1072,11 +1072,11 @@ void CompositeCameras::CreateBufferInfo(CameraRenderInfo const& cameraRenderInfo
   for (VertexInfo const &v : mesh.vertexInfo) {
     // Add the vertex description
     // Offset the points by the camera position in the helicopter view space.
-    vertices.push_back(v.offset[0] + cameraRenderInfo.m_positionMeters[0]);
-    vertices.push_back(v.offset[1] + cameraRenderInfo.m_positionMeters[1]);
-    vertices.push_back(v.offset[2] + cameraRenderInfo.m_positionMeters[2]);
-    vertices.push_back(v.texCoord[0]);
-    vertices.push_back(v.texCoord[1]);
+    vertices.push_back(static_cast<float>(v.offset[0] + cameraRenderInfo.m_positionMeters[0]));
+    vertices.push_back(static_cast<float>(v.offset[1] + cameraRenderInfo.m_positionMeters[1]));
+    vertices.push_back(static_cast<float>(v.offset[2] + cameraRenderInfo.m_positionMeters[2]));
+    vertices.push_back(static_cast<float>(v.texCoord[0]));
+    vertices.push_back(static_cast<float>(v.texCoord[1]));
     vertices.push_back(v.vignetteGain);
   }
 
@@ -1086,13 +1086,13 @@ void CompositeCameras::CreateBufferInfo(CameraRenderInfo const& cameraRenderInfo
     for (size_t i = 0; i < mesh.nx; i++) {
       // Add the indices for the two triangles in the quad.
       size_t start = i + (mesh.nx+1) * j;
-      indices.push_back(start);
-      indices.push_back(start + 1);
-      indices.push_back(start + (mesh.nx+1) + 1);
+      indices.push_back(static_cast<GLuint>(start));
+      indices.push_back(static_cast<GLuint>(start + 1));
+      indices.push_back(static_cast<GLuint>(start + (mesh.nx+1) + 1));
 
-      indices.push_back(start);
-      indices.push_back(start + (mesh.nx + 1) + 1);
-      indices.push_back(start + (mesh.nx + 1));
+      indices.push_back(static_cast<GLuint>(start));
+      indices.push_back(static_cast<GLuint>(start + (mesh.nx + 1) + 1));
+      indices.push_back(static_cast<GLuint>(start + (mesh.nx + 1)));
     }
   }
 
@@ -1117,7 +1117,7 @@ void CompositeCameras::CreateBufferInfo(CameraRenderInfo const& cameraRenderInfo
   CameraBufferInfo cbi;
   cbi.vertexBufferObject = vertexBufferObject;
   cbi.indexBufferObject = indexBufferObject;
-  cbi.numIndices = indices.size();
+  cbi.numIndices = static_cast<GLsizei>(indices.size());
   m_cameraBufferInfos[cameraRenderInfo.m_ID] = cbi;
 }
 
@@ -1138,11 +1138,11 @@ void CompositeCameras::UpdateVertexBuffer(CameraRenderInfo const& cameraRenderIn
   for (VertexInfo const& v : mesh.vertexInfo) {
     // Add the vertex description
     // Offset the points by the camera position in the helicopter view space.
-    vertices.push_back(v.normalizedOffset[0] * v.depth + cameraRenderInfo.m_positionMeters[0]);
-    vertices.push_back(v.normalizedOffset[1] * v.depth + cameraRenderInfo.m_positionMeters[1]);
-    vertices.push_back(v.normalizedOffset[2] * v.depth + cameraRenderInfo.m_positionMeters[2]);
-    vertices.push_back(v.texCoord[0]);
-    vertices.push_back(v.texCoord[1]);
+    vertices.push_back(static_cast<float>(v.normalizedOffset[0] * v.depth + cameraRenderInfo.m_positionMeters[0]));
+    vertices.push_back(static_cast<float>(v.normalizedOffset[1] * v.depth + cameraRenderInfo.m_positionMeters[1]));
+    vertices.push_back(static_cast<float>(v.normalizedOffset[2] * v.depth + cameraRenderInfo.m_positionMeters[2]));
+    vertices.push_back(static_cast<float>(v.texCoord[0]));
+    vertices.push_back(static_cast<float>(v.texCoord[1]));
     vertices.push_back(v.vignetteGain);
   }
 
@@ -1360,12 +1360,12 @@ void CompositeCameras::RenderView(asdp::Time scanOutTime, const float* viewProje
     glUniform1i(m_useCPUniformId, 0);
   } else {
     glUniform1i(m_useCPUniformId, 1);
-    glUniform1f(m_lh_hfovUniformId, vri.leftHalfFOV * M_PI/180.0);
-    glUniform1f(m_rh_hfovUniformId, vri.rightHalfFOV * M_PI/180.0);
-    glUniform1f(m_bh_vfovUniformId, vri.bottomHalfFOV * M_PI/180.0);
-    glUniform1f(m_th_vfovUniformId, vri.topHalfFOV * M_PI/180.0);
-    glUniform1f(m_nearUniformId, vri.nearClip);
-    glUniform1f(m_farUniformId, vri.farClip);
+    glUniform1f(m_lh_hfovUniformId, static_cast<float>(vri.leftHalfFOV * M_PI/180.0));
+    glUniform1f(m_rh_hfovUniformId, static_cast<float>(vri.rightHalfFOV * M_PI/180.0));
+    glUniform1f(m_bh_vfovUniformId, static_cast<float>(vri.bottomHalfFOV * M_PI/180.0));
+    glUniform1f(m_th_vfovUniformId, static_cast<float>(vri.topHalfFOV * M_PI/180.0));
+    glUniform1f(m_nearUniformId, static_cast<float>(vri.nearClip));
+    glUniform1f(m_farUniformId, static_cast<float>(vri.farClip));
     glUniformMatrix4fv(m_modelViewUniformId, 1, GL_FALSE, modelViewMatrix);
   }
   //======================================
@@ -1400,7 +1400,7 @@ void CompositeCameras::RenderView(asdp::Time scanOutTime, const float* viewProje
   if (scales.size()) {
     std::sort(scales.begin(), scales.end());
     float globalExposureGain = scales[scales.size() / 2];
-    m_globalExposureGain = 0.9 * m_globalExposureGain + 0.1 * globalExposureGain;
+    m_globalExposureGain = 0.9f * m_globalExposureGain + 0.1f * globalExposureGain;
   }
 
   // When we are using the range estimator, we need to adjust the gain and offset to fit into the
@@ -1443,7 +1443,7 @@ void CompositeCameras::RenderView(asdp::Time scanOutTime, const float* viewProje
 
     // Fill in the frame time based on the information from the camera if it is nonzero.
     if (m_images.size() > c && m_images[c] != nullptr && m_images[c]->imageDurationMicroseconds != 0) {
-      frameTime = m_images[c]->imageDurationMicroseconds * 1.0e-6;
+      frameTime = m_images[c]->imageDurationMicroseconds * 1.0e-6f;
     }
 
     // Adjust for helicopter motion from image acquisition to scan-out.
@@ -1515,8 +1515,8 @@ void CompositeCameras::RenderView(asdp::Time scanOutTime, const float* viewProje
     // be multiplied by it along the way).
     // Only adjust if the values are proper (they are both set to 0 when we're not using an estimator).
     if (maxVal > minVal) {
-      offset = offset - minVal/gain;
-      gain /= (maxVal - minVal);
+      offset = offset - static_cast<float>(minVal)/gain;
+      gain /= static_cast<float>(maxVal - minVal);
     }
 
     glUniform1f(m_offsetUniformID, offset);
@@ -2066,7 +2066,7 @@ CompositeLineRawData::CompositeLineRawData(GLfloat x0, GLfloat y0, GLfloat x1, G
     throw std::runtime_error("CompositeLineRawData::CompositeLineRawData(): glGenTextures failed");
   }
   glBindTexture(GL_TEXTURE_1D, m_texture);
-  glTexImage1D(GL_TEXTURE_1D, 0, GL_RGB, m_numPixels, 0, GL_RGB, GL_UNSIGNED_BYTE, valuesRGB.data());
+  glTexImage1D(GL_TEXTURE_1D, 0, GL_RGB, static_cast<GLsizei>(m_numPixels), 0, GL_RGB, GL_UNSIGNED_BYTE, valuesRGB.data());
   glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
   glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
   glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
@@ -2132,7 +2132,7 @@ bool CompositeLineRawData::UpdateValues(std::vector<uint8_t> const& valuesRGB)
 
   // Copy the new values into the image texture.
   glBindTexture(GL_TEXTURE_1D, m_texture);
-  glTexSubImage1D(GL_TEXTURE_1D, 0, 0, m_numPixels, GL_RGB, GL_UNSIGNED_BYTE, valuesRGB.data());
+  glTexSubImage1D(GL_TEXTURE_1D, 0, 0, static_cast<GLsizei>(m_numPixels), GL_RGB, GL_UNSIGNED_BYTE, valuesRGB.data());
   glBindTexture(GL_TEXTURE_1D, 0);
 
   return true;
@@ -2211,7 +2211,7 @@ void CompositeLineRawData::RenderView(asdp::Time /* scanOutTime */, const float*
   glBufferData(GL_ARRAY_BUFFER, sizeof(vertices[0]) * vertices.size(), vertices.data(), GL_DYNAMIC_DRAW);
   glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 3 * sizeof(GLfloat), (GLvoid*)0);
   glVertexAttribPointer(1, 1, GL_FLOAT, GL_FALSE, 3 * sizeof(GLfloat), (GLvoid*)(2 * sizeof(GLfloat)));
-  glDrawArrays(GL_LINES, 0, vertices.size() / 3);
+  glDrawArrays(GL_LINES, 0, static_cast<GLsizei>(vertices.size() / 3));
   glDrawArrays(GL_POINTS, 1, 1);
   glBindBuffer(GL_ARRAY_BUFFER, 0);
 
