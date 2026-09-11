@@ -9,6 +9,7 @@
 #include <atomic>
 #include <thread>
 #include <filesystem>
+#include <algorithm>
 #include <cstdio>
 #include <string.h>
 #include <CameraRenderInfo.h>
