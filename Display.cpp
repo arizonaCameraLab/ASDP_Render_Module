@@ -967,9 +967,13 @@ void DisplayWindow::ComputeAndClampViewOrientation()
     static_cast<double>(m_viewpointRotation[2])), glm::dvec3(0.0, 0.0, 1.0));
   glm::quat viewpointRotation = zRotation * yRotation * xRotation;
 
+  glm::quat viewpointInverse = glm::inverse(viewpointRotation);
+
   // Apply a change of coordinate system to that described by the m_viewpointRotation, which
   // describes how the camera is mounted on the helicopter relative to helicopter space.
-  orientation = orientation * viewpointRotation;
+  // The first three multiplies convert from helicopter to screen-space orientation
+  // for the rotation matrix. The last multiply moves the result back into helicopter space.
+  orientation = (viewpointRotation * orientation * viewpointInverse) * viewpointRotation;
 
   // Store the quaternion.
   m_impl->m_views[0].orientation[0] = orientation.w;
@@ -1987,6 +1991,7 @@ bool asdp::render::DisplayOpenXR::DisplayOpenXRImpl::OpenXRRenderLayer(XrTime pr
 
     // Convert the orientation to helicopter space by rotating -90 degrees around the x-axis,
     // doing the inverse rotation on the other side.
+    /// @todo Handle the impact of m_viewpointRotation on the view orientation.
     glm::quat quat(m_views[i].pose.orientation.w, m_views[i].pose.orientation.x,
       m_views[i].pose.orientation.y, m_views[i].pose.orientation.z);
     float constexpr angle = glm::radians(-90.0f);
@@ -2925,6 +2930,7 @@ void DisplayXSight::DisplayThread(
     // Empirically, the azimuth is backwards from what we expect, so we negate it.
     // Empirically, the roll and pitch are swapped, so we swap them.
     // Empirically, this order of rotation works.
+    /// @todo Convert this based on m_viewpointRotation and m_viewpointOffset.
     glm::quat rotationX = glm::angleAxis(glm::radians(elevation), glm::vec3(1.0f, 0.0f, 0.0f));
     glm::quat rotationY = glm::angleAxis(glm::radians(roll), glm::vec3(0.0f, 1.0f, 0.0f));
     glm::quat rotationZ = glm::angleAxis(glm::radians(-azimuth), glm::vec3(0.0f, 0.0f, 1.0f));
