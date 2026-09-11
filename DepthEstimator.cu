@@ -1765,10 +1765,6 @@ float DepthEstimator::SpeedTestSingleEstimation(uint16_t width, uint16_t height,
     return -1;
   }
 
-  // Clear any GL error that Glew caused.  Apparently on Non-Windows
-  // platforms, this can cause a spurious error 1280.
-  glGetError();
-
   // Construct a DepthEstimator after making the objects required to construct it.
   std::vector< std::array<std::shared_ptr<CameraRenderInfo>, 2> > cameras;
   DistortionNone* dNone = new DistortionNone();
@@ -2146,10 +2142,6 @@ std::string DepthEstimator::Test()
     if (!ret.empty()) {
       return "Failed to initialize GLEW: " + ret;
     }
-
-    // Clear any GL error that Glew caused.  Apparently on Non-Windows
-    // platforms, this can cause a spurious error 1280.
-    glGetError();
 
     // Put into a block so that we destroy things in here before we destroy the context.
     {

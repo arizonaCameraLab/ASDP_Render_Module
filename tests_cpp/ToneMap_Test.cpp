@@ -72,9 +72,6 @@ int main()
     std::cerr << "Failed to initialize GLEW: " << ret << std::endl;
     return 4;
   }
-  // Clear any GL error that Glew caused.  Apparently on Non-Windows
-  // platforms, this can cause a spurious error 1280.
-  glGetError();
 
   // Generate a sky tone map and use it to make a texture
   asdp::render::ToneMapBlueSky toneMap;

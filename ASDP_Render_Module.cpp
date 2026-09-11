@@ -1644,9 +1644,6 @@ int spin_up(std::shared_ptr<CoreClient> client, int &serialNumber, std::shared_p
       std::cerr << "Failed to initialize GLEW before DepthTexture: " << ret << std::endl;
       return 103;
     }
-    // Clear any GL error that Glew caused.  Apparently on Non-Windows
-    // platforms, this can cause a spurious error 1280.
-    glGetError();
 
     // Determine the range of depths to use for the depth estimater and then construct it.
     std::vector<float> depths(7);

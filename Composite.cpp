@@ -626,10 +626,6 @@ bool CompositeCube::SetupRendering()
     return false;
   }
 
-  // Clear any GL error that Glew caused.  Apparently on Non-Windows
-  // platforms, this can cause a spurious error 1280.
-  glGetError();
-
   try {
     // Construct the shader programs.
     GLuint vertexShaderId = glCreateShader(GL_VERTEX_SHADER);
@@ -936,10 +932,6 @@ bool CompositeCameras::SetupRendering()
     std::cerr << "CompositeCameras::SetupRendering(): Failed to initialize GLEW: " << ret << std::endl;
     return false;
   }
-
-  // Clear any GL error that Glew caused.  Apparently on Non-Windows
-  // platforms, this can cause a spurious error 1280.
-  glGetError();
 
   // Construct a RenderText and RenderHaloedLines object for drawing text annotations.
   try {
@@ -2056,10 +2048,6 @@ CompositeLineRawData::CompositeLineRawData(GLfloat x0, GLfloat y0, GLfloat x1, G
     throw std::runtime_error("CompositeLineRawData::CompositeLineRawData(): Failed to initialize GLEW: " + ret);
   }
 
-  // Clear any GL error that Glew caused.  Apparently on Non-Windows
-  // platforms, this can cause a spurious error 1280.
-  glGetError();
-
   // Create the 1D texture from the RGB values
   glGenTextures(1, &m_texture);
   if (m_texture == 0) {
@@ -2316,10 +2304,6 @@ CompositePackXSightFrame::CompositePackXSightFrame(GLuint inputTexture, int disp
   if (!ret.empty()) {
     throw std::runtime_error("CompositePackXSightFrame::CompositePackXSightFrame(): Failed to initialize GLEW: " + ret);
   }
-
-  // Clear any GL error that Glew caused.  Apparently on Non-Windows
-  // platforms, this can cause a spurious error 1280.
-  glGetError();
 
   // Create the vertex buffer object for the line.
   glGenBuffers(1, &m_vertexBufferObject);

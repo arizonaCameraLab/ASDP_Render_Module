@@ -471,10 +471,6 @@ float MeanStd::SpeedTestSingleCalculation(uint16_t width, uint16_t height)
     return -1;
   }
 
-  // Clear any GL error that Glew caused.  Apparently on Non-Windows
-  // platforms, this can cause a spurious error 1280.
-  glGetError();
-
   // Construct the object.
   DistortionNone* dNone = new DistortionNone();
   std::shared_ptr<Distortion> distortion(dNone);
@@ -541,10 +537,6 @@ std::string MeanStd::Test()
   if (!ret.empty()) {
     return "Could not initialize GLEW: " + ret;
   }
-
-  // Clear any GL error that Glew caused.  Apparently on Non-Windows
-  // platforms, this can cause a spurious error 1280.
-  glGetError();
 
   // Test the constructor and Compute() function.
   {
@@ -657,10 +649,6 @@ std::string MeanStdGroup::Test()
   if (!ret.empty()) {
     return "Could not initialize GLEW: " + ret;
   }
-
-  // Clear any GL error that Glew caused.  Apparently on Non-Windows
-  // platforms, this can cause a spurious error 1280.
-  glGetError();
 
   // Make the display object that we'll use and borrow its context.
   std::shared_ptr<Display> display(new DisplayTexture());

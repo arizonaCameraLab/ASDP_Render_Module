@@ -481,10 +481,6 @@ void DisplayWindow::DisplayThread(std::string windowName,
       return;
     }
 
-    // Clear any GL error that Glew caused.  Apparently on Non-Windows
-    // platforms, this can cause a spurious error 1280.
-    glGetError();
-
     // Release the window's current context in case another Display wants to borrow it.
     glfwMakeContextCurrent(nullptr);
 
@@ -1048,10 +1044,6 @@ DisplayTexture::DisplayTexture(Display* sharedWindow)
     m_status = "Failed to initialize GLEW: " + ret;
     return;
   }
-
-  // Clear any GL error that Glew caused.  Apparently on Non-Windows
-  // platforms, this can cause a spurious error 1280.
-  glGetError();
 
   // Make an sRGB framebuffer so that this will match the behavior for on-screen rendering.
   /// @todo Consider whether this is better for depth estimation or not.
@@ -2675,10 +2667,6 @@ void DisplayXSight::DisplayThread(
       m_status = "Failed to initialize GLEW: " + ret;
       return;
     }
-
-    // Clear any GL error that Glew caused.  Apparently on Non-Windows
-    // platforms, this can cause a spurious error 1280.
-    glGetError();
 
     // Disable SRGB on the frame buffer so our pixel values are not gamma corrected.
     glDisable(GL_FRAMEBUFFER_SRGB);

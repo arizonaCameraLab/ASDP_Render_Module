@@ -34,6 +34,13 @@ namespace asdp {
 #endif
         return reinterpret_cast<char const*>(glewGetErrorString(ret));
       }
+
+      // GLEW causes one or more OpenGL errors upon initialization.  Clear them here.
+      // This became more important with Wayland because it can cause a crash.
+      while (glGetError() != GL_NO_ERROR) {
+        // Do nothing, just clear the error.
+      }
+
       return "";
     }
 

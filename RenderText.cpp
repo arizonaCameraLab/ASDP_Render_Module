@@ -151,9 +151,6 @@ RenderText::Impl::Impl(int windowWidth, int windowHeight)
   if (!ret.empty()) {
     throw std::runtime_error("RenderText::Impl(): Failed to initialize GLEW: " + ret);
   }
-  // Clear any GL error that Glew caused.  Apparently on Non-Windows
-  // platforms, this can cause a spurious error 1280.
-  glGetError();
 
   // Initialize FreeType
   if (FT_Init_FreeType(&m_ft)) {

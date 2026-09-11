@@ -111,9 +111,6 @@ int main()
     std::cerr << "Failed to initialize GLEW: " << ret << std::endl;
     return -1;
   }
-  // Clear any GL error that Glew caused.  Apparently on Non-Windows
-  // platforms, this can cause a spurious error 1280.
-  glGetError();
 
   // Define the vertex data for a screen-aligned square
   float vertices[] = {

@@ -127,10 +127,6 @@ std::string RangeEstimator::Test()
     return "Could not initialize GLEW: " + ret;
   }
 
-  // Clear any GL error that Glew caused.  Apparently on Non-Windows
-  // platforms, this can cause a spurious error 1280.
-  glGetError();
-
   // Make the display object that we'll use and borrow its context.
   std::shared_ptr<Display> display(new DisplayTexture());
   if (!display->BorrowContext()) {
