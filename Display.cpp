@@ -15,6 +15,7 @@
 #include <mutex>
 #include <chrono>
 #include <map>
+#include <algorithm>
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
