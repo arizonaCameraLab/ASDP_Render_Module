@@ -30,6 +30,7 @@ namespace asdp {
         // If it fails with this specific error, then the OpenGL extensions have been loaded.
         if (ret == GLEW_ERROR_NO_GLX_DISPLAY) {
           return "";
+        }
 #endif
         return reinterpret_cast<char const*>(glewGetErrorString(ret));
       }
