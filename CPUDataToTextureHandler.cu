@@ -194,7 +194,7 @@ std::string CPUDataToTextureHandler::SendToGPU()
 
   // Run the kernel to write this subset of the data to the texture.
   // Run it on the same stream so that it will wait for the copy to complete before running.
-  dim3 dimBlock(128, 8); ///< Using a kernel that is wide but not tall because our batch sizes may be small
+  dim3 dimBlock(256, 4); ///< Using a kernel that is wide but not tall because our batch sizes may be small
   dim3 dimGrid((m_width + dimBlock.x - 1) / dimBlock.x, (linesToSend + dimBlock.y - 1) / dimBlock.y);
   // If we have gain and offset, use the kernel that applies them.
   if (m_dataPtr->gpuNUCGainPtr && m_dataPtr->gpuNUCOffsetPtr) {
