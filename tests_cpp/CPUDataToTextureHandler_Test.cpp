@@ -4,9 +4,9 @@
 
 #include <ASDP_Core_API.h>
 #include <ASDP_ImageSource.h>
-#include <CPUDataToTextureHandler.h>
 #include <GL/glew.h>
 #include "glewInitWrapper.h"
+#include <CPUDataToTextureHandler.h>
 #include <GLFW/glfw3.h>
 #include <Display.h>
 #include <string.h>

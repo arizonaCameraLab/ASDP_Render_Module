@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2024: Arizona Board of Regents on Behalf of the University of Arizona
+ * Copyright (C) 2024-2026: Arizona Board of Regents on Behalf of the University of Arizona
  */
 
  /**
@@ -11,7 +11,6 @@
   */
 
 #pragma once
-#include <GL/glew.h>
 #include <cuda.h>
 #include <cuda_runtime.h>
 #include <string>

@@ -2,6 +2,8 @@
  * Copyright (C) 2024-2026: Arizona Board of Regents on Behalf of the University of Arizona
  */
 
+#include <GL/glew.h>
+
 #ifdef _WIN32
 #include <winsock2.h>
 #include <iphlpapi.h>
@@ -20,13 +22,11 @@
 #include <vector>
 #include <string>
 #include <algorithm>
-
-#include <ASDP_SpinFreeQueue.hpp>
-#include <CPUDataToTextureHandler.h>
-
 #include "mainwindow.h"
 #include "ui_mainwindow.h"  // Include the generated header
 
+#include <ASDP_SpinFreeQueue.hpp>
+#include <CPUDataToTextureHandler.h>
 
 // Define the version number
 const QString VERSION_NUMBER = "1.9.0";
