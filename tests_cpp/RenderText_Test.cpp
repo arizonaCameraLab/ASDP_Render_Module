@@ -6,38 +6,24 @@
 #include <vector>
 #include <chrono>
 #include <memory>
-#include <glad/gl.h>
+#include <WindowCreation.h>
 #include <RenderText.h>
-#include <GLFW/glfw3.h>
 
 int main()
 {
   int width = 640;
   int height = 640;
 
-  // Initialize the library
-  if (!glfwInit()) {
-    std::cerr << "Failed to initialize GLFW\n";
-    return -1;
-  }
-
   // Create a windowed mode window and its OpenGL context
-  GLFWwindow* window = glfwCreateWindow(width, height, "RenderText_Test", NULL, NULL);
-  if (!window) {
-    std::cerr << "Failed to create GLFW window\n";
-    glfwTerminate();
+  std::shared_ptr<GLFWwindow> window;
+  std::string error = asdp::render::CreateWindowOrContext(window, width, height, "RenderText_Test");
+  if (!error.empty()) {
+    std::cerr << "Failed to create GLFW window: " << error << std::endl;
     return -1;
   }
 
   // Make the window's context current
-  glfwMakeContextCurrent(window);
-
-  // Initialize GLAD in our context. It must be initialized exactly once per context.
-  if (!gladLoadGL(glfwGetProcAddress)) {
-    std::cerr << "Failed to initialize GLAD" << std::endl;
-    glfwTerminate();
-    return -1;
-  }
+  glfwMakeContextCurrent(window.get());
 
   try {
     // Create a RenderText object.
@@ -50,7 +36,7 @@ int main()
     std::cout << "There should be a gray rectangle behind the text so that it is visible." << std::endl;
     std::cout << "There should be a second instance of the word 'Translucent' above it, half transparent." << std::endl;
     std::cout << "Close the window to exit." << std::endl;
-    while (!glfwWindowShouldClose(window)) {
+    while (!glfwWindowShouldClose(window.get())) {
 
       // Render here
       glClearColor(1.0f, 1.0f, 0.0f, 1.0f);
@@ -60,14 +46,14 @@ int main()
       renderText.Draw("Translucent", 0.0f, 0.5f, 1.0f, 1.0f, 1.0f, 0.5f);
 
       // Swap front and back buffers
-      glfwSwapBuffers(window);
+      glfwSwapBuffers(window.get());
 
       // Poll for and process events
       glfwPollEvents();
 
       // Handle window resize, including adjusting the viewport and updating RenderText.
       int newWidth, newHeight;
-      glfwGetFramebufferSize(window, &newWidth, &newHeight);
+      glfwGetFramebufferSize(window.get(), &newWidth, &newHeight);
       if (newWidth != width || newHeight != height) {
         width = newWidth;
         height = newHeight;
@@ -77,11 +63,10 @@ int main()
     }
   } catch (const std::exception& e) {
     std::cerr << "Failed to run the tests: " << e.what() << std::endl;
-    glfwTerminate();
     return -1;
   }
 
   // Clean up resources and exit
-  glfwTerminate();
+  window.reset();
   return 0;
 }

@@ -7,12 +7,11 @@
 #include <chrono>
 #include <cstdint>
 #include <memory>
-#include <glad/gl.h>
+#include <WindowCreation.h>
 #include <ToneMap.h>
 #include <Composite.h>
 #include <RangeEstimator.h>
 #include <ASDP_Core_API.h>
-#include <GLFW/glfw3.h>
 
 /// @brief Make an image whose brightness varies from the top of the image to the bottom.
 /// @details The image will be a gradient from the minimum value at the bottom to the
@@ -74,29 +73,16 @@ int main()
   std::vector<asdp::render::ViewRenderInfo> views;
   views.push_back(viewRenderInfo);
 
-  // Initialize the library
-  if (!glfwInit()) {
-    std::cerr << "Failed to initialize GLFW\n";
-    return -1;
-  }
-
   // Create a windowed mode window and its OpenGL context
-  GLFWwindow* window = glfwCreateWindow(windowSize, windowSize, "CompositeCameras_Test", NULL, NULL);
-  if (!window) {
-    std::cerr << "Failed to create GLFW window\n";
-    glfwTerminate();
-    return -1;
+  std::shared_ptr<GLFWwindow> window;
+  std::string ret = asdp::render::CreateWindowOrContext(window, windowSize, windowSize, "CompositeCameras_Test");
+  if (!ret.empty()) {
+    std::cerr << "Failed to create window: " << ret << std::endl;
+    return 2;
   }
 
   // Make the window's context current
-  glfwMakeContextCurrent(window);
-
-  // Initialize GLAD in our context. It must be initialized exactly once per context.
-  if (!gladLoadGL(glfwGetProcAddress)) {
-    std::cerr << "Failed to initialize GLAD" << std::endl;
-    glfwTerminate();
-    return 4;
-  }
+  glfwMakeContextCurrent(window.get());
 
   // Construct the cameras to render.
   // Construct the image queues to render, one per camera.
@@ -190,7 +176,7 @@ int main()
   auto start = std::chrono::steady_clock::now();
   bool rangeZoomed = false;
   bool spacePressed = false;
-  while (!glfwWindowShouldClose(window)) {
+  while (!glfwWindowShouldClose(window.get())) {
 
     // Set the range to be the whole color range or only the quarter of it above the middle.
     if (rangeZoomed) {
@@ -203,14 +189,14 @@ int main()
     composite.Render(asdp::Time(), views);
 
     // Swap front and back buffers
-    glfwSwapBuffers(window);
+    glfwSwapBuffers(window.get());
 
     // Poll for and process events
     glfwPollEvents();
 
     // When the space key is pressed, toggle between a range that covers the whole color range and one that
     // covers only the quarter of it above the middle.
-    if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS) {
+    if (glfwGetKey(window.get(), GLFW_KEY_SPACE) == GLFW_PRESS) {
       if (!spacePressed) {
         rangeZoomed = !rangeZoomed;
         std::cout << "Range " << (rangeZoomed ? "" : "not ") << "zoomed" << std::endl;
@@ -222,6 +208,6 @@ int main()
   }
 
   // Clean up resources and exit
-  glfwTerminate();
+  window.reset();
   return 0;
 }

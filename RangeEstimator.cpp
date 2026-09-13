@@ -10,8 +10,7 @@
  * @date January 29, 2025.
  */
 
-#include <glad/gl.h>
-#include <GLFW/glfw3.h>
+#include <WindowCreation.h>
 #include <Display.h>
 #include <ImageStatistics.h>
 
@@ -110,20 +109,13 @@ std::string RangeEstimator::Test()
   // Test the standard deviation range estimator.
 
   // Create a window and OpenGL context.
-  if (!glfwInit()) {
-    return "Could not initialize GLFW";
-  }
-  glfwWindowHint(GLFW_VISIBLE, false);
-  std::shared_ptr<GLFWwindow> window(glfwCreateWindow(640, 480, "RangeEstimator Test", NULL, NULL), glfwDestroyWindow);
-  if (!window) {
-    return "Could not create GLFW window";
+  std::shared_ptr<GLFWwindow> window;
+  std::string ret = asdp::render::CreateWindowOrContext(window, 640, 480, "RangeEstimator Test",
+    nullptr, nullptr, -1, true);
+  if (!ret.empty()) {
+    return "Failed to create window or context: " + ret;
   }
   glfwMakeContextCurrent(window.get());
-
-  // Initialize GLAD in our context. It must be initialized exactly once per context.
-  if (!gladLoadGL(glfwGetProcAddress)) {
-    return "Could not initialize GLAD";
-  }
 
   // Make the display object that we'll use and borrow its context.
   std::shared_ptr<Display> display(new DisplayTexture());

@@ -206,6 +206,7 @@ set (Render_Module_HEADERS
   RenderText.h
   RenderHaloedLines.h
   Analysis.h
+  WindowCreation.h
 )
 set (Render_Module_SOURCES
   CameraRenderInfo.cpp
@@ -225,6 +226,7 @@ set (Render_Module_SOURCES
   RenderText.cpp
   RenderHaloedLines.cpp
   Analysis.cpp
+  WindowCreation.cpp
 )
 add_library(Render_Module STATIC ${Render_Module_SOURCES} ${Render_Module_HEADERS})
 target_include_directories(Render_Module PUBLIC

@@ -7,12 +7,11 @@
 #include <chrono>
 #include <cstdint>
 #include <memory>
-#include <glad/gl.h>
+#include <WindowCreation.h>
 #include <ToneMap.h>
 #include <Composite.h>
 #include <RangeEstimator.h>
 #include <ASDP_Core_API.h>
-#include <GLFW/glfw3.h>
 
 /// @brief Make an image that is mostly black but has vertical lines that vary from dark at
 /// the top to bright at the bottom.  The lines will be red, green, blue, and white and they
@@ -79,29 +78,16 @@ int main()
   int width = 2 * windowWidth;
   int height = 1024;
 
-  // Initialize the library
-  if (!glfwInit()) {
-    std::cerr << "Failed to initialize GLFW\n";
-    return -1;
-  }
-
   // Create a windowed mode window and its OpenGL context
-  GLFWwindow* window = glfwCreateWindow(windowWidth, height, "CompositePackXSightFrame_Test", NULL, NULL);
-  if (!window) {
-    std::cerr << "Failed to create GLFW window\n";
-    glfwTerminate();
+  std::shared_ptr<GLFWwindow> window;
+  std::string ret = asdp::render::CreateWindowOrContext(window, windowWidth, height, "CompositePackXSightFrame_Test");
+  if (!ret.empty()) {
+    std::cerr << "Failed to create window: " << ret << std::endl;
     return -1;
   }
 
   // Make the window's context current
-  glfwMakeContextCurrent(window);
-
-  // Initialize GLAD in our context. It must be initialized exactly once per context.
-  if (!gladLoadGL(glfwGetProcAddress)) {
-    std::cerr << "Failed to initialize GLAD" << std::endl;
-    glfwTerminate();
-    return 4;
-  }
+  glfwMakeContextCurrent(window.get());
 
   // Create the texture to render to.
   GLuint texture = MakeTexture(width, height, 0, 65535);
@@ -116,7 +102,7 @@ int main()
   std::cout << "" << std::endl;
   std::cout << "Close the window to exit." << std::endl;
   auto start = std::chrono::steady_clock::now();
-  while (!glfwWindowShouldClose(window)) {
+  while (!glfwWindowShouldClose(window.get())) {
 
     // Render here
     std::vector<asdp::render::ViewRenderInfo> views;
@@ -127,13 +113,13 @@ int main()
     composite.Render(asdp::Time(), views);
 
     // Swap front and back buffers
-    glfwSwapBuffers(window);
+    glfwSwapBuffers(window.get());
 
     // Poll for and process events
     glfwPollEvents();
   }
 
   // Clean up resources and exit
-  glfwTerminate();
+  window.reset();
   return 0;
 }

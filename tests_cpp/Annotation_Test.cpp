@@ -7,12 +7,11 @@
 #include <chrono>
 #include <cstdint>
 #include <memory>
-#include <glad/gl.h>
+#include <WindowCreation.h>
 #include <ToneMap.h>
 #include <Composite.h>
 #include <RangeEstimator.h>
 #include <ASDP_Core_API.h>
-#include <GLFW/glfw3.h>
 #include <glm/glm.hpp>
 
 using namespace asdp::render;
@@ -102,28 +101,16 @@ int main()
   std::vector<asdp::render::ViewRenderInfo> views;
   views.push_back(viewRenderInfo);
 
-  // Initialize the library
-  if (!glfwInit()) {
-    std::cerr << "Failed to initialize GLFW\n";
-    return -1;
-  }
-
   // Create a windowed mode window and its OpenGL context
-  GLFWwindow* window = glfwCreateWindow(windowSize, windowSize, "Annotation_Test", NULL, NULL);
-  if (!window) {
-    std::cerr << "Failed to create GLFW window\n";
-    glfwTerminate();
+  std::shared_ptr<GLFWwindow> window;
+  std::string ret = asdp::render::CreateWindowOrContext(window,windowSize, windowSize, "Annotation_Test");
+  if (!ret.empty()) {
+    std::cerr << "Failed to create window: " << ret << std::endl;
     return -1;
   }
 
   // Make the window's context current
-  glfwMakeContextCurrent(window);
-
-  // Load OpenGL functions using GLAD
-  if (!gladLoadGL(glfwGetProcAddress)) {
-    std::cerr << "Failed to initialize GLAD" << std::endl;
-    return -1;
-  }
+  glfwMakeContextCurrent(window.get());
 
   // Make a camera to show the annotations on.
   std::vector< std::shared_ptr<asdp::render::CameraRenderInfo> > cameras;
@@ -163,7 +150,7 @@ int main()
   std::cout << "" << std::endl;
   std::cout << "Close the window to exit." << std::endl;
   auto start = std::chrono::steady_clock::now();
-  while (!glfwWindowShouldClose(window)) {
+  while (!glfwWindowShouldClose(window.get())) {
 
     // Slowly rotate the viewpoint over time by changing the orientation Y-axis value.
     // Store the orientation in a GL quaternion (W,X,Y,Z) format.
@@ -177,13 +164,13 @@ int main()
     composite.Render(asdp::Time(), views);
 
     // Swap front and back buffers
-    glfwSwapBuffers(window);
+    glfwSwapBuffers(window.get());
 
     // Poll for and process events
     glfwPollEvents();
   }
 
   // Clean up resources and exit
-  glfwTerminate();
+  window.reset();
   return 0;
 }

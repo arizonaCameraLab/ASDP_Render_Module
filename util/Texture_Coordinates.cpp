@@ -1,5 +1,4 @@
-#include <glad/gl.h>
-#include <GLFW/glfw3.h>
+#include <WindowCreation.h>
 #include <iostream>
 
 // Function to create a 4x4 checkerboard texture
@@ -86,28 +85,14 @@ GLuint createShaderProgram(const char* vertexSource, const char* fragmentSource)
 
 int main()
 {
-  // Initialize GLFW
-  if (!glfwInit())
-  {
-    std::cerr << "Failed to initialize GLFW" << std::endl;
-    return -1;
-  }
-
   // Create a GLFW window
-  GLFWwindow* window = glfwCreateWindow(800, 600, "Checkerboard Texture", nullptr, nullptr);
-  if (!window)
-  {
-    std::cerr << "Failed to create GLFW window" << std::endl;
-    glfwTerminate();
+  std::shared_ptr<GLFWwindow> window;
+  std::string error = asdp::render::CreateWindowOrContext(window, 800, 600, "Checkerboard Texture");
+  if (!error.empty()) {
+    std::cerr << "Failed to create GLFW window: " << error << std::endl;
     return -1;
   }
-  glfwMakeContextCurrent(window);
-
-  // Initialize GLAD
-  if (!gladLoadGL((GLADloadfunc)glfwGetProcAddress)) {
-    std::cerr << "Failed to initialize GLAD" << std::endl;
-    return -1;
-  }
+  glfwMakeContextCurrent(window.get());
 
   // Define the vertex data for a screen-aligned square
   float vertices[] = {
@@ -172,7 +157,7 @@ int main()
   GLuint shaderProgram = createShaderProgram(vertexShaderSource, fragmentShaderSource);
 
   // Main render loop
-  while (!glfwWindowShouldClose(window))
+  while (!glfwWindowShouldClose(window.get()))
   {
     // Clear the screen
     glClear(GL_COLOR_BUFFER_BIT);
@@ -190,7 +175,7 @@ int main()
     glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
 
     // Swap buffers and poll events
-    glfwSwapBuffers(window);
+    glfwSwapBuffers(window.get());
     glfwPollEvents();
   }
 
@@ -201,8 +186,6 @@ int main()
   glDeleteProgram(shaderProgram);
   glDeleteTextures(1, &checkerboardTexture);
 
-  glfwDestroyWindow(window);
-  glfwTerminate();
-
+  window.reset();
   return 0;
 }

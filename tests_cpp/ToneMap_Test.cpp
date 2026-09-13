@@ -4,8 +4,7 @@
 
 #include <iostream>
 #include <vector>
-#include <glad/gl.h>
-#include <GLFW/glfw3.h>
+#include <WindowCreation.h>
 #include <ToneMap.h>
 
 // Vertex data for a full-screen quad with 3 spatial coordinates and 2 texture coordinates per vertex
@@ -48,29 +47,16 @@ int main()
   int width = 1280;
   int height = 1024;
 
-  // Initialize the library
-  if (!glfwInit()) {
-    std::cerr << "Failed to initialize GLFW\n";
-    return -1;
-  }
-
   // Create a windowed mode window and its OpenGL context
-  GLFWwindow* window = glfwCreateWindow(windowSize, windowSize, "ToneMap_Test", NULL, NULL);
-  if (!window) {
-    std::cerr << "Failed to create main window\n";
-    glfwTerminate();
+  std::shared_ptr<GLFWwindow> window;
+  std::string ret = asdp::render::CreateWindowOrContext(window, windowSize, windowSize, "ToneMap_Test");
+  if (!ret.empty()) {
+    std::cerr << "Failed to create window: " << ret << std::endl;
     return -1;
   }
 
   // Make the window's context current
-  glfwMakeContextCurrent(window);
-
-  // Initialize GLAD in our context. It must be initialized exactly once per context.
-  if (!gladLoadGL(glfwGetProcAddress)) {
-    std::cerr << "Failed to initialize GLAD" << std::endl;
-    glfwTerminate();
-    return 4;
-  }
+  glfwMakeContextCurrent(window.get());
 
   // Generate a sky tone map and use it to make a texture
   asdp::render::ToneMapBlueSky toneMap;
@@ -137,7 +123,7 @@ int main()
             << "black-red-goldyellow-white on the right half." << std::endl;
   std::cout << "" << std::endl;
   std::cout << "Close the window to exit." << std::endl;
-  while (!glfwWindowShouldClose(window)) {
+  while (!glfwWindowShouldClose(window.get())) {
 
     // Draw a single rectangle that fills the window with the texture.
     glViewport(0, 0, windowSize, windowSize);
@@ -153,13 +139,13 @@ int main()
     glBindTexture(GL_TEXTURE_1D, 0);
 
     // Swap front and back buffers
-    glfwSwapBuffers(window);
+    glfwSwapBuffers(window.get());
 
     // Poll for and process events
     glfwPollEvents();
   }
 
   // Clean up resources and exit
-  glfwTerminate();
+  window.reset();
   return 0;
 }

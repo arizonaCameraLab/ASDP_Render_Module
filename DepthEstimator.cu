@@ -8,8 +8,7 @@
 #include <map>
 #include <random>
 #include <cstddef>
-#include <glad/gl.h>
-#include <GLFW/glfw3.h>
+#include <WindowCreation.h>
 #include <ToneMap.h>
 #include <DepthEstimator.h>
 #include <Composite.h>
@@ -1748,20 +1747,14 @@ void DepthEstimator::BuildGradientImages(DepthEstimator& de, uint16_t width, uin
 float DepthEstimator::SpeedTestSingleEstimation(uint16_t width, uint16_t height, uint16_t nx, uint16_t ny)
 {
   // Create a window and OpenGL context.
-  if (!glfwInit()) {
-    return -1;
-  }
-  glfwWindowHint(GLFW_VISIBLE, false);
-  std::shared_ptr<GLFWwindow> window(glfwCreateWindow(640, 480, "DepthEstimator Test", NULL, NULL), glfwDestroyWindow);
-  if (!window) {
+  std::shared_ptr<GLFWwindow> window;
+  std::string ret = asdp::render::CreateWindowOrContext(window, 640, 480, "DepthEstimator Test",
+    nullptr, nullptr, -1, true);
+  if (!ret.empty()) {
+    std::cerr << "Failed to create window or context: " << ret << std::endl;
     return -1;
   }
   glfwMakeContextCurrent(window.get());
-
-  // Initialize GLAD in our context. It must be initialized exactly once per context.
-  if (!gladLoadGL(glfwGetProcAddress)) {
-    return -1;
-  }
 
   // Construct a DepthEstimator after making the objects required to construct it.
   std::vector< std::array<std::shared_ptr<CameraRenderInfo>, 2> > cameras;
@@ -1827,20 +1820,13 @@ static bool VecClose(const Vec3& a, const Vec3& b, float eps = 1e-4f) {
 std::string DepthEstimator::Test()
 {
   // Create a window and OpenGL context.
-  if (!glfwInit()) {
-    return "Failed to initialize GLFW";
-  }
-  glfwWindowHint(GLFW_VISIBLE, false);
-  std::shared_ptr<GLFWwindow> window(glfwCreateWindow(640, 480, "DepthEstimator Test", NULL, NULL), glfwDestroyWindow);
-  if (!window) {
-    return "Failed to create GLFW window";
+  std::shared_ptr<GLFWwindow> window;
+  std::string ret = asdp::render::CreateWindowOrContext(window, 640, 480, "DepthEstimator Test",
+    nullptr, nullptr, -1, true);
+  if (!ret.empty()) {
+    return "Failed to create window or context: " + ret;
   }
   glfwMakeContextCurrent(window.get());
-
-  // Initialize GLAD in our context. It must be initialized exactly once per context.
-  if (!gladLoadGL(glfwGetProcAddress)) {
-    return "Failed to initialize GLAD";
-  }
 
   // Test Vec3 and Quat classes
   {
