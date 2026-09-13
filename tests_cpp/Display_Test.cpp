@@ -6,6 +6,7 @@
 #include <vector>
 #include <memory>
 #include <string>
+#include <algorithm>
 #include <Composite.h>
 #include <Display.h>
 #include <ASDP_Core_API.h>
