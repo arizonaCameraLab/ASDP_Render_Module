@@ -183,8 +183,9 @@ int main(int argc, char** argv)
       // Loop until the user closes all displays.
       std::cout << "You should see a square of varying-brightness green squares in two windows." << std::endl;
       std::cout << "You should be able to move and resize the windows, with the display updating." << std::endl;
-      std::cout << "You should be able to rotate the views by pressing the arrow keys." << std::endl;
-      std::cout << "Close the windows to exit." << std::endl;
+      std::cout << "You should be able to rotate the views by pressing the arrow keys" << std::endl;
+      std::cout << "or rubber-band dragging with the mouse." << std::endl;
+      std::cout << "Close all windows (ESC, q, or window close button) to exit." << std::endl;
     }
 
     // Done with the composite object -- let the display objects take over destroying it.
@@ -192,21 +193,25 @@ int main(int argc, char** argv)
 
     bool done = false;
     while (!done) {
-      std::this_thread::sleep_for(std::chrono::milliseconds(100));
+      // Very brief sleep to avoid busy-waiting but also to catch joystick and mouse events quickly.
+      std::this_thread::sleep_for(std::chrono::milliseconds(1));
+
+      // Poll for events on all of the Displays
+      for (auto& display : displays) {
+        display->PollEvents();
+      }
+
+      // Remove any Displays that are broken (have a non-empty status string) from the vector.
+      displays.erase(std::remove_if(displays.begin(), displays.end(),
+        [](const std::shared_ptr<asdp::render::Display>& display) {
+          return display->GetStatus() != "";
+        }), displays.end());
 
       // If all of our Displays have been closed (or are broken), then we're done.
-      bool allClosed = true;
-      for (auto& display : displays) {
-        if (display->GetStatus() == "") {
-          allClosed = false;
-          break;
-        }
-      }
-      if (allClosed) {
+      if (displays.empty()) {
         done = true;
       }
     }
-    std::cout << "Final display status: " << displays[0]->GetStatus() << std::endl;
   }
 
   // Done

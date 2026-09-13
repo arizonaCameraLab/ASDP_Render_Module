@@ -106,6 +106,12 @@ namespace asdp {
       /// @brief Destructor, virtual so that derived classes can have their destructors called from pointers.
       virtual ~Display();
 
+      /// @brief Poll for events, such as window close or key presses.
+      /// @details This function must be called regularly by the main thread to ensure
+      /// that events are processed.  It is expected to be called by the main thread,
+      /// as some windowing libraries require that events be polled from the main thread.
+      virtual void PollEvents();
+
       /// @brief Cause the object to shut down any threads and release any resources.
       /// @details The base-class function will set m_done and join the display thread and then
       /// release all of its internal resources (including shared pointers).
@@ -230,6 +236,8 @@ protected:
       /// is to be the base object to be shared.
       DisplayTexture(Display* sharedWindow = nullptr);
 
+      void PollEvents() override;
+
       ~DisplayTexture();
 
     private:
@@ -293,6 +301,7 @@ protected:
         RenderTimingInfo* timingInfo = nullptr, bool replaying = false);
 
       void SetNowPlaying(bool nowPlaying) override;
+      void PollEvents() override;
 
       ~DisplayWindow();
 
@@ -324,6 +333,9 @@ protected:
 
       /// @brief Helpfer function to handle mouse input.
       void HandleMouse();
+
+      /// @brief Time that we last read from the joystick..
+      std::chrono::steady_clock::time_point m_lastJoystickCheckReadTime;
 
       /// @brief Helper function to clamp the viewing orientation to be within the expected visible range.
       /// @details This function is called by the display thread to ensure that the view orientation is
@@ -459,6 +471,7 @@ protected:
       );
 
       void SetNowPlaying(bool nowPlaying) override;
+      void PollEvents() override;
 
       ~DisplayXSight();
 

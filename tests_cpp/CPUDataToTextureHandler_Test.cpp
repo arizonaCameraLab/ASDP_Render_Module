@@ -1,12 +1,11 @@
 /*
- * Copyright (C) 2024: Arizona Board of Regents on Behalf of the University of Arizona
+ * Copyright (C) 2024-2026: Arizona Board of Regents on Behalf of the University of Arizona
  */
 
 #include <ASDP_Core_API.h>
 #include <ASDP_ImageSource.h>
 #include <WindowCreation.h>
 #include <CPUDataToTextureHandler.h>
-#include <Display.h>
 #include <string.h>
 #include <thread>
 #include <iostream>

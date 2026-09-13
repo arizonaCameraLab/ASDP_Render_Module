@@ -48,7 +48,8 @@ int main()
     std::cout << "Close the window using the keyboard shortcut to exit." << std::endl;
     auto start = std::chrono::steady_clock::now();
     while (window.GetStatus() == "") {
-      std::this_thread::sleep_for(std::chrono::milliseconds(100));
+      std::this_thread::sleep_for(std::chrono::milliseconds(1));
+      window.PollEvents();
     }
   }
 

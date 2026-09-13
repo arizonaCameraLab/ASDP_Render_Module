@@ -2915,15 +2915,24 @@ int main(int argc, char** argv)
         replayDone = false;
       }
 
-      // If all of our Displays have been closed (or are broken), then we're done.
-      bool allClosed = true;
+      // Poll all of our displays.
       for (auto& display : displays) {
-        if (display->GetStatus() == "") {
-          allClosed = false;
-          break;
+        display->PollEvents();
+      }
+
+      // If a display has been closed (GetStatus is not empty), remove it from the list of displays.
+      for (auto it = displays.begin(); it != displays.end();) {
+        if ((*it)->GetStatus() != "") {
+          std::cout << "Display closed: " << (*it)->GetStatus() << std::endl;
+          it = displays.erase(it);
+        } else {
+          ++it;
         }
       }
-      if (allClosed) {
+
+      // If all of our Displays have been closed (or are broken), then we're done.
+      if (displays.empty()) {
+        std::cout << "All displays closed, exiting." << std::endl;
         done = true;
       }
 

@@ -89,6 +89,13 @@ Display::~Display()
   m_impl.reset();
 }
 
+void Display::PollEvents()
+{
+  // This function is expected to be called by the main thread, as some windowing libraries
+  // require that events be polled from the main thread.
+  glfwPollEvents();
+}
+
 void Display::UpdateComposite(std::shared_ptr<Composite> composite)
 {
   // Update these pointers atomically.
@@ -196,8 +203,9 @@ public:
   /// Horizontal field of view in degrees.
   float m_horizontalFOVDegrees {90.0f};
 
-  /// Views to be rendered.
+  /// Views to be rendered. For a DisplayWindow, there will always be one view.
   std::vector<asdp::render::ViewRenderInfo> m_views;
+  std::mutex m_viewsMutex;
 
   /// Angles of rotation in degrees based on keyboard and/or joystick input.
   /// rotation is around the original Z axis, then the original X axis.
@@ -305,6 +313,51 @@ DisplayWindow::DisplayWindow(std::string windowName, std::shared_ptr<Composite> 
   view.viewpoint = m_viewpointOffset;
   m_impl->m_views.push_back(view);
 
+  // Create a windowed mode window and its OpenGL context.
+  // We must make the OpenGL context of the window we want to share current on this thread
+  // if we are sharing it by borrowing it and then returning it once the window is open because
+  // Windows requires it to be current.
+  GLFWwindow* windowToShare = nullptr;
+  if (sharedWindow) {
+    windowToShare = sharedWindow->m_impl->m_window.get();
+    if (!sharedWindow->BorrowContext()) {
+      m_status = "Failed to borrow context from shared window";
+      return;
+    }
+  }
+  if (!fullScreen) { desiredDisplay = -1; }  // Ignore the desired display if not full-screen.
+  std::string ret = CreateWindowOrContext(Display::m_impl->m_window, desiredWidth, desiredHeight,
+    windowName, windowToShare, desiredDisplay, hidden);
+  if (sharedWindow) {
+    if (!sharedWindow->ReturnContext()) {
+      m_status = "Failed to return context to shared window";
+      return;
+    }
+  }
+  if (!ret.empty()) {
+    m_status = ret;
+    return;
+  }
+
+  // Open the joystick if there is one asked for and there is one present.
+  // We currently only support GLFW-based joysticks, which are specified by the string
+  // "GLFW::#".  The # is the number of the joystick to open, starting with 0.  GLFW
+  // joysticks are alwasy open, so we just need to record which one to use if it is
+  // present.
+  if (!joystick.empty() && (joystick.substr(0, 6) == "GLFW::")) {
+    int joyNum = std::stoi(joystick.substr(6));
+    if (glfwJoystickPresent(joyNum)) {
+      m_impl->m_glfwJoystickIndex = joyNum;
+      // See if we should flip the Y-axis value.
+      const char* joystickName = glfwGetJoystickName(joyNum);
+      if (std::find(m_impl->m_flipYJoysticks.begin(), m_impl->m_flipYJoysticks.end(),
+        glfwGetJoystickName(joyNum)) != m_impl->m_flipYJoysticks.end()) {
+        m_impl->m_joystickScaleY = -1.0f;
+      }
+    }
+  }
+  m_lastJoystickCheckReadTime = std::chrono::steady_clock::now();
+
   // Start the rendering thread.
   m_displayThread = std::thread(&DisplayWindow::DisplayThread, this, windowName,
     fps, renderAheadMicroseconds,
@@ -314,7 +367,7 @@ DisplayWindow::DisplayWindow(std::string windowName, std::shared_ptr<Composite> 
   // Wait until either the context is ready or there has been a failure so that the
   // constructor does not return before the rendering thread is ready.
   while (!Display::m_impl->m_contextAvailable && (m_status == "")) {
-    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
   }
 }
 
@@ -323,6 +376,136 @@ DisplayWindow::~DisplayWindow()
   // Make sure we're done with our rendering state and then clean up.
   Quit();
   m_impl.reset();
+}
+
+void DisplayWindow::PollEvents()
+{
+  // Process any GLFW events via the base class function.
+  Display::PollEvents();
+
+  // Quit when our window closes.
+  if (glfwWindowShouldClose(Display::m_impl->m_window.get())) {
+    std::atomic_store(&m_composite, std::shared_ptr<Composite>());
+    m_status = "Done";
+    return;
+  }
+
+  // Process keyboard/mouse/joystick input events and update the viewpoint
+
+  //======================================
+  // Added by Sang Yoon to add key/joystick mappings for closing windows (Q or ESCAPE key on keyboard),
+  // resetting viewer's orientation (R key on keyboard or A key on Xbox controller),
+  // and pausing/resuming replaying (Left or Right trigger button on Xbox controller)
+
+  // Adding key mappings for closing windows
+  if (glfwGetKey(Display::m_impl->m_window.get(), GLFW_KEY_Q) == GLFW_PRESS
+    || glfwGetKey(Display::m_impl->m_window.get(), GLFW_KEY_ESCAPE) == GLFW_PRESS) {
+    std::atomic_store(&m_composite, std::shared_ptr<Composite>());
+    m_status = "Done";
+    return;
+  }
+
+  // Adding key mapping for resetting viewer orientation
+  if (glfwGetKey(Display::m_impl->m_window.get(), GLFW_KEY_R) == GLFW_PRESS) {
+    m_impl->m_rotationXDegrees = 0.0f;
+    m_impl->m_rotationZDegrees = 0.0f;
+  }
+
+  if (m_impl->m_glfwJoystickIndex >= 0) {
+    // Adding joystick button mapping for resetting viewer's orientation
+    int btnCount;
+    const unsigned char* btns = glfwGetJoystickButtons(m_impl->m_glfwJoystickIndex, &btnCount);
+    if (btnCount > 0) {
+      if (btns[0] == GLFW_PRESS) { // 0: A button, 1: B button, 2: X button, 3: Y button for Xbox Controller
+        m_impl->m_rotationXDegrees = 0.0f;
+        m_impl->m_rotationZDegrees = 0.0f;
+      }
+    }
+
+    // Adding joystick triggers mapping for pausing/resuming replaying
+    int axisCount;
+    const float* axes = glfwGetJoystickAxes(m_impl->m_glfwJoystickIndex, &axisCount);
+    bool triggerPressed = false;
+    float left_trigger = -1.0;
+    float right_trigger = -1.0;
+
+    if (axisCount >= 6) {
+#ifdef WIN32
+      left_trigger = axes[4];
+      right_trigger = axes[5];
+#else
+      // In Linux, the index number for the left trigger is different from that in Windows.
+      left_trigger = axes[2];
+      right_trigger = axes[5];
+#endif
+    }
+#ifdef WIN32
+    else if (axisCount >= 5) {
+      left_trigger = axes[4];
+#else
+    else if (axisCount >= 3) {
+      left_trigger = axes[2];
+#endif
+    }
+    if (left_trigger == 1.0 || right_trigger == 1.0)
+      triggerPressed = true;
+    if (triggerPressed && !m_impl->m_triggerPressed) {
+      if (m_eventHandlers && m_eventHandlers->ChangePlayPause) {
+        m_eventHandlers->ChangePlayPause(!m_nowPlaying, m_userData);
+      }
+    }
+    m_impl->m_triggerPressed = triggerPressed;
+    }
+  //======================================
+
+  HandleKeyboard();
+  HandleMouse();
+  if (m_impl->m_glfwJoystickIndex >= 0) {
+    auto now = std::chrono::steady_clock::now();
+    std::chrono::duration<double> elapsed = now - m_lastJoystickCheckReadTime;
+    m_lastJoystickCheckReadTime = now;
+
+    int axisCount;
+    const float* axes = glfwGetJoystickAxes(m_impl->m_glfwJoystickIndex, &axisCount);
+    if (axisCount >= 2) {
+      if (fabs(axes[0]) > 0.2) {
+        m_impl->m_rotationZDegrees -= 90.0f * static_cast<float>(elapsed.count()) * axes[0];
+      }
+      if (fabs(axes[1]) > 0.2) {
+        m_impl->m_rotationXDegrees -= 90.0f * static_cast<float>(elapsed.count()) * axes[1] * m_impl->m_joystickScaleY;
+      }
+
+      //======================================
+      // Added by Sang Yoon to add the right joystick mappings for viewer's orientation change
+#ifdef WIN32
+      if (axisCount >= 4) {
+        float x_axis = axes[2];
+        float y_axis = axes[3];
+#else
+        // In Linux, the index numbers for the right joystick are different from those in Windows.
+      if (axisCount >= 5) {
+        float x_axis = axes[3];
+        float y_axis = axes[4];
+#endif
+        if (fabs(x_axis) > 0.2) {
+          m_impl->m_rotationZDegrees -= 90.0f * static_cast<float>(elapsed.count()) * x_axis;
+        }
+        if (fabs(y_axis) > 0.2) {
+          m_impl->m_rotationXDegrees -= 90.0f * static_cast<float>(elapsed.count()) * y_axis * m_impl->m_joystickScaleY;
+        }
+      }
+      //======================================
+    }
+  }
+
+  // Ensure that the view orientation stays within bounds.
+  ComputeAndClampViewOrientation();
+
+  // Handle any window resizing
+  {
+    std::lock_guard<std::mutex> lock(m_impl->m_viewsMutex);
+    SetViewportSizeAndFOVs(m_impl->m_views[0]);
+  }
 }
 
 void DisplayWindow::SetViewportSizeAndFOVs(ViewRenderInfo& viewInfo, int width, int height)
@@ -364,52 +547,7 @@ void DisplayWindow::DisplayThread(std::string windowName,
   bool fullScreen, int desiredDisplay, bool hidden)
 {
   {
-    // Create a windowed mode window and its OpenGL context.
-    // We must make the OpenGL context of the window we want to share current on this thread
-    // if we are sharing it by borrowing it and then returning it once the window is open because
-    // Windows requires it to be current.
-    GLFWwindow* windowToShare = nullptr;
-    if (sharedWindow) {
-      windowToShare = sharedWindow->m_impl->m_window.get();
-      if (!sharedWindow->BorrowContext()) {
-        m_status = "Failed to borrow context from shared window";
-        return;
-      }
-    }
-    if (!fullScreen) { desiredDisplay = -1; }  // Ignore the desired display if not full-screen.
-    std::string ret = CreateWindowOrContext(Display::m_impl->m_window, desiredWidth, desiredHeight,
-      windowName, windowToShare, desiredDisplay, hidden);
-    if (sharedWindow) {
-      if (!sharedWindow->ReturnContext()) {
-        m_status = "Failed to return context to shared window";
-        return;
-      }
-    }
-    if (!ret.empty()) {
-      m_status = ret;
-      return;
-    }
-
-    // Open the joystick if there is one asked for and there is one present.
-    // We currently only support GLFW-based joysticks, which are specified by the string
-    // "GLFW::#".  The # is the number of the joystick to open, starting with 0.  GLFW
-    // joysticks are alwasy open, so we just need to record which one to use if it is
-    // present.
-    if (!joystick.empty() && (joystick.substr(0, 6) == "GLFW::")) {
-      int joyNum = std::stoi(joystick.substr(6));
-      if (glfwJoystickPresent(joyNum)) {
-        m_impl->m_glfwJoystickIndex = joyNum;
-        // See if we should flip the Y-axis value.
-        const char* joystickName = glfwGetJoystickName(joyNum);
-        if (std::find(m_impl->m_flipYJoysticks.begin(), m_impl->m_flipYJoysticks.end(),
-          glfwGetJoystickName(joyNum)) != m_impl->m_flipYJoysticks.end()) {
-          m_impl->m_joystickScaleY = -1.0f;
-        }
-      }
-    }
-
-    // Grab the context mutex for the duration of the setup.  Once we have it, we know
-    // that the context is not active in another thread.
+    // Grab the context mutex.  Once we have it, we know that the context is not active in another thread.
     // DO NOT do any GLFW calls while holding the context -- it causes rare hangs on Linux.
     std::lock_guard<std::mutex> lock(Display::m_impl->m_contextMutex);
     glfwMakeContextCurrent(Display::m_impl->m_window.get());
@@ -425,12 +563,7 @@ void DisplayWindow::DisplayThread(std::string windowName,
 
   // Loop until the display is done.
   bool frameCompleted = false;
-  auto lastJoystickCheck = std::chrono::steady_clock::now();
   while (!m_done) {
-
-    // Poll for and process events without a context to avoid multiple threads trying to get
-    // the context at the same time.
-    glfwPollEvents();
 
     // Determine the scan-out time of the frame (center of the image).
     Time renderTime;
@@ -482,127 +615,6 @@ void DisplayWindow::DisplayThread(std::string windowName,
     while (std::chrono::steady_clock::now() < m_impl->m_nextRenderTime) {
     }
 
-    // Quit when our window closes.
-    if (glfwWindowShouldClose(Display::m_impl->m_window.get())) {
-      std::atomic_store(&m_composite, std::shared_ptr<Composite>());
-      m_status = "Done";
-      break;
-    }
-
-    // Process keyboard/mouse/joystick input events and update the viewpoint
-
-    //======================================
-    // Added by Sang Yoon to add key/joystick mappings for closing windows (Q or ESCAPE key on keyboard),
-    // resetting viewer's orientation (R key on keyboard or A key on Xbox controller),
-    // and pausing/resuming replaying (Left or Right trigger button on Xbox controller)
-
-    // Adding key mappings for closing windows
-    if (glfwGetKey(Display::m_impl->m_window.get(), GLFW_KEY_Q) == GLFW_PRESS
-        || glfwGetKey(Display::m_impl->m_window.get(), GLFW_KEY_ESCAPE) == GLFW_PRESS) {
-      std::atomic_store(&m_composite, std::shared_ptr<Composite>());
-      m_status = "Done";
-      break;
-    }
-
-    // Adding key mapping for resetting viewer orientation
-    if (glfwGetKey(Display::m_impl->m_window.get(), GLFW_KEY_R) == GLFW_PRESS) {
-      m_impl->m_rotationXDegrees = 0.0f;
-      m_impl->m_rotationZDegrees = 0.0f;
-    }
-
-    if (m_impl->m_glfwJoystickIndex >= 0) {
-      // Adding joystick button mapping for resetting viewer's orientation
-      int btnCount;
-      const unsigned char* btns = glfwGetJoystickButtons(m_impl->m_glfwJoystickIndex, &btnCount);
-      if (btnCount > 0) {
-        if (btns[0] == GLFW_PRESS) { // 0: A button, 1: B button, 2: X button, 3: Y button for Xbox Controller
-          m_impl->m_rotationXDegrees = 0.0f;
-          m_impl->m_rotationZDegrees = 0.0f;
-        }
-      }
-
-      // Adding joystick triggers mapping for pausing/resuming replaying
-      int axisCount;
-      const float* axes = glfwGetJoystickAxes(m_impl->m_glfwJoystickIndex, &axisCount);
-      bool triggerPressed = false;
-      float left_trigger = -1.0;
-      float right_trigger = -1.0;
-
-      if (axisCount >= 6) {
-#ifdef WIN32
-        left_trigger = axes[4];
-        right_trigger = axes[5];
-#else
-        // In Linux, the index number for the left trigger is different from that in Windows.
-        left_trigger = axes[2];
-        right_trigger = axes[5];
-#endif
-      }
-#ifdef WIN32
-      else if (axisCount >= 5) {
-          left_trigger = axes[4];
-#else
-      else if (axisCount >= 3) {
-          left_trigger = axes[2];
-#endif
-      }
-      if (left_trigger == 1.0 || right_trigger == 1.0)
-          triggerPressed = true;
-      if (triggerPressed && !m_impl->m_triggerPressed) {
-        if (m_eventHandlers && m_eventHandlers->ChangePlayPause) {
-          m_eventHandlers->ChangePlayPause(!m_nowPlaying, m_userData);
-        }
-      }
-      m_impl->m_triggerPressed = triggerPressed;
-    }
-    //======================================
-
-    HandleKeyboard();
-    HandleMouse();
-    if (m_impl->m_glfwJoystickIndex >= 0) {
-      auto now = std::chrono::steady_clock::now();
-      std::chrono::duration<double> elapsed = now - lastJoystickCheck;
-      lastJoystickCheck = now;
-
-      int axisCount;
-      const float* axes = glfwGetJoystickAxes(m_impl->m_glfwJoystickIndex, &axisCount);
-      if (axisCount >= 2) {
-        if (fabs(axes[0]) > 0.2) {
-          m_impl->m_rotationZDegrees -= 90.0f * static_cast<float>(elapsed.count()) * axes[0];
-        }
-        if (fabs(axes[1]) > 0.2) {
-          m_impl->m_rotationXDegrees -= 90.0f * static_cast<float>(elapsed.count()) * axes[1] * m_impl->m_joystickScaleY;
-        }
-
-        //======================================
-        // Added by Sang Yoon to add the right joystick mappings for viewer's orientation change
-#ifdef WIN32
-        if (axisCount >= 4) {
-          float x_axis = axes[2];
-          float y_axis = axes[3];
-#else
-        // In Linux, the index numbers for the right joystick are different from those in Windows.
-        if (axisCount >= 5) {
-          float x_axis = axes[3];
-          float y_axis = axes[4];
-#endif
-          if (fabs(x_axis) > 0.2) {
-            m_impl->m_rotationZDegrees -= 90.0f * static_cast<float>(elapsed.count()) * x_axis;
-          }
-          if (fabs(y_axis) > 0.2) {
-            m_impl->m_rotationXDegrees -= 90.0f * static_cast<float>(elapsed.count()) * y_axis * m_impl->m_joystickScaleY;
-          }
-        }
-        //======================================
-      }
-    }
-
-    // Ensure that the view orientation stays within bounds.
-    ComputeAndClampViewOrientation();
-
-    // Handle any window resizing
-    SetViewportSizeAndFOVs(m_impl->m_views[0]);
-
     // Trigger the cameras, saying that we need the data now. The base class will handle offsetting
     // by the specified transmission/processing time as passed to its constructor by the client.
     TriggerCameras(std::chrono::steady_clock::now());
@@ -621,6 +633,7 @@ void DisplayWindow::DisplayThread(std::string windowName,
 
     auto composite = std::atomic_load(&m_composite);
     if (composite) {
+      std::lock_guard<std::mutex> lock(m_impl->m_viewsMutex);
       composite->Render(renderTime, m_impl->m_views);
     }
 
@@ -907,10 +920,13 @@ void DisplayWindow::ComputeAndClampViewOrientation()
   orientation = (viewpointRotation * orientation * viewpointInverse) * viewpointRotation;
 
   // Store the quaternion.
-  m_impl->m_views[0].orientation[0] = orientation.w;
-  m_impl->m_views[0].orientation[1] = orientation.x;
-  m_impl->m_views[0].orientation[2] = orientation.y;
-  m_impl->m_views[0].orientation[3] = orientation.z;
+  {
+    std::lock_guard<std::mutex> lock(m_impl->m_viewsMutex);
+    m_impl->m_views[0].orientation[0] = orientation.w;
+    m_impl->m_views[0].orientation[1] = orientation.x;
+    m_impl->m_views[0].orientation[2] = orientation.y;
+    m_impl->m_views[0].orientation[3] = orientation.z;
+  }
 }
 
 //==============================================================================
@@ -962,6 +978,19 @@ DisplayTexture::DisplayTexture(Display* sharedWindow)
   // for borrowing.
   glFinish();
   Display::m_impl->m_contextAvailable = true;
+}
+
+void DisplayTexture::PollEvents()
+{
+  // Poll for GLFW events using the base class.
+  Display::PollEvents();
+
+  // Quit when our window closes.
+  if (glfwWindowShouldClose(Display::m_impl->m_window.get())) {
+    std::atomic_store(&m_composite, std::shared_ptr<Composite>());
+    m_status = "Done";
+    return;
+  }
 }
 
 DisplayTexture::~DisplayTexture()
@@ -2020,15 +2049,6 @@ bool asdp::render::DisplayOpenXR::DisplayOpenXRImpl::OpenXRRenderLayer(XrTime pr
     composite->Render(time, viewRenderInfos);
   }
 
-  /*
-  // Swap our window every other eye for RenderDoc
-  /// @todo Not needed until we're drawing into that window...
-  static int everyOther = 0;
-  if ((everyOther++ & 1) != 0) {
-    glfwSwapBuffers(m_display->m_impl->m_contextWindow.get());
-  }
-  */
-
   /// Release the swapchain images after rendering.
   for (uint32_t i = 0; i < viewCountOutput; i++) {
     XrSwapchainImageReleaseInfo releaseInfo{ XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO };
@@ -2390,100 +2410,6 @@ DisplayXSight::DisplayXSight(std::string NICName, std::shared_ptr<Composite> com
   m_impl->m_horizontalFOVDegrees = horizontalFOVDegrees;
   m_impl->m_encodeMonochrome = encodeMonochrome;
 
-  // Construct a single view to be used.  We base is on the requested window size and we compute a
-  // field of view that is the requested horizontal and the correct aspect ratio vertical.
-  ViewRenderInfo view;
-  SetViewportSizeAndFOVs(view, desiredWidth, desiredHeight);
-  view.viewpoint = m_viewpointOffset;
-  m_impl->m_views.push_back(view);
-
-  // Start the rendering thread.
-  m_displayThread = std::thread(&DisplayXSight::DisplayThread, this,
-    fps, renderAheadMicroseconds,
-    desiredWidth, desiredHeight,
-    sharedWindow, desiredDisplay);
-
-  // Wait until either the context is ready or there has been a failure so that the
-  // constructor does not return before the rendering thread is ready.
-  while (!Display::m_impl->m_contextAvailable && (m_status == "")) {
-    std::this_thread::sleep_for(std::chrono::milliseconds(10));
-  }
-}
-
-DisplayXSight::~DisplayXSight()
-{
-  // Make sure we're done with our rendering state and then clean up.
-  Quit();
-  m_impl.reset();
-}
-
-void DisplayXSight::SetViewportSizeAndFOVs(ViewRenderInfo& viewInfo, int width, int height)
-{
-  if (m_impl == nullptr) {
-    return;
-  }
-  if ((width == 0) || (height == 0)) {
-    glfwGetWindowSize(Display::m_impl->m_window.get(), &width, &height);
-    // NOTE: The final image packs two monochrome pixels horizontally into a single
-    // color pixel -- the rendered width is twice the final output width.
-    viewInfo.width = 2 * width;
-    viewInfo.height = height;
-  }
-  viewInfo.leftHalfFOV = -m_impl->m_horizontalFOVDegrees / 2.0f;
-  viewInfo.rightHalfFOV = m_impl->m_horizontalFOVDegrees / 2.0f;
-
-  // The vertical field of view is based on the aspect ratio of the window.  But the aspect ratio
-  // is the in-plane width divided by the in-plane height.  The horizontal and vertical fields of view
-  // are based on the tangents.
-  double aspectRatio = static_cast<double>(viewInfo.height) / static_cast<double>(viewInfo.width);
-  double halfWidth = tan(glm::radians(m_impl->m_horizontalFOVDegrees / 2.0));
-  double halfHeight = halfWidth * aspectRatio;
-  double halfAngle = glm::degrees(atan(halfHeight));
-  viewInfo.bottomHalfFOV = static_cast<float>(-halfAngle);
-  viewInfo.topHalfFOV = static_cast<float>(halfAngle);
-}
-
-/// @brief Embeds a 4-byte entity into four RGB pixels of an image.
-/// @param dataPtr Pointer to the 4-byte entity to embed (points to first byte of little-endian value).
-/// This must be type-cast into a char* to allow byte-wise manipulation.
-/// @param firstRGBByte Pointer to the first byte of the first of four RGB triads to embed the data into.
-static void EmbedField(char const* dataPtr, uint8_t* firstRGBByte)
-{
-  // The 4-byte entity (float or int) is embedded into four pixels of the image according to the
-  // specification in "Xsight_Rack.pdf".  The data is stored from least-significant byte to most
-  // and each byte is encoded into a single RGB triad. The encoding makes the Red byte zero and encodes
-  // the value in Green and Blue. The lower nybble of each byte has the value 8 and the upper is mapped
-  // with the most-significanly nybble of the encoded byte in the upper nybble of Blue and the least-significant
-  // nybble in the upper nybble of Green.
-  // NOTE: This assumes that we are running on a little-endian machine.
-  for (int i = 0; i < 4; i++) {
-    uint8_t byte = dataPtr[i];
-    firstRGBByte[i * 3 + 0] = 0x08;                               // Red is ignored.
-    firstRGBByte[i * 3 + 1] = 0x8 | ((byte & 0x0F) << 4);         // Green is the lower nybble.
-    firstRGBByte[i * 3 + 2] = 0x8 | (((byte >> 4) & 0x0F) << 4);  // Blue is the upper nybble.
-  }
-}
-
-static void EmbedLOSData(float azimuth, float elevation, float roll, uint32_t time, std::vector<uint8_t>& lineData)
-{
-  // Embed the azimuth, elevation, and roll into the first line of the image.
-  // The azimuth is in the first 4 bytes, the elevation in the next 4 bytes, the roll in the next 4 bytes,
-  // and the time in the last 4 bytes.
-  EmbedField(reinterpret_cast<char const*>(&azimuth), lineData.data());
-  EmbedField(reinterpret_cast<char const*>(&elevation), lineData.data() + 12);
-  EmbedField(reinterpret_cast<char const*>(&roll), lineData.data() + 24);
-  EmbedField(reinterpret_cast<char const*>(&time), lineData.data() + 36);
-  // The list entry is a constant check value.
-  const unsigned char checkData[] = { 0xbb, 0x44, 0xaa, 0x55 };
-  EmbedField(reinterpret_cast<char const*>(checkData), lineData.data() + 48);
-}
-
-void DisplayXSight::DisplayThread(
-  float fps, uint32_t renderAheadMicroseconds,
-  int desiredWidth, int desiredHeight,
-  Display* sharedWindow,
-  int desiredDisplay)
-{
   {
     // When we are encoding a monochrome image into color, This window will be half the desired
     // width because it will encode two monochrome pixels into a single color pixel.
@@ -2554,9 +2480,148 @@ void DisplayXSight::DisplayThread(
     // After we're done with the context for set-up and have released it, indicate that the context is available
     // for borrowing.
     glFinish();
-    Display::m_impl->m_contextAvailable = true;
   }
 
+  // Construct a single view to be used.  We base is on the requested window size and we compute a
+  // field of view that is the requested horizontal and the correct aspect ratio vertical.
+  ViewRenderInfo view;
+  SetViewportSizeAndFOVs(view, desiredWidth, desiredHeight);
+  view.viewpoint = m_viewpointOffset;
+  m_impl->m_views.push_back(view);
+
+  // Start the rendering thread.
+  m_displayThread = std::thread(&DisplayXSight::DisplayThread, this,
+    fps, renderAheadMicroseconds,
+    desiredWidth, desiredHeight,
+    sharedWindow, desiredDisplay);
+
+  // Wait until either the context is ready or there has been a failure so that the
+  // constructor does not return before the rendering thread is ready.
+  while (!Display::m_impl->m_contextAvailable && (m_status == "")) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+}
+
+DisplayXSight::~DisplayXSight()
+{
+  // Make sure we're done with our rendering state and then clean up.
+  Quit();
+  m_impl.reset();
+}
+
+void DisplayXSight::PollEvents()
+{
+  // Poll for GLFW events using the base class.
+  Display::PollEvents();
+
+  // Quit when our window closes.
+  if (glfwWindowShouldClose(Display::m_impl->m_window.get())) {
+    std::atomic_store(&m_composite, std::shared_ptr<Composite>());
+    m_status = "Done";
+    return;
+  }
+
+  //======================================
+  // For the X-sight helmet display, added by Sang Yoon to add key mappings for closing windows (Q or ESCAPE key on keyboard),
+  // pausing/resuming replaying (SPACE key on keyboard),
+  // and enabling/disabling depth computation (d key on keyboard)
+
+  // Adding key mappings for closing windows
+  if (glfwGetKey(Display::m_impl->m_window.get(), GLFW_KEY_Q) == GLFW_PRESS
+    || glfwGetKey(Display::m_impl->m_window.get(), GLFW_KEY_ESCAPE) == GLFW_PRESS) {
+    std::atomic_store(&m_composite, std::shared_ptr<Composite>());
+    m_status = "Done";
+    return;
+  }
+
+  // Toggle play/pause when the space key is pressed (once per press/release cycle).
+  bool spacePressed = (glfwGetKey(Display::m_impl->m_window.get(), GLFW_KEY_SPACE) == GLFW_PRESS);
+  if (spacePressed && !m_impl->m_spacePressed) {
+    if (m_eventHandlers && m_eventHandlers->ChangePlayPause) {
+      m_eventHandlers->ChangePlayPause(!m_nowPlaying, m_userData);
+    }
+  }
+  m_impl->m_spacePressed = spacePressed;
+
+  // Toggle depth computation when the 'd' key is pressed (once per press/release cycle).
+  bool dPressed = (glfwGetKey(Display::m_impl->m_window.get(), GLFW_KEY_D) == GLFW_PRESS);
+  if (dPressed && !m_impl->m_dPressed) {
+    m_impl->m_displayingDepth = !m_impl->m_displayingDepth;
+    if (m_eventHandlers && m_eventHandlers->SetToRenderDepth) {
+      m_eventHandlers->SetToRenderDepth(m_impl->m_displayingDepth, m_userData);
+    }
+  }
+  m_impl->m_dPressed = dPressed;
+  //======================================
+}
+
+void DisplayXSight::SetViewportSizeAndFOVs(ViewRenderInfo& viewInfo, int width, int height)
+{
+  if (m_impl == nullptr) {
+    return;
+  }
+  if ((width == 0) || (height == 0)) {
+    glfwGetWindowSize(Display::m_impl->m_window.get(), &width, &height);
+    // NOTE: The final image packs two monochrome pixels horizontally into a single
+    // color pixel -- the rendered width is twice the final output width.
+    viewInfo.width = 2 * width;
+    viewInfo.height = height;
+  }
+  viewInfo.leftHalfFOV = -m_impl->m_horizontalFOVDegrees / 2.0f;
+  viewInfo.rightHalfFOV = m_impl->m_horizontalFOVDegrees / 2.0f;
+
+  // The vertical field of view is based on the aspect ratio of the window.  But the aspect ratio
+  // is the in-plane width divided by the in-plane height.  The horizontal and vertical fields of view
+  // are based on the tangents.
+  double aspectRatio = static_cast<double>(viewInfo.height) / static_cast<double>(viewInfo.width);
+  double halfWidth = tan(glm::radians(m_impl->m_horizontalFOVDegrees / 2.0));
+  double halfHeight = halfWidth * aspectRatio;
+  double halfAngle = glm::degrees(atan(halfHeight));
+  viewInfo.bottomHalfFOV = static_cast<float>(-halfAngle);
+  viewInfo.topHalfFOV = static_cast<float>(halfAngle);
+}
+
+/// @brief Embeds a 4-byte entity into four RGB pixels of an image.
+/// @param dataPtr Pointer to the 4-byte entity to embed (points to first byte of little-endian value).
+/// This must be type-cast into a char* to allow byte-wise manipulation.
+/// @param firstRGBByte Pointer to the first byte of the first of four RGB triads to embed the data into.
+static void EmbedField(char const* dataPtr, uint8_t* firstRGBByte)
+{
+  // The 4-byte entity (float or int) is embedded into four pixels of the image according to the
+  // specification in "Xsight_Rack.pdf".  The data is stored from least-significant byte to most
+  // and each byte is encoded into a single RGB triad. The encoding makes the Red byte zero and encodes
+  // the value in Green and Blue. The lower nybble of each byte has the value 8 and the upper is mapped
+  // with the most-significanly nybble of the encoded byte in the upper nybble of Blue and the least-significant
+  // nybble in the upper nybble of Green.
+  // NOTE: This assumes that we are running on a little-endian machine.
+  for (int i = 0; i < 4; i++) {
+    uint8_t byte = dataPtr[i];
+    firstRGBByte[i * 3 + 0] = 0x08;                               // Red is ignored.
+    firstRGBByte[i * 3 + 1] = 0x8 | ((byte & 0x0F) << 4);         // Green is the lower nybble.
+    firstRGBByte[i * 3 + 2] = 0x8 | (((byte >> 4) & 0x0F) << 4);  // Blue is the upper nybble.
+  }
+}
+
+static void EmbedLOSData(float azimuth, float elevation, float roll, uint32_t time, std::vector<uint8_t>& lineData)
+{
+  // Embed the azimuth, elevation, and roll into the first line of the image.
+  // The azimuth is in the first 4 bytes, the elevation in the next 4 bytes, the roll in the next 4 bytes,
+  // and the time in the last 4 bytes.
+  EmbedField(reinterpret_cast<char const*>(&azimuth), lineData.data());
+  EmbedField(reinterpret_cast<char const*>(&elevation), lineData.data() + 12);
+  EmbedField(reinterpret_cast<char const*>(&roll), lineData.data() + 24);
+  EmbedField(reinterpret_cast<char const*>(&time), lineData.data() + 36);
+  // The list entry is a constant check value.
+  const unsigned char checkData[] = { 0xbb, 0x44, 0xaa, 0x55 };
+  EmbedField(reinterpret_cast<char const*>(checkData), lineData.data() + 48);
+}
+
+void DisplayXSight::DisplayThread(
+  float fps, uint32_t renderAheadMicroseconds,
+  int desiredWidth, int desiredHeight,
+  Display* sharedWindow,
+  int desiredDisplay)
+{
   // Place holders for LOS data read from the XSight.
   float azimuth = 0.0f;
   float elevation = 0.0f;
@@ -2589,13 +2654,12 @@ void DisplayXSight::DisplayThread(
   glfwMakeContextCurrent(nullptr);
   Display::m_impl->m_contextMutex.unlock();
 
+  // Our context is now available for borrowing by other threads, so indicate that to the constructor.
+  Display::m_impl->m_contextAvailable = true;
+
   // Loop until the display is done.
   bool frameCompleted = false;
   while (!m_done) {
-
-    // Poll for and process events without a context to avoid multiple threads trying to get
-    // the context at the same time.
-    glfwPollEvents();
 
     // Determine the scan-out time of the frame (center of the image).
     Time renderTime;
@@ -2638,46 +2702,6 @@ void DisplayXSight::DisplayThread(
     // thread swapped out for longer than we want.
     while (std::chrono::steady_clock::now() < m_impl->m_nextRenderTime) {
     }
-
-    // Quit when our window closes.
-    if (glfwWindowShouldClose(Display::m_impl->m_window.get())) {
-      std::atomic_store(&m_composite, std::shared_ptr<Composite>());
-      m_status = "Done";
-      break;
-    }
-
-    //======================================
-    // For the X-sight helmet display, added by Sang Yoon to add key mappings for closing windows (Q or ESCAPE key on keyboard),
-    // pausing/resuming replaying (SPACE key on keyboard),
-    // and enabling/disabling depth computation (d key on keyboard)
-
-    // Adding key mappings for closing windows
-    if (glfwGetKey(Display::m_impl->m_window.get(), GLFW_KEY_Q) == GLFW_PRESS
-      || glfwGetKey(Display::m_impl->m_window.get(), GLFW_KEY_ESCAPE) == GLFW_PRESS) {
-      std::atomic_store(&m_composite, std::shared_ptr<Composite>());
-      m_status = "Done";
-      break;
-    }
-
-    // Toggle play/pause when the space key is pressed (once per press/release cycle).
-    bool spacePressed = (glfwGetKey(Display::m_impl->m_window.get(), GLFW_KEY_SPACE) == GLFW_PRESS);
-    if (spacePressed && !m_impl->m_spacePressed) {
-      if (m_eventHandlers && m_eventHandlers->ChangePlayPause) {
-          m_eventHandlers->ChangePlayPause(!m_nowPlaying, m_userData);
-      }
-    }
-    m_impl->m_spacePressed = spacePressed;
-
-    // Toggle depth computation when the 'd' key is pressed (once per press/release cycle).
-    bool dPressed = (glfwGetKey(Display::m_impl->m_window.get(), GLFW_KEY_D) == GLFW_PRESS);
-    if (dPressed && !m_impl->m_dPressed) {
-      m_impl->m_displayingDepth = !m_impl->m_displayingDepth;
-      if (m_eventHandlers && m_eventHandlers->SetToRenderDepth) {
-        m_eventHandlers->SetToRenderDepth(m_impl->m_displayingDepth, m_userData);
-      }
-    }
-    m_impl->m_dPressed = dPressed;
-    //======================================
 
     // Process any incoming pose requests; update view orientation to match.
     bool packetReady = false;

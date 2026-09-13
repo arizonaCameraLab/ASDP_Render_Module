@@ -754,7 +754,7 @@ void MainWindow::ViewCamera(const QString& cameraID)
     std::ref(m_doneStreaming), m_cpuPinnedImageBuffer, m_gpuImageBuffer, m_stream, m_visibleCameras.back()->m_imageQueue,
     dataQueue, nullptr, nullptr, nullptr));
 
-  // Request the camera to start sending data, showing every 10th frame.
+  // Request the camera to start sending data, showing every Nth frame.
   if (m_client && m_receiverCam) {
     uint16_t port;
     m_receiverCam->GetPort(port);
