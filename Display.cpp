@@ -954,6 +954,12 @@ DisplayTexture::DisplayTexture(Display* sharedWindow)
   }
   std::string ret = CreateWindowOrContext(Display::m_impl->m_window, 100, 100,
     "", windowToShare, -1, true);
+  if (sharedWindow) {
+    if (!sharedWindow->ReturnContext()) {
+      m_status = "Failed to return context to shared window";
+      return;
+    }
+  }
   if (!ret.empty()) {
     m_status = ret;
     return;

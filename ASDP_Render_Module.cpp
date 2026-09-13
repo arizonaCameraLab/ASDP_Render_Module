@@ -2881,11 +2881,11 @@ int main(int argc, char** argv)
         }
       }
 
-      // Receive and handle any message from the server, waiting at most 100ms for a
+      // Receive and handle any message from the server, waiting at most 1ms for a
       // new packet before looping back around.
       std::shared_ptr<StreamPacket> response;
       size_t offset = 0;
-      Status status = receiver->ReceiveStreamPacket(0.1, response, offset);
+      Status status = receiver->ReceiveStreamPacket(0.001, response, offset);
       if (status == OKAY) {
         status = HandleStreamPacket(response, clockSync, poseAdjuster, replayDone, displays, timer, pausedTime);
         if (status != OKAY) {
