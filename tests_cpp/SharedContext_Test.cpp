@@ -106,8 +106,7 @@ int main()
   // Create a new shared context that we'll use to generate a texture into that
   // we'll use in the main context.  This will use a hidden window.
   std::shared_ptr<GLFWwindow> window2;
-  ret = asdp::render::CreateWindowOrContext(window2, width, height, "Hidden",
-    nullptr, window.get(), -1, true);
+  ret = asdp::render::CreateWindowOrContext(window2, width, height, "Hidden", window.get(), -1, true);
   if (!ret.empty()) {
     std::cerr << "Failed to create hidden window: " << ret << std::endl;
     return -1;

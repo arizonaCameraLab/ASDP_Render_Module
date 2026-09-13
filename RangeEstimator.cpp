@@ -111,7 +111,7 @@ std::string RangeEstimator::Test()
   // Create a window and OpenGL context.
   std::shared_ptr<GLFWwindow> window;
   std::string ret = asdp::render::CreateWindowOrContext(window, 640, 480, "RangeEstimator Test",
-    nullptr, nullptr, -1, true);
+    nullptr, -1, true);
   if (!ret.empty()) {
     return "Failed to create window or context: " + ret;
   }

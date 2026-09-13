@@ -1749,7 +1749,7 @@ float DepthEstimator::SpeedTestSingleEstimation(uint16_t width, uint16_t height,
   // Create a window and OpenGL context.
   std::shared_ptr<GLFWwindow> window;
   std::string ret = asdp::render::CreateWindowOrContext(window, 640, 480, "DepthEstimator Test",
-    nullptr, nullptr, -1, true);
+    nullptr, -1, true);
   if (!ret.empty()) {
     std::cerr << "Failed to create window or context: " << ret << std::endl;
     return -1;
@@ -1822,7 +1822,7 @@ std::string DepthEstimator::Test()
   // Create a window and OpenGL context.
   std::shared_ptr<GLFWwindow> window;
   std::string ret = asdp::render::CreateWindowOrContext(window, 640, 480, "DepthEstimator Test",
-    nullptr, nullptr, -1, true);
+    nullptr, -1, true);
   if (!ret.empty()) {
     return "Failed to create window or context: " + ret;
   }

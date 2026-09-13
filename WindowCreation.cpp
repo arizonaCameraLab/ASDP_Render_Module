@@ -25,7 +25,7 @@ static std::mutex main_thread_mutex;    ///< Mutex to protect access to the main
 static std::atomic<int> window_count(0);
 
 std::string asdp::render::CreateWindowOrContext(std::shared_ptr<GLFWwindow>& window, int width, int height,
-  const std::string& title, GLFWmonitor* monitor, GLFWwindow* sharedWindow, int fullScreenDisplay,
+  const std::string& title, GLFWwindow* sharedWindow, int fullScreenDisplay,
   bool hidden, bool sRGBCapable)
 {
   // Clear the shared pointer in case of failure and make a place to store the new window.
@@ -73,7 +73,7 @@ std::string asdp::render::CreateWindowOrContext(std::shared_ptr<GLFWwindow>& win
   }
 
   // Create the window.
-  new_window = glfwCreateWindow(width, height, title.c_str(), monitor, sharedWindow);
+  new_window = glfwCreateWindow(width, height, title.c_str(), nullptr, sharedWindow);
   if (!new_window) {
     return "Error: Failed to create GLFW window.";
   }
@@ -83,7 +83,7 @@ std::string asdp::render::CreateWindowOrContext(std::shared_ptr<GLFWwindow>& win
     int monitor_count;
     GLFWmonitor** monitors = glfwGetMonitors(&monitor_count);
     if (fullScreenDisplay < monitor_count) {
-      monitor = monitors[fullScreenDisplay];
+      GLFWmonitor* monitor = monitors[fullScreenDisplay];
       const GLFWvidmode* mode = glfwGetVideoMode(monitor);
       if (mode) {
         glfwSetWindowMonitor(new_window, monitor, 0, 0, mode->width, mode->height, mode->refreshRate);

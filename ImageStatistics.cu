@@ -455,7 +455,7 @@ float MeanStd::SpeedTestSingleCalculation(uint16_t width, uint16_t height)
   // Create a window and OpenGL context.
   std::shared_ptr<GLFWwindow> window;
   std::string ret = asdp::render::CreateWindowOrContext(window, 640, 480, "MeanStd Speed Test",
-    nullptr, nullptr, -1, true);
+    nullptr, -1, true);
   if (!ret.empty()) {
     return -1;
   }
@@ -514,7 +514,7 @@ std::string MeanStd::Test()
   // Create a window and OpenGL context.
   std::shared_ptr<GLFWwindow> window;
   std::string ret = asdp::render::CreateWindowOrContext(window, 640, 480, "MeanStd Test",
-    nullptr, nullptr, -1, true);
+    nullptr, -1, true);
   if (!ret.empty()) {
     return "Failed to create window or context: " + ret;
   }
@@ -618,7 +618,7 @@ std::string MeanStdGroup::Test()
   // Create a window and OpenGL context.
   std::shared_ptr<GLFWwindow> window;
   std::string ret = asdp::render::CreateWindowOrContext(window, 640, 480, "MeanStdGroup Test",
-    nullptr, nullptr, -1, true);
+    nullptr, -1, true);
   if (!ret.empty()) {
     return "Failed to create window or context: " + ret;
   }

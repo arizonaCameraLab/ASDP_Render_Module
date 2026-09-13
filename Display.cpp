@@ -378,7 +378,7 @@ void DisplayWindow::DisplayThread(std::string windowName,
     }
     if (!fullScreen) { desiredDisplay = -1; }  // Ignore the desired display if not full-screen.
     std::string ret = CreateWindowOrContext(Display::m_impl->m_window, desiredWidth, desiredHeight,
-      windowName, nullptr, windowToShare, desiredDisplay, hidden);
+      windowName, windowToShare, desiredDisplay, hidden);
     if (sharedWindow) {
       if (!sharedWindow->ReturnContext()) {
         m_status = "Failed to return context to shared window";
@@ -937,7 +937,7 @@ DisplayTexture::DisplayTexture(Display* sharedWindow)
     windowToShare = sharedWindow->m_impl->m_window.get();
   }
   std::string ret = CreateWindowOrContext(Display::m_impl->m_window, 100, 100,
-    "", nullptr, windowToShare, -1, true);
+    "", windowToShare, -1, true);
   if (!ret.empty()) {
     m_status = ret;
     return;
@@ -1227,7 +1227,7 @@ void asdp::render::DisplayOpenXR::DisplayOpenXRImpl::OpenGLInitializeDevice(Disp
     // Set the window to be not hidden so that it will always be cleaned up and won't leave a zombie
     // GL object that keeps us from opening new OpenXR apps.
     std::string ret = CreateWindowOrContext(m_contextWindow, 100, 100,
-      "ASDP_Render_Module OpenXR OpenGL Window to get context", nullptr, windowToShare);
+      "ASDP_Render_Module OpenXR OpenGL Window to get context", windowToShare);
     if (sharedWindow) {
       if (!sharedWindow->ReturnContext()) {
         THROW("OpenGLInitializeDevice(): Failed to return context to shared window");
@@ -2488,14 +2488,6 @@ void DisplayXSight::DisplayThread(
     // When we are encoding a monochrome image into color, This window will be half the desired
     // width because it will encode two monochrome pixels into a single color pixel.
     int width = m_impl->m_encodeMonochrome ? desiredWidth / 2 : desiredWidth;
-    // Set the window to be visible.
-    glfwWindowHint(GLFW_VISIBLE, true);
-
-    // Don't use sRGB -- we need to put in specific pixel values with the CompositeLineRawData.
-    glfwWindowHint(GLFW_SRGB_CAPABLE, GLFW_FALSE);
-
-    // Tell it not to iconify full-screen windows that lose focus.
-    glfwWindowHint(GLFW_AUTO_ICONIFY, GLFW_FALSE);
 
     // Create a windowed mode window and its OpenGL context.
     // This must be done in the same thread that will do the rendering so that the window events will
@@ -2503,6 +2495,7 @@ void DisplayXSight::DisplayThread(
     // We must make the OpenGL context of the window we want to share current on this thread
     // if we are sharing it by borrowing it and then returning it once the window is open because
     // Windows requires it to be current.
+    // Don't use sRGB -- we need to put in specific pixel values with the CompositeLineRawData.
     GLFWwindow* windowToShare = nullptr;
     if (sharedWindow) {
       windowToShare = sharedWindow->m_impl->m_window.get();
@@ -2512,7 +2505,7 @@ void DisplayXSight::DisplayThread(
       }
     }
     std::string ret = CreateWindowOrContext(Display::m_impl->m_window, width, desiredHeight, "XSight",
-      nullptr, windowToShare, desiredDisplay, false, false);
+      windowToShare, desiredDisplay, false, false);
     if (sharedWindow) {
       if (!sharedWindow->ReturnContext()) {
         m_status = "Failed to return context to shared window";

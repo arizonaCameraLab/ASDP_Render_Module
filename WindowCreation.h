@@ -33,8 +33,6 @@ namespace asdp {
     /// @param width Width of the window.
     /// @param height Height of the window.
     /// @param title Title of the window.
-    /// @param monitor Monitor to use for full-screen mode (default is nullptr for windowed
-    /// mode).
     /// @param sharedWindow Window to share resources with (default is nullptr for no sharing).
     /// NOTE: The caller must ensure that the shared window's context is current on this thread
     /// before calling this function if it is to be shared. This function does not make the
@@ -44,10 +42,8 @@ namespace asdp {
     /// @param sRGBCapable Whether the window should be sRGB capable (default is true).
     /// @return An error message if the window could not be created, or an empty string on success.
     std::string CreateWindowOrContext(std::shared_ptr<GLFWwindow> &window,
-      int width, int height, const std::string& title,
-      GLFWmonitor* monitor = nullptr, GLFWwindow* sharedWindow = nullptr,
-      int fullScreenDisplay = -1,
-      bool hidden = false, bool sRGBCapable = true);
+      int width, int height, const std::string& title, GLFWwindow* sharedWindow = nullptr,
+      int fullScreenDisplay = -1, bool hidden = false, bool sRGBCapable = true);
 
   } // namespace render
 } // namespace asdp
