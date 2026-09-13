@@ -91,6 +91,7 @@ static std::vector<std::string> getIPAddresses()
 
 MainWindow::MainWindow(QWidget *parent)
   : QMainWindow(parent), ui(new Ui::MainWindow), m_timer(std::make_shared<QTimer>(this))
+  , m_pollTimer(std::make_shared<QTimer>(this))
 {
   // Setup UI and other initialization
   ui->setupUi(this);  // Set up the UI
@@ -122,6 +123,11 @@ MainWindow::MainWindow(QWidget *parent)
 
   // Hook up the timer to the periodic task.
   connect(m_timer.get(), &QTimer::timeout, this, &MainWindow::PeriodicTask);
+
+  // Hook up an always-on timer to poll display events. This runs for the whole lifetime of the
+  // program; PollDisplayEvents() itself checks whether there is anything to poll.
+  connect(m_pollTimer.get(), &QTimer::timeout, this, &MainWindow::PollDisplayEvents);
+  m_pollTimer->start(1);  // ~1kHz
 }
 
 MainWindow::~MainWindow()
@@ -494,6 +500,19 @@ void MainWindow::PeriodicTask()
       ResetStreaming();
       ui->comboBoxCamera->setCurrentIndex(0);
     }
+  }
+}
+
+void MainWindow::PollDisplayEvents()
+{
+  // Poll the display objects for windowing events whenever they exist. It is fine for this to
+  // be called the whole time the program is running; when we are not viewing a camera the
+  // pointers are empty and there is nothing to do.
+  if (m_display) {
+    m_display->PollEvents();
+  }
+  if (m_displayTexture) {
+    m_displayTexture->PollEvents();
   }
 }
 

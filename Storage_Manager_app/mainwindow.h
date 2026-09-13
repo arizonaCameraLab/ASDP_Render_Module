@@ -41,6 +41,12 @@ public slots:
     /// @brief Slot for the periodic task that shows information.
     void PeriodicTask(); 
 
+    /// @brief Poll display events for the camera view.
+    /// @details Runs the entire time the program is running.  Polls m_display and
+    /// m_displayTexture for windowing events whenever they are non-empty, as required
+    /// by the Display API (PollEvents must be called regularly from the main thread).
+    void PollDisplayEvents();
+
     /// @brief Start recording a stream.
     void StartRecording();
 
@@ -90,6 +96,9 @@ private:
 
   // Timer for a periodic task that polls the server for messages and updates info.
   std::shared_ptr<QTimer> m_timer;
+
+  // Always-on timer that polls the display objects for windowing events while viewing a camera.
+  std::shared_ptr<QTimer> m_pollTimer;
 
   std::shared_ptr<CoreClient> m_client;
   std::shared_ptr<Receiver> m_receiver;
