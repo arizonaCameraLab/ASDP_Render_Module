@@ -113,21 +113,18 @@ if(MSVC AND TARGET geogram)
     endif()
 endif()
 
-# Geogram built GLFW3 for us as part of its build so we just need to find it.
-find_package(glfw3 REQUIRED)
-
-# Before we used Geogram, we built GLFW3 ourselves on Windows and used a system library
-# on Linux.
-#if(WIN32)
-#FetchContent_Declare(
-#  glfw3
-#  GIT_REPOSITORY https://github.com/arizonaCameraLab/glfw.git
-#  GIT_TAG        b35641f4a3c62aa86a0b3c983d163bc0fe36026d # Master as of 4/26/2024
-#)
-#FetchContent_MakeAvailable(glfw3)
-#else(WIN32)
-#find_package(glfw3 REQUIRED)
-#endif(WIN32)
+# Build GLFW3 ourselves on Windows and use a system library on Linux.
+# Ignore the one built internally by Geogram
+if(WIN32)
+  FetchContent_Declare(
+    glfw3
+    GIT_REPOSITORY https://github.com/arizonaCameraLab/glfw.git
+    GIT_TAG        b35641f4a3c62aa86a0b3c983d163bc0fe36026d # Master as of 4/26/2024
+  )
+  FetchContent_MakeAvailable(glfw3)
+else(WIN32)
+  find_package(glfw3 REQUIRED)
+endif(WIN32)
 
 # We build FreeType ourselves to ensure compatibility across platforms.
 add_subdirectory(dependencies/freetype)

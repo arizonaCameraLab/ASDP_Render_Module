@@ -1,0 +1,375 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<DOCUMENT Type="Advanced Installer" CreateVersion="20.6" version="20.6" Modules="simple" RootPath="." Language="en" Id="{A2ED0B4E-081B-48E8-9B07-580DDFB0DFFC}">
+  <COMPONENT cid="caphyon.advinst.msicomp.ProjectOptionsComponent">
+    <ROW Name="HiddenItems" Value="AppXProductDetailsComponent;AppXDependenciesComponent;AppXAppDetailsComponent;AppXVisualAssetsComponent;AppXCapabilitiesComponent;AppXAppDeclarationsComponent;AppXUriRulesComponent;FixupComponent;MsiXDiffComponent;MsixManifestEditorComponent"/>
+  </COMPONENT>
+  <COMPONENT cid="caphyon.advinst.msicomp.MsiPropsComponent">
+    <ROW Property="AI_BITMAP_DISPLAY_MODE" Value="0"/>
+    <ROW Property="ALLUSERS" Value="1"/>
+    <ROW Property="ARPCOMMENTS" Value="This installer database contains the logic and data required to install [|ProductName]." ValueLocId="*"/>
+    <ROW Property="Manufacturer" Value="Arizona Apache Strap-Down Pilotage Project"/>
+    <ROW Property="ProductCode" Value="1033:{F6D2B3A4-69C6-4D65-9B2A-89D23D7CE13D} " Type="16"/>
+    <ROW Property="ProductLanguage" Value="1033"/>
+    <ROW Property="ProductName" Value="ASDP_Render_Module"/>
+    <ROW Property="ProductVersion" Value="3.54.0"/>
+    <ROW Property="SecureCustomProperties" Value="OLDPRODUCTS;AI_NEWERPRODUCTFOUND"/>
+    <ROW Property="UpgradeCode" Value="{F13D6505-B7E6-47FC-811A-1EA726233F1B}"/>
+    <ROW Property="WindowsType9X" MultiBuildValue="DefaultBuild:Windows 9x/ME" ValueLocId="-"/>
+    <ROW Property="WindowsType9XDisplay" MultiBuildValue="DefaultBuild:Windows 9x/ME" ValueLocId="-"/>
+    <ROW Property="WindowsTypeNT40" MultiBuildValue="DefaultBuild:Windows NT 4.0" ValueLocId="-"/>
+    <ROW Property="WindowsTypeNT40Display" MultiBuildValue="DefaultBuild:Windows NT 4.0" ValueLocId="-"/>
+    <ROW Property="WindowsTypeNT50" MultiBuildValue="DefaultBuild:Windows 2000" ValueLocId="-"/>
+    <ROW Property="WindowsTypeNT50Display" MultiBuildValue="DefaultBuild:Windows 2000" ValueLocId="-"/>
+    <ROW Property="WindowsTypeNT5X" MultiBuildValue="DefaultBuild:Windows XP/2003" ValueLocId="-"/>
+    <ROW Property="WindowsTypeNT5XDisplay" MultiBuildValue="DefaultBuild:Windows XP/2003" ValueLocId="-"/>
+  </COMPONENT>
+  <COMPONENT cid="caphyon.advinst.msicomp.MsiDirsComponent">
+    <ROW Directory="APPDIR" Directory_Parent="TARGETDIR" DefaultDir="APPDIR:." IsPseudoRoot="1"/>
+    <ROW Directory="ASDP_Render_Module_Configs_Dir" Directory_Parent="bin_Dir" DefaultDir="ASDP_R~1|ASDP_Render_Module_Configs"/>
+    <ROW Directory="ASDP_Render_Module_Dir" Directory_Parent="ProgramMenuFolder" DefaultDir="ASDP_R~1|ASDP_Render_Module"/>
+    <ROW Directory="ProgramMenuFolder" Directory_Parent="TARGETDIR" DefaultDir="PROGRA~1|ProgramMenuFolder" IsPseudoRoot="1"/>
+    <ROW Directory="TARGETDIR" DefaultDir="SourceDir"/>
+    <ROW Directory="bin_Dir" Directory_Parent="APPDIR" DefaultDir="bin"/>
+    <ROW Directory="platforms_Dir" Directory_Parent="bin_Dir" DefaultDir="PLATFO~1|platforms"/>
+  </COMPONENT>
+  <COMPONENT cid="caphyon.advinst.msicomp.MsiCompsComponent">
+    <ROW Component="APPDIR" ComponentId="{6A25CB70-3B5E-4B97-8E0F-96AA29667DF6}" Directory_="APPDIR" Attributes="0"/>
+    <ROW Component="ASDP_Render_Module" ComponentId="{DFFC70C9-6AE0-46B9-BBE0-37D7A8DE0515}" Directory_="ASDP_Render_Module_Dir" Attributes="0"/>
+    <ROW Component="ASDP_Render_Module.exe" ComponentId="{38AD8C60-7282-45DA-92A1-BECF293C16A1}" Directory_="bin_Dir" Attributes="256" KeyPath="ASDP_Render_Module.exe"/>
+    <ROW Component="Analysis_Test.exe" ComponentId="{8049B075-E948-48E5-8D5C-26157B2FB224}" Directory_="bin_Dir" Attributes="256" KeyPath="Analysis_Test.exe"/>
+    <ROW Component="Annotation_Test.exe" ComponentId="{A8286865-701D-4CF4-B8DC-2E67400C01DE}" Directory_="bin_Dir" Attributes="256" KeyPath="Annotation_Test.exe"/>
+    <ROW Component="CPUDataToTextureHandler_Test.exe" ComponentId="{9DA68467-60B8-4189-AA40-64053A41BC0A}" Directory_="bin_Dir" Attributes="256" KeyPath="CPUDataToTextureHandler_Test.exe"/>
+    <ROW Component="CUDABufferPool_Test.exe" ComponentId="{BBD6FD8C-3155-4440-AA64-BAF439DB6CEE}" Directory_="bin_Dir" Attributes="256" KeyPath="CUDABufferPool_Test.exe"/>
+    <ROW Component="CUDA_To_Texture_Test.exe" ComponentId="{6638E266-A6C6-46BC-95D8-6376CFD8AFE0}" Directory_="bin_Dir" Attributes="256" KeyPath="CUDA_To_Texture_Test.exe"/>
+    <ROW Component="Calibration_Helpers_Test.exe" ComponentId="{E890F37D-115A-4563-B97F-A0C6F40A1CBA}" Directory_="bin_Dir" Attributes="256" KeyPath="Calibration_Helpers_Test.exe"/>
+    <ROW Component="Camera_Calibration_Estimate_Distortion_Extrinsics.exe" ComponentId="{06B53236-1732-47A7-8851-C9D9F70BF7D4}" Directory_="bin_Dir" Attributes="256" KeyPath="Camera_Calibration_Estimate_Distortion_Extrinsics.exe"/>
+    <ROW Component="Camera_Calibration_Gain_And_Offsets.exe" ComponentId="{BCDDA351-DD08-4FBF-BCC0-1B8456DD72C1}" Directory_="bin_Dir" Attributes="256" KeyPath="Camera_Calibration_Gain_And_Offsets.exe"/>
+    <ROW Component="Camera_Calibration_Make_Scan.exe" ComponentId="{A9C5E6C7-3951-4323-95E4-1D197706CCC2}" Directory_="bin_Dir" Attributes="256" KeyPath="Camera_Calibration_Make_Scan.exe"/>
+    <ROW Component="Camera_Calibration_Per_Pixel_Gain_And_Offsets.exe" ComponentId="{86FF4907-B6FD-409D-9802-8D1AF98B5ED3}" Directory_="bin_Dir" Attributes="256" KeyPath="Camera_Calibration_Per_Pixel_Gain_And_Offsets.exe"/>
+    <ROW Component="Collect_Calibration_Data.exe" ComponentId="{663CF9A7-9C22-4901-AF81-D918D662BD63}" Directory_="bin_Dir" Attributes="256" KeyPath="Collect_Calibration_Data.exe"/>
+    <ROW Component="Compare_Configurations.exe" ComponentId="{B5A579E2-035B-43A5-B15D-55657A21095A}" Directory_="bin_Dir" Attributes="256" KeyPath="Compare_Configurations.exe"/>
+    <ROW Component="CompositeCameras_Test.exe" ComponentId="{AD41B44D-4AC5-482F-AFB2-70E820E3A32B}" Directory_="bin_Dir" Attributes="256" KeyPath="CompositeCameras_Test.exe"/>
+    <ROW Component="CompositeLineRawData_Test.exe" ComponentId="{03C6A52C-818C-4E4E-B075-42C1ED917DF2}" Directory_="bin_Dir" Attributes="256" KeyPath="CompositeLineRawData_Test.exe"/>
+    <ROW Component="CompositePackXSightFrame_Test.exe" ComponentId="{662B9D15-0C1C-41C0-B3DC-E41A902526C7}" Directory_="bin_Dir" Attributes="256" KeyPath="CompositePackXSightFrame_Test.exe"/>
+    <ROW Component="Composite_Test.exe" ComponentId="{91C82F2A-9938-4B98-A474-F595AA544764}" Directory_="bin_Dir" Attributes="256" KeyPath="Composite_Test.exe"/>
+    <ROW Component="D3Dcompiler_47.dll" ComponentId="{4055211E-FDE8-458B-A484-293B50204717}" Directory_="bin_Dir" Attributes="256" KeyPath="D3Dcompiler_47.dll"/>
+    <ROW Component="DepthEstimator_Test.exe" ComponentId="{3069C441-7D7C-4D7C-9061-2333CE3E9008}" Directory_="bin_Dir" Attributes="256" KeyPath="DepthEstimator_Test.exe"/>
+    <ROW Component="Display_Test.exe" ComponentId="{54B0F69D-6FE0-4B2F-8526-0698C9D9DC69}" Directory_="bin_Dir" Attributes="256" KeyPath="Display_Test.exe"/>
+    <ROW Component="Distortion_Test.exe" ComponentId="{B8A20A73-6F99-4B8C-93F0-82763A052D39}" Directory_="bin_Dir" Attributes="256" KeyPath="Distortion_Test.exe"/>
+    <ROW Component="Fullscreen_Test.exe" ComponentId="{B86E88FE-6841-4AF8-BEAD-142DFC3C6110}" Directory_="bin_Dir" Attributes="256" KeyPath="Fullscreen_Test.exe"/>
+    <ROW Component="Gimbal_Test.exe" ComponentId="{DDBA673C-F296-4B75-8E6A-B9B811D44BAD}" Directory_="bin_Dir" Attributes="256" KeyPath="Gimbal_Test.exe"/>
+    <ROW Component="ImageQueue_Test.exe" ComponentId="{5C0B1725-CC35-41B7-A7C9-51A9B530EAC8}" Directory_="bin_Dir" Attributes="256" KeyPath="ImageQueue_Test.exe"/>
+    <ROW Component="ImageStatistics_Test.exe" ComponentId="{3D1D34E5-E815-4715-844B-CC66989FCAE1}" Directory_="bin_Dir" Attributes="256" KeyPath="ImageStatistics_Test.exe"/>
+    <ROW Component="Parse_Analysis_JSON.exe" ComponentId="{9858B0CB-9A88-45B6-BBC7-C0AB3DD98C45}" Directory_="bin_Dir" Attributes="256" KeyPath="Parse_Analysis_JSON.exe"/>
+    <ROW Component="PoseAdjuster_Test.exe" ComponentId="{29F587EF-1B2B-4E2B-97E4-EE047ADD2BB0}" Directory_="bin_Dir" Attributes="256" KeyPath="PoseAdjuster_Test.exe"/>
+    <ROW Component="Print_PointCorrespondences.exe" ComponentId="{8F11C9D4-EA15-46D2-81CA-F9C2D04B4B6C}" Directory_="bin_Dir" Attributes="256" KeyPath="Print_PointCorrespondences.exe"/>
+    <ROW Component="ProductInformation" ComponentId="{96D5846E-2D9A-44F0-928F-AA67EBBB371D}" Directory_="APPDIR" Attributes="4" KeyPath="Version"/>
+    <ROW Component="Qt5Core.dll" ComponentId="{D549BDDC-D29C-4E51-871D-C887C0E22987}" Directory_="bin_Dir" Attributes="256" KeyPath="Qt5Core.dll"/>
+    <ROW Component="Qt5Gui.dll" ComponentId="{11C061A0-84BE-42E1-B09E-54D8F6F8908D}" Directory_="bin_Dir" Attributes="256" KeyPath="Qt5Gui.dll"/>
+    <ROW Component="Qt5Svg.dll" ComponentId="{457A4FD9-AC1B-454A-B3E6-9D486F5936EB}" Directory_="bin_Dir" Attributes="256" KeyPath="Qt5Svg.dll"/>
+    <ROW Component="Qt5Widgets.dll" ComponentId="{E83028DB-4597-488D-84F2-B734D624C7D6}" Directory_="bin_Dir" Attributes="256" KeyPath="Qt5Widgets.dll"/>
+    <ROW Component="README.txt" ComponentId="{4CF3DE5D-D887-4C3F-A97E-97F326E27405}" Directory_="bin_Dir" Attributes="0" KeyPath="README.txt" Type="0"/>
+    <ROW Component="RangeEstimator_Test.exe" ComponentId="{ACDE4AF4-A50F-4F86-90F9-927ECC00D995}" Directory_="bin_Dir" Attributes="256" KeyPath="RangeEstimator_Test.exe"/>
+    <ROW Component="RenderHaloedLines_Test.exe" ComponentId="{F5436CCD-DC8D-42A5-A2E1-557665C380F2}" Directory_="bin_Dir" Attributes="256" KeyPath="RenderHaloedLines_Test.exe"/>
+    <ROW Component="RenderText_Test.exe" ComponentId="{883E6B29-AF02-462A-80CA-28C4BCED24D9}" Directory_="bin_Dir" Attributes="256" KeyPath="RenderText_Test.exe"/>
+    <ROW Component="SharedContext_Test.exe" ComponentId="{5123C6E0-4D03-4EF5-90D5-9E540635CBB1}" Directory_="bin_Dir" Attributes="256" KeyPath="SharedContext_Test.exe"/>
+    <ROW Component="Speed_Test_Receiver_CUDA.exe" ComponentId="{715EAAE7-D20E-4B0C-923F-A64D631B9E73}" Directory_="bin_Dir" Attributes="256" KeyPath="Speed_Test_Receiver_CUDA.exe"/>
+    <ROW Component="Spot_Tracker_Test.exe" ComponentId="{D418CAAD-81FB-42B9-9983-909E4C606632}" Directory_="bin_Dir" Attributes="256" KeyPath="Spot_Tracker_Test.exe"/>
+    <ROW Component="Storage_Manager.exe" ComponentId="{6BFA63E9-D000-4BC7-9820-F0CAD1A18E7B}" Directory_="bin_Dir" Attributes="256" KeyPath="Storage_Manager.exe"/>
+    <ROW Component="Sum_and_Squared_Speed_Test.exe" ComponentId="{F83FEA9E-F350-487E-848A-98E9E143F031}" Directory_="bin_Dir" Attributes="256" KeyPath="Sum_and_Squared_Speed_Test.exe"/>
+    <ROW Component="Target_Calibration_Estimate_Lateral.exe" ComponentId="{24640CBC-9E77-4BA2-A808-E3E4C06EBA77}" Directory_="bin_Dir" Attributes="256" KeyPath="Target_Calibration_Estimate_Lateral.exe"/>
+    <ROW Component="Target_Calibration_Make_Scan.exe" ComponentId="{0E0D3EA1-5FE8-408F-9800-216BD1730E62}" Directory_="bin_Dir" Attributes="256" KeyPath="Target_Calibration_Make_Scan.exe"/>
+    <ROW Component="Texture_Coordinates.exe" ComponentId="{AEE0EB23-EECF-4DC8-8373-1369B2383DAB}" Directory_="bin_Dir" Attributes="256" KeyPath="Texture_Coordinates.exe"/>
+    <ROW Component="Time_CUDA_Writes.exe" ComponentId="{43516F17-B29E-49D4-B5B4-17EF71329A9A}" Directory_="bin_Dir" Attributes="256" KeyPath="Time_CUDA_Writes.exe"/>
+    <ROW Component="ToneMap_Test.exe" ComponentId="{53E074AD-BA64-452C-9464-A47EBC6932AA}" Directory_="bin_Dir" Attributes="256" KeyPath="ToneMap_Test.exe"/>
+    <ROW Component="Vignette_Test.exe" ComponentId="{AAE67877-2A5F-41DD-9F18-08568E85B645}" Directory_="bin_Dir" Attributes="256" KeyPath="Vignette_Test.exe"/>
+    <ROW Component="XSight_Monitor.exe" ComponentId="{2AAEAF5A-7D67-4591-BEF7-1B570F6BC989}" Directory_="bin_Dir" Attributes="256" KeyPath="XSight_Monitor.exe"/>
+    <ROW Component="XSight_Simulator.exe" ComponentId="{71CC619C-F7A5-425E-9A2F-EB05A3D9F5A5}" Directory_="bin_Dir" Attributes="256" KeyPath="XSight_Simulator.exe"/>
+    <ROW Component="json" ComponentId="{98E6E85E-D9F0-4B3B-96B0-83694F00DACB}" Directory_="ASDP_Render_Module_Configs_Dir" Attributes="0" KeyPath="json" Type="0"/>
+    <ROW Component="libEGL.dll" ComponentId="{F79BCF5A-3D78-49A5-AC7F-030129B4BECA}" Directory_="bin_Dir" Attributes="256" KeyPath="libEGL.dll"/>
+    <ROW Component="libGLESv2.dll" ComponentId="{A63F6F76-D702-4CE9-B4EE-E028A94CFF65}" Directory_="bin_Dir" Attributes="256" KeyPath="libGLESv2.dll"/>
+    <ROW Component="opengl32sw.dll" ComponentId="{B49CB004-61A8-46C0-9B68-3525DFCC816D}" Directory_="bin_Dir" Attributes="256" KeyPath="opengl32sw.dll"/>
+    <ROW Component="qwindows.dll" ComponentId="{5177E860-4E07-4F06-8809-75951960A1CE}" Directory_="platforms_Dir" Attributes="256" KeyPath="qwindows.dll"/>
+  </COMPONENT>
+  <COMPONENT cid="caphyon.advinst.msicomp.MsiFeatsComponent">
+    <ROW Feature="MainFeature" Title="MainFeature" Description="Description" Display="1" Level="1" Directory_="APPDIR" Attributes="0"/>
+    <ATTRIBUTE name="CurrentFeature" value="MainFeature"/>
+  </COMPONENT>
+  <COMPONENT cid="caphyon.advinst.msicomp.MsiFilesComponent">
+    <ROW File="Analysis_Test.exe" Component_="Analysis_Test.exe" FileName="ANALYS~1.EXE|Analysis_Test.exe" Attributes="0" SourcePath="C:\Program Files (x86)\ASDP_Render_Module\bin\Analysis_Test.exe" SelfReg="false" DigSign="true"/>
+    <ROW File="Annotation_Test.exe" Component_="Annotation_Test.exe" FileName="ANNOTA~1.EXE|Annotation_Test.exe" Attributes="0" SourcePath="C:\Program Files (x86)\ASDP_Render_Module\bin\Annotation_Test.exe" SelfReg="false" DigSign="true"/>
+    <ROW File="ASDP_Render_Module.exe" Component_="ASDP_Render_Module.exe" FileName="ASDP_R~1.EXE|ASDP_Render_Module.exe" Attributes="0" SourcePath="C:\Program Files (x86)\ASDP_Render_Module\bin\ASDP_Render_Module.exe" SelfReg="false" DigSign="true"/>
+    <ROW File="json" Component_="json" FileName="0~1.JSO|0.json" Attributes="0" SourcePath="C:\Program Files (x86)\ASDP_Render_Module\bin\ASDP_Render_Module_Configs\0.json" SelfReg="false"/>
+    <ROW File="_12cam.json" Component_="json" FileName="0_12CA~1.JSO|0_12cam.json" Attributes="0" SourcePath="C:\Program Files (x86)\ASDP_Render_Module\bin\ASDP_Render_Module_Configs\0_12cam.json" SelfReg="false"/>
+    <ROW File="_13cam.json" Component_="json" FileName="0_13CA~1.JSO|0_13cam.json" Attributes="0" SourcePath="C:\Program Files (x86)\ASDP_Render_Module\bin\ASDP_Render_Module_Configs\0_13cam.json" SelfReg="false"/>
+    <ROW File="_16cam.json" Component_="json" FileName="0_16CA~1.JSO|0_16cam.json" Attributes="0" SourcePath="C:\Program Files (x86)\ASDP_Render_Module\bin\ASDP_Render_Module_Configs\0_16cam.json" SelfReg="false"/>
+    <ROW File="_21cam.json" Component_="json" FileName="0_21CA~1.JSO|0_21cam.json" Attributes="0" SourcePath="C:\Program Files (x86)\ASDP_Render_Module\bin\ASDP_Render_Module_Configs\0_21cam.json" SelfReg="false"/>
+    <ROW File="_25cam.json" Component_="json" FileName="0_25CA~1.JSO|0_25cam.json" Attributes="0" SourcePath="C:\Program Files (x86)\ASDP_Render_Module\bin\ASDP_Render_Module_Configs\0_25cam.json" SelfReg="false"/>
+    <ROW File="_4cam.json" Component_="json" FileName="0_4CAM~1.JSO|0_4cam.json" Attributes="0" SourcePath="C:\Program Files (x86)\ASDP_Render_Module\bin\ASDP_Render_Module_Configs\0_4cam.json" SelfReg="false"/>
+    <ROW File="_8cam.json" Component_="json" FileName="0_8CAM~1.JSO|0_8cam.json" Attributes="0" SourcePath="C:\Program Files (x86)\ASDP_Render_Module\bin\ASDP_Render_Module_Configs\0_8cam.json" SelfReg="false"/>
+    <ROW File="json_1" Component_="json" FileName="1~1.JSO|1.json" Attributes="0" SourcePath="C:\Program Files (x86)\ASDP_Render_Module\bin\ASDP_Render_Module_Configs\1.json" SelfReg="false"/>
+    <ROW File="json_2" Component_="json" FileName="10021~1.JSO|10021.json" Attributes="0" SourcePath="C:\Program Files (x86)\ASDP_Render_Module\bin\ASDP_Render_Module_Configs\10021.json" SelfReg="false"/>
+    <ROW File="json_3" Component_="json" FileName="1009~1.JSO|1009.json" Attributes="0" SourcePath="C:\Program Files (x86)\ASDP_Render_Module\bin\ASDP_Render_Module_Configs\1009.json" SelfReg="false"/>
+    <ROW File="json_4" Component_="json" FileName="10121~1.JSO|10121.json" Attributes="0" SourcePath="C:\Program Files (x86)\ASDP_Render_Module\bin\ASDP_Render_Module_Configs\10121.json" SelfReg="false"/>
+    <ROW File="json_5" Component_="json" FileName="1015~1.JSO|1015.json" Attributes="0" SourcePath="C:\Program Files (x86)\ASDP_Render_Module\bin\ASDP_Render_Module_Configs\1015.json" SelfReg="false"/>
+    <ROW File="json_6" Component_="json" FileName="1021~1.JSO|1021.json" Attributes="0" SourcePath="C:\Program Files (x86)\ASDP_Render_Module\bin\ASDP_Render_Module_Configs\1021.json" SelfReg="false"/>
+    <ROW File="json_7" Component_="json" FileName="10221~1.JSO|10221.json" Attributes="0" SourcePath="C:\Program Files (x86)\ASDP_Render_Module\bin\ASDP_Render_Module_Configs\10221.json" SelfReg="false"/>
+    <ROW File="json_8" Component_="json" FileName="10321~1.JSO|10321.json" Attributes="0" SourcePath="C:\Program Files (x86)\ASDP_Render_Module\bin\ASDP_Render_Module_Configs\10321.json" SelfReg="false"/>
+    <ROW File="json_9" Component_="json" FileName="2~1.JSO|2.json" Attributes="0" SourcePath="C:\Program Files (x86)\ASDP_Render_Module\bin\ASDP_Render_Module_Configs\2.json" SelfReg="false"/>
+    <ROW File="json_10" Component_="json" FileName="3~1.JSO|3.json" Attributes="0" SourcePath="C:\Program Files (x86)\ASDP_Render_Module\bin\ASDP_Render_Module_Configs\3.json" SelfReg="false"/>
+    <ROW File="map.csv" Component_="json" FileName="3MAP~1.CSV|3.map.csv" Attributes="0" SourcePath="C:\Program Files (x86)\ASDP_Render_Module\bin\ASDP_Render_Module_Configs\3.map.csv" SelfReg="false"/>
+    <ROW File="json_11" Component_="json" FileName="3121~1.JSO|3121.json" Attributes="0" SourcePath="C:\Program Files (x86)\ASDP_Render_Module\bin\ASDP_Render_Module_Configs\3121.json" SelfReg="false"/>
+    <ROW File="_balcony1.json" Component_="json" FileName="3_BALC~1.JSO|3_balcony1.json" Attributes="0" SourcePath="C:\Program Files (x86)\ASDP_Render_Module\bin\ASDP_Render_Module_Configs\3_balcony1.json" SelfReg="false"/>
+    <ROW File="_balcony2.json" Component_="json" FileName="3_BALC~2.JSO|3_balcony2.json" Attributes="0" SourcePath="C:\Program Files (x86)\ASDP_Render_Module\bin\ASDP_Render_Module_Configs\3_balcony2.json" SelfReg="false"/>
+    <ROW File="_balcony3.json" Component_="json" FileName="3_BALC~3.JSO|3_balcony3.json" Attributes="0" SourcePath="C:\Program Files (x86)\ASDP_Render_Module\bin\ASDP_Render_Module_Configs\3_balcony3.json" SelfReg="false"/>
+    <ROW File="_balcony4.json" Component_="json" FileName="3_BALC~4.JSO|3_balcony4.json" Attributes="0" SourcePath="C:\Program Files (x86)\ASDP_Render_Module\bin\ASDP_Render_Module_Configs\3_balcony4.json" SelfReg="false"/>
+    <ROW File="json_12" Component_="json" FileName="4~1.JSO|4.json" Attributes="0" SourcePath="C:\Program Files (x86)\ASDP_Render_Module\bin\ASDP_Render_Module_Configs\4.json" SelfReg="false"/>
+    <ROW File="json.json" Component_="json" FileName="4JSON~1.JSO|4.json.json" Attributes="0" SourcePath="C:\Program Files (x86)\ASDP_Render_Module\bin\ASDP_Render_Module_Configs\4.json.json" SelfReg="false"/>
+    <ROW File="json_13" Component_="json" FileName="4019~1.JSO|4019.json" Attributes="0" SourcePath="C:\Program Files (x86)\ASDP_Render_Module\bin\ASDP_Render_Module_Configs\4019.json" SelfReg="false"/>
+    <ROW File="json_14" Component_="json" FileName="4021~1.JSO|4021.json" Attributes="0" SourcePath="C:\Program Files (x86)\ASDP_Render_Module\bin\ASDP_Render_Module_Configs\4021.json" SelfReg="false"/>
+    <ROW File="json_15" Component_="json" FileName="5~1.JSO|5.json" Attributes="0" SourcePath="C:\Program Files (x86)\ASDP_Render_Module\bin\ASDP_Render_Module_Configs\5.json" SelfReg="false"/>
+    <ROW File="json_16" Component_="json" FileName="5021~1.JSO|5021.json" Attributes="0" SourcePath="C:\Program Files (x86)\ASDP_Render_Module\bin\ASDP_Render_Module_Configs\5021.json" SelfReg="false"/>
+    <ROW File="_debug.json" Component_="json" FileName="5_DEBU~1.JSO|5_debug.json" Attributes="0" SourcePath="C:\Program Files (x86)\ASDP_Render_Module\bin\ASDP_Render_Module_Configs\5_debug.json" SelfReg="false"/>
+    <ROW File="json_17" Component_="json" FileName="6~1.JSO|6.json" Attributes="0" SourcePath="C:\Program Files (x86)\ASDP_Render_Module\bin\ASDP_Render_Module_Configs\6.json" SelfReg="false"/>
+    <ROW File="map.csv_1" Component_="json" FileName="6MAP~1.CSV|6.map.csv" Attributes="0" SourcePath="C:\Program Files (x86)\ASDP_Render_Module\bin\ASDP_Render_Module_Configs\6.map.csv" SelfReg="false"/>
+    <ROW File="json_18" Component_="json" FileName="6025~1.JSO|6025.json" Attributes="0" SourcePath="C:\Program Files (x86)\ASDP_Render_Module\bin\ASDP_Render_Module_Configs\6025.json" SelfReg="false"/>
+    <ROW File="json_19" Component_="json" FileName="65004~1.JSO|65004.json" Attributes="0" SourcePath="C:\Program Files (x86)\ASDP_Render_Module\bin\ASDP_Render_Module_Configs\65004.json" SelfReg="false"/>
+    <ROW File="json_20" Component_="json" FileName="65008~1.JSO|65008.json" Attributes="0" SourcePath="C:\Program Files (x86)\ASDP_Render_Module\bin\ASDP_Render_Module_Configs\65008.json" SelfReg="false"/>
+    <ROW File="json_21" Component_="json" FileName="65012~1.JSO|65012.json" Attributes="0" SourcePath="C:\Program Files (x86)\ASDP_Render_Module\bin\ASDP_Render_Module_Configs\65012.json" SelfReg="false"/>
+    <ROW File="json_22" Component_="json" FileName="65016~1.JSO|65016.json" Attributes="0" SourcePath="C:\Program Files (x86)\ASDP_Render_Module\bin\ASDP_Render_Module_Configs\65016.json" SelfReg="false"/>
+    <ROW File="json_23" Component_="json" FileName="65020~1.JSO|65020.json" Attributes="0" SourcePath="C:\Program Files (x86)\ASDP_Render_Module\bin\ASDP_Render_Module_Configs\65020.json" SelfReg="false"/>
+    <ROW File="json_24" Component_="json" FileName="65021~1.JSO|65021.json" Attributes="0" SourcePath="C:\Program Files (x86)\ASDP_Render_Module\bin\ASDP_Render_Module_Configs\65021.json" SelfReg="false"/>
+    <ROW File="json_25" Component_="json" FileName="65024~1.JSO|65024.json" Attributes="0" SourcePath="C:\Program Files (x86)\ASDP_Render_Module\bin\ASDP_Render_Module_Configs\65024.json" SelfReg="false"/>
+    <ROW File="json_26" Component_="json" FileName="65025~1.JSO|65025.json" Attributes="0" SourcePath="C:\Program Files (x86)\ASDP_Render_Module\bin\ASDP_Render_Module_Configs\65025.json" SelfReg="false"/>
+    <ROW File="json_27" Component_="json" FileName="7025~1.JSO|7025.json" Attributes="0" SourcePath="C:\Program Files (x86)\ASDP_Render_Module\bin\ASDP_Render_Module_Configs\7025.json" SelfReg="false"/>
+    <ROW File="json_28" Component_="json" FileName="7125~1.JSO|7125.json" Attributes="0" SourcePath="C:\Program Files (x86)\ASDP_Render_Module\bin\ASDP_Render_Module_Configs\7125.json" SelfReg="false"/>
+    <ROW File="json_29" Component_="json" FileName="7225~1.JSO|7225.json" Attributes="0" SourcePath="C:\Program Files (x86)\ASDP_Render_Module\bin\ASDP_Render_Module_Configs\7225.json" SelfReg="false"/>
+    <ROW File="json_30" Component_="json" FileName="8021~1.JSO|8021.json" Attributes="0" SourcePath="C:\Program Files (x86)\ASDP_Render_Module\bin\ASDP_Render_Module_Configs\8021.json" SelfReg="false"/>
+    <ROW File="json_31" Component_="json" FileName="9021~1.JSO|9021.json" Attributes="0" SourcePath="C:\Program Files (x86)\ASDP_Render_Module\bin\ASDP_Render_Module_Configs\9021.json" SelfReg="false"/>
+    <ROW File="json_32" Component_="json" FileName="9121~1.JSO|9121.json" Attributes="0" SourcePath="C:\Program Files (x86)\ASDP_Render_Module\bin\ASDP_Render_Module_Configs\9121.json" SelfReg="false"/>
+    <ROW File="Calibration_Helpers_Test.exe" Component_="Calibration_Helpers_Test.exe" FileName="CALIBR~1.EXE|Calibration_Helpers_Test.exe" Attributes="0" SourcePath="C:\Program Files (x86)\ASDP_Render_Module\bin\Calibration_Helpers_Test.exe" SelfReg="false" DigSign="true"/>
+    <ROW File="Camera_Calibration_Estimate_Distortion_Extrinsics.exe" Component_="Camera_Calibration_Estimate_Distortion_Extrinsics.exe" FileName="CAMERA~1.EXE|Camera_Calibration_Estimate_Distortion_Extrinsics.exe" Attributes="0" SourcePath="C:\Program Files (x86)\ASDP_Render_Module\bin\Camera_Calibration_Estimate_Distortion_Extrinsics.exe" SelfReg="false" DigSign="true"/>
+    <ROW File="Camera_Calibration_Gain_And_Offsets.exe" Component_="Camera_Calibration_Gain_And_Offsets.exe" FileName="CAMERA~2.EXE|Camera_Calibration_Gain_And_Offsets.exe" Attributes="0" SourcePath="C:\Program Files (x86)\ASDP_Render_Module\bin\Camera_Calibration_Gain_And_Offsets.exe" SelfReg="false" DigSign="true"/>
+    <ROW File="Camera_Calibration_Make_Scan.exe" Component_="Camera_Calibration_Make_Scan.exe" FileName="CAMERA~3.EXE|Camera_Calibration_Make_Scan.exe" Attributes="0" SourcePath="C:\Program Files (x86)\ASDP_Render_Module\bin\Camera_Calibration_Make_Scan.exe" SelfReg="false" DigSign="true"/>
+    <ROW File="Camera_Calibration_Per_Pixel_Gain_And_Offsets.exe" Component_="Camera_Calibration_Per_Pixel_Gain_And_Offsets.exe" FileName="CAMERA~4.EXE|Camera_Calibration_Per_Pixel_Gain_And_Offsets.exe" Attributes="0" SourcePath="C:\Program Files (x86)\ASDP_Render_Module\bin\Camera_Calibration_Per_Pixel_Gain_And_Offsets.exe" SelfReg="false" DigSign="true"/>
+    <ROW File="Collect_Calibration_Data.exe" Component_="Collect_Calibration_Data.exe" FileName="COLLEC~1.EXE|Collect_Calibration_Data.exe" Attributes="0" SourcePath="C:\Program Files (x86)\ASDP_Render_Module\bin\Collect_Calibration_Data.exe" SelfReg="false" DigSign="true"/>
+    <ROW File="Compare_Configurations.exe" Component_="Compare_Configurations.exe" FileName="COMPAR~1.EXE|Compare_Configurations.exe" Attributes="0" SourcePath="C:\Program Files (x86)\ASDP_Render_Module\bin\Compare_Configurations.exe" SelfReg="false" DigSign="true"/>
+    <ROW File="CompositeCameras_Test.exe" Component_="CompositeCameras_Test.exe" FileName="COMPOS~1.EXE|CompositeCameras_Test.exe" Attributes="0" SourcePath="C:\Program Files (x86)\ASDP_Render_Module\bin\CompositeCameras_Test.exe" SelfReg="false" DigSign="true"/>
+    <ROW File="CompositeLineRawData_Test.exe" Component_="CompositeLineRawData_Test.exe" FileName="COMPOS~2.EXE|CompositeLineRawData_Test.exe" Attributes="0" SourcePath="C:\Program Files (x86)\ASDP_Render_Module\bin\CompositeLineRawData_Test.exe" SelfReg="false" DigSign="true"/>
+    <ROW File="CompositePackXSightFrame_Test.exe" Component_="CompositePackXSightFrame_Test.exe" FileName="COMPOS~3.EXE|CompositePackXSightFrame_Test.exe" Attributes="0" SourcePath="C:\Program Files (x86)\ASDP_Render_Module\bin\CompositePackXSightFrame_Test.exe" SelfReg="false" DigSign="true"/>
+    <ROW File="Composite_Test.exe" Component_="Composite_Test.exe" FileName="COMPOS~4.EXE|Composite_Test.exe" Attributes="0" SourcePath="C:\Program Files (x86)\ASDP_Render_Module\bin\Composite_Test.exe" SelfReg="false" DigSign="true"/>
+    <ROW File="CPUDataToTextureHandler_Test.exe" Component_="CPUDataToTextureHandler_Test.exe" FileName="CPUDAT~1.EXE|CPUDataToTextureHandler_Test.exe" Attributes="0" SourcePath="C:\Program Files (x86)\ASDP_Render_Module\bin\CPUDataToTextureHandler_Test.exe" SelfReg="false" DigSign="true"/>
+    <ROW File="CUDABufferPool_Test.exe" Component_="CUDABufferPool_Test.exe" FileName="CUDABU~1.EXE|CUDABufferPool_Test.exe" Attributes="0" SourcePath="C:\Program Files (x86)\ASDP_Render_Module\bin\CUDABufferPool_Test.exe" SelfReg="false" DigSign="true"/>
+    <ROW File="CUDA_To_Texture_Test.exe" Component_="CUDA_To_Texture_Test.exe" FileName="CUDA_T~1.EXE|CUDA_To_Texture_Test.exe" Attributes="0" SourcePath="C:\Program Files (x86)\ASDP_Render_Module\bin\CUDA_To_Texture_Test.exe" SelfReg="false" DigSign="true"/>
+    <ROW File="D3Dcompiler_47.dll" Component_="D3Dcompiler_47.dll" FileName="D3DCOM~1.DLL|D3Dcompiler_47.dll" Attributes="0" SourcePath="C:\Program Files (x86)\ASDP_Render_Module\bin\D3Dcompiler_47.dll" SelfReg="false"/>
+    <ROW File="DepthEstimator_Test.exe" Component_="DepthEstimator_Test.exe" FileName="DEPTHE~1.EXE|DepthEstimator_Test.exe" Attributes="0" SourcePath="C:\Program Files (x86)\ASDP_Render_Module\bin\DepthEstimator_Test.exe" SelfReg="false" DigSign="true"/>
+    <ROW File="Display_Test.exe" Component_="Display_Test.exe" FileName="DISPLA~1.EXE|Display_Test.exe" Attributes="0" SourcePath="C:\Program Files (x86)\ASDP_Render_Module\bin\Display_Test.exe" SelfReg="false" DigSign="true"/>
+    <ROW File="Distortion_Test.exe" Component_="Distortion_Test.exe" FileName="DISTOR~1.EXE|Distortion_Test.exe" Attributes="0" SourcePath="C:\Program Files (x86)\ASDP_Render_Module\bin\Distortion_Test.exe" SelfReg="false" DigSign="true"/>
+    <ROW File="Fullscreen_Test.exe" Component_="Fullscreen_Test.exe" FileName="FULLSC~1.EXE|Fullscreen_Test.exe" Attributes="0" SourcePath="C:\Program Files (x86)\ASDP_Render_Module\bin\Fullscreen_Test.exe" SelfReg="false" DigSign="true"/>
+    <ROW File="Gimbal_Test.exe" Component_="Gimbal_Test.exe" FileName="GIMBAL~1.EXE|Gimbal_Test.exe" Attributes="0" SourcePath="C:\Program Files (x86)\ASDP_Render_Module\bin\Gimbal_Test.exe" SelfReg="false" DigSign="true"/>
+    <ROW File="ImageQueue_Test.exe" Component_="ImageQueue_Test.exe" FileName="IMAGEQ~1.EXE|ImageQueue_Test.exe" Attributes="0" SourcePath="C:\Program Files (x86)\ASDP_Render_Module\bin\ImageQueue_Test.exe" SelfReg="false" DigSign="true"/>
+    <ROW File="ImageStatistics_Test.exe" Component_="ImageStatistics_Test.exe" FileName="IMAGES~1.EXE|ImageStatistics_Test.exe" Attributes="0" SourcePath="C:\Program Files (x86)\ASDP_Render_Module\bin\ImageStatistics_Test.exe" SelfReg="false" DigSign="true"/>
+    <ROW File="libEGL.dll" Component_="libEGL.dll" FileName="libEGL.dll" Attributes="0" SourcePath="C:\Program Files (x86)\ASDP_Render_Module\bin\libEGL.dll" SelfReg="false"/>
+    <ROW File="libGLESv2.dll" Component_="libGLESv2.dll" FileName="LIBGLE~1.DLL|libGLESv2.dll" Attributes="0" SourcePath="C:\Program Files (x86)\ASDP_Render_Module\bin\libGLESv2.dll" SelfReg="false"/>
+    <ROW File="opengl32sw.dll" Component_="opengl32sw.dll" FileName="OPENGL~1.DLL|opengl32sw.dll" Attributes="0" SourcePath="C:\Program Files (x86)\ASDP_Render_Module\bin\opengl32sw.dll" SelfReg="false"/>
+    <ROW File="Parse_Analysis_JSON.exe" Component_="Parse_Analysis_JSON.exe" FileName="PARSE_~1.EXE|Parse_Analysis_JSON.exe" Attributes="0" SourcePath="C:\Program Files (x86)\ASDP_Render_Module\bin\Parse_Analysis_JSON.exe" SelfReg="false" DigSign="true"/>
+    <ROW File="qwindows.dll" Component_="qwindows.dll" FileName="qwindows.dll" Attributes="0" SourcePath="C:\Program Files (x86)\ASDP_Render_Module\bin\platforms\qwindows.dll" SelfReg="false"/>
+    <ROW File="PoseAdjuster_Test.exe" Component_="PoseAdjuster_Test.exe" FileName="POSEAD~1.EXE|PoseAdjuster_Test.exe" Attributes="0" SourcePath="C:\Program Files (x86)\ASDP_Render_Module\bin\PoseAdjuster_Test.exe" SelfReg="false" DigSign="true"/>
+    <ROW File="Print_PointCorrespondences.exe" Component_="Print_PointCorrespondences.exe" FileName="PRINT_~1.EXE|Print_PointCorrespondences.exe" Attributes="0" SourcePath="C:\Program Files (x86)\ASDP_Render_Module\bin\Print_PointCorrespondences.exe" SelfReg="false" DigSign="true"/>
+    <ROW File="Qt5Core.dll" Component_="Qt5Core.dll" FileName="Qt5Core.dll" Attributes="0" SourcePath="C:\Program Files (x86)\ASDP_Render_Module\bin\Qt5Core.dll" SelfReg="false"/>
+    <ROW File="Qt5Gui.dll" Component_="Qt5Gui.dll" FileName="Qt5Gui.dll" Attributes="0" SourcePath="C:\Program Files (x86)\ASDP_Render_Module\bin\Qt5Gui.dll" SelfReg="false"/>
+    <ROW File="Qt5Svg.dll" Component_="Qt5Svg.dll" FileName="Qt5Svg.dll" Attributes="0" SourcePath="C:\Program Files (x86)\ASDP_Render_Module\bin\Qt5Svg.dll" SelfReg="false"/>
+    <ROW File="Qt5Widgets.dll" Component_="Qt5Widgets.dll" FileName="QT5WID~1.DLL|Qt5Widgets.dll" Attributes="0" SourcePath="C:\Program Files (x86)\ASDP_Render_Module\bin\Qt5Widgets.dll" SelfReg="false"/>
+    <ROW File="RangeEstimator_Test.exe" Component_="RangeEstimator_Test.exe" FileName="RANGEE~1.EXE|RangeEstimator_Test.exe" Attributes="0" SourcePath="C:\Program Files (x86)\ASDP_Render_Module\bin\RangeEstimator_Test.exe" SelfReg="false" DigSign="true"/>
+    <ROW File="README.txt" Component_="README.txt" FileName="README.txt" Attributes="0" SourcePath="C:\Program Files (x86)\ASDP_Render_Module\bin\README.txt" SelfReg="false"/>
+    <ROW File="RenderHaloedLines_Test.exe" Component_="RenderHaloedLines_Test.exe" FileName="RENDER~1.EXE|RenderHaloedLines_Test.exe" Attributes="0" SourcePath="C:\Program Files (x86)\ASDP_Render_Module\bin\RenderHaloedLines_Test.exe" SelfReg="false" DigSign="true"/>
+    <ROW File="RenderText_Test.exe" Component_="RenderText_Test.exe" FileName="RENDER~2.EXE|RenderText_Test.exe" Attributes="0" SourcePath="C:\Program Files (x86)\ASDP_Render_Module\bin\RenderText_Test.exe" SelfReg="false" DigSign="true"/>
+    <ROW File="SharedContext_Test.exe" Component_="SharedContext_Test.exe" FileName="SHARED~1.EXE|SharedContext_Test.exe" Attributes="0" SourcePath="C:\Program Files (x86)\ASDP_Render_Module\bin\SharedContext_Test.exe" SelfReg="false" DigSign="true"/>
+    <ROW File="Speed_Test_Receiver_CUDA.exe" Component_="Speed_Test_Receiver_CUDA.exe" FileName="SPEED_~1.EXE|Speed_Test_Receiver_CUDA.exe" Attributes="0" SourcePath="C:\Program Files (x86)\ASDP_Render_Module\bin\Speed_Test_Receiver_CUDA.exe" SelfReg="false" DigSign="true"/>
+    <ROW File="Spot_Tracker_Test.exe" Component_="Spot_Tracker_Test.exe" FileName="SPOT_T~1.EXE|Spot_Tracker_Test.exe" Attributes="0" SourcePath="C:\Program Files (x86)\ASDP_Render_Module\bin\Spot_Tracker_Test.exe" SelfReg="false" DigSign="true"/>
+    <ROW File="Storage_Manager.exe" Component_="Storage_Manager.exe" FileName="STORAG~1.EXE|Storage_Manager.exe" Attributes="0" SourcePath="C:\Program Files (x86)\ASDP_Render_Module\bin\Storage_Manager.exe" SelfReg="false" DigSign="true"/>
+    <ROW File="Sum_and_Squared_Speed_Test.exe" Component_="Sum_and_Squared_Speed_Test.exe" FileName="SUM_AN~1.EXE|Sum_and_Squared_Speed_Test.exe" Attributes="0" SourcePath="C:\Program Files (x86)\ASDP_Render_Module\bin\Sum_and_Squared_Speed_Test.exe" SelfReg="false" DigSign="true"/>
+    <ROW File="Target_Calibration_Estimate_Lateral.exe" Component_="Target_Calibration_Estimate_Lateral.exe" FileName="TARGET~1.EXE|Target_Calibration_Estimate_Lateral.exe" Attributes="0" SourcePath="C:\Program Files (x86)\ASDP_Render_Module\bin\Target_Calibration_Estimate_Lateral.exe" SelfReg="false" DigSign="true"/>
+    <ROW File="Target_Calibration_Make_Scan.exe" Component_="Target_Calibration_Make_Scan.exe" FileName="TARGET~2.EXE|Target_Calibration_Make_Scan.exe" Attributes="0" SourcePath="C:\Program Files (x86)\ASDP_Render_Module\bin\Target_Calibration_Make_Scan.exe" SelfReg="false" DigSign="true"/>
+    <ROW File="Texture_Coordinates.exe" Component_="Texture_Coordinates.exe" FileName="TEXTUR~1.EXE|Texture_Coordinates.exe" Attributes="0" SourcePath="C:\Program Files (x86)\ASDP_Render_Module\bin\Texture_Coordinates.exe" SelfReg="false" DigSign="true"/>
+    <ROW File="Time_CUDA_Writes.exe" Component_="Time_CUDA_Writes.exe" FileName="TIME_C~1.EXE|Time_CUDA_Writes.exe" Attributes="0" SourcePath="C:\Program Files (x86)\ASDP_Render_Module\bin\Time_CUDA_Writes.exe" SelfReg="false" DigSign="true"/>
+    <ROW File="ToneMap_Test.exe" Component_="ToneMap_Test.exe" FileName="TONEMA~1.EXE|ToneMap_Test.exe" Attributes="0" SourcePath="C:\Program Files (x86)\ASDP_Render_Module\bin\ToneMap_Test.exe" SelfReg="false" DigSign="true"/>
+    <ROW File="Vignette_Test.exe" Component_="Vignette_Test.exe" FileName="VIGNET~1.EXE|Vignette_Test.exe" Attributes="0" SourcePath="C:\Program Files (x86)\ASDP_Render_Module\bin\Vignette_Test.exe" SelfReg="false" DigSign="true"/>
+    <ROW File="XSight_Monitor.exe" Component_="XSight_Monitor.exe" FileName="XSIGHT~1.EXE|XSight_Monitor.exe" Attributes="0" SourcePath="C:\Program Files (x86)\ASDP_Render_Module\bin\XSight_Monitor.exe" SelfReg="false" DigSign="true"/>
+    <ROW File="XSight_Simulator.exe" Component_="XSight_Simulator.exe" FileName="XSIGHT~2.EXE|XSight_Simulator.exe" Attributes="0" SourcePath="C:\Program Files (x86)\ASDP_Render_Module\bin\XSight_Simulator.exe" SelfReg="false" DigSign="true"/>
+  </COMPONENT>
+  <COMPONENT cid="caphyon.advinst.msicomp.BootstrOptComponent">
+    <ROW BootstrOptKey="GlobalOptions" DownloadFolder="[AppDataFolder][|Manufacturer]\[|ProductName]\prerequisites" Options="2"/>
+  </COMPONENT>
+  <COMPONENT cid="caphyon.advinst.msicomp.BuildComponent">
+    <ROW BuildKey="DefaultBuild" BuildName="DefaultBuild" BuildOrder="1" BuildType="0" PackageFolder="." PackageFileName="[|ProductName]_[|ProductVersion]" Languages="en" InstallationType="4" UseLargeSchema="true"/>
+  </COMPONENT>
+  <COMPONENT cid="caphyon.advinst.msicomp.DictionaryComponent">
+    <ROW Path="&lt;AI_DICTS&gt;ui.ail"/>
+    <ROW Path="&lt;AI_DICTS&gt;ui_en.ail"/>
+  </COMPONENT>
+  <COMPONENT cid="caphyon.advinst.msicomp.FragmentComponent">
+    <ROW Fragment="CommonUI.aip" Path="&lt;AI_FRAGS&gt;CommonUI.aip"/>
+    <ROW Fragment="FolderDlg.aip" Path="&lt;AI_THEMES&gt;classic\fragments\FolderDlg.aip"/>
+    <ROW Fragment="MaintenanceTypeDlg.aip" Path="&lt;AI_THEMES&gt;classic\fragments\MaintenanceTypeDlg.aip"/>
+    <ROW Fragment="MaintenanceWelcomeDlg.aip" Path="&lt;AI_THEMES&gt;classic\fragments\MaintenanceWelcomeDlg.aip"/>
+    <ROW Fragment="SequenceDialogs.aip" Path="&lt;AI_THEMES&gt;classic\fragments\SequenceDialogs.aip"/>
+    <ROW Fragment="Sequences.aip" Path="&lt;AI_FRAGS&gt;Sequences.aip"/>
+    <ROW Fragment="StaticUIStrings.aip" Path="&lt;AI_FRAGS&gt;StaticUIStrings.aip"/>
+    <ROW Fragment="Themes.aip" Path="&lt;AI_FRAGS&gt;Themes.aip"/>
+    <ROW Fragment="UI.aip" Path="&lt;AI_THEMES&gt;classic\fragments\UI.aip"/>
+    <ROW Fragment="Validation.aip" Path="&lt;AI_FRAGS&gt;Validation.aip"/>
+    <ROW Fragment="VerifyRemoveDlg.aip" Path="&lt;AI_THEMES&gt;classic\fragments\VerifyRemoveDlg.aip"/>
+    <ROW Fragment="VerifyRepairDlg.aip" Path="&lt;AI_THEMES&gt;classic\fragments\VerifyRepairDlg.aip"/>
+    <ROW Fragment="WelcomeDlg.aip" Path="&lt;AI_THEMES&gt;classic\fragments\WelcomeDlg.aip"/>
+  </COMPONENT>
+  <COMPONENT cid="caphyon.advinst.msicomp.MsiBinaryComponent">
+    <ROW Name="aicustact.dll" SourcePath="&lt;AI_CUSTACTS&gt;aicustact.dll"/>
+  </COMPONENT>
+  <COMPONENT cid="caphyon.advinst.msicomp.MsiControlEventComponent">
+    <ROW Dialog_="WelcomeDlg" Control_="Next" Event="NewDialog" Argument="FolderDlg" Condition="AI_INSTALL" Ordering="1"/>
+    <ROW Dialog_="FolderDlg" Control_="Next" Event="NewDialog" Argument="VerifyReadyDlg" Condition="AI_INSTALL" Ordering="201"/>
+    <ROW Dialog_="FolderDlg" Control_="Back" Event="NewDialog" Argument="WelcomeDlg" Condition="AI_INSTALL" Ordering="1"/>
+    <ROW Dialog_="MaintenanceWelcomeDlg" Control_="Next" Event="NewDialog" Argument="MaintenanceTypeDlg" Condition="AI_MAINT" Ordering="99"/>
+    <ROW Dialog_="VerifyReadyDlg" Control_="Install" Event="EndDialog" Argument="Return" Condition="AI_MAINT" Ordering="198"/>
+    <ROW Dialog_="VerifyReadyDlg" Control_="Back" Event="NewDialog" Argument="CustomizeDlg" Condition="AI_MAINT" Ordering="202"/>
+    <ROW Dialog_="VerifyReadyDlg" Control_="Install" Event="EndDialog" Argument="Return" Condition="AI_INSTALL" Ordering="197"/>
+    <ROW Dialog_="VerifyReadyDlg" Control_="Back" Event="NewDialog" Argument="FolderDlg" Condition="AI_INSTALL" Ordering="201"/>
+    <ROW Dialog_="CustomizeDlg" Control_="Next" Event="NewDialog" Argument="VerifyReadyDlg" Condition="AI_MAINT" Ordering="101"/>
+    <ROW Dialog_="CustomizeDlg" Control_="Back" Event="NewDialog" Argument="MaintenanceTypeDlg" Condition="AI_MAINT" Ordering="1"/>
+    <ROW Dialog_="MaintenanceTypeDlg" Control_="ChangeButton" Event="NewDialog" Argument="CustomizeDlg" Condition="AI_MAINT" Ordering="501"/>
+    <ROW Dialog_="MaintenanceTypeDlg" Control_="Back" Event="NewDialog" Argument="MaintenanceWelcomeDlg" Condition="AI_MAINT" Ordering="1"/>
+    <ROW Dialog_="MaintenanceTypeDlg" Control_="RemoveButton" Event="NewDialog" Argument="VerifyRemoveDlg" Condition="AI_MAINT AND InstallMode=&quot;Remove&quot;" Ordering="601"/>
+    <ROW Dialog_="VerifyRemoveDlg" Control_="Back" Event="NewDialog" Argument="MaintenanceTypeDlg" Condition="AI_MAINT AND InstallMode=&quot;Remove&quot;" Ordering="1"/>
+    <ROW Dialog_="MaintenanceTypeDlg" Control_="RepairButton" Event="NewDialog" Argument="VerifyRepairDlg" Condition="AI_MAINT AND InstallMode=&quot;Repair&quot;" Ordering="601"/>
+    <ROW Dialog_="VerifyRepairDlg" Control_="Back" Event="NewDialog" Argument="MaintenanceTypeDlg" Condition="AI_MAINT AND InstallMode=&quot;Repair&quot;" Ordering="1"/>
+    <ROW Dialog_="VerifyRepairDlg" Control_="Repair" Event="EndDialog" Argument="Return" Condition="AI_MAINT AND InstallMode=&quot;Repair&quot;" Ordering="399" Options="1"/>
+    <ROW Dialog_="VerifyRemoveDlg" Control_="Remove" Event="EndDialog" Argument="Return" Condition="AI_MAINT AND InstallMode=&quot;Remove&quot;" Ordering="299" Options="1"/>
+    <ROW Dialog_="PatchWelcomeDlg" Control_="Next" Event="NewDialog" Argument="VerifyReadyDlg" Condition="AI_PATCH" Ordering="201"/>
+    <ROW Dialog_="ResumeDlg" Control_="Install" Event="EndDialog" Argument="Return" Condition="AI_RESUME" Ordering="299"/>
+    <ROW Dialog_="VerifyReadyDlg" Control_="Install" Event="EndDialog" Argument="Return" Condition="AI_PATCH" Ordering="199"/>
+    <ROW Dialog_="VerifyReadyDlg" Control_="Back" Event="NewDialog" Argument="PatchWelcomeDlg" Condition="AI_PATCH" Ordering="203"/>
+  </COMPONENT>
+  <COMPONENT cid="caphyon.advinst.msicomp.MsiCreateFolderComponent">
+    <ROW Directory_="APPDIR" Component_="APPDIR" ManualDelete="true"/>
+    <ROW Directory_="ASDP_Render_Module_Dir" Component_="ASDP_Render_Module" ManualDelete="false"/>
+  </COMPONENT>
+  <COMPONENT cid="caphyon.advinst.msicomp.MsiCustActComponent">
+    <ROW Action="AI_DOWNGRADE" Type="19" Target="4010"/>
+    <ROW Action="AI_DpiContentScale" Type="1" Source="aicustact.dll" Target="DpiContentScale"/>
+    <ROW Action="AI_EnableDebugLog" Type="321" Source="aicustact.dll" Target="EnableDebugLog"/>
+    <ROW Action="AI_InstallModeCheck" Type="1" Source="aicustact.dll" Target="UpdateInstallMode" WithoutSeq="true"/>
+    <ROW Action="AI_PREPARE_UPGRADE" Type="65" Source="aicustact.dll" Target="PrepareUpgrade"/>
+    <ROW Action="AI_PRESERVE_INSTALL_TYPE" Type="65" Source="aicustact.dll" Target="PreserveInstallType"/>
+    <ROW Action="AI_RESTORE_LOCATION" Type="65" Source="aicustact.dll" Target="RestoreLocation"/>
+    <ROW Action="AI_ResolveKnownFolders" Type="1" Source="aicustact.dll" Target="AI_ResolveKnownFolders"/>
+    <ROW Action="AI_SHOW_LOG" Type="65" Source="aicustact.dll" Target="LaunchLogFile" WithoutSeq="true"/>
+    <ROW Action="AI_STORE_LOCATION" Type="51" Source="ARPINSTALLLOCATION" Target="[APPDIR]"/>
+    <ROW Action="SET_APPDIR" Type="307" Source="APPDIR" Target="[ProgramFilesFolder][Manufacturer]\[ProductName]" MultiBuildTarget="DefaultBuild:[ProgramFilesFolder][ProductName]"/>
+    <ROW Action="SET_SHORTCUTDIR" Type="307" Source="SHORTCUTDIR" Target="[ProgramMenuFolder][ProductName]"/>
+    <ROW Action="SET_TARGETDIR_TO_APPDIR" Type="51" Source="TARGETDIR" Target="[APPDIR]"/>
+  </COMPONENT>
+  <COMPONENT cid="caphyon.advinst.msicomp.MsiFeatCompsComponent">
+    <ROW Feature_="MainFeature" Component_="APPDIR"/>
+    <ROW Feature_="MainFeature" Component_="ProductInformation"/>
+    <ROW Feature_="MainFeature" Component_="Analysis_Test.exe"/>
+    <ROW Feature_="MainFeature" Component_="Annotation_Test.exe"/>
+    <ROW Feature_="MainFeature" Component_="ASDP_Render_Module.exe"/>
+    <ROW Feature_="MainFeature" Component_="json"/>
+    <ROW Feature_="MainFeature" Component_="Calibration_Helpers_Test.exe"/>
+    <ROW Feature_="MainFeature" Component_="Camera_Calibration_Estimate_Distortion_Extrinsics.exe"/>
+    <ROW Feature_="MainFeature" Component_="Camera_Calibration_Gain_And_Offsets.exe"/>
+    <ROW Feature_="MainFeature" Component_="Camera_Calibration_Make_Scan.exe"/>
+    <ROW Feature_="MainFeature" Component_="Camera_Calibration_Per_Pixel_Gain_And_Offsets.exe"/>
+    <ROW Feature_="MainFeature" Component_="Collect_Calibration_Data.exe"/>
+    <ROW Feature_="MainFeature" Component_="Compare_Configurations.exe"/>
+    <ROW Feature_="MainFeature" Component_="CompositeCameras_Test.exe"/>
+    <ROW Feature_="MainFeature" Component_="CompositeLineRawData_Test.exe"/>
+    <ROW Feature_="MainFeature" Component_="CompositePackXSightFrame_Test.exe"/>
+    <ROW Feature_="MainFeature" Component_="Composite_Test.exe"/>
+    <ROW Feature_="MainFeature" Component_="CPUDataToTextureHandler_Test.exe"/>
+    <ROW Feature_="MainFeature" Component_="CUDABufferPool_Test.exe"/>
+    <ROW Feature_="MainFeature" Component_="CUDA_To_Texture_Test.exe"/>
+    <ROW Feature_="MainFeature" Component_="D3Dcompiler_47.dll"/>
+    <ROW Feature_="MainFeature" Component_="DepthEstimator_Test.exe"/>
+    <ROW Feature_="MainFeature" Component_="Display_Test.exe"/>
+    <ROW Feature_="MainFeature" Component_="Distortion_Test.exe"/>
+    <ROW Feature_="MainFeature" Component_="Fullscreen_Test.exe"/>
+    <ROW Feature_="MainFeature" Component_="Gimbal_Test.exe"/>
+    <ROW Feature_="MainFeature" Component_="ImageQueue_Test.exe"/>
+    <ROW Feature_="MainFeature" Component_="ImageStatistics_Test.exe"/>
+    <ROW Feature_="MainFeature" Component_="libEGL.dll"/>
+    <ROW Feature_="MainFeature" Component_="libGLESv2.dll"/>
+    <ROW Feature_="MainFeature" Component_="opengl32sw.dll"/>
+    <ROW Feature_="MainFeature" Component_="Parse_Analysis_JSON.exe"/>
+    <ROW Feature_="MainFeature" Component_="qwindows.dll"/>
+    <ROW Feature_="MainFeature" Component_="PoseAdjuster_Test.exe"/>
+    <ROW Feature_="MainFeature" Component_="Print_PointCorrespondences.exe"/>
+    <ROW Feature_="MainFeature" Component_="Qt5Core.dll"/>
+    <ROW Feature_="MainFeature" Component_="Qt5Gui.dll"/>
+    <ROW Feature_="MainFeature" Component_="Qt5Svg.dll"/>
+    <ROW Feature_="MainFeature" Component_="Qt5Widgets.dll"/>
+    <ROW Feature_="MainFeature" Component_="RangeEstimator_Test.exe"/>
+    <ROW Feature_="MainFeature" Component_="README.txt"/>
+    <ROW Feature_="MainFeature" Component_="RenderHaloedLines_Test.exe"/>
+    <ROW Feature_="MainFeature" Component_="RenderText_Test.exe"/>
+    <ROW Feature_="MainFeature" Component_="SharedContext_Test.exe"/>
+    <ROW Feature_="MainFeature" Component_="Speed_Test_Receiver_CUDA.exe"/>
+    <ROW Feature_="MainFeature" Component_="Spot_Tracker_Test.exe"/>
+    <ROW Feature_="MainFeature" Component_="Storage_Manager.exe"/>
+    <ROW Feature_="MainFeature" Component_="Sum_and_Squared_Speed_Test.exe"/>
+    <ROW Feature_="MainFeature" Component_="Target_Calibration_Estimate_Lateral.exe"/>
+    <ROW Feature_="MainFeature" Component_="Target_Calibration_Make_Scan.exe"/>
+    <ROW Feature_="MainFeature" Component_="Texture_Coordinates.exe"/>
+    <ROW Feature_="MainFeature" Component_="Time_CUDA_Writes.exe"/>
+    <ROW Feature_="MainFeature" Component_="ToneMap_Test.exe"/>
+    <ROW Feature_="MainFeature" Component_="Vignette_Test.exe"/>
+    <ROW Feature_="MainFeature" Component_="XSight_Monitor.exe"/>
+    <ROW Feature_="MainFeature" Component_="XSight_Simulator.exe"/>
+    <ROW Feature_="MainFeature" Component_="ASDP_Render_Module"/>
+  </COMPONENT>
+  <COMPONENT cid="caphyon.advinst.msicomp.MsiIconsComponent">
+    <ROW Name="SystemFoldermsiexec.exe" SourcePath="&lt;AI_RES&gt;uninstall.ico" Index="0"/>
+  </COMPONENT>
+  <COMPONENT cid="caphyon.advinst.msicomp.MsiInstExSeqComponent">
+    <ROW Action="AI_DOWNGRADE" Condition="AI_NEWERPRODUCTFOUND AND (UILevel &lt;&gt; 5)" Sequence="210"/>
+    <ROW Action="AI_RESTORE_LOCATION" Condition="APPDIR=&quot;&quot;" Sequence="749"/>
+    <ROW Action="AI_STORE_LOCATION" Condition="(Not Installed) OR REINSTALL" Sequence="1501"/>
+    <ROW Action="AI_PREPARE_UPGRADE" Condition="AI_UPGRADE=&quot;No&quot; AND (Not Installed)" Sequence="1399"/>
+    <ROW Action="AI_ResolveKnownFolders" Sequence="52"/>
+    <ROW Action="AI_EnableDebugLog" Sequence="51"/>
+  </COMPONENT>
+  <COMPONENT cid="caphyon.advinst.msicomp.MsiInstallUISequenceComponent">
+    <ROW Action="AI_PRESERVE_INSTALL_TYPE" Sequence="199"/>
+    <ROW Action="AI_RESTORE_LOCATION" Condition="APPDIR=&quot;&quot;" Sequence="749"/>
+    <ROW Action="AI_ResolveKnownFolders" Sequence="53"/>
+    <ROW Action="AI_DpiContentScale" Sequence="52"/>
+    <ROW Action="AI_EnableDebugLog" Sequence="51"/>
+  </COMPONENT>
+  <COMPONENT cid="caphyon.advinst.msicomp.MsiLaunchConditionsComponent">
+    <ROW Condition="((VersionNT &lt;&gt; 501) AND (VersionNT &lt;&gt; 502))" Description="[ProductName] cannot be installed on [WindowsTypeNT5XDisplay]." DescriptionLocId="AI.LaunchCondition.NoNT5X" IsPredefined="true" Builds="DefaultBuild"/>
+    <ROW Condition="(VersionNT &lt;&gt; 400)" Description="[ProductName] cannot be installed on [WindowsTypeNT40Display]." DescriptionLocId="AI.LaunchCondition.NoNT40" IsPredefined="true" Builds="DefaultBuild"/>
+    <ROW Condition="(VersionNT &lt;&gt; 500)" Description="[ProductName] cannot be installed on [WindowsTypeNT50Display]." DescriptionLocId="AI.LaunchCondition.NoNT50" IsPredefined="true" Builds="DefaultBuild"/>
+    <ROW Condition="VersionNT" Description="[ProductName] cannot be installed on [WindowsType9XDisplay]." DescriptionLocId="AI.LaunchCondition.No9X" IsPredefined="true" Builds="DefaultBuild"/>
+  </COMPONENT>
+  <COMPONENT cid="caphyon.advinst.msicomp.MsiRegsComponent">
+    <ROW Registry="Manufacturer" Root="-1" Key="Software\[Manufacturer]" Name="\"/>
+    <ROW Registry="Path" Root="-1" Key="Software\[Manufacturer]\[ProductName]" Name="Path" Value="[APPDIR]" Component_="ProductInformation"/>
+    <ROW Registry="ProductName" Root="-1" Key="Software\[Manufacturer]\[ProductName]" Name="\"/>
+    <ROW Registry="Software" Root="-1" Key="Software" Name="\"/>
+    <ROW Registry="Version" Root="-1" Key="Software\[Manufacturer]\[ProductName]" Name="Version" Value="[ProductVersion]" Component_="ProductInformation"/>
+  </COMPONENT>
+  <COMPONENT cid="caphyon.advinst.msicomp.MsiShortsComponent">
+    <ROW Shortcut="ASDP_Render_Module" Directory_="ASDP_Render_Module_Dir" Name="ASDP_R~1|ASDP_Render_Module" Component_="ASDP_Render_Module.exe" Target="[#ASDP_Render_Module.exe]" Arguments="localhost" Hotkey="0" IconIndex="0" ShowCmd="1" WkDir="bin_Dir"/>
+    <ROW Shortcut="Display_Test" Directory_="ASDP_Render_Module_Dir" Name="DISPLA~1|Display_Test" Component_="Display_Test.exe" Target="[#Display_Test.exe]" Hotkey="0" IconIndex="0" ShowCmd="1" WkDir="bin_Dir"/>
+    <ROW Shortcut="Storage_Manager" Directory_="ASDP_Render_Module_Dir" Name="STORAG~1|Storage_Manager" Component_="Storage_Manager.exe" Target="[#Storage_Manager.exe]" Hotkey="0" IconIndex="0" ShowCmd="1" WkDir="bin_Dir"/>
+    <ROW Shortcut="UninstallProductNameProductVersion" Directory_="ASDP_Render_Module_Dir" Name="UNINST~1.0|Uninstall [|ProductName] [|ProductVersion]" Component_="qwindows.dll" Target="[SystemFolder]msiexec.exe" Arguments="/x [ProductCode]" Hotkey="0" Icon_="SystemFoldermsiexec.exe" IconIndex="0" ShowCmd="1"/>
+  </COMPONENT>
+  <COMPONENT cid="caphyon.advinst.msicomp.MsiThemeComponent">
+    <ATTRIBUTE name="UsedTheme" value="classic"/>
+  </COMPONENT>
+  <COMPONENT cid="caphyon.advinst.msicomp.MsiUpgradeComponent">
+    <ROW UpgradeCode="[|UpgradeCode]" VersionMin="0.0.1" VersionMax="[|ProductVersion]" Attributes="257" ActionProperty="OLDPRODUCTS"/>
+    <ROW UpgradeCode="[|UpgradeCode]" VersionMin="[|ProductVersion]" Attributes="2" ActionProperty="AI_NEWERPRODUCTFOUND"/>
+  </COMPONENT>
+</DOCUMENT>
