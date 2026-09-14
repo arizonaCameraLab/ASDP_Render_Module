@@ -1,5 +1,10 @@
 # ASDP_Render_Module
 
+The official source repository for this project is at
+[https://github.com/arizonaCameraLab/ASDP_Render_Module](https://github.com/arizonaCameraLab/ASDP_Render_Module)
+and an author-supported fork is at
+[https://github.com/ReliaSolve/ASDP_Render_Module](https://github.com/ReliaSolve/ASDP_Render_Module)
+
 This repository contains the source code for a Render Module for the Apache Strap-Down Pilotage program.
 The following additional documentation is available in the docs/ directory:
 - [ASDP Render Module implementation](./TR-010_Render_Implementation.pdf)

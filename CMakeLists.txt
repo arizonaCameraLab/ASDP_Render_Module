@@ -309,6 +309,12 @@ install(TARGETS ASDP_Render_Module EXPORT ${PROJECT_NAME}
 #install(DIRECTORY ${CMAKE_SOURCE_DIR}/ASDP_Render_Module_Configs DESTINATION ${CMAKE_BINARY_DIR})
 install(DIRECTORY ${CMAKE_SOURCE_DIR}/ASDP_Render_Module_Configs DESTINATION ${CMAKE_INSTALL_BINDIR})
 
+# If documentation is built, install the documentaton files into the install directory under a "docs" folder
+# alongside the CMAKE_INSTALL_BINDIR.
+if (BUILD_DOXYGEN)
+  install(DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/doc_doxygen/html DESTINATION ${CMAKE_INSTALL_BINDIR}/../docs)
+endif()
+
 #-----------------------------------------------------------------------------
 # Build utilities if we've been asked to.
 
