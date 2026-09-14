@@ -7,12 +7,10 @@ The following additional documentation is available in the docs/ directory:
 - [IR Tone mapping](./TR-015_IR_Tone_Mapping.pdf)
 - [Interfacing with Render Module](./TR-022_Interfacing_With_Render_Module.pdf)
 
-## Getting Started
+The Render Module has been tested on **Windows 11** and on **Ubuntu 22.04-26.04 using X11
+or Wayland**. It requires a sufficiently-powerful system with a sufficiently-powerful nVidia GPU.
 
-The Render Module code uses the GLFW library in an off-specification manner by putting
-window creation and event detection in threads other than the main thread. This works
-under **Windows 11** and under **Ubuntu 22.04 and 24.04 using X11** but does not work under
-(for example) Ubuntu 26.04 (even with X11) or Wayland.
+## Getting Started
 
 This Render module must be cloned recursively so that it pulls in all of its submodules:
 `git clone --recursive https://github.com/arizonaCameraLab/ASDP_Render_Module`
