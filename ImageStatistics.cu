@@ -386,7 +386,7 @@ void MeanStdGroup::UpdateThread()
 
   // Get the start time and compute the next time to update.
   std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
-  long long durationMicroseconds = m_updateInterval * 1e6;
+  long long durationMicroseconds = static_cast<long long>(m_updateInterval * 1e6);
   std::chrono::steady_clock::time_point nextUpdate = now + std::chrono::microseconds(durationMicroseconds);
 
   // Loop until we are told to stop.
@@ -506,7 +506,7 @@ float MeanStd::SpeedTestSingleCalculation(uint16_t width, uint16_t height)
   }
   std::chrono::high_resolution_clock::time_point end = std::chrono::high_resolution_clock::now();
   std::chrono::duration<double> elapsed = end - start;
-  return elapsed.count() / iterations;
+  return static_cast<float>(elapsed.count() / iterations);
 }
 
 std::string MeanStd::Test()
