@@ -1914,12 +1914,16 @@ bool asdp::render::DisplayOpenXR::DisplayOpenXRImpl::OpenXRRenderLayer(XrTime pr
     // for the rotation matrix. The last multiply moves the result back into helicopter space.
     quat = (viewpointRotation * quat * viewpointInverse) * viewpointRotation;
 
+    // Rotate the pose position by the inverse of both rotations.
+    glm::vec3 viewpointPosition = glm::inverse(rotationQuat * viewpointRotation) *
+      glm::vec3(m_views[i].pose.position.x, m_views[i].pose.position.y, m_views[i].pose.position.z);
+
     // Construct the ViewRenderInfo for the current view and push it onto the vector,
     // adding the viewpoint offset.
     ViewRenderInfo vri;
-    vri.viewpoint[0] = m_views[i].pose.position.x + m_display->m_viewpointOffset[0];
-    vri.viewpoint[1] = m_views[i].pose.position.y + m_display->m_viewpointOffset[1];
-    vri.viewpoint[2] = m_views[i].pose.position.z + m_display->m_viewpointOffset[2];
+    vri.viewpoint[0] = viewpointPosition[0] + m_display->m_viewpointOffset[0];
+    vri.viewpoint[1] = viewpointPosition[1] + m_display->m_viewpointOffset[1];
+    vri.viewpoint[2] = viewpointPosition[2] + m_display->m_viewpointOffset[2];
     vri.orientation[0] = quat.w;
     vri.orientation[1] = quat.x;
     vri.orientation[2] = quat.y;
