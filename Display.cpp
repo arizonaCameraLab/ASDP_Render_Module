@@ -1144,8 +1144,8 @@ public:
   XrDuration m_frameDurationNS{ XrDuration(1.0e9/90) };
 
   void OpenXRCreateInstance();
-  void OpenXRInitializeSystem(Display* sharedWindow);
-  void OpenGLInitializeDevice(Display* sharedWindow, XrInstance instance, XrSystemId systemId);
+  void OpenXRInitializeSystem();
+  void OpenGLInitializeDevice(XrInstance instance, XrSystemId systemId);
   void OpenXRInitializeSession();
   void OpenXRInitializeActions();
   XrReferenceSpaceCreateInfo GetXrReferenceSpaceCreateInfo(const std::string& referenceSpaceTypeStr);
@@ -1207,7 +1207,7 @@ void asdp::render::DisplayOpenXR::DisplayOpenXRImpl::OpenXRCreateInstance()
 #endif
 }
 
-void asdp::render::DisplayOpenXR::DisplayOpenXRImpl::OpenXRInitializeSystem(Display* sharedWindow)
+void asdp::render::DisplayOpenXR::DisplayOpenXRImpl::OpenXRInitializeSystem()
 {
   CHECK(m_instance != XR_NULL_HANDLE);
   CHECK(m_systemId == XR_NULL_SYSTEM_ID);
@@ -1227,10 +1227,10 @@ void asdp::render::DisplayOpenXR::DisplayOpenXRImpl::OpenXRInitializeSystem(Disp
 
   // The graphics API can initialize the graphics device now that the systemId and instance
   // handle are available.
-  OpenGLInitializeDevice(sharedWindow, m_instance, m_systemId);
+  OpenGLInitializeDevice(m_instance, m_systemId);
 }
 
-void asdp::render::DisplayOpenXR::DisplayOpenXRImpl::OpenGLInitializeDevice(Display* sharedWindow, XrInstance instance, XrSystemId systemId)
+void asdp::render::DisplayOpenXR::DisplayOpenXRImpl::OpenGLInitializeDevice(XrInstance instance, XrSystemId systemId)
 {
   // Extension function must be loaded by name
   PFN_xrGetOpenGLGraphicsRequirementsKHR pfnGetOpenGLGraphicsRequirementsKHR = nullptr;
@@ -1239,46 +1239,6 @@ void asdp::render::DisplayOpenXR::DisplayOpenXRImpl::OpenGLInitializeDevice(Disp
 
   XrGraphicsRequirementsOpenGLKHR graphicsRequirements{ XR_TYPE_GRAPHICS_REQUIREMENTS_OPENGL_KHR };
   CHECK_XRCMD(pfnGetOpenGLGraphicsRequirementsKHR(instance, systemId, &graphicsRequirements));
-
-  {
-    // Create a windowed mode window and its OpenGL context.
-    // This must be done in the same thread that will do the rendering so that the window events will
-    // be handled properly on all architectures.
-    // We must make the OpenGL context of the window we want to share current on this thread
-    // if we are sharing it by borrowing it and then returning it once the window is open because
-    // Windows requires it to be current.
-    GLFWwindow* windowToShare = nullptr;
-    if (sharedWindow) {
-      windowToShare = sharedWindow->m_impl->m_window.get();
-      if (!sharedWindow->BorrowContext()) {
-        THROW("DisplayOpenXR::DisplayOpenXRImpl::OpenGLInitializeDevice(): Failed to borrow context from shared window");
-        return;
-      }
-    }
-
-    // Open a window that we will use to get a context that we will use to hand to OpenXR as needed.
-    // This is a bit of a hack, but it is the only way to get a context that we can use with OpenXR.
-    // We will use the context from this window to create the OpenXR session.
-    // Set the window to be not hidden so that it will always be cleaned up and won't leave a zombie
-    // GL object that keeps us from opening new OpenXR apps.
-    std::string ret = CreateWindowOrContext(m_contextWindow, 100, 100,
-      "ASDP_Render_Module OpenXR OpenGL Window to get context", windowToShare);
-    if (sharedWindow) {
-      if (!sharedWindow->ReturnContext()) {
-        THROW("OpenGLInitializeDevice(): Failed to return context to shared window");
-        return;
-      }
-    }
-    if (!ret.empty()) {
-      THROW(Fmt("DisplayOpenXR::DisplayOpenXRImpl::OpenGLInitializeDevice(): Failed to create context window: %s", ret.c_str()));
-      return;
-    }
-
-    // Grab the context mutex.  Once we have it, we know that the context is not active in another thread.
-    // Make the window's context current
-    m_display->Display::m_impl->m_contextMutex.lock();
-    glfwMakeContextCurrent(m_contextWindow.get());
-  }
 
   // Determine the OpenGL version.
   GLint major = 0;
@@ -2215,8 +2175,43 @@ DisplayOpenXR::DisplayOpenXR(std::shared_ptr<Composite> composite, Display* shar
   m_impl = std::make_unique<DisplayOpenXRImpl>(this);
   m_impl->m_verbosity = verbosity;
 
+  {
+    // Create a windowed mode window and its OpenGL context.
+    // This must be done in the main thread so that the window events will
+    // be handled properly on all architectures.
+    // We must make the OpenGL context of the window we want to share current on this thread
+    // if we are sharing it by borrowing it and then returning it once the window is open because
+    // Windows requires it to be current.
+    GLFWwindow* windowToShare = nullptr;
+    if (sharedWindow) {
+      windowToShare = sharedWindow->m_impl->m_window.get();
+      if (!sharedWindow->BorrowContext()) {
+        THROW("DisplayOpenXR::DisplayOpenXRImpl::OpenGLInitializeDevice(): Failed to borrow context from shared window");
+        return;
+      }
+    }
+
+    // Open a window that we will use to get a context that we will use to hand to OpenXR as needed.
+    // This is a bit of a hack, but it is the only way to get a context that we can use with OpenXR.
+    // We will use the context from this window to create the OpenXR session.
+    // Set the window to be not hidden so that it will always be cleaned up and won't leave a zombie
+    // GL object that keeps us from opening new OpenXR apps.
+    std::string ret = CreateWindowOrContext(m_impl->m_contextWindow, 100, 100,
+      "ASDP_Render_Module OpenXR OpenGL Window to get context", windowToShare);
+    if (sharedWindow) {
+      if (!sharedWindow->ReturnContext()) {
+        THROW("OpenGLInitializeDevice(): Failed to return context to shared window");
+        return;
+      }
+    }
+    if (!ret.empty()) {
+      THROW(Fmt("DisplayOpenXR::DisplayOpenXRImpl::OpenGLInitializeDevice(): Failed to create context window: %s", ret.c_str()));
+      return;
+    }
+  }
+
   // Start the rendering thread.
-  m_displayThread = std::thread(&DisplayOpenXR::DisplayThread, this, sharedWindow, renderAheadMicroseconds);
+  m_displayThread = std::thread(&DisplayOpenXR::DisplayThread, this);
 
   // Wait until either the context is ready or there has been a failure so that the
   // constructor does not return before the rendering thread is ready.
@@ -2247,15 +2242,20 @@ DisplayOpenXR::~DisplayOpenXR()
   m_impl.reset();
 }
 
-void DisplayOpenXR::DisplayThread(Display* sharedWindow, uint32_t renderAheadMicroseconds)
+void DisplayOpenXR::DisplayThread()
 {
   bool requestRestart = false;
   do {
 
+    // Grab the context mutex.  Once we have it, we know that the context is not active in another thread.
+    // Make the window's context current for the following calls.
+    m_impl->m_display->Display::m_impl->m_contextMutex.lock();
+    glfwMakeContextCurrent(m_impl->m_contextWindow.get());
+
     /// Create things that we need for rendering.
     try {
       m_impl->OpenXRCreateInstance();
-      m_impl->OpenXRInitializeSystem(sharedWindow);
+      m_impl->OpenXRInitializeSystem();
       m_impl->OpenXRInitializeSession();
       m_impl->OpenXRCreateSwapchains();
     } catch (const std::exception& e) {
@@ -2300,6 +2300,8 @@ void DisplayOpenXR::DisplayThread(Display* sharedWindow, uint32_t renderAheadMic
     } catch (const std::exception& e) {
       m_status = "DisplayOpenXR::DisplayThread(): " + std::string(e.what());
     }
+    glfwMakeContextCurrent(nullptr);
+    m_impl->m_display->Display::m_impl->m_contextMutex.unlock();
 
   } while (m_status.empty() && requestRestart && !m_done);
 }

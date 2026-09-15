@@ -399,7 +399,7 @@ protected:
       bool m_replaying;
 
       /// @brief Method to implement the display thread.
-      void DisplayThread(Display* sharedWindow, uint32_t renderAheadMicroseconds);
+      void DisplayThread();
 
       /// Opaque class used to enable not requiring the application to #include all headers.
       class DisplayOpenXRImpl;
