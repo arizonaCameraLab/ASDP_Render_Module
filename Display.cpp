@@ -1883,18 +1883,39 @@ bool asdp::render::DisplayOpenXR::DisplayOpenXRImpl::OpenXRRenderLayer(XrTime pr
     waitInfo.timeout = XR_INFINITE_DURATION;
     CHECK_XRCMD(xrWaitSwapchainImage(m_swapchains[i].handle, &waitInfo));
 
-    // Convert the orientation to helicopter space by rotating -90 degrees around the x-axis,
-    // doing the inverse rotation on the other side.
-    /// @todo Handle the impact of m_viewpointRotation on the view orientation.
     glm::quat quat(m_views[i].pose.orientation.w, m_views[i].pose.orientation.x,
       m_views[i].pose.orientation.y, m_views[i].pose.orientation.z);
+
+    // Convert the orientation to helicopter space by rotating -90 degrees around the x-axis,
+    // doing the inverse rotation on the other side.
     float constexpr angle = glm::radians(-90.0f);
     glm::vec3 axis = glm::vec3(1.0f, 0.0f, 0.0f);
     glm::quat rotationQuat = glm::angleAxis(angle, axis);
     glm::quat inverseRotationQuat = glm::angleAxis(-angle, axis);
     quat = inverseRotationQuat * quat * rotationQuat;
 
-    // Construct the ViewRenderInfo for the current view and push it onto the vector.
+    // Compute the quaternion that represents the rotation of the camera as mounted on the
+    // helicopter.  This uses the m_viewpointRotation member variable, which is set by the user of this class to
+    // describe how the camera is mounted on the helicopter relative to helicopter space.  It is rotated first
+    // around X, then Y, then Z.
+    glm::quat xRotation = glm::angleAxis(glm::radians(
+      static_cast<double>(m_display->m_viewpointRotation[0])), glm::dvec3(1.0, 0.0, 0.0));
+    glm::quat yRotation = glm::angleAxis(glm::radians(
+      static_cast<double>(m_display->m_viewpointRotation[1])), glm::dvec3(0.0, 1.0, 0.0));
+    glm::quat zRotation = glm::angleAxis(glm::radians(
+      static_cast<double>(m_display->m_viewpointRotation[2])), glm::dvec3(0.0, 0.0, 1.0));
+    glm::quat viewpointRotation = zRotation * yRotation * xRotation;
+
+    glm::quat viewpointInverse = glm::inverse(viewpointRotation);
+
+    // Apply a change of coordinate system to that described by the m_viewpointRotation, which
+    // describes how the camera is mounted on the helicopter relative to helicopter space.
+    // The first three multiplies convert from helicopter to screen-space orientation
+    // for the rotation matrix. The last multiply moves the result back into helicopter space.
+    quat = (viewpointRotation * quat * viewpointInverse) * viewpointRotation;
+
+    // Construct the ViewRenderInfo for the current view and push it onto the vector,
+    // adding the viewpoint offset.
     ViewRenderInfo vri;
     vri.viewpoint[0] = m_views[i].pose.position.x + m_display->m_viewpointOffset[0];
     vri.viewpoint[1] = m_views[i].pose.position.y + m_display->m_viewpointOffset[1];
