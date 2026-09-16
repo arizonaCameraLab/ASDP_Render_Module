@@ -2361,7 +2361,7 @@ DisplayOpenXR::~DisplayOpenXR()
 {
 }
 
-void DisplayOpenXR::DisplayThread(Display* sharedWindow, uint32_t renderAheadMicroseconds)
+void DisplayOpenXR::DisplayThread()
 {
 }
 
