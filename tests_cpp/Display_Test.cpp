@@ -16,6 +16,7 @@ static void usage(const char* progName)
   std::cerr << "Usage: " << progName << " [--openXR] [--xSight <NIC name> <display>]"
     << " [--xSight2 <NIC name> <display>]"
     << " [--xSightG <NIC name> <display> <width> <height> <fps> <hFOV> <monochrome> <port>]"
+    << " [--viewpointOffset <x> <y> <z>] [--viewpointRotation <dx> <dy> <dz>]"
     << std::endl;
 }
 
@@ -32,6 +33,9 @@ int main(int argc, char** argv)
   float xSightHorizontalFOV = 70.0f;
   bool xSightMonochrome = true;
   uint16_t xSightPort = 5535;
+
+  std::array<float, 3> viewpointOffset = { 0.0f, 0.0f, 0.0f };
+  std::array<float, 3> viewpointRotation = { 0.0f, 0.0f, 0.0f };
 
   for (int i = 1; i < argc; ++i) {
     if (std::string("--openXR") == argv[i]) {
@@ -115,6 +119,40 @@ int main(int argc, char** argv)
       }
       xSightPort = static_cast<uint16_t>(std::stoi(argv[i]));
     }
+    else if (std::string ("--viewpointOffset") == argv[i]) {
+      if (++i >= argc) {
+        usage(argv[0]);
+        return 1;
+      }
+      viewpointOffset[0] = static_cast<float>(atof(argv[i]));
+      if (++i >= argc) {
+        usage(argv[0]);
+        return 1;
+      }
+      viewpointOffset[1] = static_cast<float>(atof(argv[i]));
+      if (++i >= argc) {
+        usage(argv[0]);
+        return 1;
+      }
+      viewpointOffset[2] = static_cast<float>(atof(argv[i]));
+    }
+    else if (std::string("--viewpointRotation") == argv[i]) {
+      if (++i >= argc) {
+        usage(argv[0]);
+        return 1;
+      }
+      viewpointRotation[0] = static_cast<float>(atof(argv[i]));
+      if (++i >= argc) {
+        usage(argv[0]);
+        return 1;
+      }
+      viewpointRotation[1] = static_cast<float>(atof(argv[i]));
+      if (++i >= argc) {
+        usage(argv[0]);
+        return 1;
+      }
+      viewpointRotation[2] = static_cast<float>(atof(argv[i]));
+    }
     else {
       usage(argv[0]);
       return 2;
@@ -146,8 +184,6 @@ int main(int argc, char** argv)
     std::vector< std::shared_ptr<asdp::render::Display> > displays;
 
     // Create the appropriate Display object(s) based on the command-line arguments.
-    std::array<float, 3> viewpointOffset = { 0.0f, 0.0f, 0.0f };
-    std::array<float, 3> viewpointRotation = { 0.0f, 0.0f, 0.0f };
     if (useOpenXR) {
       displays.push_back(std::make_shared<asdp::render::DisplayOpenXR>(composite, &texWindow, client,
         0, 0, 0, viewpointOffset, viewpointRotation, 2500, 0, nullptr, nullptr, nullptr, false));

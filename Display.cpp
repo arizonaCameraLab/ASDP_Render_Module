@@ -2842,15 +2842,37 @@ void DisplayXSight::DisplayThread(
     // Empirically, the azimuth is backwards from what we expect, so we negate it.
     // Empirically, the roll and pitch are swapped, so we swap them.
     // Empirically, this order of rotation works.
-    /// @todo Convert this based on m_viewpointRotation and m_viewpointOffset.
     glm::quat rotationX = glm::angleAxis(glm::radians(elevation), glm::vec3(1.0f, 0.0f, 0.0f));
     glm::quat rotationY = glm::angleAxis(glm::radians(roll), glm::vec3(0.0f, 1.0f, 0.0f));
     glm::quat rotationZ = glm::angleAxis(glm::radians(-azimuth), glm::vec3(0.0f, 0.0f, 1.0f));
     glm::quat rotationTotal = rotationZ * rotationX * rotationY;
+
+    // Compute the quaternion that represents the rotation of the camera as mounted on the
+    // helicopter.  This uses the m_viewpointRotation member variable, which is set by the user of this class to
+    // describe how the camera is mounted on the helicopter relative to helicopter space.  It is rotated first
+    // around X, then Y, then Z.
+    glm::quat xRotation = glm::angleAxis(glm::radians(
+      static_cast<double>(m_viewpointRotation[0])), glm::dvec3(1.0, 0.0, 0.0));
+    glm::quat yRotation = glm::angleAxis(glm::radians(
+      static_cast<double>(m_viewpointRotation[1])), glm::dvec3(0.0, 1.0, 0.0));
+    glm::quat zRotation = glm::angleAxis(glm::radians(
+      static_cast<double>(m_viewpointRotation[2])), glm::dvec3(0.0, 0.0, 1.0));
+    glm::quat viewpointRotation = zRotation * yRotation * xRotation;
+    glm::quat viewpointInverse = glm::inverse(viewpointRotation);
+
+    // Apply a change of coordinate system to that described by the m_viewpointRotation, which
+    // describes how the camera is mounted on the helicopter relative to helicopter space.
+    // The first three multiplies convert from helicopter to screen-space orientation
+    // for the rotation matrix. The last multiply moves the result back into helicopter space.
+    rotationTotal = (viewpointRotation * rotationTotal * viewpointInverse) * viewpointRotation;
+
     m_impl->m_views[0].orientation[0] = rotationTotal.w;
     m_impl->m_views[0].orientation[1] = rotationTotal.x;
     m_impl->m_views[0].orientation[2] = rotationTotal.y;
     m_impl->m_views[0].orientation[3] = rotationTotal.z;
+
+    // Add m_viewpointOffset.
+    m_impl->m_views[0].viewpoint = m_viewpointOffset;
 
     // Handle any window resizing
     SetViewportSizeAndFOVs(m_impl->m_views[0]);
