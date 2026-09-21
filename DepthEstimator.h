@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2024: Arizona Board of Regents on Behalf of the University of Arizona
+ * Copyright (C) 2024-2026: Arizona Board of Regents on Behalf of the University of Arizona
  */
 
  /**
@@ -28,7 +28,7 @@ namespace asdp {
     /// can then be queried based on rays to determine the distance from the ray start to an object in the
     /// world.
     /// NOTE: The caller must have the same current OpenGL context on the calling thread when calling any of the
-    /// functions in this class, including the constructor. This context must have had glewInit() called on it.
+    /// functions in this class, including the constructor. This context must have had GL extensions loaded.
     class DepthEstimator {
     public:
       /// brief Construct the estimator with a list of cameras.
@@ -54,7 +54,7 @@ namespace asdp {
         std::shared_ptr<PoseAdjuster> poseAdjuster, Time cameraFrameInterval,
         unsigned nx, unsigned ny,
         std::vector<float> depths = {2, 5, 10, 20, 50, 100, 200},
-        float fitnessThreshold = 10.0f);
+        float fitnessThreshold = 2.0f);
 
       virtual ~DepthEstimator() = default;
 

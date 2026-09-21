@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2025: Arizona Board of Regents on Behalf of the University of Arizona
+ * Copyright (C) 2025-2026: Arizona Board of Regents on Behalf of the University of Arizona
  */
 
  /**
@@ -10,8 +10,7 @@
  * @date January 29, 2025.
  */
 
-#include <GL/glew.h>
-#include <GLFW/glfw3.h>
+#include <WindowCreation.h>
 #include <Display.h>
 #include <ImageStatistics.h>
 
@@ -110,24 +109,13 @@ std::string RangeEstimator::Test()
   // Test the standard deviation range estimator.
 
   // Create a window and OpenGL context.
-  if (!glfwInit()) {
-    return "Could not initialize GLFW";
-  }
-  glfwWindowHint(GLFW_VISIBLE, false);
-  std::shared_ptr<GLFWwindow> window(glfwCreateWindow(640, 480, "RangeEstimator Test", NULL, NULL), glfwDestroyWindow);
-  if (!window) {
-    return "Could not create GLFW window";
+  std::shared_ptr<GLFWwindow> window;
+  std::string ret = asdp::render::CreateWindowOrContext(window, 640, 480, "RangeEstimator Test",
+    nullptr, -1, true);
+  if (!ret.empty()) {
+    return "Failed to create window or context: " + ret;
   }
   glfwMakeContextCurrent(window.get());
-
-  // Initialize GLEW in our context. It is okay to initialize it more than once.
-  glewExperimental = true;
-  if (glewInit() != GLEW_OK) {
-    return "Could not initialize GLEW";
-  }
-  // Clear any GL error that Glew caused.  Apparently on Non-Windows
-  // platforms, this can cause a spurious error 1280.
-  glGetError();
 
   // Make the display object that we'll use and borrow its context.
   std::shared_ptr<Display> display(new DisplayTexture());
@@ -164,7 +152,8 @@ std::string RangeEstimator::Test()
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-  glTexImage2D(GL_TEXTURE_2D, 0, GL_R16, width, height, 0, GL_RED, GL_UNSIGNED_SHORT, image.data());
+  glTexStorage2D(GL_TEXTURE_2D, 1, GL_R16, width, height);
+  glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height, GL_RED, GL_UNSIGNED_SHORT, image.data());
   glBindTexture(GL_TEXTURE_2D, 0);
   image1->texture = texture1;
   queue1->InsertImage(image1);

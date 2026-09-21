@@ -1,8 +1,8 @@
 /*
- * Copyright (C) 2024-2025: Arizona Board of Regents on Behalf of the University of Arizona
+ * Copyright (C) 2024-2026: Arizona Board of Regents on Behalf of the University of Arizona
  */
 
-#include <GL/glew.h>
+#include <glad/gl.h>
 
 #ifdef _WIN32
 #include <winsock2.h>
@@ -91,6 +91,7 @@ static std::vector<std::string> getIPAddresses()
 
 MainWindow::MainWindow(QWidget *parent)
   : QMainWindow(parent), ui(new Ui::MainWindow), m_timer(std::make_shared<QTimer>(this))
+  , m_pollTimer(std::make_shared<QTimer>(this))
 {
   // Setup UI and other initialization
   ui->setupUi(this);  // Set up the UI
@@ -122,6 +123,11 @@ MainWindow::MainWindow(QWidget *parent)
 
   // Hook up the timer to the periodic task.
   connect(m_timer.get(), &QTimer::timeout, this, &MainWindow::PeriodicTask);
+
+  // Hook up an always-on timer to poll display events. This runs for the whole lifetime of the
+  // program; PollDisplayEvents() itself checks whether there is anything to poll.
+  connect(m_pollTimer.get(), &QTimer::timeout, this, &MainWindow::PollDisplayEvents);
+  m_pollTimer->start(1);  // ~1kHz
 }
 
 MainWindow::~MainWindow()
@@ -497,6 +503,19 @@ void MainWindow::PeriodicTask()
   }
 }
 
+void MainWindow::PollDisplayEvents()
+{
+  // Poll the display objects for windowing events whenever they exist. It is fine for this to
+  // be called the whole time the program is running; when we are not viewing a camera the
+  // pointers are empty and there is nothing to do.
+  if (m_display) {
+    m_display->PollEvents();
+  }
+  if (m_displayTexture) {
+    m_displayTexture->PollEvents();
+  }
+}
+
 void MainWindow::StartRecording()
 {
   if (m_client) {
@@ -726,8 +745,9 @@ void MainWindow::ViewCamera(const QString& cameraID)
   // Construct a DisplayWindow to show the camera data.
   std::string name = "Camera " + cameraID.toStdString();
   std::array<float, 3> viewpointOffset = { 0.0f, 0.0f, 0.0f };
-  m_display = std::make_shared<DisplayWindow>(name, composite, m_client, 0, 0, 0, viewpointOffset,
-    60, 2500,
+  std::array<float, 3> viewpointRotation = { 0.0f, 0.0f, 0.0f };
+  m_display = std::make_shared<DisplayWindow>(name, composite, m_client, 0, 0, 0,
+    viewpointOffset, viewpointRotation, 60, 2500,
     width, height, 40.0, "", m_displayTexture.get());
 
   // Construct shared pointers to the data structures that we'll need to do rendering, with
@@ -753,7 +773,7 @@ void MainWindow::ViewCamera(const QString& cameraID)
     std::ref(m_doneStreaming), m_cpuPinnedImageBuffer, m_gpuImageBuffer, m_stream, m_visibleCameras.back()->m_imageQueue,
     dataQueue, nullptr, nullptr, nullptr));
 
-  // Request the camera to start sending data, showing every 10th frame.
+  // Request the camera to start sending data, showing every Nth frame.
   if (m_client && m_receiverCam) {
     uint16_t port;
     m_receiverCam->GetPort(port);

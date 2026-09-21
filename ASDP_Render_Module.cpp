@@ -27,13 +27,14 @@
 #include <atomic>
 #include <memory>
 #include <algorithm>
+#include <cstdlib>
 #include <ASDP_Core_API.h>
 #include <ASDP_SpinFreeQueue.hpp>
 #include <ASDP_BufferPool.h>
 #include <ASDP_ClockSynchronizer.h>
 #include "CUDABufferPool.h"
 #include <nlohmann/json.hpp>
-#include <GL/glew.h>
+#include <glad/gl.h>
 #include <ToneMap.h>
 #include <RenderTimingInfo.h>
 #include <CameraRenderInfo.h>
@@ -56,7 +57,7 @@ using namespace asdp::render;
 using namespace asdp::analysis;
 using json = nlohmann::json;
 
-static std::string VERSION = "3.44.0";
+static std::string VERSION = "3.55.0";
 
 /// @brief The path to the configuration file. Defined in the CMakeLists file.
 std::filesystem::path g_dirPath = CONFIG_FILE_PATH;
@@ -243,89 +244,6 @@ static void ResetActiveCameraGainOffset(void* /* unused */)
   std::cout << "Reset camera ID " << cri->m_ID << " color gain to 1 and offset to 0." << std::endl;
 }
 
-static double TimeDiffMagnitude(asdp::Time t1, asdp::Time t2)
-{
-  asdp::Time diff;
-  if (t1 > t2) {
-    diff = t1 - t2;
-  } else {
-    diff = t2 - t1;
-  }
-  return diff.seconds + diff.microseconds * 1.0e-6;
-}
-
-/// @brief Get a consistent set of images from all visible cameras for color offset adjustment.
-/// @return Vector of shared pointers to ImageData objects, one from each visible camera.  The
-/// caller is responsible for unlocking the images when done using them by calling
-/// UnlockConsistentImageSet() and passing it this return vector.
-/// Note: If not enough images are available, an empty vector is returned.
-
-static std::vector< std::shared_ptr<ImageData> > GetConsistentImageSet()
-{
-  std::vector< std::shared_ptr<ImageData> > imageSet;
-
-  // Pull the first two images from each queue and then select a set of consistent ones.
-  std::vector< std::list< std::shared_ptr<ImageData> > > images;
-  for (auto const& cameraRenderInfo : g_visibleCameras) {
-    images.push_back(cameraRenderInfo->m_imageQueue->LockNewestImages(2));
-    if (images.back().size() != 2) {
-      std::cerr << "GetConsistentImageSet(): Could not get all needed images, skipping frame" << std::endl;
-      for (auto const& imList : images) {
-        for (auto const& image : imList) {
-          cameraRenderInfo->m_imageQueue->UnlockImage(image);
-        }
-      }
-      return imageSet;
-    }
-  }
-
-  // Find the time of the oldest image among the first (newest) image from
-  // all cameras and then selecting from each pair the one whose time is closest to the
-  // selected time.
-  asdp::Time desiredTime = images[0].front()->imageCenterTime;
-  for (size_t i = 1; i < images.size(); i++) {
-    if (images[i].front()->imageCenterTime < desiredTime) {
-      desiredTime = images[i].front()->imageCenterTime;
-    }
-  }
-
-  // Find the image from each list that is closest to the desired time.  Push it into the m_images
-  // array and return the other images+/ to the queue.
-  for (size_t i = 0; i < images.size(); i++) {
-    auto& imList = images[i];
-    auto best = imList.begin();
-    double bestDiff = TimeDiffMagnitude((*best)->imageCenterTime, desiredTime);
-    for (auto it = imList.begin(); it != imList.end(); ++it) {
-      double diff = TimeDiffMagnitude((*it)->imageCenterTime, desiredTime);
-      if (diff < bestDiff) {
-        best = it;
-        bestDiff = diff;
-      }
-    }
-
-    for (auto it = imList.begin(); it != imList.end(); ++it) {
-      if (it == best) {
-        // Use this image
-        imageSet.push_back(*it);
-      } else {
-        // Unlock the images that are not selected.
-        g_visibleCameras[i]->m_imageQueue->UnlockImage(*it);
-      }
-    }
-  }
-
-  return imageSet;
-}
-
-/// @brief Unlock a consistent set of images previously obtained by calling GetConsistentImageSet().
-/// @param imageSet The vector of shared pointers to ImageData objects obtained from GetConsistentImageSet().
-static void UnlockConsistentImageSet(const std::vector< std::shared_ptr<ImageData> >& imageSet)
-{
-  for (size_t i = 0; i < imageSet.size(); i++) {
-    g_visibleCameras[i]->m_imageQueue->UnlockImage(imageSet[i]);
-  }
-}
-
 /// @brief Make a vector of pairs of pixel values, one from each image, read at the specified correspondence locations.
 /// @param correspondences Locations from first and second image to read.
 /// @param widths Array of 2 image widths.
@@ -348,12 +266,12 @@ static std::vector< std::array<uint16_t, 2> > GetRawPixelValues(
   // Read back both images from texture memory to CPU memory.  These have already been adjusted by
   // the offset and gain on the way to being written to the texture.
   std::array<std::vector<uint16_t>, imageData.size()> imagePixels;
-  GLenum ret;
   for (int i = 0; i < imagePixels.size(); i++) {
     imagePixels[i].resize(widths[i] * heights[i]);
     glBindTexture(GL_TEXTURE_2D, imageData[i]->texture);
     glGetTexImage(GL_TEXTURE_2D, 0, GL_RED, GL_UNSIGNED_SHORT, imagePixels[i].data());
 #if !defined(NDEBUG)
+    GLenum ret;
     ret = glGetError();
     if (ret != GL_NO_ERROR) {
       std::cerr << "GetRawPixelValues(): Error: glGetTexImage() failed for image " << i
@@ -424,8 +342,8 @@ static float ComputeNewColorOffset(
     sum1 += (pixelPair[0] + offset1) * gain1;
     sum2 += (pixelPair[1] + offset2) * gain2;
   }
-  float avg1 = sum1 / rawPixels.size();
-  float avg2 = sum2 / rawPixels.size();
+  float avg1 = static_cast<float>(sum1 / rawPixels.size());
+  float avg2 = static_cast<float>(sum2 / rawPixels.size());
 
   // Compute the new offset for the second camera to make its average match the first camera's average.
   // We want to know how much and in which direction to shift the second camera's pixel values.  The
@@ -445,9 +363,9 @@ static void AutoUpdateColorOffsets(void* /* unused */)
   }
 
   // Get a consistent set of images to use for the adjustment.
-  std::vector< std::shared_ptr<ImageData> > imageSet = GetConsistentImageSet();
+  std::vector< std::shared_ptr<ImageData> > imageSet = GetConsistentImageSet(g_visibleCameras);
   if (imageSet.size() != g_visibleCameras.size()) {
-    UnlockConsistentImageSet(imageSet);
+    UnlockConsistentImageSet(imageSet, g_visibleCameras);
     std::cerr << "AutoUpdateColorOffsets(): Error: Could not get consistent image set." << std::endl;
     return;
   }
@@ -493,7 +411,7 @@ static void AutoUpdateColorOffsets(void* /* unused */)
   }
 
   // Done with the images, unlock them.
-  UnlockConsistentImageSet(imageSet);
+  UnlockConsistentImageSet(imageSet, g_visibleCameras);
 }
 
 /// @brief Compute the color offset adjustment needed for the second camera in a pair based on the first.
@@ -534,10 +452,10 @@ static std::array<float, 2> ComputeNewColorOffsetGain(
   // Compute the best-fit line through the points.
   float sumX = 0.0f, sumY = 0.0f, sumXY = 0.0f, sumXX = 0.0f;
   for (const auto& pt : adjustedPoints) {
-    sumX += pt[0];
-    sumY += pt[1];
-    sumXY += pt[0] * pt[1];
-    sumXX += pt[0] * pt[0];
+    sumX += static_cast<float>(pt[0]);
+    sumY += static_cast<float>(pt[1]);
+    sumXY += static_cast<float>(pt[0] * pt[1]);
+    sumXX += static_cast<float>(pt[0] * pt[0]);
   }
   float n = static_cast<float>(adjustedPoints.size());
   float slope = (n * sumXY - sumX * sumY) / (n * sumXX - sumX * sumX);
@@ -560,8 +478,8 @@ static std::array<float, 2> ComputeNewColorOffsetGain(
   // Find the average pixel value for each camera in the adjusted point set.
   float sum1 = 0.0, sum2 = 0.0;
   for (const auto& pt : adjustedPoints) {
-    sum1 += pt[0];
-    sum2 += pt[1];
+    sum1 += static_cast<float>(pt[0]);
+    sum2 += static_cast<float>(pt[1]);
   }
   float avg1 = sum1 / adjustedPoints.size();
   float avg2 = sum2 / adjustedPoints.size();
@@ -584,9 +502,9 @@ static void AutoUpdateColorOffsetsAndGains(void* /* unused */)
   }
 
   // Get a consistent set of images to use for the adjustment.
-  std::vector< std::shared_ptr<ImageData> > imageSet = GetConsistentImageSet();
+  std::vector< std::shared_ptr<ImageData> > imageSet = GetConsistentImageSet(g_visibleCameras);
   if (imageSet.size() != g_visibleCameras.size()) {
-    UnlockConsistentImageSet(imageSet);
+    UnlockConsistentImageSet(imageSet, g_visibleCameras);
     std::cerr << "AutoUpdateColorOffsetsAndGains(): Error: Could not get consistent image set." << std::endl;
     return;
   }
@@ -630,7 +548,7 @@ static void AutoUpdateColorOffsetsAndGains(void* /* unused */)
   }
 
   // Done with the images, unlock them.
-  UnlockConsistentImageSet(imageSet);
+  UnlockConsistentImageSet(imageSet, g_visibleCameras);
 }
 
 /// @brief Callback handler to save the camera configuration to a file.
@@ -710,8 +628,8 @@ static void DepthThreadFunction(std::shared_ptr<Timer> timer, std::shared_ptr<Di
       std::cerr << "Failed to get time: " << ErrorMessage(status) << std::endl;
       return;
     }
-    /// @todo Consider another approach to finding the time for the estimate.
     try {
+      /// @todo Consider another approach to finding the time for the estimate.
       std::string ret = g_depthEstimator->ComputeDepthEstimate(now);
       if (ret != "") {
         std::cerr << "Error computing depth estimate: " << ret << std::endl;
@@ -988,8 +906,8 @@ struct DisplayInfo
   bool useOpenXR = false;       ///< Use OpenXR for rendering? If so, overrides all of the following.
   std::string XSightNIC = "";   ///< NIC to listen to XSight on for rendering. If not empty, overrides all of the following.
   int XSightDisplay = 1;        ///< The display to use for XSight rendering.
-  std::string XSight2NIC = "";  ///< NIC to listen to XSight2 on for rendering. If not empty, overrides all of the following.
-  int XSight2Display = 1;       ///< The display to use for XSight2 rendering.
+  bool XSightMonochrome = true; ///< Render XSight in monochrome mode.
+  uint16_t XSightPort = 5535;   ///< The port to listen to XSight on for rendering.
   int width = 1280;             ///< The width of the display.
   int height = 1024;            ///< The height of the display.
   float hFOV = 40.0f;           ///< The horizontal field of view in degrees.
@@ -998,6 +916,7 @@ struct DisplayInfo
   bool fullScreen = false;      ///< Run in full screen mode.
   int fullScreenDisplay = 0;    ///< The display to run in full screen mode on.
   std::array<float, 3> viewpointOffset = { 0.0f, 0.0f, 0.0f };  ///< The offset to apply to the viewpoint for this display, in meters.
+  std::array<float, 3> viewpointRotation = { 0.0f, 0.0f, 0.0f }; ///< The rotation to apply to the viewpoint for this display, in degrees.
 
   //======================================
   // Added by Sang Yoon to add a flag for enabling the cylindrical projection.
@@ -1176,7 +1095,7 @@ std::vector<CompositeCameras::Annotation> AnnotationCallbackHandler(Time time, v
       float dt = 0;
       if (report->Timestamp < time) {
         Time delta = time - report->Timestamp;
-        dt = delta.seconds + delta.microseconds * 1e-6;
+        dt = delta.seconds + delta.microseconds * 1e-6f;
       }
       float opacity = 1.0f - dt / g_analysisFadeTimeSeconds;
       if (opacity <= 0.0f) {
@@ -1322,7 +1241,9 @@ void HandleAnalysisThread(std::vector<std::string> analysisModuleURLs, std::shar
       for (auto it = rm.begin(); it != rm.end();) {
         auto& series = it->second;
         // Remove old reports from the back of the series.
-        while (!series.empty() && series.back().Timestamp + Time(g_analysisFadeTimeSeconds, 0) < now) {
+        uint32_t seconds = static_cast<uint32_t>(g_analysisFadeTimeSeconds);
+        uint32_t microseconds = static_cast<uint32_t>((g_analysisChanceThreshold - seconds) * 1000000);
+        while (!series.empty() && series.back().Timestamp + Time(seconds, microseconds) < now) {
           series.pop_back();
         }
         if (series.empty()) {
@@ -1516,7 +1437,7 @@ int spin_up(std::shared_ptr<CoreClient> client, int &serialNumber, std::shared_p
   // Remove any cameras that we are to skip from cameras, cameraInfos and NUCInfos.
   std::vector<CameraRenderInfo> filteredCameraRenderInfos;
   std::vector<CameraInfo> filteredCameras;
-  for (size_t i = 0; i < cameras.size(); i++) {
+  for (int i = 0; i < cameras.size(); i++) {
     if (skipCameras.find(i + 1) == skipCameras.end()) {
       filteredCameras.push_back(cameras[i]);
     }
@@ -1555,12 +1476,15 @@ int spin_up(std::shared_ptr<CoreClient> client, int &serialNumber, std::shared_p
   int NUM_TEXTURE_THREADS = 2;
   if (cameras.size() > 21) {
     // We need larger batches of lines to keep up with more than 21 cameras. The jump from
-    // default 110 to 330 has both cases ending at 990, which is just below the 1024 limit so will make
+    // default 112 to 336 has both cases ending at 1008, which is just below the 1024 limit so will make
     // a small final batch, reducing the latency from the end of the frame receipt to texture upload.s
     // NOTE: Originally, we could keep up on Linux by bumping our number of threads to 3 and leaving
     // the line batches the same. As of 4/24, this no longer works -- but depth estimation is now
     // taking much longer than it used to.  We collapsed to a common solution of more batches because
     // it keeps a small final batch, still reducing the latency with fewer threads.
+    // We later collapsed to a common number of lines per send of 112 for both Linux and Windows;
+    // earlier versions had it at 16 for Linux, but that was not a large enough bump when depth
+    // calculation was added.
     lineBatchesPerGPUSend *= 3;
   }
 
@@ -1605,7 +1529,8 @@ int spin_up(std::shared_ptr<CoreClient> client, int &serialNumber, std::shared_p
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
         // Load image into the texture
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_R16, width, height, 0, GL_RED, GL_UNSIGNED_SHORT, image.data());
+        glTexStorage2D(GL_TEXTURE_2D, 1, GL_R16, width, height);
+        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height, GL_RED, GL_UNSIGNED_SHORT, image.data());
         glBindTexture(GL_TEXTURE_2D, 0);
 
         imageData->texture = texture;
@@ -1712,28 +1637,21 @@ int spin_up(std::shared_ptr<CoreClient> client, int &serialNumber, std::shared_p
       return 102;
     }
 
-    // Initialize GLEW in our context. It is okay to initialize it more than once.
-    glewExperimental = true;
-    if (glewInit() != GLEW_OK) {
-      std::cerr << "Failed to initialize GLEW before DepthTexture" << std::endl;
-      return 103;
-    }
-    // Clear any GL error that Glew caused.  Apparently on Non-Windows
-    // platforms, this can cause a spurious error 1280.
-    glGetError();
-
     // Determine the range of depths to use for the depth estimater and then construct it.
     std::vector<float> depths(7);
     depths[depths.size() - 1] = maxDepth;
-    for (int i = depths.size() - 2; i >= 0; i--) {
+    for (long i = static_cast<long>(depths.size()) - 2; i >= 0; i--) {
       depths[i] = depths[i + 1] / 2;
     }
-    g_depthEstimator = std::make_shared<DepthEstimator>(cameras, rangeEstimator, poseAdjuster, float(1.0 / cameraFPS),
+    /// @todo Because we have visible-light depth cameras even when using IR cameras, we avoid
+    /// using a RangeEstimator when constructing them.
+    g_depthEstimator = std::make_shared<DepthEstimator>(cameras, std::make_shared<RangeEstimatorFixed>(),
+      poseAdjuster, float(1.0 / cameraFPS),
       g_depthCameras[0]->m_resolutionPixels[0] * 2 / 100, g_depthCameras[0]->m_resolutionPixels[1] * 2 / 100,
       depths, depthThreshold);
     std::cout << "Constructed DepthEstimator with " << cameras.size() << " camera pairs." << std::endl;
 
-    // Compute a depth estimate to get all of the machinery set up and GLEW initialized on this thread.
+    // Compute a depth estimate to get all of the machinery set up.
     g_depthEstimator->ComputeDepthEstimate(0);
 
     if (!depthContext->ReturnContext()) {
@@ -1768,11 +1686,11 @@ int spin_up(std::shared_ptr<CoreClient> client, int &serialNumber, std::shared_p
     // can cache consistent camera images for the whole frame while views are being rendered.
     // Two displays cannot share a SetupRenderFrame() call because they may have different frame rates.
     // Rendering offset based on how many frames we want to render ahead.
-    uint32_t renderOffsetMicroseconds = renderAheadFrames * (1000000 / cameraFPS);
+    uint32_t renderOffsetMicroseconds = static_cast<uint32_t>(renderAheadFrames * (1000000 / cameraFPS));
     g_composites.push_back(std::make_shared<CompositeCameras>(
-      g_visibleCameras, toneMapTexture, poseAdjuster, Time(1 / cameraFPS),
+      g_visibleCameras, toneMapTexture, poseAdjuster, Time(static_cast<float>(1 / cameraFPS)),
       renderOffsetMicroseconds,
-      Time(0, 1000000 / displayInfos[i].fps), (i == 0) ? (&g_timingInfo) : nullptr,
+      Time(0, static_cast<uint32_t>(1000000 / displayInfos[i].fps)), (i == 0) ? (&g_timingInfo) : nullptr,
       rangeEstimator, staticDepth, AnnotationCallbackHandler, nullptr));
 
     //======================================
@@ -1971,7 +1889,7 @@ int spin_up(std::shared_ptr<CoreClient> client, int &serialNumber, std::shared_p
     ti.mode = 3;
     ti.period = 1 / cameraFPS;
     ti.offset = 0;
-    ti.trackingFactor = 0.005;
+    ti.trackingFactor = 0.005f;
     ti.externalID = camera.trigger;
     status = client->SendCommandPacket(CommandPacketConfigureTrigger(ti));
     if (status != OKAY) {
@@ -2123,7 +2041,7 @@ int spin_down(std::shared_ptr<CoreClient> client, std::atomic<bool>& done,
   dataQueues.clear();
 
   cameraRenderInfos.clear();
-  glDeleteTextures(toneMapTextures.size(), toneMapTextures.data());
+  glDeleteTextures(static_cast<GLsizei>(toneMapTextures.size()), toneMapTextures.data());
 
   // Clean up the global objects.
   g_pointCorrespondenceDisplay.reset();
@@ -2158,7 +2076,7 @@ static void usage(std::string name)
   std::cerr << "  --NUCInfo <directory> <tempType>    Add the directory containing the NUC information and the temperature type to use (sensor or core)." << std::endl;
   std::cerr << "  --replay <stream id>                ID of the stream to replay (1+)." << std::endl;
   std::cerr << "  --loopReplay                        Loop the replay (default not)." << std::endl;
-  std::cerr << "  --lineBatchesPerGPUSend <int>       The number of batches of lines to group (default 16 Linux, 110 Windows)" << std::endl;
+  std::cerr << "  --lineBatchesPerGPUSend <int>       The number of batches of lines to group (default 112)" << std::endl;
   std::cerr << "  --noPoses                           Do not stream poses from the server, so no latency adjustment." << std::endl;
   std::cerr << "  --dumpTiming <file name base>       Write timing on quit to CSV files with the specified base name." << std::endl;
   std::cerr << "  --duration <seconds>                The duration to run before quitting (default 0 means run until user quits)." << std::endl;
@@ -2173,14 +2091,15 @@ static void usage(std::string name)
   std::cerr << "  --autoRangeStd <below> <above>      Adjust color range to specified standard deviations above and below the mean." << std::endl;
   std::cerr << "  --noDepth                           Do not compute depth even when stereo cameras are available." << std::endl;
   std::cerr << "  --maxDepth <float>                  Maximum depth to test for in meters (default 200)." << std::endl;
-  std::cerr << "  --depthThreshold <float>            Depth threshold in squared pixel value differences (default 10.0)." << std::endl;
+  std::cerr << "  --depthThreshold <float>            Depth threshold in squared pixel value differences (default 2.0)." << std::endl;
   std::cerr << "  --staticDepth <double>              The static depth to use for cameras without depth information (default 900.0)." << std::endl;
   std::cerr << "  --cameraFPS <frames per second>     The frames per second to run the camera at (default is maximum rate)." << std::endl;
   std::cerr << "  --enableCP                          Enable the cylindrical projection." << std::endl; // Added by Sang Yoon
   std::cerr << "  --enableOD                          Enable the display interface of overview plus detail view." << std::endl; // Added by Sang Yoon
   std::cerr << "  --openXR                            Use OpenXR for rendering. If set, overrides the following and sets lineBatchesPerGPUSend to 10000." << std::endl;
-  std::cerr << "  --xSight <ip of NIC to listen on>   <display> Render to XSight on specified NIC. If set, overrides the following." << std::endl;
-  std::cerr << "  --xSight2 <ip of NIC to listen on>  <display> Render to a color, smaller XSight on specified NIC. If set, overrides the following." << std::endl;
+  std::cerr << "  --xSight <ip of NIC to listen on> <display>  Render to XSight on specified NIC (may need to be 0.0.0.0). If set, overrides the following." << std::endl;
+  std::cerr << "  --xSight2 <ip of NIC to listen on> <display>  Render to a smaller XSight on specified NIC. If set, overrides the following." << std::endl;
+  std::cerr << "  --xSightG <ip> <display> <width> <height> <fps> <hFOV> <monochrome 'true'> <port>  Generic XSight" << std::endl;
   std::cerr << "  --width <width>                     The width of the window (default 1280)." << std::endl;
   std::cerr << "  --height <height>                   The height of the window (default 1024)." << std::endl;
   std::cerr << "  --hFOV <horizontal field of view>   The horizontal field of view in degrees (default 40)." << std::endl;
@@ -2188,6 +2107,7 @@ static void usage(std::string name)
   std::cerr << "  --fps <frames per second>           The frames per second to run at (default 60)." << std::endl;
   std::cerr << "  --fullScreen <display>              Run in full screen mode on the specified display (0+)." << std::endl;
   std::cerr << "  --viewpointOffset <x> <y> <z>       The viewpoint offset to apply to all cameras in meters." << std::endl;
+  std::cerr << "  --viewpointRotation <x> <y> <z>     The viewpoint rotation to apply to all cameras in degrees." << std::endl;
 };
 
 int main(int argc, char** argv)
@@ -2201,13 +2121,7 @@ int main(int argc, char** argv)
   uint32_t replayStreamID = 0;  ///< The stream ID to replay, 0 for live.
   double renderAheadFrames = 0; ///< The number of frames to render ahead of the current frame, set nonzero for replay.
   bool loopReplay = false;      ///< Loop the replay when it reaches the end if this is true.
-#ifdef _WIN32
-  // On Windows, throughput tests when receiving data from the network show that we must be larger
-  // to keep up.  Linux is more efficient here, and can handle 16 batches at a time.
-  int lineBatchesPerGPUSend = 110; ///< The number of batches of lines to group for sending to the GPU.
-#else
-  int lineBatchesPerGPUSend = 16; ///< The number of batches of lines to group for sending to the GPU.
-#endif
+  int lineBatchesPerGPUSend = 112; ///< The number of batches of lines to group for sending to the GPU.
   bool doStreamPoses = true;      ///< Stream poses from the server, so we can adjust for latency.
   std::string dumpTimingFileName; ///< The base name for the timing files.
   unsigned triggerAheadMicroseconds = 22000;  ///< Microseconds ahead of render to trigger camera.
@@ -2220,7 +2134,7 @@ int main(int argc, char** argv)
   double autoRangeStdAbove = 0.0; ///< Adjust color range to this many standard deviations above the mean.
   bool computeDepth = true;       ///< Compute depth when stereo cameras are available.
   float maxDepth = 200.0f;        ///< Maximum depth to test for in meters.
-  float depthThreshold = 10.0f;   ///< Depth threshold in squared pixel value differences.
+  float depthThreshold = 2.0f;    ///< Depth threshold in squared pixel value differences.
   double staticDepth = 900.0;     ///< The static depth to use for cameras without depth information.
   int durationSeconds = 0;        ///< The duration to run before quitting, 0 means run until user quits.
   std::string kioskConfigFile;    ///< The name of the kiosk configuration file to use, if any.
@@ -2241,28 +2155,28 @@ int main(int argc, char** argv)
         usage(argv[0]);
         return 2;
       }
-      frameStride = std::stoi(argv[i]);
+      frameStride = atoi(argv[i]);
     }
     else if (std::string("--width") == argv[i]) {
       if (++i >= argc) {
         usage(argv[0]);
         return 2;
       }
-      displayInfos.back().width = std::stoi(argv[i]);
+      displayInfos.back().width = atoi(argv[i]);
     }
     else if (std::string("--height") == argv[i]) {
       if (++i >= argc) {
         usage(argv[0]);
         return 2;
       }
-      displayInfos.back().height = std::stoi(argv[i]);
+      displayInfos.back().height = atoi(argv[i]);
     }
     else if (std::string("--hFOV") == argv[i]) {
       if (++i >= argc) {
         usage(argv[0]);
         return 2;
       }
-      displayInfos.back().hFOV = std::stof(argv[i]);
+      displayInfos.back().hFOV = static_cast<float>(atof(argv[i]));
     }
     else if (std::string("--openXR") == argv[i]) {
       displayInfos.back().useOpenXR = true;
@@ -2278,28 +2192,63 @@ int main(int argc, char** argv)
         usage(argv[0]);
         return 2;
       }
-      displayInfos.back().XSightDisplay = std::stoi(argv[i]);
+      displayInfos.back().XSightDisplay = atoi(argv[i]);
+      displayInfos.back().width = 2560;
+      displayInfos.back().height = 2048;
+      displayInfos.back().fps = 50.0f;
+      displayInfos.back().hFOV = 70.0f;
+      displayInfos.back().XSightMonochrome = true;
+      displayInfos.back().XSightPort = 5535;
     }
     else if (std::string("--xSight2") == argv[i]) {
       if (++i >= argc) {
         usage(argv[0]);
         return 2;
       }
-      displayInfos.back().XSight2NIC = argv[i];
+      displayInfos.back().XSightNIC = argv[i];
       if (++i >= argc) {
         usage(argv[0]);
         return 2;
       }
-      displayInfos.back().XSight2Display = std::stoi(argv[i]);
+      displayInfos.back().XSightDisplay = atoi(argv[i]);
+      displayInfos.back().width = 1920;
+      displayInfos.back().height = 1200;
+      displayInfos.back().fps = 50.0f;
+      displayInfos.back().hFOV = 70.0f;
+      displayInfos.back().XSightMonochrome = false;
+      displayInfos.back().XSightPort = 5540;
+    }
+    else if (std::string("--xSightG") == argv[i]) {
+      if (i + 7 >= argc) {
+        usage(argv[0]);
+        return 2;
+      }
+      displayInfos.back().XSightNIC = argv[++i];
+      displayInfos.back().XSightDisplay = atoi(argv[++i]);
+      displayInfos.back().width = atoi(argv[++i]);
+      displayInfos.back().height = atoi(argv[++i]);
+      displayInfos.back().fps = static_cast<float>(atof(argv[++i]));
+      displayInfos.back().hFOV = static_cast<float>(atof(argv[++i]));
+      displayInfos.back().XSightMonochrome = (std::string("true") == argv[++i]);
+      displayInfos.back().XSightPort = atoi(argv[++i]);
     }
     else if (std::string("--viewpointOffset") == argv[i]) {
       if (i + 3 >= argc) {
         usage(argv[0]);
         return 2;
       }
-      displayInfos.back().viewpointOffset[0] = std::stof(argv[++i]);
-      displayInfos.back().viewpointOffset[1] = std::stof(argv[++i]);
-      displayInfos.back().viewpointOffset[2] = std::stof(argv[++i]);
+      displayInfos.back().viewpointOffset[0] = static_cast<float>(atof(argv[++i]));
+      displayInfos.back().viewpointOffset[1] = static_cast<float>(atof(argv[++i]));
+      displayInfos.back().viewpointOffset[2] = static_cast<float>(atof(argv[++i]));
+    }
+    else if (std::string("--viewpointRotation") == argv[i]) {
+      if (i + 3 >= argc) {
+        usage(argv[0]);
+        return 2;
+      }
+      displayInfos.back().viewpointRotation[0] = std::stof(argv[++i]);
+      displayInfos.back().viewpointRotation[1] = std::stof(argv[++i]);
+      displayInfos.back().viewpointRotation[2] = std::stof(argv[++i]);
     }
     else if (std::string("--fullScreen") == argv[i]) {
       if (++i >= argc) {
@@ -2307,13 +2256,13 @@ int main(int argc, char** argv)
         return 2;
       }
       displayInfos.back().fullScreen = true;
-      displayInfos.back().fullScreenDisplay = std::stoi(argv[i]);
+      displayInfos.back().fullScreenDisplay = atoi(argv[i]);
     } else if (std::string("--fps") == argv[i]) {
       if (++i >= argc) {
         usage(argv[0]);
         return 2;
       }
-      displayInfos.back().fps = std::stof(argv[i]);
+      displayInfos.back().fps = static_cast<float>(atof(argv[i]));
     } else if (std::string("--joystick") == argv[i]) {
       if (++i >= argc) {
         usage(argv[0]);
@@ -2325,7 +2274,7 @@ int main(int argc, char** argv)
         usage(argv[0]);
         return 2;
       }
-      lineBatchesPerGPUSend = std::stoi(argv[i]);
+      lineBatchesPerGPUSend = atoi(argv[i]);
     } else if (std::string("--toneMap") == argv[i]) {
       if (++i >= argc) {
         usage(argv[0]);
@@ -2375,7 +2324,7 @@ int main(int argc, char** argv)
         usage(argv[0]);
         return 2;
       }
-      replayStreamID = std::stoi(argv[i]);
+      replayStreamID = atoi(argv[i]);
       renderAheadFrames = 4.0; // This seemed best as of 6/20/2025; 3.5 caused wobble in 25-cams, 20-25 was not better than 4.0.
     } else if (std::string("--loopReplay") == argv[i]) {
       loopReplay = true;
@@ -2392,7 +2341,7 @@ int main(int argc, char** argv)
         usage(argv[0]);
         return 2;
       }
-      durationSeconds = std::stoi(argv[i]);
+      durationSeconds = atoi(argv[i]);
     } else if (std::string("--kiosk") == argv[i]) {
       if (++i >= argc) {
         usage(argv[0]);
@@ -2404,19 +2353,19 @@ int main(int argc, char** argv)
         usage(argv[0]);
         return 2;
       }
-      renderAheadMicroseconds = std::stoi(argv[i]);
+      renderAheadMicroseconds = atoi(argv[i]);
     } else if (std::string("--triggerAheadMicroseconds") == argv[i]) {
       if (++i >= argc) {
         usage(argv[0]);
         return 2;
       }
-      triggerAheadMicroseconds = std::stoi(argv[i]);
+      triggerAheadMicroseconds = atoi(argv[i]);
     } else if (std::string("--depthAheadMicroseconds") == argv[i]) {
       if (++i >= argc) {
         usage(argv[0]);
         return 2;
       }
-      depthAheadMicroseconds = std::stoi(argv[i]);
+      depthAheadMicroseconds = atoi(argv[i]);
     } else if (std::string("--lockRotation") == argv[i]) {
       lockRotation = true;
     } else if (std::string("--disableLatencyCompensation") == argv[i]) {
@@ -2439,13 +2388,13 @@ int main(int argc, char** argv)
         usage(argv[0]);
         return 2;
       }
-      maxDepth = std::stof(argv[i]);
+      maxDepth = static_cast<float>(atof(argv[i]));
     } else if (std::string("--depthThreshold") == argv[i]) {
       if (++i >= argc) {
         usage(argv[0]);
         return 2;
       }
-      depthThreshold = std::stof(argv[i]);
+      depthThreshold = static_cast<float>(atof(argv[i]));
     } else if (std::string("--staticDepth") == argv[i]) {
       if (++i >= argc) {
         usage(argv[0]);
@@ -2480,20 +2429,20 @@ int main(int argc, char** argv)
         usage(argv[0]);
         return 2;
       }
-      maxCameras = std::stoi(argv[i]);
+      maxCameras = atoi(argv[i]);
     } else if (std::string("--skipCamera") == argv[i]) {
       if (++i >= argc) {
         std::cerr << "--skipCamera requires a camera ID" << std::endl;
         usage(argv[0]);
         return 2;
       }
-      skipCameras.insert(std::stoi(argv[i]));
+      skipCameras.insert(atoi(argv[i]));
     } else if (std::string("--serial") == argv[i]) {
       if (++i >= argc) {
         usage(argv[0]);
         return 2;
       }
-      serialNumber = std::stoi(argv[i]);
+      serialNumber = atoi(argv[i]);
     } else if (std::string("--version") == argv[i]) {
       std::cout << "ASDP Render Module version " << VERSION + "-" + BUILD_TYPE << std::endl;
       return 0;
@@ -2543,7 +2492,7 @@ int main(int argc, char** argv)
     if (displayInfos.size() > 1) {
       float widest_hFOV = 0.0f;
       float narrowest_hFOV = 360.0f;
-      for (size_t i = 0; i < displayInfos.size(); i++) {
+      for (int i = 0; i < displayInfos.size(); i++) {
         if (displayInfos[i].hFOV >= widest_hFOV) {
           widest_hFOV = displayInfos[i].hFOV;
           overview_displayID = i;
@@ -2726,32 +2675,25 @@ int main(int argc, char** argv)
       // Only time the first listed display, to avoid race conditions
       if (displayInfos[i].useOpenXR) {
         displays.push_back(std::make_shared<DisplayOpenXR>(g_composites[i], displayTexture.get(),
-          client, triggerID, triggerAheadMicroseconds, depthAheadMicroseconds, displayInfos[i].viewpointOffset,
+          client, triggerID, triggerAheadMicroseconds, depthAheadMicroseconds,
+          displayInfos[i].viewpointOffset, displayInfos[i].viewpointRotation,
           renderAheadMicroseconds, 1, handlers, &g_callbackHandlerData,
           (i == 0) ? (&g_timingInfo) : nullptr, replayStreamID != 0));
       } else if (!displayInfos[i].XSightNIC.empty()) {
         displays.push_back(std::make_shared<DisplayXSight>(displayInfos[i].XSightNIC, g_composites[i], displayTexture.get(),
           client, triggerID, triggerAheadMicroseconds,
-          depthAheadMicroseconds, displayInfos[i].viewpointOffset,
+          depthAheadMicroseconds, displayInfos[i].viewpointOffset, displayInfos[i].viewpointRotation,
           renderAheadMicroseconds,
           handlers, nullptr,
           (i == 0) ? (&g_timingInfo) : nullptr, replayStreamID != 0,
-          displayInfos[i].XSightDisplay
-        ));
-      } else if (!displayInfos[i].XSight2NIC.empty()) {
-        displays.push_back(std::make_shared<DisplayXSight>(displayInfos[i].XSight2NIC, g_composites[i], displayTexture.get(),
-          client, triggerID, triggerAheadMicroseconds,
-          depthAheadMicroseconds, displayInfos[i].viewpointOffset,
-          renderAheadMicroseconds,
-          handlers, nullptr,
-          (i == 0) ? (&g_timingInfo) : nullptr, replayStreamID != 0,
-          displayInfos[i].XSight2Display,
-          1920, 1200, 50, 70.0f,
-          false
+          displayInfos[i].XSightDisplay,
+          displayInfos[i].width, displayInfos[i].height, displayInfos[i].fps, displayInfos[i].hFOV,
+          displayInfos[i].XSightMonochrome, displayInfos[i].XSightPort
         ));
       } else {
         displays.push_back(std::make_shared<DisplayWindow>("ASDP Render Module " + std::to_string(i),
-          g_composites[i], client, triggerID, triggerAheadMicroseconds, depthAheadMicroseconds, displayInfos[i].viewpointOffset,
+          g_composites[i], client, triggerID, triggerAheadMicroseconds, depthAheadMicroseconds,
+          displayInfos[i].viewpointOffset, displayInfos[i].viewpointRotation,
           displayInfos[i].fps, renderAheadMicroseconds,
           displayInfos[i].width, displayInfos[i].height,
           displayInfos[i].hFOV, displayInfos[i].joystick, displayTexture.get(),
@@ -2939,11 +2881,11 @@ int main(int argc, char** argv)
         }
       }
 
-      // Receive and handle any message from the server, waiting at most 100ms for a
+      // Receive and handle any message from the server, waiting at most 1ms for a
       // new packet before looping back around.
       std::shared_ptr<StreamPacket> response;
       size_t offset = 0;
-      Status status = receiver->ReceiveStreamPacket(0.1, response, offset);
+      Status status = receiver->ReceiveStreamPacket(0.001, response, offset);
       if (status == OKAY) {
         status = HandleStreamPacket(response, clockSync, poseAdjuster, replayDone, displays, timer, pausedTime);
         if (status != OKAY) {
@@ -2973,15 +2915,24 @@ int main(int argc, char** argv)
         replayDone = false;
       }
 
-      // If all of our Displays have been closed (or are broken), then we're done.
-      bool allClosed = true;
+      // Poll all of our displays.
       for (auto& display : displays) {
-        if (display->GetStatus() == "") {
-          allClosed = false;
-          break;
+        display->PollEvents();
+      }
+
+      // If a display has been closed (GetStatus is not empty), remove it from the list of displays.
+      for (auto it = displays.begin(); it != displays.end();) {
+        if ((*it)->GetStatus() != "") {
+          std::cout << "Display closed: " << (*it)->GetStatus() << std::endl;
+          it = displays.erase(it);
+        } else {
+          ++it;
         }
       }
-      if (allClosed) {
+
+      // If all of our Displays have been closed (or are broken), then we're done.
+      if (displays.empty()) {
+        std::cout << "All displays closed, exiting." << std::endl;
         done = true;
       }
 
@@ -3202,8 +3153,8 @@ int main(int argc, char** argv)
         // it. Otherwise, don't put anything.
         if (i < g_timingInfo.renderSubmitTimes.size()) {
           auto t = g_timingInfo.renderSubmitTimes[i];
-          int index = g_timingInfo.depthComputeEndTimes.size();
-          for (int j = g_timingInfo.depthComputeEndTimes.size() - 1; j >= 0; j--) {
+          int index = static_cast<int>(g_timingInfo.depthComputeEndTimes.size());
+          for (int j = static_cast<int>(g_timingInfo.depthComputeEndTimes.size()) - 1; j >= 0; j--) {
             if (g_timingInfo.depthComputeEndTimes[j] < t) {
               index = j;
               break;

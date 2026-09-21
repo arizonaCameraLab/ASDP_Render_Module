@@ -1,11 +1,19 @@
 # ASDP_Render_Module
 
+The official source repository for this project is at
+[https://github.com/arizonaCameraLab/ASDP_Render_Module](https://github.com/arizonaCameraLab/ASDP_Render_Module)
+and an author-supported fork is at
+[https://github.com/ReliaSolve/ASDP_Render_Module](https://github.com/ReliaSolve/ASDP_Render_Module)
+
 This repository contains the source code for a Render Module for the Apache Strap-Down Pilotage program.
 The following additional documentation is available in the docs/ directory:
 - [ASDP Render Module implementation](./TR-010_Render_Implementation.pdf)
 - [Geometric calibration](./TR-011_Geometric_Calibration.pdf)
 - [IR Tone mapping](./TR-015_IR_Tone_Mapping.pdf)
 - [Interfacing with Render Module](./TR-022_Interfacing_With_Render_Module.pdf)
+
+The Render Module has been tested on **Windows 11** and on **Ubuntu 22.04-26.04 using X11
+or Wayland**. It requires a sufficiently-powerful system with a sufficiently-powerful nVidia GPU.
 
 ## Getting Started
 
@@ -31,7 +39,6 @@ repository tell how to install it.
 
 The following packages are required (apt install) to build on Linux:
 - libglfw3-dev
-- libglew-dev
 - nvidia-cuda-toolkit
 
 **Storage Manager:** If you want to build the Storage Manager application, it also requires Qt5:
@@ -92,18 +99,6 @@ to prevent the system from suspending or sleeping when inactive.
 
 **Note:** On Linux, joysticks must be plugged into the USB ports at the top back of the Render
 Server to be recognized by the system.  This is also true of the keyboard and mouse.
-
-On Windows this module requires GLEW to be installed. Pre-built binaries are available for many systems at
-https://github.com/nigels-com/glew/releases/tag/glew-2.2.0 and these can be unzipped anywhere on
-the system and the path to the include and lib directories specified in the CMakeLists.txt file
-by adding space-separated entries to the CMAKE_PREFIX_PATH on line 7. If there are spaces in the
-path, the entry must be enclosed in double quotes.  For example. if GLEW is unzipped to
-C:/glew-2.2.0, the line would be:
-
-    list(APPEND CMAKE_PREFIX_PATH "C:/glew-2.2.0" F:/Packages/GLEW/glew-2.2.0)
-
-Multiple entries are allowed in this line, so feel free to keep adding entries as needed
-on different machines and leave the existing ones in the file.
 
 **Build:** ASDP_Render_Module uses CMake to configure the builds (though other build
 systems could be used).  On Ubuntu Linux, this can be done as follows

@@ -256,7 +256,7 @@ int main(int argc, char** argv)
         std::cout << "  Gain: " << gain << "\n";
         std::cout << "  View Offset: " << viewOffset << std::endl;
         std::cout << "  Hardware Offset: " << hardwareOffset << std::endl;
-        cri->SetColorOffsetGain(viewOffset, gain);
+        cri->SetColorOffsetGain(static_cast<float>(viewOffset), static_cast<float>(gain));
 
         hardwareOffsets[cri] = hardwareOffset;
 

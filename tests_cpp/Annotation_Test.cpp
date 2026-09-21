@@ -7,12 +7,11 @@
 #include <chrono>
 #include <cstdint>
 #include <memory>
-#include <GL/glew.h>
+#include <WindowCreation.h>
 #include <ToneMap.h>
 #include <Composite.h>
 #include <RangeEstimator.h>
 #include <ASDP_Core_API.h>
-#include <GLFW/glfw3.h>
 #include <glm/glm.hpp>
 
 using namespace asdp::render;
@@ -70,7 +69,7 @@ std::vector<CompositeCameras::Annotation> AnnotationCallbackHandler(asdp::Time t
   cameraAnnotations.push_back(annotation);
 
   // Add a rectangle annotation near a corner of the image for camera ID 1.
-  annotation.uv = { 0.1, 0.1 };       // Top-left corner of the image
+  annotation.uv = { 0.1f, 0.1f };       // Top-left corner of the image
   annotation.color = { 0.0f, 1.0f, 0.0f, 1.0f };  // Green and fully opaque
   annotation.cameraID = 1;
   annotation.label = "Rectangle\n  with two lines of text";
@@ -102,32 +101,16 @@ int main()
   std::vector<asdp::render::ViewRenderInfo> views;
   views.push_back(viewRenderInfo);
 
-  // Initialize the library
-  if (!glfwInit()) {
-    std::cerr << "Failed to initialize GLFW\n";
-    return -1;
-  }
-
   // Create a windowed mode window and its OpenGL context
-  GLFWwindow* window = glfwCreateWindow(windowSize, windowSize, "Annotation_Test", NULL, NULL);
-  if (!window) {
-    std::cerr << "Failed to create GLFW window\n";
-    glfwTerminate();
+  std::shared_ptr<GLFWwindow> window;
+  std::string ret = asdp::render::CreateWindowOrContext(window,windowSize, windowSize, "Annotation_Test");
+  if (!ret.empty()) {
+    std::cerr << "Failed to create window: " << ret << std::endl;
     return -1;
   }
 
   // Make the window's context current
-  glfwMakeContextCurrent(window);
-
-  // Initialize GLEW in our context. It is okay to initialize it more than once.
-  glewExperimental = true;
-  if (glewInit() != GLEW_OK) {
-    std::cerr << "Failed to initialize GLEW" << std::endl;
-    return 4;
-  }
-  // Clear any GL error that Glew caused.  Apparently on Non-Windows
-  // platforms, this can cause a spurious error 1280.
-  glGetError();
+  glfwMakeContextCurrent(window.get());
 
   // Make a camera to show the annotations on.
   std::vector< std::shared_ptr<asdp::render::CameraRenderInfo> > cameras;
@@ -167,7 +150,7 @@ int main()
   std::cout << "" << std::endl;
   std::cout << "Close the window to exit." << std::endl;
   auto start = std::chrono::steady_clock::now();
-  while (!glfwWindowShouldClose(window)) {
+  while (!glfwWindowShouldClose(window.get())) {
 
     // Slowly rotate the viewpoint over time by changing the orientation Y-axis value.
     // Store the orientation in a GL quaternion (W,X,Y,Z) format.
@@ -181,13 +164,13 @@ int main()
     composite.Render(asdp::Time(), views);
 
     // Swap front and back buffers
-    glfwSwapBuffers(window);
+    glfwSwapBuffers(window.get());
 
     // Poll for and process events
     glfwPollEvents();
   }
 
   // Clean up resources and exit
-  glfwTerminate();
+  window.reset();
   return 0;
 }

@@ -12,7 +12,7 @@
 
 static void usage(const char* progName)
 {
-  std::cerr << "Usage: " << progName << " <NIC name>" << std::endl;
+  std::cerr << "Usage: " << progName << " <NIC name> <port>" << std::endl;
 }
 
 static void encodeBigEndian(uint32_t const *value, uint8_t* buffer)
@@ -38,13 +38,14 @@ static std::vector<uint8_t> encodeMessage(std::array<float, 3> const &RPA, uint3
 int main(int argc, char** argv)
 {
   std::string xSightNICName;
-  if (argc != 2) {
+  uint16_t xSightPort;
+  if (argc != 3) {
     usage(argv[0]);
     return 1;
   }
   xSightNICName = argv[1];
+  xSightPort = static_cast<uint16_t>(std::stoi(argv[2]));
 
-  const uint16_t xSightPort = 5535;
   const std::string xSightMulticastAddress = "224.0.0.50";
   std::cout << "Sending to " << xSightMulticastAddress << " on port " << xSightPort << " on NIC " << xSightNICName << std::endl;
   {

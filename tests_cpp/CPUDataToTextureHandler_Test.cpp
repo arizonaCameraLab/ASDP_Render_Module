@@ -1,13 +1,11 @@
 /*
- * Copyright (C) 2024: Arizona Board of Regents on Behalf of the University of Arizona
+ * Copyright (C) 2024-2026: Arizona Board of Regents on Behalf of the University of Arizona
  */
 
 #include <ASDP_Core_API.h>
 #include <ASDP_ImageSource.h>
+#include <WindowCreation.h>
 #include <CPUDataToTextureHandler.h>
-#include <GL/glew.h>
-#include <GLFW/glfw3.h>
-#include <Display.h>
 #include <string.h>
 #include <thread>
 #include <iostream>
@@ -51,10 +49,10 @@ const char* fragmentShaderSource = "#version 330 core\n"
 "}\n\0";
 
 void TextureThread(int width, int height, std::atomic_bool& done,
-  GLFWwindow *window, std::shared_ptr<ImageQueue> imageQueue)
+  std::shared_ptr<GLFWwindow> window, std::shared_ptr<ImageQueue> imageQueue)
 {
   cudaError_t ret;
-  glfwMakeContextCurrent(window);
+  glfwMakeContextCurrent(window.get());
 
   // Allocate pinned memory for the CPU image buffer.
   unsigned char* cpuPinnedImageBuffer;
@@ -123,8 +121,10 @@ void TextureThread(int width, int height, std::atomic_bool& done,
       if (top + 3 > height) {
         myHeight = height - top;
       }
-      memcpy(cpuPinnedImageBuffer + top * width*2, &(*image->getData())[top * width/2], width * myHeight * sizeof(uint16_t));
-      ret = handler.ProcessImageSubset(0, top, width-1, top + myHeight - 1);
+      memcpy(cpuPinnedImageBuffer + top * width*2, &(*image->getData())[top * width/2],
+        width * myHeight * sizeof(uint16_t));
+      ret = handler.ProcessImageSubset(0, top,
+        static_cast<uint16_t>(width-1), static_cast<uint16_t>(top + myHeight - 1));
       if (ret.size() > 0) {
         std::cerr << "Error in CPUDataToTextureHandler::ProcessImageSubset(): " << ret << std::endl;
         return;
@@ -154,22 +154,16 @@ int main()
   int width = 1280;
   int height = 1024;
 
-  // Initialize the GLFW library
-  if (!glfwInit()) {
-    std::cerr << "Failed to initialize GLFW\n";
-    return -1;
-  }
-
   // Create a windowed mode window and its OpenGL context
-  GLFWwindow* window = glfwCreateWindow(width, height, "CPUDataToTexture_Test", NULL, NULL);
-  if (!window) {
-    std::cerr << "Failed to create main window\n";
-    glfwTerminate();
+  std::shared_ptr<GLFWwindow> window;
+  std::string ret = asdp::render::CreateWindowOrContext(window, width, height, "CPUDataToTexture_Test");
+  if (!ret.empty()) {
+    std::cerr << "Failed to create window: " << ret << std::endl;
     return -1;
   }
 
   // Make the window's context current
-  glfwMakeContextCurrent(window);
+  glfwMakeContextCurrent(window.get());
 
   // Make the image queue that will hold the textures to be filled in by the thread and
   // rendered by the main thread.  Initially fill all of the images with gray and time zero.
@@ -200,13 +194,13 @@ int main()
 
   // Create a new shared context that we'll use to generate a texture into that
   // we'll use in the main context.  This will use a hidden window.
-  glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
-  GLFWwindow* window2 = glfwCreateWindow(width, height, "Hidden", NULL, window);
-  if (!window2) {
-    std::cerr << "Failed to create hidden window\n";
-    glfwTerminate();
+  std::shared_ptr<GLFWwindow> window2;
+  std::string ret2 = asdp::render::CreateWindowOrContext(window2, width, height, "Hidden", window.get(), -1, true);
+  if (!ret2.empty()) {
+    std::cerr << "Failed to create hidden window: " << ret2 << std::endl;
     return -1;
   }
+  glfwMakeContextCurrent(window2.get());
 
   // Create a new thread that switches to the new context and generates a texture
   // in that context.
@@ -215,17 +209,7 @@ int main()
   std::thread t(TextureThread, width, height, std::ref(done), window2, imageQueue);
 
   // Make the window's context current
-  glfwMakeContextCurrent(window);
-
-  // Initialize GLEW in our context. It is okay to initialize it more than once.
-  glewExperimental = true;
-  if (glewInit() != GLEW_OK) {
-    std::cerr << "Composite::Composite(): Failed to initialize GLEW" << std::endl;
-    return 4;
-  }
-  // Clear any GL error that Glew caused.  Apparently on Non-Windows
-  // platforms, this can cause a spurious error 1280.
-  glGetError();
+  glfwMakeContextCurrent(window.get());
 
   // Generate and bind the vertex array
   GLuint vao;
@@ -283,7 +267,7 @@ int main()
   std::cout << "You should see smooth rolling bars with no horizontal defects." << std::endl;
   std::cout << "" << std::endl;
   std::cout << "Close the window to exit." << std::endl;
-  while (!glfwWindowShouldClose(window)) {
+  while (!glfwWindowShouldClose(window.get())) {
 
     // Prepare for rendering this frame
     glViewport(0, 0, width, height);
@@ -306,7 +290,7 @@ int main()
     glBindTexture(GL_TEXTURE_2D, 0);
 
     // Swap front and back buffers
-    glfwSwapBuffers(window);
+    glfwSwapBuffers(window.get());
 
     // Done with the image (we just swapped our buffers), put it back in the queue.
     imageQueue->UnlockImage(image);
@@ -318,7 +302,7 @@ int main()
   // Clean up resources and exit
   done = true;
   t.join();
-
-  glfwTerminate();
+  window2.reset();
+  window.reset();
   return 0;
 }

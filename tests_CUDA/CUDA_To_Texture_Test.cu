@@ -9,10 +9,9 @@
 #include <memory>
 #include <thread>
 #include <atomic>
-#include <GL/glew.h>
-#include <GLFW/glfw3.h>
-#include <Composite.h>
+#include <WindowCreation.h>
 #include <ASDP_Core_API.h>
+#include <Composite.h>
 #include <cuda_runtime.h>
 #include <cuda_gl_interop.h>
 
@@ -194,30 +193,23 @@ int main()
   int width = 1280;
   int height = 1024;
 
-  // Initialize the library
-  if (!glfwInit()) {
-    std::cerr << "Failed to initialize GLFW\n";
-    return -1;
-  }
-
   // Create a windowed mode window and its OpenGL context
-  GLFWwindow* window = glfwCreateWindow(windowSize, windowSize, "CUDA_To_Texture_Test", NULL, NULL);
-  if (!window) {
-    std::cerr << "Failed to create main window\n";
-    glfwTerminate();
+  std::shared_ptr<GLFWwindow> window;
+  std::string ret = asdp::render::CreateWindowOrContext(window, windowSize, windowSize, "CUDA_To_Texture_Test");
+  if (!ret.empty()) {
+    std::cerr << "Failed to create main window: " << ret << std::endl;
     return -1;
   }
 
   // Make the window's context current
-  glfwMakeContextCurrent(window);
+  glfwMakeContextCurrent(window.get());
 
   // Create a new shared context that we'll use to generate a texture into that
   // we'll use in the main context.  This will use a hidden window.
-  glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
-  GLFWwindow* window2 = glfwCreateWindow(windowSize, windowSize, "Hidden", NULL, window);
-  if (!window2) {
-    std::cerr << "Failed to create hidden window\n";
-    glfwTerminate();
+  std::shared_ptr<GLFWwindow> window2;
+  ret = asdp::render::CreateWindowOrContext(window2, windowSize, windowSize, "Hidden", window.get(), -1, true);
+  if (!ret.empty()) {
+    std::cerr << "Failed to create shared context: " << ret << std::endl;
     return -1;
   }
 
@@ -226,7 +218,7 @@ int main()
   std::atomic<GLuint> texture{ 0 };
   std::atomic_bool done{ false };
   std::thread t([&window2, width, height, &texture, &done]() {
-    glfwMakeContextCurrent(window2);
+    glfwMakeContextCurrent(window2.get());
     texture = MakeTexture(width, height, 0, 65535);
     glFinish();
     done = true;
@@ -243,17 +235,7 @@ int main()
   }
 
   // Make the window's context current
-  glfwMakeContextCurrent(window);
-
-  // Initialize GLEW in our context. It is okay to initialize it more than once.
-  glewExperimental = true;
-  if (glewInit() != GLEW_OK) {
-    std::cerr << "Composite::Composite(): Failed to initialize GLEW" << std::endl;
-    return 4;
-  }
-  // Clear any GL error that Glew caused.  Apparently on Non-Windows
-  // platforms, this can cause a spurious error 1280.
-  glGetError();
+  glfwMakeContextCurrent(window.get());
 
   // Generate and bind the vertex array
   GLuint vao;
@@ -311,7 +293,7 @@ int main()
   std::cout << "You should see a gradient red texture from the top of the image to the bottom." << std::endl;
   std::cout << "" << std::endl;
   std::cout << "Close the window to exit." << std::endl;
-  while (!glfwWindowShouldClose(window)) {
+  while (!glfwWindowShouldClose(window.get())) {
 
     // Prepare for rendering this frame
     glViewport(0, 0, windowSize, windowSize);
@@ -325,13 +307,13 @@ int main()
     glBindTexture(GL_TEXTURE_2D, 0);
 
     // Swap front and back buffers
-    glfwSwapBuffers(window);
+    glfwSwapBuffers(window.get());
 
     // Poll for and process events
     glfwPollEvents();
   }
 
   // Clean up resources and exit
-  glfwTerminate();
+  window.reset();
   return 0;
 }

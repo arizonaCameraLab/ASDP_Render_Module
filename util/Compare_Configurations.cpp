@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2025: Arizona Board of Regents on Behalf of the University of Arizona
+ * Copyright (C) 2025-2026: Arizona Board of Regents on Behalf of the University of Arizona
  */
 
 /**
@@ -28,7 +28,6 @@
 #include <ASDP_StreamPacketSortedQueue.h>
 #include <ASDP_ClockSynchronizer.h>
 #include <nlohmann/json.hpp>
-#include <GL/glew.h>
 #include <ToneMap.h>
 #include <Composite.h>
 #include "Calibration_Helpers.h"

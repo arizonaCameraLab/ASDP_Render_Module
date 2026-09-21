@@ -656,6 +656,7 @@ bool asdp::render::calibration::TargetProjectedLocationNoDistortion(
   targetPointInCamera.z = -temp.y;
 
   // If the target is at or behind the camera (along +Z), it is not in the frustum.
+  // In this case, leave the pixel coordinates at their default values and return false.
   if (targetPointInCamera.z >= 0) {
     return false;
   }
@@ -679,11 +680,6 @@ bool asdp::render::calibration::TargetProjectedLocationNoDistortion(
   double xFrac = (targetPointInCamera.x - minX) / (maxX - minX);
   double yFrac = (targetPointInCamera.y - minY) / (maxY - minY);
 
-  if (xFrac < 0 || xFrac > 1 || yFrac < 0 || yFrac > 1) {
-    // The target point is outside the camera frustum.
-    return false;
-  }
-
   // Compute the pixel coordinates of the target point.
   // The pixel center coordinates are in the range [0, width-1] and [0, height-1]
   // but the pixel centers are half a pixel from the frustum edges.
@@ -692,6 +688,12 @@ bool asdp::render::calibration::TargetProjectedLocationNoDistortion(
   // so the range from 0 to 1 is width.
   xPixels = -0.5 + xFrac * (cri.m_resolutionPixels[0]);
   yPixels = -0.5 + yFrac * (cri.m_resolutionPixels[1]);
+
+  // Return false if outside the frustum, true if inside.
+  if (xFrac < 0 || xFrac > 1 || yFrac < 0 || yFrac > 1) {
+    // The target point is outside the camera frustum.
+    return false;
+  }
   return true;
 }
 
@@ -712,6 +714,24 @@ std::array<double, 2> asdp::render::calibration::PlaneIntersectionForPixelNoDist
   double xPlane = minX + xFrac * (maxX - minX);
   double yPlane = minY + yFrac * (maxY - minY);
   return { xPlane, yPlane };
+}
+
+std::array<double, 2> asdp::render::calibration::PixelForPlaneIntersectionNoDistortion(
+  const asdp::render::CameraRenderInfo& cri, std::array<double, 2> locPlane)
+{
+  // Compute the four edges of the camera frustum in the Z = -1 plane.
+  double maxX = tan(glm::radians(cri.m_fovDegrees[0] / 2.0));
+  double minX = -maxX;
+  double maxY = -tan(glm::radians(cri.m_fovDegrees[1] / 2.0));
+  double minY = -maxY;
+  // Compute the normalized coordinates of the target point (0 at min and 1 at max).
+  double xFrac = (locPlane[0] - minX) / (maxX - minX);
+  double yFrac = (locPlane[1] - minY) / (maxY - minY);
+  // Map the normalized coordinates to pixel coordinates, remembering that the pixels span
+  // half a pixel outside of the pixel center coordinates.
+  double xPixels = -0.5 + xFrac * (cri.m_resolutionPixels[0]);
+  double yPixels = -0.5 + yFrac * (cri.m_resolutionPixels[1]);
+  return { xPixels, yPixels };
 }
 
 std::array<double, 3> asdp::render::calibration::HelicopterToRotatedBall(std::array<double, 3> point,
@@ -1185,13 +1205,13 @@ std::string asdp::render::calibration::Test()
         if (TargetProjectedLocationNoDistortion(cri, false, 0, 0, { 0, -3, 0 }, xPixel, yPixel)) {
           return "Test failed: TargetProjectedLocationNoDistortion() center of image no rotation behind.";
         }
-        if (TargetProjectedLocationNoDistortion(cri, false, 0, 0, { 0, 3, 4 }, xPixel, yPixel)) {
+        if (TargetProjectedLocationNoDistortion(cri, false, 0, 0, { 0, 3, 3 }, xPixel, yPixel)) {
           return "Test failed: TargetProjectedLocationNoDistortion() center of image no rotation out of range.";
         }
-        if (fabs(xPixel - (-1e6)) > 0.01) {
+        if (fabs(xPixel - 511.5) > 0.01) {
           return "Test failed: TargetProjectedLocationNoDistortion() center of image no rotation out of range X.";
         }
-        if (fabs(yPixel - (-1e6)) > 0.01) {
+        if (fabs(yPixel - (-0.5)) > 0.01) {
           return "Test failed: TargetProjectedLocationNoDistortion() center of image no rotation out of range Y.";
         }
 
@@ -1255,7 +1275,7 @@ std::string asdp::render::calibration::Test()
       }
     }
 
-    // Test PlaneIntersectionForPixel()
+    // Test PlaneIntersectionForPixelNoDistortion() and PixelForPlaneIntersectionNoDistortion()
     {
 
       {
@@ -1274,6 +1294,14 @@ std::string asdp::render::calibration::Test()
           return "Test failed: PlaneIntersectionForPixelNoDistortion() center of image Y.";
         }
 
+        std::array<double, 2> locPixelsBack = PixelForPlaneIntersectionNoDistortion(cri, locPlane);
+        if (fabs(locPixelsBack[0] - locPixels[0]) > 0.01) {
+          return "Test failed: PixelForPlaneIntersectionNoDistortion() center of image X.";
+        }
+        if (fabs(locPixelsBack[1] - locPixels[1]) > 0.01) {
+          return "Test failed: PixelForPlaneIntersectionNoDistortion() center of image Y.";
+        }
+
         // Right center edge (halfway past last pixel).
         locPixels = { 1023.5, 255.5 };
         locPlane = PlaneIntersectionForPixelNoDistortion(cri, locPixels);
@@ -1282,6 +1310,14 @@ std::string asdp::render::calibration::Test()
         }
         if (fabs(locPlane[1] - 0) > 0.01) {
           return "Test failed: PlaneIntersectionForPixelNoDistortion() right center edge Y.";
+        }
+
+        locPixelsBack = PixelForPlaneIntersectionNoDistortion(cri, locPlane);
+        if (fabs(locPixelsBack[0] - locPixels[0]) > 0.01) {
+          return "Test failed: PixelForPlaneIntersectionNoDistortion() right center edge X.";
+        }
+        if (fabs(locPixelsBack[1] - locPixels[1]) > 0.01) {
+          return "Test failed: PixelForPlaneIntersectionNoDistortion() right center edge Y.";
         }
 
         // Left center edge (halfway past first pixel).
@@ -1294,6 +1330,14 @@ std::string asdp::render::calibration::Test()
           return "Test failed: PlaneIntersectionForPixelNoDistortion() left center edge Y.";
         }
 
+        locPixelsBack = PixelForPlaneIntersectionNoDistortion(cri, locPlane);
+        if (fabs(locPixelsBack[0] - locPixels[0]) > 0.01) {
+          return "Test failed: PixelForPlaneIntersectionNoDistortion() left center edge X.";
+        }
+        if (fabs(locPixelsBack[1] - locPixels[1]) > 0.01) {
+          return "Test failed: PixelForPlaneIntersectionNoDistortion() left center edge Y.";
+        }
+
         // Top center edge (halfway past last pixel).
         locPixels = { 511.5, -0.5 };
         locPlane = PlaneIntersectionForPixelNoDistortion(cri, locPixels);
@@ -1304,6 +1348,14 @@ std::string asdp::render::calibration::Test()
           return "Test failed: PlaneIntersectionForPixelNoDistortion() top center edge Y: " + std::to_string(locPlane[1]);
         }
 
+        locPixelsBack = PixelForPlaneIntersectionNoDistortion(cri, locPlane);
+        if (fabs(locPixelsBack[0] - locPixels[0]) > 0.01) {
+          return "Test failed: PixelForPlaneIntersectionNoDistortion() top center edge X.";
+        }
+        if (fabs(locPixelsBack[1] - locPixels[1]) > 0.01) {
+          return "Test failed: PixelForPlaneIntersectionNoDistortion() top center edge Y.";
+        }
+
         // Bottom center edge (halfway past first pixel).
         locPixels = { 511.5, 511.5 };
         locPlane = PlaneIntersectionForPixelNoDistortion(cri, locPixels);
@@ -1312,6 +1364,14 @@ std::string asdp::render::calibration::Test()
         }
         if (fabs(locPlane[1] - -tan(glm::radians(45 / 2.0))) > 0.01) {
           return "Test failed: PlaneIntersectionForPixelNoDistortion() bottom center edge Y: " + std::to_string(locPlane[1]);
+        }
+
+        locPixelsBack = PixelForPlaneIntersectionNoDistortion(cri, locPlane);
+        if (fabs(locPixelsBack[0] - locPixels[0]) > 0.01) {
+          return "Test failed: PixelForPlaneIntersectionNoDistortion() bottom center edge X.";
+        }
+        if (fabs(locPixelsBack[1] - locPixels[1]) > 0.01) {
+          return "Test failed: PixelForPlaneIntersectionNoDistortion() bottom center edge Y.";
         }
       }
     }

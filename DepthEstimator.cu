@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2024: Arizona Board of Regents on Behalf of the University of Arizona
+ * Copyright (C) 2024-2026: Arizona Board of Regents on Behalf of the University of Arizona
  */
 
 #include <iostream>
@@ -8,8 +8,7 @@
 #include <map>
 #include <random>
 #include <cstddef>
-#include <GL/glew.h>
-#include <GLFW/glfw3.h>
+#include <WindowCreation.h>
 #include <ToneMap.h>
 #include <DepthEstimator.h>
 #include <Composite.h>
@@ -217,6 +216,30 @@ __global__ void CompareSurfacesKernel(cudaSurfaceObject_t surface1, cudaSurfaceO
   }
 }
 
+static std::shared_ptr<ImageData> MakeBlankImage(int width, int height)
+{
+  std::vector<uint16_t> image(width * height, 32767);
+  std::shared_ptr<ImageData> imageData = std::make_shared<ImageData>();
+
+  unsigned int texture;
+  glGenTextures(1, &texture);
+  glBindTexture(GL_TEXTURE_2D, texture);
+  // Set the texture wrapping parameters
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+  // Set texture filtering parameters
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+  // Load image into the texture
+  glTexStorage2D(GL_TEXTURE_2D, 1, GL_R16, width, height);
+  glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height, GL_RED, GL_UNSIGNED_SHORT, image.data());
+  glBindTexture(GL_TEXTURE_2D, 0);
+
+  imageData->texture = texture;
+  return imageData;
+}
+
 /// @brief Encapsulates the multiple depths for each camera pair.
 /// @details Generate two sets of CompositeCameras covering all depths for each pair of cameras,
 /// one set for the left camera and one for the right camera. 
@@ -246,7 +269,14 @@ public:
       depthInfo.m_depth = depth;
 
       // We make a copy of each camera and then adjust the copy to the specific depth it is to use.
+      // Also construct a new image queue for each; we will push a consistent pair of images from
+      // the two cameras into the queues for each camera and clear out any old images in the queue.
+      // We need to put a single image into each queue so that there will be something to grab
+      // until we put an actual image in place.
       std::shared_ptr<CameraRenderInfo> depth1(new CameraRenderInfo(*camera1));
+      depth1->m_imageQueue = std::make_shared<asdp::render::ImageQueue>();
+      depthInfo.m_imageQueues[0] = depth1->m_imageQueue;
+      depth1->m_imageQueue->InsertImage(MakeBlankImage(depth1->m_resolutionPixels[0], depth1->m_resolutionPixels[1]));
       depth1->ComputePlanarCameraMeshInfo(100, 100, depth);
       std::vector< std::shared_ptr<CameraRenderInfo> > composites1;
       composites1.push_back(depth1);
@@ -254,6 +284,9 @@ public:
         m_poseAdjuster, cameraFrameInterval, 0, Time(), nullptr, rangeEstimator);
 
       std::shared_ptr<CameraRenderInfo> depth2(new CameraRenderInfo(*camera2));
+      depth2->m_imageQueue = std::make_shared<asdp::render::ImageQueue>();
+      depthInfo.m_imageQueues[1] = depth2->m_imageQueue;
+      depth2->m_imageQueue->InsertImage(MakeBlankImage(depth2->m_resolutionPixels[0], depth2->m_resolutionPixels[1]));
       depth2->ComputePlanarCameraMeshInfo(100, 100, depth);
       std::vector< std::shared_ptr<CameraRenderInfo> > composites2;
       composites2.push_back(depth2);
@@ -319,7 +352,7 @@ public:
     // Delete the tone map texture.
     glDeleteTextures(1, &m_toneMapTexture);
 
-    // Delete the frame bufffers, color buffers, and depth buffers.
+    // Delete the frame buffers, color buffers, and depth buffers.
     // Unmap the CUDA graphics resources for the color buffers.
     // Delete the CUDA streams.
     // Free the GPU memory for the depth buffers.
@@ -351,6 +384,11 @@ public:
     cudaStream_t* m_stream = nullptr;
     /// @todo Consider pulling these out into yet another structure, making an array of 2 of them.
     std::array< std::shared_ptr<CompositeCameras>, 2> m_composites = {};
+    /// Per-camera custom image queue for each depth. This is a bit of a complicated scheme.
+    /// We determine consistent-timed frames from the two real cameras in each pair and then
+    /// copy these images into the custom ImageQueues for all depths associated with that pair
+    /// so that they will always be generating depths from consistent values across all depths.
+    std::array< std::shared_ptr<ImageQueue>, 2> m_imageQueues = {};
     std::array<GLuint, 2> m_frameBuffers = {};
     std::array<GLuint, 2> m_colorBuffers = {};
     std::array<GLuint, 2> m_depthBuffers = {};
@@ -634,7 +672,7 @@ public:
   friend class DepthEstimator;
   DepthEstimatorImpl() = delete;
   DepthEstimatorImpl(DepthEstimator *parent,
-      std::vector< std::array<std::shared_ptr<CameraRenderInfo>, 2> > cameras,
+      std::vector< std::array<std::shared_ptr<CameraRenderInfo>, 2> > pairs,
       std::shared_ptr<asdp::render::RangeEstimator> rangeEstimator,
       std::shared_ptr<PoseAdjuster> poseAdjuster,
       Time cameraFrameInterval,
@@ -662,7 +700,7 @@ public:
     // NOTE: Tonemap must be monochrome because the test code calls all colored pixels background.
     // The default black-to-white one works.
     ToneMap toneMap;
-    for (unsigned i = 0; i < cameras.size(); i++) {
+    for (unsigned i = 0; i < pairs.size(); i++) {
 
       // For each pair, create a viewpoint that is halfway between
       // the two cameras with an orientation that is the average of the two.
@@ -670,19 +708,19 @@ public:
       // to quaternions to average them.
       glm::dvec3 position;
 
-      std::array<double, 3> const& p1 = cameras[i][0]->m_positionMeters;
-      std::array<double, 3> const& p2 = cameras[i][1]->m_positionMeters;
+      std::array<double, 3> const& p1 = pairs[i][0]->m_positionMeters;
+      std::array<double, 3> const& p2 = pairs[i][1]->m_positionMeters;
       position = 0.5 * (glm::dvec3(p1[0], p1[1], p1[2]) + glm::dvec3(p2[0], p2[1], p2[2]));
 
       glm::quat orientation;
-      glm::quat rotx = glm::angleAxis(glm::radians(cameras[i][0]->m_orientationDegrees[0]), glm::dvec3(1, 0, 0));
-      glm::quat roty = glm::angleAxis(glm::radians(cameras[i][0]->m_orientationDegrees[1]), glm::dvec3(0, 1, 0));
-      glm::quat rotz = glm::angleAxis(glm::radians(cameras[i][0]->m_orientationDegrees[2]), glm::dvec3(0, 0, 1));
+      glm::quat rotx = glm::angleAxis(glm::radians(pairs[i][0]->m_orientationDegrees[0]), glm::dvec3(1, 0, 0));
+      glm::quat roty = glm::angleAxis(glm::radians(pairs[i][0]->m_orientationDegrees[1]), glm::dvec3(0, 1, 0));
+      glm::quat rotz = glm::angleAxis(glm::radians(pairs[i][0]->m_orientationDegrees[2]), glm::dvec3(0, 0, 1));
       glm::quat rot1 = rotx * roty * rotz;
 
-      rotx = glm::angleAxis(glm::radians(cameras[i][1]->m_orientationDegrees[0]), glm::dvec3(1, 0, 0));
-      roty = glm::angleAxis(glm::radians(cameras[i][1]->m_orientationDegrees[1]), glm::dvec3(0, 1, 0));
-      rotz = glm::angleAxis(glm::radians(cameras[i][1]->m_orientationDegrees[2]), glm::dvec3(0, 0, 1));
+      rotx = glm::angleAxis(glm::radians(pairs[i][1]->m_orientationDegrees[0]), glm::dvec3(1, 0, 0));
+      roty = glm::angleAxis(glm::radians(pairs[i][1]->m_orientationDegrees[1]), glm::dvec3(0, 1, 0));
+      rotz = glm::angleAxis(glm::radians(pairs[i][1]->m_orientationDegrees[2]), glm::dvec3(0, 0, 1));
       glm::quat rot2 = rotx * roty * rotz;
 
       orientation = glm::slerp(rot1, rot2, 0.5f);
@@ -692,36 +730,55 @@ public:
       // pixel count, which should be an even multiple of the number of samples in each dimension
       // and its ratio should be similar to the aspect ratio of the frame buffer and it should have
       // at least as many pixels as the camera images in each dimension.  Start by determining the
-      // distorted location of a point at the upper-right corner of the camera image on a plane at
-      // Z = -1 and computing its fields of view.
+      // distorted locations of the points at the left, right, top, and bottom of the frustum at
+      // Z = -1 and computing its fields of view by taking the minimum of left and right and minimum
+      // of top and bottom.
       std::array<float, 2> fovsDeg;
       double depthForFOV = 1.0;
-      double maxHFOV = 0, maxVFOV = 0;
-      double maxXRatio = 1.0, maxYRatio = 1.0;
+      double minHFOV = 1e10, minVFOV = 1e10;
+      double maxXRatio = 0.0, maxYRatio = 0.0;
       for (size_t c = 0; c < 2; c++) {
-        double xHalfWidth = tan(glm::radians(cameras[i][c]->m_fovDegrees[0]) * 0.5) * depthForFOV;
-        double yHalfWidth = tan(glm::radians(cameras[i][c]->m_fovDegrees[1]) * 0.5) * depthForFOV;
+        double xHalfWidth = tan(glm::radians(pairs[i][c]->m_fovDegrees[0]) * 0.5) * depthForFOV;
+        double yHalfWidth = tan(glm::radians(pairs[i][c]->m_fovDegrees[1]) * 0.5) * depthForFOV;
 
-        std::array<double, 3> corner = { xHalfWidth, yHalfWidth, -depthForFOV };
-        std::array<double, 3> distortedCorner = cameras[i][c]->m_distortion->MapPoint(corner);
+        std::array<double, 3> left = { -xHalfWidth, 0.0, -depthForFOV };
+        std::array<double, 3> right = { xHalfWidth, 0.0, -depthForFOV };
+        std::array<double, 3> top = { 0.0, yHalfWidth, -depthForFOV };
+        std::array<double, 3> bottom = { 0.0, -yHalfWidth, -depthForFOV };
 
-        double hFOV = glm::degrees(2.0 * atan(fabs(distortedCorner[0] / distortedCorner[2])));
-        double vFOV = glm::degrees(2.0 * atan(fabs(distortedCorner[1] / distortedCorner[2])));
+        std::array<double, 3> distortedLeft = pairs[i][c]->m_distortion->MapPoint(left);
+        std::array<double, 3> distortedRight = pairs[i][c]->m_distortion->MapPoint(right);
+        std::array<double, 3> distortedTop = pairs[i][c]->m_distortion->MapPoint(top);
+        std::array<double, 3> distortedBottom = pairs[i][c]->m_distortion->MapPoint(bottom);
 
-        maxHFOV = std::max(maxHFOV, hFOV);
-        maxVFOV = std::max(maxVFOV, vFOV);
+        double leftHFOV = glm::degrees(2.0 * atan(fabs(distortedLeft[0] / distortedLeft[2])));
+        double rightHFOV = glm::degrees(2.0 * atan(fabs(distortedRight[0] / distortedRight[2])));
+        double topVFOV = glm::degrees(2.0 * atan(fabs(distortedTop[1] / distortedTop[2])));
+        double bottomVFOV = glm::degrees(2.0 * atan(fabs(distortedBottom[1] / distortedBottom[2])));
 
-        maxXRatio = std::max(maxXRatio, fabs(distortedCorner[0] / xHalfWidth));
-        maxYRatio = std::max(maxYRatio, fabs(distortedCorner[1] / yHalfWidth));
+        double hFOV = std::min(leftHFOV, rightHFOV);
+        double vFOV = std::min(topVFOV, bottomVFOV);
+
+        minHFOV = std::min(minHFOV, hFOV);
+        minVFOV = std::min(minVFOV, vFOV);
+
+        maxXRatio = std::max(maxXRatio, std::min(fabs(distortedLeft[0]),fabs(distortedRight[0])) / xHalfWidth);
+        maxYRatio = std::max(maxYRatio, std::min(fabs(distortedTop[1]),fabs(distortedBottom[1])) / yHalfWidth);
       }
-      fovsDeg[0] = static_cast<float>(maxHFOV);
-      fovsDeg[1] = static_cast<float>(maxVFOV);
+
+      // Reduce the FOVs by the difference in pointing direction of the two cameras, around the
+      // X axis for teh vertical FOV and around the Z axis for the horizontal FOV.  This is to handle
+      // the fact that one will point further in each direction than the other.
+      double deltaX = fabs(pairs[i][0]->m_orientationDegrees[0] - pairs[i][1]->m_orientationDegrees[0]);
+      double deltaZ = fabs(pairs[i][0]->m_orientationDegrees[2] - pairs[i][1]->m_orientationDegrees[2]);
+      fovsDeg[0] = static_cast<float>(minHFOV - deltaZ);
+      fovsDeg[1] = static_cast<float>(minVFOV - deltaX);
 
       // Use the ratio of the new and original fields of view to scale the pixel count, making sure that
       // the results are an even multiple of the number of samples in X and Y.
       std::array<unsigned, 2> pixelCounts;
-      uint16_t maxX = std::max(cameras[i][0]->m_resolutionPixels[0], cameras[i][1]->m_resolutionPixels[0]);
-      uint16_t maxY = std::max(cameras[i][0]->m_resolutionPixels[1], cameras[i][1]->m_resolutionPixels[1]);
+      uint16_t maxX = std::max(pairs[i][0]->m_resolutionPixels[0], pairs[i][1]->m_resolutionPixels[0]);
+      uint16_t maxY = std::max(pairs[i][0]->m_resolutionPixels[1], pairs[i][1]->m_resolutionPixels[1]);
       pixelCounts[0] = static_cast<unsigned>(maxX * maxXRatio);
       if (pixelCounts[0] % m_nx != 0) { pixelCounts[0] += m_nx - (pixelCounts[0] % m_nx); }
       pixelCounts[1] = static_cast<unsigned>(maxY * maxYRatio);
@@ -735,7 +792,7 @@ public:
 
       // Make the camera pair info.
       std::shared_ptr<CameraPairInfo> cameraPairInfo = std::make_shared<CameraPairInfo>(
-        toneMap, cameras[i][0], cameras[i][1], rangeEstimator,
+        toneMap, pairs[i][0], pairs[i][1], rangeEstimator,
         position, orientation, fovsDeg, pixelCounts,
         poseAdjuster, cameraFrameInterval, depths, m_defaultDepth);
       if (!cameraPairInfo->m_constructorStatus.empty()) {
@@ -762,6 +819,39 @@ public:
       return "OpenGL error at start of ComputeDepthEstimate(): " + std::to_string(err);
     }
 #endif
+    // Push consistent images from both cameras onto their custom queue so that they
+    // will use consistent images to determine depth.
+    // Clear the image that we're finished with from the custom queues for the cameras.
+    std::map< std::shared_ptr<CameraPairInfo>,
+              std::pair< std::vector< std::shared_ptr<ImageData> >,
+                         std::vector< std::shared_ptr<asdp::render::CameraRenderInfo> > > > consistentImageSets;
+    for (auto& pair : m_cameraPairs) {
+      std::shared_ptr<CameraRenderInfo> camera0 = pair->m_cameras[0];
+      std::shared_ptr<CameraRenderInfo> camera1 = pair->m_cameras[1];
+
+      // Push consistent images from both actual cameras onto the custom queues
+      // of all depth cameras so that they will use consistent images to determine depth.
+      // Clear a previous image that we're finished with from the custom queues for the cameras.
+      std::vector< std::shared_ptr<asdp::render::CameraRenderInfo> > cameras = { camera0, camera1 };
+      std::vector< std::shared_ptr<ImageData> > images = GetConsistentImageSet(cameras);
+      if (images.size() == 2) {
+        for (auto depth : pair->m_perDepths) {
+          depth.m_imageQueues[0]->InsertImage(images[0]);
+          depth.m_imageQueues[0]->GetOldestImage();
+          depth.m_imageQueues[1]->InsertImage(images[1]);
+          depth.m_imageQueues[1]->GetOldestImage();
+        }
+      } else {
+        return "Failed to get consistent images for cameras.";
+      }
+
+      // Keep track of the images and cameras for this pair so that we can unlock them
+      // after we're done with them.
+      consistentImageSets[pair].first.push_back(images[0]);
+      consistentImageSets[pair].second.push_back(camera0);
+      consistentImageSets[pair].first.push_back(images[1]);
+      consistentImageSets[pair].second.push_back(camera1);
+    }
 
     // OpenGL fence objects to let us ensure that we're done with OpenGL rendering before we
     // start to map the buffers to CUDA and do the depth estimation.  There is one entry
@@ -861,7 +951,6 @@ public:
         for (size_t b = 0; b < 2; b++) {
 #if 0
           // Read back the texture to a CPU buffer.
-          // Write a debugging PPM file named for the camera pair, depth, and camera.
           {
             // Check for OpenGL errors.
             GLenum err = glGetError();
@@ -874,17 +963,28 @@ public:
             glBindTexture(GL_TEXTURE_2D, pd.m_colorBuffers[b]);
             glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
             glBindTexture(GL_TEXTURE_2D, 0);
-            std::ofstream ppmFile("depthEstimator" + std::to_string(c) + "_" + std::to_string(d) + "_" + std::to_string(b) + ".ppm");
-            ppmFile << "P3\n" << cpi.m_pixelCounts[0] << " " << cpi.m_pixelCounts[1] << "\n255\n";
+
+            // Write a binary PPM (P6) file named for the camera pair, depth, and camera.
+            std::ofstream ppmFile("depthEstimator" + std::to_string(c) + "_" + std::to_string(d) + "_" + std::to_string(b) + ".ppm", std::ios::binary);
+            ppmFile << "P6\n" << cpi.m_pixelCounts[0] << " " << cpi.m_pixelCounts[1] << "\n255\n";
+
+            // Reuse a single row buffer to avoid per-pixel I/O
+            std::vector<unsigned char> rowBuf;
+            rowBuf.resize(static_cast<size_t>(cpi.m_pixelCounts[0]) * 3);
+
             for (size_t y = 0; y < cpi.m_pixelCounts[1]; y++) {
               // The texture has lower-left corner first, but the PPM file has upper-left first.
               size_t flipY = (cpi.m_pixelCounts[1] - 1) - y;
               for (size_t x = 0; x < cpi.m_pixelCounts[0]; x++) {
                 uchar4 val = pixels[x + flipY * cpi.m_pixelCounts[0]];
-                ppmFile << (int)val.x << " " << (int)val.y << " " << (int)val.z << " ";
+                size_t idx = x * 3;
+                rowBuf[idx + 0] = static_cast<unsigned char>(val.x); // R
+                rowBuf[idx + 1] = static_cast<unsigned char>(val.y); // G
+                rowBuf[idx + 2] = static_cast<unsigned char>(val.z); // B
               }
-              ppmFile << "\n";
+              ppmFile.write(reinterpret_cast<const char*>(rowBuf.data()), rowBuf.size());
             }
+            ppmFile.close();
           }
 #endif
 
@@ -1034,6 +1134,13 @@ public:
         }
         //std::cout << "XXX, " << c << ", " << i % m_nx << ", " << i / m_nx << ", " << bestDepthValues[i] << ", " << worstDepthValues[i] << ", " << cpi.m_depths[i] << std::endl;
       }
+    }
+
+    // Unlock the consistent images that we used for the depth estimation.
+    for (auto& pair : m_cameraPairs) {
+
+      // Done with the images.
+      UnlockConsistentImageSet(consistentImageSets[pair].first, consistentImageSets[pair].second);
     }
 
     return "";
@@ -1626,9 +1733,11 @@ void DepthEstimator::BuildGradientImages(DepthEstimator& de, uint16_t width, uin
     glBindTexture(GL_TEXTURE_2D, 0);
 
     // Add three copies of the image to the image queue after constructing the ImageData object to hold it.
+    // Their times must be nonzero so that they will replace the blank image in the queues.
     std::shared_ptr<ImageData> id(new ImageData);
     id->texture = texture;
     id->exposure = cameraFrameInterval;
+    id->imageCenterTime = { 10, 0 };
     for (size_t i = 0; i < 3; i++) {
       de.m_impl->m_cameraPairs[0]->m_cameras[c]->m_imageQueue->InsertImage(id);
     }
@@ -1638,24 +1747,14 @@ void DepthEstimator::BuildGradientImages(DepthEstimator& de, uint16_t width, uin
 float DepthEstimator::SpeedTestSingleEstimation(uint16_t width, uint16_t height, uint16_t nx, uint16_t ny)
 {
   // Create a window and OpenGL context.
-  if (!glfwInit()) {
-    return -1;
-  }
-  glfwWindowHint(GLFW_VISIBLE, false);
-  std::shared_ptr<GLFWwindow> window(glfwCreateWindow(640, 480, "DepthEstimator Test", NULL, NULL), glfwDestroyWindow);
-  if (!window) {
+  std::shared_ptr<GLFWwindow> window;
+  std::string ret = asdp::render::CreateWindowOrContext(window, 640, 480, "DepthEstimator Test",
+    nullptr, -1, true);
+  if (!ret.empty()) {
+    std::cerr << "Failed to create window or context: " << ret << std::endl;
     return -1;
   }
   glfwMakeContextCurrent(window.get());
-
-  // Initialize GLEW in our context. It is okay to initialize it more than once.
-  glewExperimental = true;
-  if (glewInit() != GLEW_OK) {
-    return -1;
-  }
-  // Clear any GL error that Glew caused.  Apparently on Non-Windows
-  // platforms, this can cause a spurious error 1280.
-  glGetError();
 
   // Construct a DepthEstimator after making the objects required to construct it.
   std::vector< std::array<std::shared_ptr<CameraRenderInfo>, 2> > cameras;
@@ -1720,6 +1819,15 @@ static bool VecClose(const Vec3& a, const Vec3& b, float eps = 1e-4f) {
 
 std::string DepthEstimator::Test()
 {
+  // Create a window and OpenGL context.
+  std::shared_ptr<GLFWwindow> window;
+  std::string ret = asdp::render::CreateWindowOrContext(window, 640, 480, "DepthEstimator Test",
+    nullptr, -1, true);
+  if (!ret.empty()) {
+    return "Failed to create window or context: " + ret;
+  }
+  glfwMakeContextCurrent(window.get());
+
   // Test Vec3 and Quat classes
   {
     Vec3 v1(1.0, 2.0, 3.0);
@@ -2018,26 +2126,6 @@ std::string DepthEstimator::Test()
 
   /// Test the DepthEstimator class.
   {
-    // Create a window and OpenGL context.
-    if (!glfwInit()) {
-      return "Failed to initialize GLFW";
-    }
-    glfwWindowHint(GLFW_VISIBLE, false);
-    std::shared_ptr<GLFWwindow> window(glfwCreateWindow(640, 480, "DepthEstimator Test", NULL, NULL), glfwDestroyWindow);
-    if (!window) {
-      return "Failed to create GLFW window";
-    }
-    glfwMakeContextCurrent(window.get());
-
-    // Initialize GLEW in our context. It is okay to initialize it more than once.
-    glewExperimental = true;
-    if (glewInit() != GLEW_OK) {
-      return "Failed to initialize GLEW";
-    }
-    // Clear any GL error that Glew caused.  Apparently on Non-Windows
-    // platforms, this can cause a spurious error 1280.
-    glGetError();
-
     // Put into a block so that we destroy things in here before we destroy the context.
     {
       uint16_t nx = 12;   ///< Number of points to create in the X direction.  Must be divisible by 4 for our tests below.
@@ -2376,8 +2464,9 @@ std::string DepthEstimator::Test()
         cudaFree(d_estimatedDepth);
 
         // Test the value.
-        if (abs(estimatedDepth - defaultDepth) > 1e-6f) {
-          return "estimateDepth() GPU test failed for origin";
+        if (abs(estimatedDepth - centerDepth) > 1e-6f) {
+          return "estimateDepth() GPU test failed for origin: expected " +
+            std::to_string(centerDepth) + ", found " + std::to_string(estimatedDepth);
         }
       }
 

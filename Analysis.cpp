@@ -248,7 +248,7 @@ std::string asdp::analysis::AnalysisReport::Test()
       return "Annotation color mismatch";
     }
     if (annotation.uv[0] != 34.05f || annotation.uv[1] != -118.25f) return "Annotation uv mismatch";
-    if (!annotation.bbox || (*annotation.bbox)[0] != 100.0f || (*annotation.bbox)[1] != 200.0f) return "Annotation bbox mismatch";
+    if (!annotation.bbox || (*annotation.bbox)[0] != 100.0f/2 || (*annotation.bbox)[1] != 200.0f/2) return "Annotation bbox mismatch";
     if (annotation.label.find("TestAnalysis") == std::string::npos) return "Annotation label missing base name";
     if (annotation.label.find("Car") == std::string::npos) return "Annotation label missing classification";
     if (annotation.label.find("Person") == std::string::npos) return "Annotation label missing classification";

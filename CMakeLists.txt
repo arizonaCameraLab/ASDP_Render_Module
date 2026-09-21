@@ -38,7 +38,6 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 list(APPEND CMAKE_PREFIX_PATH
-  F:/Packages/GLEW/glew-2.2.0
   "C:/Program Files/opencv/build/x64/vc16/lib"
   C:/Qt/5.15.2/msvc2019_64/lib/cmake/Qt5
 )
@@ -114,21 +113,18 @@ if(MSVC AND TARGET geogram)
     endif()
 endif()
 
-# Geogram built GLFW3 for us as part of its build so we just need to find it.
-find_package(glfw3 REQUIRED)
-
-# Before we used Geogram, we built GLFW3 ourselves on Windows and used a system library
-# on Linux.
-#if(WIN32)
-#FetchContent_Declare(
-#  glfw3
-#  GIT_REPOSITORY https://github.com/arizonaCameraLab/glfw.git
-#  GIT_TAG        b35641f4a3c62aa86a0b3c983d163bc0fe36026d # Master as of 4/26/2024
-#)
-#FetchContent_MakeAvailable(glfw3)
-#else(WIN32)
-#find_package(glfw3 REQUIRED)
-#endif(WIN32)
+# Build GLFW3 ourselves on Windows and use a system library on Linux.
+# Ignore the one built internally by Geogram
+if(WIN32)
+  FetchContent_Declare(
+    glfw3
+    GIT_REPOSITORY https://github.com/arizonaCameraLab/glfw.git
+    GIT_TAG        b35641f4a3c62aa86a0b3c983d163bc0fe36026d # Master as of 4/26/2024
+  )
+  FetchContent_MakeAvailable(glfw3)
+else(WIN32)
+  find_package(glfw3 REQUIRED)
+endif(WIN32)
 
 # We build FreeType ourselves to ensure compatibility across platforms.
 add_subdirectory(dependencies/freetype)
@@ -139,7 +135,6 @@ add_subdirectory(dependencies/freetype)
 find_package(Threads REQUIRED)
 find_package(ASDP_Core_API REQUIRED)
 find_package(OpenGL REQUIRED COMPONENTS OpenGL)
-find_package(GLEW REQUIRED)
 find_package(Doxygen)
 find_package(OpenMP)
 if(OPENMP_FOUND)
@@ -186,6 +181,9 @@ endif (BUILD_DOXYGEN)
 add_subdirectory(Spot_Tracker)
 add_subdirectory(Gimbal)
 
+add_library(GLAD STATIC GLAD/src/gl.c)
+target_include_directories(GLAD PUBLIC GLAD/include)
+
 set (Render_Module_HEADERS
   CameraRenderInfo.h
   Composite.h
@@ -205,6 +203,7 @@ set (Render_Module_HEADERS
   RenderText.h
   RenderHaloedLines.h
   Analysis.h
+  WindowCreation.h
 )
 set (Render_Module_SOURCES
   CameraRenderInfo.cpp
@@ -224,6 +223,7 @@ set (Render_Module_SOURCES
   RenderText.cpp
   RenderHaloedLines.cpp
   Analysis.cpp
+  WindowCreation.cpp
 )
 add_library(Render_Module STATIC ${Render_Module_SOURCES} ${Render_Module_HEADERS})
 target_include_directories(Render_Module PUBLIC
@@ -238,7 +238,7 @@ target_include_directories(Render_Module PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/dependencies/glm"
 )
 target_link_libraries(Render_Module PUBLIC
-  ASDP_Core_API::ASDP_Core_API glfw GLEW::GLEW OpenGL::GL geogram freetype nlohmann_json::nlohmann_json
+  ASDP_Core_API::ASDP_Core_API glfw GLAD OpenGL::GL geogram freetype nlohmann_json::nlohmann_json
 )
 if(OPENXR_FOUND)
   target_compile_definitions(Render_Module PRIVATE XR_USE_GRAPHICS_API_OPENGL)
@@ -309,40 +309,10 @@ install(TARGETS ASDP_Render_Module EXPORT ${PROJECT_NAME}
 #install(DIRECTORY ${CMAKE_SOURCE_DIR}/ASDP_Render_Module_Configs DESTINATION ${CMAKE_BINARY_DIR})
 install(DIRECTORY ${CMAKE_SOURCE_DIR}/ASDP_Render_Module_Configs DESTINATION ${CMAKE_INSTALL_BINDIR})
 
-if(WIN32)
-  # Function to find an element in a list that contains a specified substring
-  function(find_element_with_substring result list substring)
-      set(found_element "")
-      foreach(element IN LISTS list)
-          string(FIND "${element}" "${substring}" pos)
-          if(NOT pos EQUAL -1)
-              set(found_element "${element}")
-              break()
-          endif()
-      endforeach()
-      set(${result} "${found_element}" PARENT_SCOPE)
-  endfunction()
-
-  # Assuming GLEW::GLEW is the imported target from find_package(GLEW REQUIRED)
-  # Use that to find all of the glew32.dll files in neighboring directories and then pick the one
-  # that has "x64" in the path.
-  get_target_property(GLEW_INCLUDE_DIRS GLEW::GLEW INTERFACE_INCLUDE_DIRECTORIES)
-  file(GLOB_RECURSE GLEW_DLL "${GLEW_INCLUDE_DIRS}/../*glew32.dll")
-  find_element_with_substring(GLEW_DLL2 "${GLEW_DLL}" "x64")
-
-  if(GLEW_DLL2)
-    # Copy the GLEW DLL to the build directory after building the executable
-    add_custom_command(TARGET ASDP_Render_Module POST_BUILD
-      COMMAND ${CMAKE_COMMAND} -E copy_if_different ${GLEW_DLL2} $<TARGET_FILE_DIR:ASDP_Render_Module>
-      COMMENT "Copying ${GLEW_DLL} to build directory"
-    )
-
-    # Install the GLEW DLL to the install directory
-    install(FILES ${GLEW_DLL2} DESTINATION ${CMAKE_INSTALL_BINDIR})
-    MESSAGE("Installing ${GLEW_DLL2} to ${CMAKE_INSTALL_BINDIR}")
-  else()
-    message(WARNING "GLEW DLL not found. Make sure glew32.dll is in the same path as your GLEW include directory.")
-  endif()
+# If documentation is built, install the documentaton files into the install directory under a "docs" folder
+# alongside the CMAKE_INSTALL_BINDIR.
+if (BUILD_DOXYGEN)
+  install(DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/doc_doxygen/html DESTINATION ${CMAKE_INSTALL_BINDIR}/../docs)
 endif()
 
 #-----------------------------------------------------------------------------
@@ -372,7 +342,7 @@ if(BUILD_UTILITIES)
       spot_tracker_library
       ASDP_Core_API::ASDP_Core_API
       glfw
-      GLEW::GLEW
+      GLAD
       OpenGL::GL
       Calibration_Helpers
       Gimbal

@@ -5,9 +5,9 @@
 #include <iostream>
 #include <vector>
 #include <chrono>
-#include <Composite.h>
+#include <WindowCreation.h>
 #include <ASDP_Core_API.h>
-#include <GLFW/glfw3.h>
+#include <Composite.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/quaternion.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -24,22 +24,16 @@ int main()
   std::vector<asdp::render::ViewRenderInfo> views;
   views.push_back(viewRenderInfo);
 
-  // Initialize the library
-  if (!glfwInit()) {
-    std::cerr << "Failed to initialize GLFW\n";
-    return -1;
-  }
-
   // Create a windowed mode window and its OpenGL context
-  GLFWwindow* window = glfwCreateWindow(width, height, "CompositeLineRawData_Test", NULL, NULL);
-  if (!window) {
-    std::cerr << "Failed to create GLFW window\n";
-    glfwTerminate();
+  std::shared_ptr<GLFWwindow> window;
+  std::string ret = asdp::render::CreateWindowOrContext(window, width, height, "CompositeLineRawData_Test");
+  if (!ret.empty()) {
+    std::cerr << "Failed to create window: " << ret << std::endl;
     return -1;
   }
 
   // Make the window's context current
-  glfwMakeContextCurrent(window);
+  glfwMakeContextCurrent(window.get());
 
   // Determine the coordinates of the ends of a line that starts in the upper-left pixel and goes
   // to the right for a total of 10 pixels.
@@ -67,7 +61,7 @@ int main()
   std::cout << "If no error messages are printed, the read-back values match the expected values." << std::endl;
   std::cout << "Close the window to exit." << std::endl;
   auto start = std::chrono::steady_clock::now();
-  while (!glfwWindowShouldClose(window)) {
+  while (!glfwWindowShouldClose(window.get())) {
     views[0].nearClip = 0.1f;
     views[0].farClip = 1000.0f;
     views[0].viewpoint[0] = -5;
@@ -105,13 +99,13 @@ int main()
     }
 
     // Swap front and back buffers
-    glfwSwapBuffers(window);
+    glfwSwapBuffers(window.get());
 
     // Poll for and process events
     glfwPollEvents();
   }
 
   // Clean up resources and exit
-  glfwTerminate();
+  window.reset();
   return 0;
 }

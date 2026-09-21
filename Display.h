@@ -90,16 +90,27 @@ namespace asdp {
       /// @param triggerAheadMicroseconds The offset in microseconds to subtract from the time of render start.
       /// This is to ensure that the frames make it all the way through the Composite object before being needed.
       /// It is expected to be read from a configuration file and tuned for the specific hardware and software.
-      /// @param viewpointOffset The offset from the camera to the pilot head location in the helicopter frame of reference, in meters.
+      /// @param viewpointOffset The offset from the camera to the pilot head location in the helicopter
+      ///        frame of reference, in meters.
+      /// @param viewpointRotation The rotation from the camera to the pilot head location in the helicopter
+      ///        frame of reference, in degrees.  This rotation is applied around the center of the camera,
+      ///        with translation applied after rotation.  The order of rotation is roll, pitch, yaw (x, y, z).
       /// @param depthAheadMicroseconds The offset in microseconds to subtract from the time of render start.
       /// @param composite The Composite used to generate textured geometry.
       Display(std::shared_ptr<Composite> composite,
         std::shared_ptr<CoreClient> client, uint8_t triggerID, uint32_t triggerAheadMicroseconds,
         uint32_t depthAheadMicroseconds, std::array<float, 3> viewpointOffset = { 0, 0, 0 },
+        std::array<float, 3> viewpointRotation = { 0, 0, 0 },
         std::shared_ptr<EventHandlers> handlers = nullptr, void* userData = nullptr);
 
       /// @brief Destructor, virtual so that derived classes can have their destructors called from pointers.
       virtual ~Display();
+
+      /// @brief Poll for events, such as window close or key presses.
+      /// @details This function must be called regularly by the main thread to ensure
+      /// that events are processed.  It is expected to be called by the main thread,
+      /// as some windowing libraries require that events be polled from the main thread.
+      virtual void PollEvents();
 
       /// @brief Cause the object to shut down any threads and release any resources.
       /// @details The base-class function will set m_done and join the display thread and then
@@ -148,6 +159,11 @@ protected:
       /// This is used for rendering the camera views in the correct location relative to the pilot head.
       /// Filled in by the constructor, but can be changed by derived classes if needed.
       std::array<float, 3> m_viewpointOffset;
+
+      /// Viewpoint rotation from the camera to the pilot head location in the helicopter frame of reference,
+      /// in degrees. This rotation is applied around the center of the camera, with translation applied
+      /// after rotation.
+      std::array<float, 3> m_viewpointRotation;
 
       /// Compositor to use, filled in by the constructor. Ensure atomic access, as it
       /// may be updated by UpdateClientAndComposite() while the display thread is running..
@@ -220,6 +236,8 @@ protected:
       /// is to be the base object to be shared.
       DisplayTexture(Display* sharedWindow = nullptr);
 
+      void PollEvents() override;
+
       ~DisplayTexture();
 
     private:
@@ -245,7 +263,11 @@ protected:
       /// This is to ensure that the frames make it all the way through the Composite object before being needed.
       /// It is expected to be read from a configuration file and tuned for the specific hardware and software.
       /// @param depthAheadMicroseconds The offset in microseconds to subtract from the time of render start.
-      /// @param viewpointOffset The offset from the camera to the pilot head location in the helicopter frame of reference, in meters.
+      /// @param viewpointOffset The offset from the camera to the pilot head location in the helicopter
+      ///        frame of reference, in meters.
+      /// @param viewpointRotation The rotation from the camera to the pilot head location in the helicopter
+      ///        space, in degrees.  This rotation is applied around the center of the camera, with translation
+      ///        applied after rotation.
       /// @param fps The number of frames per second requested for a full-screen window.  The system will busy-wait
       /// to achieve at most this frame rate.  For full-screen windows, this is the frame rate we ask for
       /// on the monitor.  For windows that are not full screen, this should be set to the actual monitor
@@ -270,6 +292,7 @@ protected:
       DisplayWindow(std::string windowName, std::shared_ptr<Composite> composite,
         std::shared_ptr<CoreClient> client, uint8_t triggerID, uint32_t triggerAheadMicroseconds,
         uint32_t depthAheadMicroseconds, std::array<float, 3> viewpointOffset = { 0, 0, 0 },
+        std::array<float, 3> viewpointRotation = { 0, 0, 0 },
         float fps = 60, uint32_t renderAheadMicroseconds = 2500,
         int desiredWidth = 1280, int desiredHeight = 1024, float horizontalFOVDegrees = 90.0,
         std::string joystick = "", Display *sharedWindow = nullptr,
@@ -278,6 +301,7 @@ protected:
         RenderTimingInfo* timingInfo = nullptr, bool replaying = false);
 
       void SetNowPlaying(bool nowPlaying) override;
+      void PollEvents() override;
 
       ~DisplayWindow();
 
@@ -310,6 +334,9 @@ protected:
       /// @brief Helpfer function to handle mouse input.
       void HandleMouse();
 
+      /// @brief Time that we last read from the joystick..
+      std::chrono::steady_clock::time_point m_lastJoystickCheckReadTime;
+
       /// @brief Helper function to clamp the viewing orientation to be within the expected visible range.
       /// @details This function is called by the display thread to ensure that the view orientation is
       /// within the expected range.  It is expected to be called after the view orientation is updated.
@@ -336,7 +363,12 @@ protected:
       /// This is to ensure that the frames make it all the way through the Composite object before being needed.
       /// It is expected to be read from a configuration file and tuned for the specific hardware and software.
       /// @param depthAheadMicroseconds The offset in microseconds to subtract from the time of render start.
-      /// @param viewpointOffset The offset from the camera to the pilot head location in the helicopter frame of reference, in meters.
+      /// @param viewpointOffset The offset from the camera to the pilot head location in the helicopter
+      ///        frame of reference, in meters.
+      /// @param viewpointRotation The rotation from the camera to the pilot head location in the helicopter
+      ///        frame of reference, in degrees.  This rotation is applied around the center of
+      ///        the camera, with translation applied after rotation.  The order of rotation is roll,
+      ///        pitch, yaw (x, y, z).
       /// @param renderAheadMicroseconds The number of microseconds ahead of the next swap time to begin
       /// rendering.  This is to ensure that the rendering is done in time for the swap to happen while
       /// providing the minimum prediction interval and delaying as long as possible to enable new frames
@@ -350,6 +382,7 @@ protected:
       DisplayOpenXR(std::shared_ptr<Composite> composite, Display* sharedWindow,
         std::shared_ptr<CoreClient> client, uint8_t triggerID, uint32_t triggerAheadMicroseconds,
         uint32_t depthAheadMicroseconds, std::array<float, 3> viewpointOffset = { 0, 0, 0 },
+        std::array<float, 3> viewpointRotation = { 0, 0, 0 },
         uint32_t renderAheadMicroseconds = 2500, int verbosity = 0,
         std::shared_ptr<EventHandlers> handlers = nullptr, void* userData = nullptr,
         RenderTimingInfo* timingInfo = nullptr, bool replaying = false);
@@ -366,7 +399,7 @@ protected:
       bool m_replaying;
 
       /// @brief Method to implement the display thread.
-      void DisplayThread(Display* sharedWindow, uint32_t renderAheadMicroseconds);
+      void DisplayThread();
 
       /// Opaque class used to enable not requiring the application to #include all headers.
       class DisplayOpenXRImpl;
@@ -380,6 +413,11 @@ protected:
     public:
       /// @brief Constructor
       /// @param NICName The name of the NIC to use listen for UDP packets from the XSight HMD.
+      /// For some networking environments, this is the address of the NIC to listen on. For others,
+      /// this should be set to 0.0.0.0 to listen on this port on all NICS. Also note that some
+      /// Ubuntu computers must be connected to a router (even one that is not itself connected to
+      /// the Internet) to properly support multicast; otherwise, they may fail to open the ports and
+      /// may fail to receive packets from the XSight HMD.
       /// @param composite The Composite used to generate textured geometry.  The DisplayXSight object will
       /// reset this pointer just before closing the window, and the caller should reset the pointer passed
       /// in here so that it will be destroyed before the window closes.
@@ -389,7 +427,12 @@ protected:
       /// This is to ensure that the frames make it all the way through the Composite object before being needed.
       /// It is expected to be read from a configuration file and tuned for the specific hardware and software.
       /// @param depthAheadMicroseconds The offset in microseconds to subtract from the time of render start.
-      /// @param viewpointOffset The offset from the camera to the pilot head location in the helicopter frame of reference, in meters.
+      /// @param viewpointOffset The offset from the camera to the pilot head location in the helicopter
+      ///        frame of reference, in meters.
+      /// @param viewpointRotation The rotation from the camera to the pilot head location in the helicopter
+      ///        frame of reference, in degrees.  This rotation is applied around the center of
+      ///        the camera, with translation applied after rotation.  The order of rotation is roll,
+      ///        pitch, yaw (x, y, z).
       /// @param desiredDisplay The index of the desired display to use (0 = first, default 1).
       /// @param desiredWidth The width of the display in pixels.  This must be a multiple of two because the
       /// data is encoded as two monochrome values per color pixel before being sent to the device.
@@ -416,6 +459,7 @@ protected:
       DisplayXSight(std::string NICName, std::shared_ptr<Composite> composite, Display* sharedWindow,
         std::shared_ptr<CoreClient> client, uint8_t triggerID, uint32_t triggerAheadMicroseconds,
         uint32_t depthAheadMicroseconds, std::array<float, 3> viewpointOffset,
+        std::array<float, 3> viewpointRotation,
         uint32_t renderAheadMicroseconds = 2500,  ///< @todo Match XSight specs
         std::shared_ptr<EventHandlers> handlers = nullptr, void* userData = nullptr,
         RenderTimingInfo* timingInfo = nullptr, bool replaying = false,
@@ -427,6 +471,7 @@ protected:
       );
 
       void SetNowPlaying(bool nowPlaying) override;
+      void PollEvents() override;
 
       ~DisplayXSight();
 
