@@ -215,6 +215,9 @@ public:
   /// Last time we checked the keyboard, used to control motion rate.
   std::chrono::steady_clock::time_point m_lastKeyboardCheck;
 
+  /// Next time we will bump a control due to a keyboard being pressed.
+  std::chrono::steady_clock::time_point m_nextKeyboardBump;
+
   /// Is the left mouse button pressed?
   bool m_leftMouseButtonPressed = false;
 
@@ -684,7 +687,13 @@ void DisplayWindow::HandleKeyboard()
   std::chrono::duration<double> elapsed = now - m_impl->m_lastKeyboardCheck;
   m_impl->m_lastKeyboardCheck = now;
 
-  double DegreesPerSecond = 30.0;
+  constexpr double KeyBumpsPerSecond = 60.0;
+  bool doKeyBump = (now >= m_impl->m_nextKeyboardBump);
+  if (doKeyBump) {
+    m_impl->m_nextKeyboardBump = now + std::chrono::microseconds(static_cast<long long>(1e6 / KeyBumpsPerSecond));
+  }
+
+  constexpr double DegreesPerSecond = 30.0;
 
   // Rotate to look up when the up key is pressed
   if (glfwGetKey(Display::m_impl->m_window.get(), GLFW_KEY_UP) == GLFW_PRESS) {
@@ -745,9 +754,9 @@ void DisplayWindow::HandleKeyboard()
   bool minusPressed = (glfwGetKey(Display::m_impl->m_window.get(), GLFW_KEY_MINUS) == GLFW_PRESS);
   bool equalPressed = (glfwGetKey(Display::m_impl->m_window.get(), GLFW_KEY_EQUAL) == GLFW_PRESS);
   int increment = 0;
-  if (minusPressed) {
+  if (minusPressed && doKeyBump) {
     increment = -1;
-  } else if (equalPressed) {
+  } else if (equalPressed && doKeyBump) {
     increment = 1;
   }
   if (increment != 0) {
@@ -760,10 +769,10 @@ void DisplayWindow::HandleKeyboard()
   bool periodPressed = (glfwGetKey(Display::m_impl->m_window.get(), GLFW_KEY_PERIOD) == GLFW_PRESS);
   bool commaPressed = (glfwGetKey(Display::m_impl->m_window.get(), GLFW_KEY_COMMA) == GLFW_PRESS);
   float incrementGain = 1;
-  if (periodPressed) {
-    incrementGain *= 1.001f;
-  } else if (commaPressed) {
-    incrementGain /= 1.001f;
+  if (periodPressed && doKeyBump) {
+    incrementGain *= 1.0003f;
+  } else if (commaPressed && doKeyBump) {
+    incrementGain /= 1.0003f;
   }
   if (incrementGain != 1) {
     if (m_eventHandlers && m_eventHandlers->AdjustActiveCameraGain) {
