@@ -119,6 +119,7 @@ private:
 
   // Variables and functions for displaying video from a camera.
   std::shared_ptr<Display> m_display;
+  std::recursive_mutex m_displayMutex;
   std::shared_ptr<DisplayTexture> m_displayTexture;
   std::vector< std::shared_ptr<CameraRenderInfo> > m_visibleCameras;
   GLuint m_toneMap = 0;

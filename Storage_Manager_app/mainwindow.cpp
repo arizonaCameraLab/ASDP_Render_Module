@@ -235,6 +235,7 @@ void MainWindow::ResetStreaming()
   m_receiverCam.reset();
 
   // Grab the context and then clear the visible cameras and delete the tone map.
+  std::lock_guard<std::recursive_mutex> lock(m_displayMutex);
   if (m_displayTexture) {
     m_displayTexture->BorrowContext();
     m_visibleCameras.clear();
@@ -495,6 +496,7 @@ void MainWindow::PeriodicTask()
   } // if (m_receiver)
 
   // Stop streaming and delete the display if it is no longer valid, and reset the selection.
+  std::lock_guard<std::recursive_mutex> lock(m_displayMutex);
   if (m_display) {
     if (m_display->GetStatus() != "") {
       ResetStreaming();
@@ -508,6 +510,7 @@ void MainWindow::PollDisplayEvents()
   // Poll the display objects for windowing events whenever they exist. It is fine for this to
   // be called the whole time the program is running; when we are not viewing a camera the
   // pointers are empty and there is nothing to do.
+  std::lock_guard<std::recursive_mutex> lock(m_displayMutex);
   if (m_display) {
     m_display->PollEvents();
   }

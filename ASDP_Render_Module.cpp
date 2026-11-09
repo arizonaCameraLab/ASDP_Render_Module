@@ -57,7 +57,7 @@ using namespace asdp::render;
 using namespace asdp::analysis;
 using json = nlohmann::json;
 
-static std::string VERSION = "3.55.1";
+static std::string VERSION = "3.56.0";
 
 /// @brief The path to the configuration file. Defined in the CMakeLists file.
 std::filesystem::path g_dirPath = CONFIG_FILE_PATH;
@@ -1428,9 +1428,16 @@ int spin_up(std::shared_ptr<CoreClient> client, int &serialNumber, std::shared_p
     std::cerr << "Error reading configuration file: " << e.what() << std::endl;
     return 14;
   }
-  if (cameras.size() != rawCameraRenderInfos.size()) {
-    std::cerr << "Number of cameras mismatch: expected " << cameras.size() << " but got " << rawCameraRenderInfos.size() << std::endl;
+  if (cameras.size() < rawCameraRenderInfos.size()) {
+    std::cerr << "Number of cameras mismatch: got " << cameras.size() << " but expected " << rawCameraRenderInfos.size() << std::endl;
     return 16;
+  }
+  if (cameras.size() > rawCameraRenderInfos.size()) {
+    std::cerr << "Warning: number of cameras mismatch: got " << cameras.size() << " but expected " << rawCameraRenderInfos.size()
+      << ", ignoring extra cameras" << std::endl;
+    while (cameras.size() > rawCameraRenderInfos.size()) {
+      cameras.pop_back();
+    }
   }
   std::cout << "Read configuration from " << configPath << std::endl;
 
@@ -1440,8 +1447,7 @@ int spin_up(std::shared_ptr<CoreClient> client, int &serialNumber, std::shared_p
   for (int i = 0; i < cameras.size(); i++) {
     if (skipCameras.find(i + 1) == skipCameras.end()) {
       filteredCameras.push_back(cameras[i]);
-    }
-    else {
+    } else {
       std::cout << "Skipping camera ID " << i + 1 << std::endl;
     }
     if (skipCameras.find(rawCameraRenderInfos[i].m_ID) == skipCameras.end()) {
