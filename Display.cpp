@@ -386,6 +386,11 @@ void DisplayWindow::PollEvents()
   // Process any GLFW events via the base class function.
   Display::PollEvents();
 
+  // Ignore if we have no m_impl, we've already started destruction.
+  if (!Display::m_impl) {
+    return;
+  }
+
   // Quit when our window closes.
   if (glfwWindowShouldClose(Display::m_impl->m_window.get())) {
     std::atomic_store(&m_composite, std::shared_ptr<Composite>());
@@ -999,6 +1004,11 @@ void DisplayTexture::PollEvents()
 {
   // Poll for GLFW events using the base class.
   Display::PollEvents();
+
+  // Ignore if we have no m_impl, we've already started destruction.
+  if (!Display::m_impl) {
+    return;
+  }
 
   // Quit when our window closes.
   if (glfwWindowShouldClose(Display::m_impl->m_window.get())) {
@@ -2555,6 +2565,11 @@ void DisplayXSight::PollEvents()
 {
   // Poll for GLFW events using the base class.
   Display::PollEvents();
+
+  // Ignore if we have no m_impl, we've already started destruction.
+  if (!Display::m_impl) {
+    return;
+  }
 
   // Quit when our window closes.
   if (glfwWindowShouldClose(Display::m_impl->m_window.get())) {
